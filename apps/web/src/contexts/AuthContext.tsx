@@ -1,14 +1,20 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createApiClient, getApiClient, ApiClient } from '@/lib/api-client';
+
+export type UserRole = 'ADMIN' | 'ANALISTA' | 'TESOURARIA' | 'AGENTE' | 'ASSOCIADO';
 
 export interface User {
   id: string;
   email: string;
-  name: string;
-  perfil: 'ADMIN' | 'ANALISTA' | 'TESOUREIRO' | 'AGENTE' | 'ASSOCIADO';
+  full_name: string;
+  is_active: boolean;
+  roles: UserRole[];
+  perfil: UserRole;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AuthContextType {
@@ -17,6 +23,7 @@ export interface AuthContextType {
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
   loginWithOIDC: (redirectUri?: string) => void;
+  handleOIDCCallback: (code: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshToken: () => Promise<void>;
   apiClient: ApiClient | null;
@@ -26,6 +33,22 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export interface AuthProviderProps {
   children: React.ReactNode;
+}
+
+function mapUserResponse(payload: any): User {
+  const roles = Array.isArray(payload?.roles) ? (payload.roles as UserRole[]) : [];
+  const perfil = (roles[0] ?? 'AGENTE') as UserRole;
+
+  return {
+    id: String(payload?.id ?? ''),
+    email: payload?.email ?? '',
+    full_name: payload?.full_name ?? payload?.name ?? '',
+    is_active: payload?.is_active ?? true,
+    roles,
+    perfil,
+    created_at: payload?.created_at ?? new Date().toISOString(),
+    updated_at: payload?.updated_at ?? new Date().toISOString(),
+  };
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
@@ -78,7 +101,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const response = await apiClient.get<User>('/api/v1/auth/me');
 
       if (response.data) {
-        setUser(response.data);
+        setUser(mapUserResponse(response.data));
       } else {
         // Token inválido, limpar
         apiClient.clearTokens();
@@ -104,7 +127,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
         access_token: string;
         refresh_token: string;
         user: User;
-      }>('/api/v1/auth/login/local', {
+      }>('/api/v1/auth/login', {
+        provider: 'local',
         username,
         password,
       });
@@ -118,7 +142,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         apiClient.setTokens(response.data.access_token, response.data.refresh_token);
 
         // Salvar usuário
-        setUser(response.data.user);
+        setUser(mapUserResponse(response.data.user));
 
         // Redirecionar para dashboard
         router.push('/dashboard');
@@ -173,13 +197,19 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const codeVerifier = localStorage.getItem('code_verifier') || '';
 
+      const redirectUri = `${window.location.origin}/auth/callback`;
+
       const response = await apiClient.post<{
         access_token: string;
         refresh_token: string;
         user: User;
-      }>('/api/v1/auth/oidc/callback', {
+      }>('/api/v1/auth/login', {
+        provider: 'oidc',
         code,
-        code_verifier: codeVerifier,
+        metadata: {
+          code_verifier: codeVerifier,
+          redirect_uri: redirectUri,
+        },
       });
 
       if (response.error) {
@@ -191,7 +221,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         apiClient.setTokens(response.data.access_token, response.data.refresh_token);
 
         // Salvar usuário
-        setUser(response.data.user);
+        setUser(mapUserResponse(response.data.user));
 
         // Limpar code verifier
         localStorage.removeItem('code_verifier');
@@ -220,8 +250,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (token) {
         // Notificar backend (não aguardar resposta)
         apiClient.post('/api/v1/auth/logout', {
-          token,
-          user_id: user.id,
+          refresh_token: apiClient.getRefreshToken(),
           global_logout: false,
         });
       }
@@ -250,17 +279,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
     if (!apiClient) return;
 
     try {
+      const refreshTokenValue = apiClient.getRefreshToken();
+      if (!refreshTokenValue) {
+        handleLogout();
+        return;
+      }
+
       const response = await apiClient.post<{
         access_token: string;
-        expires_in: number;
+        refresh_token: string;
+        user?: User;
       }>('/api/v1/auth/refresh', {
-        refresh_token: apiClient.getAccessToken(),
+        refresh_token: refreshTokenValue,
       });
 
       if (response.data) {
-        // Atualizar access token
-        const currentRefreshToken = localStorage.getItem('refresh_token') || '';
-        apiClient.setTokens(response.data.access_token, currentRefreshToken);
+        const nextRefresh = response.data.refresh_token || refreshTokenValue;
+        apiClient.setTokens(response.data.access_token, nextRefresh);
+
+        if (response.data.user) {
+          setUser(mapUserResponse(response.data.user));
+        }
       }
     } catch (error) {
       console.error('Token refresh failed:', error);
@@ -274,6 +313,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     isLoading,
     login,
     loginWithOIDC,
+    handleOIDCCallback,
     logout,
     refreshToken,
     apiClient,

@@ -1,8 +1,0 @@
-from .base import *  # noqa: F401, F403
-
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SECURE_SSL_REDIRECT = True
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
-
-ALLOWED_HOSTS = [host for host in ALLOWED_HOSTS if host]

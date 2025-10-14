@@ -80,6 +80,10 @@ class ApiClient {
     return this.accessToken;
   }
 
+  getRefreshToken(): string | null {
+    return this.refreshToken;
+  }
+
   /**
    * Adiciona subscriber para aguardar refresh
    */
@@ -120,10 +124,18 @@ class ApiClient {
 
       const data = await response.json();
       const newAccessToken = data.access_token;
+      const newRefreshToken = data.refresh_token ?? this.refreshToken;
 
       this.accessToken = newAccessToken;
       if (typeof window !== 'undefined') {
         localStorage.setItem('access_token', newAccessToken);
+        if (newRefreshToken) {
+          localStorage.setItem('refresh_token', newRefreshToken);
+        }
+      }
+
+      if (newRefreshToken) {
+        this.refreshToken = newRefreshToken;
       }
 
       return newAccessToken;

@@ -8,12 +8,12 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
-    "@storybook/addon-a11y": "8.0.7",
-    "@storybook/addon-essentials": "8.0.7",
-    "@storybook/addon-interactions": "8.0.7",
-    "@storybook/addon-themes": "8.0.7",
-    "@storybook/nextjs": "8.0.7",
-    "storybook": "8.0.7",
+    "@storybook/addon-a11y": "8.1.2",
+    "@storybook/addon-essentials": "8.1.2",
+    "@storybook/addon-interactions": "8.1.2",
+    "@storybook/addon-themes": "8.1.2",
+    "@storybook/nextjs": "8.1.2",
+    "storybook": "8.1.2",
     "tailwindcss": "4.0.0"
   }
 }

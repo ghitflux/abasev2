@@ -51,7 +51,7 @@ export function UserMenu({ showName = true, avatarSize = 'md' }: UserMenuProps) 
         return 'danger';
       case 'ANALISTA':
         return 'primary';
-      case 'TESOUREIRO':
+      case 'TESOURARIA':
         return 'success';
       case 'AGENTE':
         return 'warning';
@@ -64,7 +64,7 @@ export function UserMenu({ showName = true, avatarSize = 'md' }: UserMenuProps) 
     const labels: Record<string, string> = {
       ADMIN: 'Administrador',
       ANALISTA: 'Analista',
-      TESOUREIRO: 'Tesoureiro',
+      TESOURARIA: 'Tesouraria',
       AGENTE: 'Agente',
       ASSOCIADO: 'Associado',
     };
@@ -89,14 +89,14 @@ export function UserMenu({ showName = true, avatarSize = 'md' }: UserMenuProps) 
         <div className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity">
           <Avatar
             size={avatarSize}
-            name={getInitials(user.name, user.email)}
+            name={getInitials(user.full_name, user.email)}
             color={getRoleColor(user.perfil)}
             className="cursor-pointer"
           />
           {showName && (
             <div className="hidden md:flex flex-col items-start">
               <span className="text-sm font-semibold">
-                {user.name || user.email}
+                {user.full_name || user.email}
               </span>
               <span className="text-xs text-default-500">
                 {getRoleLabel(user.perfil)}
@@ -113,7 +113,7 @@ export function UserMenu({ showName = true, avatarSize = 'md' }: UserMenuProps) 
           textValue="Perfil"
         >
           <div className="flex flex-col">
-            <span className="font-semibold">{user.name || 'Usuário'}</span>
+            <span className="font-semibold">{user.full_name || 'Usuário'}</span>
             <span className="text-xs text-default-500">{user.email}</span>
           </div>
         </DropdownItem>

@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { Spinner } from '@heroui/react';
 import { useAuth } from '@/contexts/AuthContext';
 
-export type Role = 'ADMIN' | 'ANALISTA' | 'TESOUREIRO' | 'AGENTE' | 'ASSOCIADO';
+export type Role = 'ADMIN' | 'ANALISTA' | 'TESOURARIA' | 'AGENTE' | 'ASSOCIADO';
 
 export interface ProtectedRouteProps {
   children: React.ReactNode;

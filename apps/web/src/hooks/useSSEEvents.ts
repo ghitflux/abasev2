@@ -52,7 +52,8 @@ export function useSSEEvents(
       }
 
       // Create new connection
-      const eventSource = new EventSource('/api/v1/sse/events');
+      const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const eventSource = new EventSource(`${baseURL}/api/v1/sse`);
       eventSourceRef.current = eventSource;
 
       eventSource.onopen = () => {

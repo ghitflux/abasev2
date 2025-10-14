@@ -15,9 +15,7 @@ services:
     extends:
       file: docker-compose.yml
       service: api
-    environment:
-      DJANGO_SETTINGS_MODULE: config.settings.development
-    command: python manage.py runserver 0.0.0.0:8000
+    entrypoint: ["/bin/sh", "-c", "/scripts/init_db.sh && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"]
 
   web:
     extends:

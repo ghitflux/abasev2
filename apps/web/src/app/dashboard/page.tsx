@@ -31,7 +31,7 @@ function DashboardContent() {
           <Card>
             <CardHeader>
               <h2 className="text-xl font-semibold">
-                Bem-vindo, {user?.name || user?.email}!
+                Bem-vindo, {user?.full_name || user?.email}!
               </h2>
             </CardHeader>
             <CardBody>
@@ -82,7 +82,7 @@ function DashboardContent() {
             </PermissionGate>
 
             {/* Card: Tesouraria */}
-            <PermissionGate requiredRoles={['ADMIN', 'TESOUREIRO']}>
+            <PermissionGate requiredRoles={['ADMIN', 'TESOURARIA']}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer">
                 <CardHeader className="flex gap-3">
                   <div className="flex flex-col">
@@ -101,7 +101,7 @@ function DashboardContent() {
             </PermissionGate>
 
             {/* Card: Relatórios */}
-            <PermissionGate requiredRoles={['ADMIN', 'ANALISTA', 'TESOUREIRO']}>
+            <PermissionGate requiredRoles={['ADMIN', 'ANALISTA', 'TESOURARIA']}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer">
                 <CardHeader className="flex gap-3">
                   <div className="flex flex-col">

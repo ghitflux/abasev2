@@ -3,7 +3,7 @@
 import React from 'react';
 import { useAuth, User } from '@/contexts/AuthContext';
 
-export type Role = 'ADMIN' | 'ANALISTA' | 'TESOUREIRO' | 'AGENTE' | 'ASSOCIADO';
+export type Role = 'ADMIN' | 'ANALISTA' | 'TESOURARIA' | 'AGENTE' | 'ASSOCIADO';
 
 export interface PermissionGateProps {
   children: React.ReactNode;
@@ -89,14 +89,14 @@ export function usePermissions() {
   // Verificações específicas por funcionalidade
   const canCreateCadastro = hasAnyRole(['ADMIN', 'AGENTE']);
   const canApproveCadastro = hasAnyRole(['ADMIN', 'ANALISTA']);
-  const canProcessPayment = hasAnyRole(['ADMIN', 'TESOUREIRO']);
-  const canViewReports = hasAnyRole(['ADMIN', 'ANALISTA', 'TESOUREIRO']);
-  const canExportReports = hasAnyRole(['ADMIN', 'ANALISTA', 'TESOUREIRO']);
+  const canProcessPayment = hasAnyRole(['ADMIN', 'TESOURARIA']);
+  const canViewReports = hasAnyRole(['ADMIN', 'ANALISTA', 'TESOURARIA']);
+  const canExportReports = hasAnyRole(['ADMIN', 'ANALISTA', 'TESOURARIA']);
   const canManageUsers = hasRole('ADMIN');
 
   const isAdmin = hasRole('ADMIN');
   const isAnalista = hasRole('ANALISTA');
-  const isTesoureiro = hasRole('TESOUREIRO');
+  const isTesouraria = hasRole('TESOURARIA');
   const isAgente = hasRole('AGENTE');
   const isAssociado = hasRole('ASSOCIADO');
 
@@ -116,7 +116,7 @@ export function usePermissions() {
     // Verificações de role
     isAdmin,
     isAnalista,
-    isTesoureiro,
+    isTesouraria,
     isAgente,
     isAssociado,
   };

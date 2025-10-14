@@ -11,7 +11,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U abase"]
       interval: 10s
@@ -36,10 +35,13 @@ services:
       context: .
       dockerfile: docker/api.Dockerfile
     environment:
-      DATABASE_URL: postgresql://abase:${DB_PASSWORD:-localpass}@postgres:5432/abase_v2
+      DATABASE_URL: postgresql+asyncpg://abase:${DB_PASSWORD:-localpass}@postgres:5432/abase_v2
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY}
-      DJANGO_SETTINGS_MODULE: config.settings.development
+      SECRET_KEY: ${SECRET_KEY:-super-secret-key}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_REDIRECT_URI: ${OIDC_REDIRECT_URI:-http://localhost:3000/auth/callback}
     ports:
       - "8000:8000"
     depends_on:
@@ -49,8 +51,8 @@ services:
         condition: service_healthy
     volumes:
       - ./apps/api:/app
-      - media_files:/app/media
-      - static_files:/app/static
+      - ./scripts:/scripts
+    entrypoint: ["/bin/sh", "-c", "/scripts/init_db.sh && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
 
   web:
     build:
@@ -71,18 +73,3 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  media_files:
-  static_files:
-
-  celery:
-    build:
-      context: .
-      dockerfile: docker/api.Dockerfile
-    command: bash -lc "celery -A config worker -l info"
-    environment:
-      DJANGO_SETTINGS_MODULE: config.settings.development
-      REDIS_URL: redis://redis:6379/0
-    volumes:
-      - ./apps/api:/app
-    depends_on:
-      - api
