@@ -1,0 +1,30 @@
+# Node
+node_modules/
+.pnpm-store/
+.next/
+dist/
+*.log
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+.env
+.env.*
+
+# Django
+media/
+staticfiles/
+
+# Editors
+.vscode/
+.idea/
+.DS_Store
+
+# Docker
+postgres_data/
+redis_data/
+media_files/
+static_files/

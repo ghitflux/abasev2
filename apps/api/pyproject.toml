@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "abase-api"
+version = "0.1.0"
+description = "ABASE Manager API service"
+authors = [{ name = "ABASE" }]
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.testing"
+python_files = ["tests.py", "test_*.py"]
+
+[tool.black]
+line-length = 88
+
+[tool.isort]
+profile = "black"

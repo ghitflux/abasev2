@@ -1,0 +1,13 @@
+@import "tailwindcss";
+@config "../../tailwind.config.ts";
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter var', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background-color: theme('colors.background');
+  color: theme('colors.foreground');
+}

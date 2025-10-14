@@ -1,0 +1,13 @@
+{
+  "extends": "../packages/config/typescript/base.json",
+  "compilerOptions": {
+    "types": ["storybook__react"],
+    "baseUrl": "./",
+    "paths": {
+      "@abase/ui": ["../packages/ui/src"],
+      "@abase/shared": ["../packages/shared/src"]
+    },
+    "moduleResolution": "Bundler"
+  },
+  "include": ["./stories", "./.storybook", "./src"]
+}
