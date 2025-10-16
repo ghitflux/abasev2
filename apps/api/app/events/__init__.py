@@ -5,18 +5,23 @@ import json
 from typing import Any, Dict
 from uuid import uuid4
 
-from fastapi_sse import SSEApp
+from fastapi import FastAPI, Request
+from sse_starlette.sse import EventSourceResponse
 
 from ..cache import get_redis_client
 from ..config import get_settings
 from .websocket import manager
 
 
-sse_app = SSEApp()
+# Create a simple FastAPI app for SSE endpoints
+sse_app = FastAPI()
 _settings = get_settings()
 _channel = f"{_settings.sse_channel_prefix}:broadcast"
 _instance_id = uuid4().hex
 _listener_task: asyncio.Task[None] | None = None
+
+# Store active SSE connections
+_sse_connections: Dict[str, asyncio.Queue] = {}
 
 
 async def start_event_listener() -> None:
@@ -53,5 +58,50 @@ async def _dispatch(payload: Dict[str, Any]) -> None:
     channel = payload["channel"]
     data = payload["data"]
     event = payload.get("event")
-    await sse_app.publish(data=json.dumps(data), event=event, channel=channel)
+    
+    # Send to SSE connections
+    for connection_id, queue in _sse_connections.items():
+        try:
+            await queue.put({
+                "data": json.dumps(data),
+                "event": event or "message",
+                "channel": channel
+            })
+        except Exception:
+            # Remove dead connections
+            _sse_connections.pop(connection_id, None)
+    
+    # Send to WebSocket connections
     await manager.broadcast({"channel": channel, "data": data, "event": event})
+
+
+@sse_app.get("/{channel}")
+async def sse_endpoint(channel: str, request: Request):
+    """SSE endpoint for real-time updates."""
+    connection_id = uuid4().hex
+    queue = asyncio.Queue()
+    _sse_connections[connection_id] = queue
+
+    async def event_generator():
+        try:
+            while True:
+                # Check if client is still connected
+                if await request.is_disconnected():
+                    break
+
+                try:
+                    # Wait for events with timeout
+                    event_data = await asyncio.wait_for(queue.get(), timeout=30.0)
+                    yield {
+                        "data": event_data["data"],
+                        "event": event_data["event"],
+                    }
+                except asyncio.TimeoutError:
+                    # Send keepalive
+                    yield {"comment": "keepalive"}
+        except Exception:
+            pass
+        finally:
+            _sse_connections.pop(connection_id, None)
+
+    return EventSourceResponse(event_generator())

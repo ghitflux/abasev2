@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Preview } from '@storybook/react';
+import type { Preview } from '@storybook/react-vite';
 import { HeroUIProvider } from '@heroui/system';
 import { ToastProvider } from '@abase/ui';
 import '../src/globals.css';
@@ -15,14 +15,14 @@ const preview: Preview = {
     },
     layout: 'padded',
     backgrounds: {
-      default: 'light',
-      values: [
-        { name: 'light', value: '#ffffff' },
-        { name: 'dark', value: '#000000' },
-        { name: 'gray', value: '#f5f5f5' },
-      ],
+      options: {
+        light: { name: 'light', value: '#ffffff' },
+        dark: { name: 'dark', value: '#000000' },
+        gray: { name: 'gray', value: '#f5f5f5' }
+      }
     },
   },
+
   decorators: [
     (Story) => (
       <HeroUIProvider>
@@ -32,6 +32,12 @@ const preview: Preview = {
       </HeroUIProvider>
     ),
   ],
+
+  initialGlobals: {
+    backgrounds: {
+      value: 'light'
+    }
+  }
 };
 
 export default preview;
