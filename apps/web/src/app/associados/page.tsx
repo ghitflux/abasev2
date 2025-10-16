@@ -25,7 +25,14 @@ import {
 import { DataTable, StatusBadge, useToast } from '@abase/ui';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatCPF, formatPhone, formatDate } from '@/lib/formatters';
-import { SearchIcon, PlusIcon, MoreVerticalIcon, EditIcon, TrashIcon, EyeIcon } from 'lucide-react';
+import { 
+  MagnifyingGlassIcon as SearchIcon,
+  PlusIcon,
+  EllipsisVerticalIcon as MoreVerticalIcon,
+  PencilIcon as EditIcon,
+  TrashIcon,
+  EyeIcon
+} from '@heroicons/react/24/outline';
 
 interface Associado {
   id: number;
@@ -385,30 +392,30 @@ export default function AssociadosPage() {
           />
           
           <div className="flex gap-2">
-            <Chip
+            <Button
               variant={filters.status === 'all' ? 'solid' : 'flat'}
               color={filters.status === 'all' ? 'primary' : 'default'}
               onPress={() => setFilters(prev => ({ ...prev, status: 'all' }))}
-              className="cursor-pointer"
+              size="sm"
             >
               Todos
-            </Chip>
-            <Chip
+            </Button>
+            <Button
               variant={filters.status === 'active' ? 'solid' : 'flat'}
               color={filters.status === 'active' ? 'primary' : 'default'}
               onPress={() => setFilters(prev => ({ ...prev, status: 'active' }))}
-              className="cursor-pointer"
+              size="sm"
             >
               Ativos
-            </Chip>
-            <Chip
+            </Button>
+            <Button
               variant={filters.status === 'inactive' ? 'solid' : 'flat'}
               color={filters.status === 'inactive' ? 'primary' : 'default'}
               onPress={() => setFilters(prev => ({ ...prev, status: 'inactive' }))}
-              className="cursor-pointer"
+              size="sm"
             >
               Inativos
-            </Chip>
+            </Button>
           </div>
         </div>
       </div>
@@ -443,13 +450,9 @@ export default function AssociadosPage() {
         </CardHeader>
         <CardBody>
           <DataTable
-            aria-label="Tabela de associados"
             columns={columns}
-            items={filteredAssociados}
-            renderCell={renderCell}
-            emptyContent="Nenhum associado encontrado"
+            data={filteredAssociados}
             loading={loading}
-            loadingContent={<Spinner />}
           />
         </CardBody>
       </Card>

@@ -167,7 +167,7 @@ export function AssociadoForm({
     setValue,
     trigger,
   } = useForm<AssociadoFormData>({
-    resolver: zodResolver(associadoSchema),
+    resolver: zodResolver(associadoSchema as any),
     defaultValues: {
       cpf: '',
       nome: '',

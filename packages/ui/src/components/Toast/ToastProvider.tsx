@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { AlertCircle, CheckCircle, Info, X, XCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle, Info, X, XCircle } from '../../icons';
 
 import { cn } from '../../utils';
 

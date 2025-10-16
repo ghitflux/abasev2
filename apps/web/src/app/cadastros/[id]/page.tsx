@@ -22,14 +22,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { formatDate, formatCurrency, formatCPF } from '@/lib/formatters';
 import { 
   ArrowLeftIcon, 
-  EditIcon, 
-  SendIcon, 
-  DownloadIcon,
+  PencilIcon as EditIcon, 
+  PaperAirplaneIcon as SendIcon, 
+  ArrowDownTrayIcon as DownloadIcon,
   EyeIcon,
-  FileTextIcon,
+  DocumentTextIcon as FileTextIcon,
   UserIcon,
   CalculatorIcon
-} from 'lucide-react';
+} from '@heroicons/react/24/outline';
 
 interface Associado {
   id: number;
@@ -109,11 +109,21 @@ export default function CadastroDetailPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<Documento | null>(null);
 
-  const cadastroId = params.id as string;
+  const [cadastroId, setCadastroId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadParams = async () => {
+      const resolvedParams = await params;
+      if (resolvedParams.id && typeof resolvedParams.id === 'string') {
+        setCadastroId(resolvedParams.id);
+      }
+    };
+    loadParams();
+  }, [params]);
 
   // Fetch cadastro details
   const fetchCadastro = async () => {
-    if (!apiClient) return;
+    if (!apiClient || !cadastroId) return;
 
     try {
       setLoading(true);
@@ -591,7 +601,11 @@ export default function CadastroDetailPage() {
               <h2 className="text-lg font-semibold">Status do Processo</h2>
             </CardHeader>
             <CardBody>
-              <Timeline events={timelineEvents} />
+              <Timeline events={timelineEvents.map(e => ({
+                ...e,
+                // Converte o campo 'date' para 'timestamp' conforme esperado pelo componente Timeline
+                timestamp: new Date(e.date).toISOString()
+              }))} />
             </CardBody>
           </Card>
 
@@ -661,8 +675,8 @@ export default function CadastroDetailPage() {
           <ModalBody>
             {selectedDocument && (
               <DocumentPreview
+                file={selectedDocument.url || ''}
                 fileName={selectedDocument.nome_arquivo}
-                fileUrl={selectedDocument.url || ''}
                 fileSize={selectedDocument.tamanho}
               />
             )}

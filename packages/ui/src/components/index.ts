@@ -8,3 +8,4 @@ export * from './MultiStepForm';
 export * from './StatusBadge';
 export * from './Timeline';
 export * from './DocumentPreview';
+export * from './Sidebar';

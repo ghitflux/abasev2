@@ -11,7 +11,7 @@ import {
   Select,
   SelectItem,
 } from '@heroui/react';
-import { Filter as FilterIcon, Plus, Search, X } from 'lucide-react';
+import { Filter as FilterIcon, Plus, Search, X } from '../../icons';
 import { z } from 'zod';
 
 import { Button } from '../Button';

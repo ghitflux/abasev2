@@ -6,7 +6,7 @@ import { Card, CardBody, CardHeader, Button, Spinner } from '@heroui/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@abase/ui';
 import CadastroForm from '@/components/cadastros/CadastroForm';
-import { ArrowLeftIcon } from 'lucide-react';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 interface CadastroFormData {
   associado_id?: number;

@@ -6,7 +6,7 @@ import { Card, CardBody, CardHeader, Button, Spinner } from '@heroui/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@abase/ui';
 import CadastroForm from '@/components/cadastros/CadastroForm';
-import { ArrowLeftIcon } from 'lucide-react';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 interface CadastroFormData {
   associado_id?: number;
@@ -102,11 +102,21 @@ export default function EditarCadastroPage() {
   const [loadingData, setLoadingData] = useState(true);
   const [initialData, setInitialData] = useState<Partial<CadastroFormData>>({});
 
-  const cadastroId = params.id as string;
+  const [cadastroId, setCadastroId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadParams = async () => {
+      const resolvedParams = await params;
+      if (resolvedParams.id && typeof resolvedParams.id === 'string') {
+        setCadastroId(resolvedParams.id);
+      }
+    };
+    loadParams();
+  }, [params]);
 
   // Fetch cadastro data for editing
   const fetchCadastroData = async () => {
-    if (!apiClient) return;
+    if (!apiClient || !cadastroId) return;
 
     try {
       setLoadingData(true);

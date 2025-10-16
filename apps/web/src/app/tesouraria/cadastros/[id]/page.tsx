@@ -26,17 +26,17 @@ import { useAuth } from '@/contexts/AuthContext';
 import { formatDate, formatCurrency, formatCPF } from '@/lib/formatters';
 import { 
   ArrowLeftIcon, 
-  DollarSignIcon,
-  FileTextIcon,
+  CurrencyDollarIcon as DollarSignIcon,
+  DocumentTextIcon as FileTextIcon,
   CheckCircleIcon,
-  UploadIcon,
-  DownloadIcon,
+  ArrowUpTrayIcon as UploadIcon,
+  ArrowDownTrayIcon as DownloadIcon,
   EyeIcon,
   UserIcon,
   CalculatorIcon,
   ClockIcon,
-  AlertCircleIcon
-} from 'lucide-react';
+  ExclamationCircleIcon as AlertCircleIcon
+} from '@heroicons/react/24/outline';
 
 interface Associado {
   id: number;
@@ -141,11 +141,21 @@ export default function TesourariaCadastroDetailPage() {
     observacoes: ''
   });
 
-  const cadastroId = params.id as string;
+  const [cadastroId, setCadastroId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadParams = async () => {
+      const resolvedParams = await params;
+      if (resolvedParams.id && typeof resolvedParams.id === 'string') {
+        setCadastroId(resolvedParams.id);
+      }
+    };
+    loadParams();
+  }, [params]);
 
   // Fetch cadastro details
   const fetchCadastro = async () => {
-    if (!apiClient) return;
+    if (!apiClient || !cadastroId) return;
 
     try {
       setLoading(true);
@@ -780,7 +790,11 @@ export default function TesourariaCadastroDetailPage() {
               <h2 className="text-lg font-semibold">Status do Processo</h2>
             </CardHeader>
             <CardBody>
-              <Timeline events={timelineEvents} />
+              <Timeline events={timelineEvents.map(e => ({
+                ...e,
+                // Converte o campo 'date' para 'timestamp' conforme esperado pelo componente Timeline
+                timestamp: new Date(e.date).toISOString()
+              }))} />
             </CardBody>
           </Card>
 
@@ -871,11 +885,11 @@ export default function TesourariaCadastroDetailPage() {
                 }}
                 isRequired
               >
-                <SelectItem key="PIX" value="PIX">PIX</SelectItem>
-                <SelectItem key="TRANSFERENCIA" value="TRANSFERENCIA">Transferência Bancária</SelectItem>
-                <SelectItem key="BOLETO" value="BOLETO">Boleto Bancário</SelectItem>
-                <SelectItem key="CARTAO" value="CARTAO">Cartão de Crédito</SelectItem>
-                <SelectItem key="DINHEIRO" value="DINHEIRO">Dinheiro</SelectItem>
+                <SelectItem key="PIX">PIX</SelectItem>
+                <SelectItem key="TRANSFERENCIA">Transferência Bancária</SelectItem>
+                <SelectItem key="BOLETO">Boleto Bancário</SelectItem>
+                <SelectItem key="CARTAO">Cartão de Crédito</SelectItem>
+                <SelectItem key="DINHEIRO">Dinheiro</SelectItem>
               </Select>
               
               <Input

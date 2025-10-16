@@ -25,7 +25,15 @@ import {
 import { DataTable, StatusBadge, useToast } from '@abase/ui';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatDate, formatCurrency } from '@/lib/formatters';
-import { SearchIcon, PlusIcon, MoreVerticalIcon, EditIcon, TrashIcon, EyeIcon, SendIcon } from 'lucide-react';
+import {
+  MagnifyingGlassIcon as SearchIcon,
+  PlusIcon,
+  EllipsisVerticalIcon as MoreVerticalIcon,
+  PencilIcon as EditIcon,
+  TrashIcon,
+  EyeIcon,
+  PaperAirplaneIcon as SendIcon
+} from '@heroicons/react/24/outline';
 
 interface Associado {
   id: number;
@@ -410,7 +418,7 @@ export default function CadastrosPage() {
                   Visualizar
                 </DropdownItem>
                 
-                {cadastro.status === 'RASCUNHO' && (
+                {cadastro.status === 'RASCUNHO' ? (
                   <DropdownItem
                     key="edit"
                     startContent={<EditIcon className="w-4 h-4" />}
@@ -418,20 +426,19 @@ export default function CadastrosPage() {
                   >
                     Editar
                   </DropdownItem>
-                )}
+                ) : null}
                 
-                {cadastro.status === 'RASCUNHO' && (
+                {cadastro.status === 'RASCUNHO' ? (
                   <DropdownItem
                     key="submit"
                     startContent={<SendIcon className="w-4 h-4" />}
                     onPress={() => handleSubmitToAnalysis(cadastro)}
-                    isLoading={isSubmitting}
                   >
                     Submeter para Análise
                   </DropdownItem>
-                )}
+                ) : null}
                 
-                {cadastro.status === 'RASCUNHO' && (
+                {cadastro.status === 'RASCUNHO' ? (
                   <DropdownItem
                     key="delete"
                     className="text-danger"
@@ -441,7 +448,7 @@ export default function CadastrosPage() {
                   >
                     Remover
                   </DropdownItem>
-                )}
+                ) : null}
               </DropdownMenu>
             </Dropdown>
           </div>
@@ -492,46 +499,46 @@ export default function CadastrosPage() {
           />
           
           <div className="flex gap-2 flex-wrap">
-            <Chip
+            <Button
               variant={filters.status === 'all' ? 'solid' : 'flat'}
               color={filters.status === 'all' ? 'primary' : 'default'}
               onPress={() => handleStatusFilter('all')}
-              className="cursor-pointer"
+              size="sm"
             >
               Todos
-            </Chip>
-            <Chip
+            </Button>
+            <Button
               variant={filters.status === 'RASCUNHO' ? 'solid' : 'flat'}
               color={filters.status === 'RASCUNHO' ? 'primary' : 'default'}
               onPress={() => handleStatusFilter('RASCUNHO')}
-              className="cursor-pointer"
+              size="sm"
             >
               Rascunho
-            </Chip>
-            <Chip
+            </Button>
+            <Button
               variant={filters.status === 'SUBMETIDO' ? 'solid' : 'flat'}
               color={filters.status === 'SUBMETIDO' ? 'primary' : 'default'}
               onPress={() => handleStatusFilter('SUBMETIDO')}
-              className="cursor-pointer"
+              size="sm"
             >
               Submetido
-            </Chip>
-            <Chip
+            </Button>
+            <Button
               variant={filters.status === 'APROVADO' ? 'solid' : 'flat'}
               color={filters.status === 'APROVADO' ? 'primary' : 'default'}
               onPress={() => handleStatusFilter('APROVADO')}
-              className="cursor-pointer"
+              size="sm"
             >
               Aprovado
-            </Chip>
-            <Chip
+            </Button>
+            <Button
               variant={filters.status === 'CONCLUIDO' ? 'solid' : 'flat'}
               color={filters.status === 'CONCLUIDO' ? 'primary' : 'default'}
               onPress={() => handleStatusFilter('CONCLUIDO')}
-              className="cursor-pointer"
+              size="sm"
             >
               Concluído
-            </Chip>
+            </Button>
           </div>
         </div>
       </div>
@@ -566,13 +573,9 @@ export default function CadastrosPage() {
         </CardHeader>
         <CardBody>
           <DataTable
-            aria-label="Tabela de cadastros"
             columns={columns}
-            items={filteredCadastros}
-            renderCell={renderCell}
-            emptyContent="Nenhum cadastro encontrado"
+            data={filteredCadastros}
             loading={loading}
-            loadingContent={<Spinner />}
           />
         </CardBody>
       </Card>

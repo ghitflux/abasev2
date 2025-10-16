@@ -3,6 +3,18 @@
 import React from 'react';
 import { Chip } from '@heroui/react';
 import { cn } from '../../utils/cn';
+import {
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  Clock,
+  RefreshCw,
+  FileText,
+  Send,
+  Edit,
+  Check,
+  Rocket,
+} from '../../icons';
 
 export type StatusType = 
   | 'success' 
@@ -35,37 +47,37 @@ export interface StatusBadgeProps {
 const statusConfig: Record<string, {
   color: 'success' | 'warning' | 'danger' | 'primary' | 'secondary' | 'default';
   label: string;
-  icon?: string;
+  icon?: React.ReactNode;
 }> = {
   // Generic statuses
-  success: { color: 'success', label: 'Sucesso', icon: '✓' },
-  warning: { color: 'warning', label: 'Atenção', icon: '⚠' },
-  danger: { color: 'danger', label: 'Erro', icon: '✗' },
-  primary: { color: 'primary', label: 'Principal', icon: '●' },
-  secondary: { color: 'secondary', label: 'Secundário', icon: '●' },
-  default: { color: 'default', label: 'Padrão', icon: '●' },
-  
+  success: { color: 'success', label: 'Sucesso', icon: <CheckCircle className="w-3 h-3" /> },
+  warning: { color: 'warning', label: 'Atenção', icon: <AlertCircle className="w-3 h-3" /> },
+  danger: { color: 'danger', label: 'Erro', icon: <XCircle className="w-3 h-3" /> },
+  primary: { color: 'primary', label: 'Principal' },
+  secondary: { color: 'secondary', label: 'Secundário' },
+  default: { color: 'default', label: 'Padrão' },
+
   // Business statuses
-  pending: { color: 'warning', label: 'Pendente', icon: '⏳' },
-  approved: { color: 'success', label: 'Aprovado', icon: '✓' },
-  rejected: { color: 'danger', label: 'Rejeitado', icon: '✗' },
-  cancelled: { color: 'danger', label: 'Cancelado', icon: '✗' },
-  completed: { color: 'success', label: 'Concluído', icon: '✓' },
-  in_progress: { color: 'primary', label: 'Em Andamento', icon: '⟳' },
-  
+  pending: { color: 'warning', label: 'Pendente', icon: <Clock className="w-3 h-3" /> },
+  approved: { color: 'success', label: 'Aprovado', icon: <CheckCircle className="w-3 h-3" /> },
+  rejected: { color: 'danger', label: 'Rejeitado', icon: <XCircle className="w-3 h-3" /> },
+  cancelled: { color: 'danger', label: 'Cancelado', icon: <XCircle className="w-3 h-3" /> },
+  completed: { color: 'success', label: 'Concluído', icon: <Check className="w-3 h-3" /> },
+  in_progress: { color: 'primary', label: 'Em Andamento', icon: <RefreshCw className="w-3 h-3" /> },
+
   // Cadastro specific statuses
-  RASCUNHO: { color: 'default', label: 'Rascunho', icon: '📝' },
-  SUBMETIDO: { color: 'primary', label: 'Submetido', icon: '📤' },
-  EM_ANALISE: { color: 'warning', label: 'Em Análise', icon: '🔍' },
-  APROVADO: { color: 'success', label: 'Aprovado', icon: '✓' },
-  PENDENTE: { color: 'warning', label: 'Pendente', icon: '⏳' },
-  CANCELADO: { color: 'danger', label: 'Cancelado', icon: '✗' },
-  PAGAMENTO_PENDENTE: { color: 'warning', label: 'Pagamento Pendente', icon: '💰' },
-  PAGAMENTO_RECEBIDO: { color: 'primary', label: 'Pagamento Recebido', icon: '✓' },
-  CONTRATO_GERADO: { color: 'primary', label: 'Contrato Gerado', icon: '📄' },
-  ENVIADO_ASSINATURA: { color: 'primary', label: 'Enviado para Assinatura', icon: '✍️' },
-  ASSINADO: { color: 'success', label: 'Assinado', icon: '✓' },
-  CONCLUIDO: { color: 'success', label: 'Concluído', icon: '🎉' },
+  RASCUNHO: { color: 'default', label: 'Rascunho', icon: <Edit className="w-3 h-3" /> },
+  SUBMETIDO: { color: 'primary', label: 'Submetido', icon: <Send className="w-3 h-3" /> },
+  EM_ANALISE: { color: 'warning', label: 'Em Análise', icon: <RefreshCw className="w-3 h-3" /> },
+  APROVADO: { color: 'success', label: 'Aprovado', icon: <CheckCircle className="w-3 h-3" /> },
+  PENDENTE: { color: 'warning', label: 'Pendente', icon: <Clock className="w-3 h-3" /> },
+  CANCELADO: { color: 'danger', label: 'Cancelado', icon: <XCircle className="w-3 h-3" /> },
+  PAGAMENTO_PENDENTE: { color: 'warning', label: 'Pagamento Pendente', icon: <Clock className="w-3 h-3" /> },
+  PAGAMENTO_RECEBIDO: { color: 'primary', label: 'Pagamento Recebido', icon: <Check className="w-3 h-3" /> },
+  CONTRATO_GERADO: { color: 'primary', label: 'Contrato Gerado', icon: <FileText className="w-3 h-3" /> },
+  ENVIADO_ASSINATURA: { color: 'primary', label: 'Enviado para Assinatura', icon: <Send className="w-3 h-3" /> },
+  ASSINADO: { color: 'success', label: 'Assinado', icon: <CheckCircle className="w-3 h-3" /> },
+  CONCLUIDO: { color: 'success', label: 'Concluído', icon: <Rocket className="w-3 h-3" /> },
 };
 
 export function StatusBadge({
@@ -80,7 +92,7 @@ export function StatusBadge({
   const config = statusConfig[status.toUpperCase()] || statusConfig[status.toLowerCase()] || {
     color: 'default' as const,
     label: status,
-    icon: '●'
+    icon: undefined
   };
 
   const displayLabel = label || config.label;
@@ -98,7 +110,7 @@ export function StatusBadge({
           customColors.border && `border-${customColors.border}`,
           className
         )}
-        startContent={displayIcon && <span className="text-xs">{displayIcon}</span>}
+        startContent={displayIcon}
       >
         {displayLabel}
       </Chip>
@@ -111,7 +123,7 @@ export function StatusBadge({
       size={size}
       variant={variant}
       className={className}
-      startContent={displayIcon && <span className="text-xs">{displayIcon}</span>}
+      startContent={displayIcon}
     >
       {displayLabel}
     </Chip>

@@ -20,7 +20,11 @@ import {
 import { StatusBadge, useToast } from '@abase/ui';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatCPF, formatPhone, formatDate, formatCEP } from '@/lib/formatters';
-import { EditIcon, ArrowLeftIcon, TrashIcon } from 'lucide-react';
+import { 
+  PencilIcon as EditIcon,
+  ArrowLeftIcon,
+  TrashIcon
+} from '@heroicons/react/24/outline';
 
 interface Associado {
   id: number;
@@ -54,7 +58,7 @@ interface Cadastro {
   updated_at: string;
 }
 
-export default function AssociadoDetailPage({ params }: { params: { id: string } }) {
+export default function AssociadoDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const { apiClient } = useAuth();
   const { addToast } = useToast();
@@ -66,7 +70,15 @@ export default function AssociadoDetailPage({ params }: { params: { id: string }
   const [error, setError] = useState<string>("");
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const associadoId = parseInt(params.id);
+  const [associadoId, setAssociadoId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const loadParams = async () => {
+      const resolvedParams = await params;
+      setAssociadoId(parseInt(resolvedParams.id));
+    };
+    loadParams();
+  }, [params]);
 
   useEffect(() => {
     if (apiClient && associadoId) {
@@ -97,7 +109,7 @@ export default function AssociadoDetailPage({ params }: { params: { id: string }
       
       // Mock data for development
       const mockAssociado: Associado = {
-        id: associadoId,
+        id: associadoId || 0,
         cpf: "12345678901",
         nome: "João Silva",
         email: "joao@email.com",
@@ -149,7 +161,7 @@ export default function AssociadoDetailPage({ params }: { params: { id: string }
       const mockCadastros: Cadastro[] = [
         {
           id: 1,
-          associado_id: associadoId,
+          associado_id: associadoId || 0,
           status: "APROVADO",
           observacao: "Cadastro aprovado para 2024",
           created_at: "2024-01-15T10:30:00Z",
@@ -157,7 +169,7 @@ export default function AssociadoDetailPage({ params }: { params: { id: string }
         },
         {
           id: 2,
-          associado_id: associadoId,
+          associado_id: associadoId || 0,
           status: "CONCLUIDO",
           observacao: "Processo finalizado",
           created_at: "2023-12-10T14:20:00Z",

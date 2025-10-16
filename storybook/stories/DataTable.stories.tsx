@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import React, { useState } from 'react';
 import { DataTable, FilterGroup, StatusBadge, useToast } from '@abase/ui';
-import { FileText } from 'lucide-react';
+import { DocumentTextIcon as FileText } from '@heroicons/react/24/outline';
 
 type User = {
   id: string;

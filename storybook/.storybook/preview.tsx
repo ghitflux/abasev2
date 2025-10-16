@@ -1,7 +1,8 @@
-import React from 'react';
-import type { Preview } from '@storybook/react-vite';
+import React, { useEffect } from 'react';
+import type { Preview, Decorator } from '@storybook/react-vite';
 import { HeroUIProvider } from '@heroui/system';
 import { ToastProvider } from '@abase/ui';
+import { withThemeByClassName } from '@storybook/addon-themes';
 import '../src/globals.css';
 
 const preview: Preview = {
@@ -15,29 +16,41 @@ const preview: Preview = {
     },
     layout: 'padded',
     backgrounds: {
-      options: {
-        light: { name: 'light', value: '#ffffff' },
-        dark: { name: 'dark', value: '#000000' },
-        gray: { name: 'gray', value: '#f5f5f5' }
-      }
+      disable: true,
     },
   },
 
   decorators: [
-    (Story) => (
-      <HeroUIProvider>
-        <ToastProvider>
-          <Story />
-        </ToastProvider>
-      </HeroUIProvider>
-    ),
-  ],
+    withThemeByClassName({
+      themes: {
+        light: 'light',
+        dark: 'dark',
+      },
+      defaultTheme: 'light',
+    }) as Decorator,
+    (Story, context) => {
+      const theme = context.globals.theme || 'light';
 
-  initialGlobals: {
-    backgrounds: {
-      value: 'light'
-    }
-  }
+      useEffect(() => {
+        const root = document.documentElement;
+        root.classList.remove('light', 'dark');
+        root.classList.add(theme);
+        root.style.colorScheme = theme;
+      }, [theme]);
+
+      return (
+        <div className={`${theme} min-h-screen`}>
+          <div className="bg-background text-foreground min-h-screen">
+            <HeroUIProvider>
+              <ToastProvider>
+                <Story />
+              </ToastProvider>
+            </HeroUIProvider>
+          </div>
+        </div>
+      );
+    },
+  ],
 };
 
 export default preview;

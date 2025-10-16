@@ -1,3 +1,4 @@
+import {heroui} from '@heroui/theme';
 import type { Config } from 'tailwindcss';
 import hero from '../../packages/ui/hero';
 import { tailwindThemeExtend } from '../../packages/ui/tailwind-theme';
@@ -13,7 +14,7 @@ const config: Config = {
   theme: {
     extend: tailwindThemeExtend,
   },
-  plugins: [hero],
+  plugins: [hero,heroui()],
 };
 
 export default config;

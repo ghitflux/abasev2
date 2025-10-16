@@ -28,7 +28,13 @@ import { MultiStepForm, FileUpload, useToast } from '@abase/ui';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatCPF, formatCurrency, formatDateForInput } from '@/lib/formatters';
 import { validateCPF, validateRequired } from '@/lib/validators';
-import { PlusIcon, TrashIcon, SearchIcon, CalculatorIcon, FileTextIcon } from 'lucide-react';
+import {
+  PlusIcon,
+  TrashIcon,
+  MagnifyingGlassIcon as SearchIcon,
+  CalculatorIcon,
+  DocumentTextIcon as FileTextIcon
+} from '@heroicons/react/24/outline';
 
 // Types
 interface Associado {

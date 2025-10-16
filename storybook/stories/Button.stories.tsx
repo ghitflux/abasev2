@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import React from 'react';
 import { Button } from '@abase/ui';
-import { Download, Plus, Send } from 'lucide-react';
+import { ArrowDownTrayIcon as Download, PlusIcon as Plus, PaperAirplaneIcon as Send } from '@heroicons/react/24/outline';
 
 const meta: Meta<typeof Button> = {
   title: 'Components/Button',

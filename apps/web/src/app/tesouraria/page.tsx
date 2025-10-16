@@ -22,17 +22,17 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTesourariaSSE } from '@/hooks/useSSEEvents';
 import { formatDate, formatCurrency, formatCPF } from '@/lib/formatters';
 import { 
-  SearchIcon, 
-  MoreVerticalIcon, 
+  MagnifyingGlassIcon as SearchIcon, 
+  EllipsisVerticalIcon as MoreVerticalIcon, 
   EyeIcon,
   WifiIcon,
-  WifiOffIcon,
-  DollarSignIcon,
-  FileTextIcon,
+  SignalSlashIcon as WifiOffIcon,
+  CurrencyDollarIcon as DollarSignIcon,
+  DocumentTextIcon as FileTextIcon,
   CheckCircleIcon,
   ClockIcon,
-  AlertCircleIcon
-} from 'lucide-react';
+  ExclamationCircleIcon as AlertCircleIcon
+} from '@heroicons/react/24/outline';
 
 interface Associado {
   id: number;
@@ -587,46 +587,46 @@ export default function TesourariaPage() {
           />
           
           <div className="flex gap-2 flex-wrap">
-            <Chip
+            <Button
               variant={filters.status === 'all' ? 'solid' : 'flat'}
               color={filters.status === 'all' ? 'primary' : 'default'}
               onPress={() => handleStatusFilter('all')}
-              className="cursor-pointer"
+              size="sm"
             >
               Todos
-            </Chip>
-            <Chip
+            </Button>
+            <Button
               variant={filters.status === 'APROVADO' ? 'solid' : 'flat'}
               color={filters.status === 'APROVADO' ? 'primary' : 'default'}
               onPress={() => handleStatusFilter('APROVADO')}
-              className="cursor-pointer"
+              size="sm"
             >
               Aprovados
-            </Chip>
-            <Chip
+            </Button>
+            <Button
               variant={filters.status === 'PAGAMENTO_RECEBIDO' ? 'solid' : 'flat'}
               color={filters.status === 'PAGAMENTO_RECEBIDO' ? 'primary' : 'default'}
               onPress={() => handleStatusFilter('PAGAMENTO_RECEBIDO')}
-              className="cursor-pointer"
+              size="sm"
             >
               Pagamentos
-            </Chip>
-            <Chip
+            </Button>
+            <Button
               variant={filters.status === 'CONTRATO_GERADO' ? 'solid' : 'flat'}
               color={filters.status === 'CONTRATO_GERADO' ? 'primary' : 'default'}
               onPress={() => handleStatusFilter('CONTRATO_GERADO')}
-              className="cursor-pointer"
+              size="sm"
             >
               Contratos
-            </Chip>
-            <Chip
+            </Button>
+            <Button
               variant={filters.status === 'CONCLUIDO' ? 'solid' : 'flat'}
               color={filters.status === 'CONCLUIDO' ? 'primary' : 'default'}
               onPress={() => handleStatusFilter('CONCLUIDO')}
-              className="cursor-pointer"
+              size="sm"
             >
               Concluídos
-            </Chip>
+            </Button>
           </div>
         </div>
       </div>
@@ -655,13 +655,9 @@ export default function TesourariaPage() {
         </CardHeader>
         <CardBody>
           <DataTable
-            aria-label="Tabela de pipeline de tesouraria"
             columns={columns}
-            items={filteredCadastros}
-            renderCell={renderCell}
-            emptyContent="Nenhum cadastro encontrado no pipeline"
+            data={filteredCadastros}
             loading={loading}
-            loadingContent={<Spinner />}
           />
         </CardBody>
       </Card>

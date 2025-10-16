@@ -24,15 +24,15 @@ import { formatDate, formatCurrency, formatCPF } from '@/lib/formatters';
 import { 
   ArrowLeftIcon, 
   CheckIcon, 
-  XIcon, 
-  AlertTriangleIcon,
-  DownloadIcon,
+  XMarkIcon as XIcon,
+  ExclamationTriangleIcon as AlertTriangleIcon,
+  ArrowDownTrayIcon as DownloadIcon,
   EyeIcon,
-  FileTextIcon,
+  DocumentTextIcon as FileTextIcon,
   UserIcon,
   CalculatorIcon,
   ClockIcon
-} from 'lucide-react';
+} from '@heroicons/react/24/outline';
 
 interface Associado {
   id: number;
@@ -115,11 +115,21 @@ export default function AnaliseCadastroDetailPage() {
   const [selectedDocument, setSelectedDocument] = useState<Documento | null>(null);
   const [pendenciaObservacoes, setPendenciaObservacoes] = useState('');
 
-  const cadastroId = params.id as string;
+  const [cadastroId, setCadastroId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadParams = async () => {
+      const resolvedParams = await params;
+      if (resolvedParams.id && typeof resolvedParams.id === 'string') {
+        setCadastroId(resolvedParams.id);
+      }
+    };
+    loadParams();
+  }, [params]);
 
   // Fetch cadastro details
   const fetchCadastro = async () => {
-    if (!apiClient) return;
+    if (!apiClient || !cadastroId) return;
 
     try {
       setLoading(true);
@@ -709,7 +719,13 @@ export default function AnaliseCadastroDetailPage() {
               <h2 className="text-lg font-semibold">Status do Processo</h2>
             </CardHeader>
             <CardBody>
-              <Timeline events={timelineEvents} />
+              <Timeline
+                events={timelineEvents.map(e => ({
+                  ...e,
+                  // Converte o campo 'date' para 'timestamp' conforme esperado pelo componente Timeline
+                  timestamp: new Date(e.date).toISOString()
+                }))}
+              />
             </CardBody>
           </Card>
 
@@ -847,8 +863,8 @@ export default function AnaliseCadastroDetailPage() {
           <ModalBody>
             {selectedDocument && (
               <DocumentPreview
+                file={selectedDocument.url || ''}
                 fileName={selectedDocument.nome_arquivo}
-                fileUrl={selectedDocument.url || ''}
                 fileSize={selectedDocument.tamanho}
               />
             )}

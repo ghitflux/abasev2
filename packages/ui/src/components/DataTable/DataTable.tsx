@@ -17,7 +17,7 @@ import {
   TableHeader,
   TableRow,
 } from '@heroui/react';
-import { Edit, Eye, MoreVertical, Trash } from 'lucide-react';
+import { Edit, Eye, MoreVertical, Trash } from '../../icons';
 
 import { FilterBuilder, FilterConfig, FilterCondition, FilterGroup } from '../Filters/FilterBuilder';
 

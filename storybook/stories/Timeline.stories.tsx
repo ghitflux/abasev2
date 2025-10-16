@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import React from 'react';
 import { Timeline, StatusTimeline, TimelineEvent } from '@abase/ui';
-import { CheckCircle, Clock, XCircle, FileText } from 'lucide-react';
+import { CheckCircleIcon as CheckCircle, ClockIcon as Clock, XCircleIcon as XCircle, DocumentTextIcon as FileText } from '@heroicons/react/24/outline';
 
 const meta: Meta<typeof Timeline> = {
   title: 'Components/Timeline',

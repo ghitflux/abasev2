@@ -27,19 +27,19 @@ import { DataTable, StatusBadge, useToast } from '@abase/ui';
 import { useAuth } from '@/contexts/AuthContext';
 import { useAnaliseSSE } from '@/hooks/useSSEEvents';
 import { formatDate, formatCurrency, formatCPF } from '@/lib/formatters';
-import { 
-  SearchIcon, 
-  FilterIcon, 
-  MoreVerticalIcon, 
-  CheckIcon, 
-  XIcon, 
-  AlertTriangleIcon,
+import {
+  MagnifyingGlassIcon as SearchIcon,
+  FunnelIcon as FilterIcon,
+  EllipsisVerticalIcon as MoreVerticalIcon,
+  CheckIcon,
+  XMarkIcon as XIcon,
+  ExclamationTriangleIcon as AlertTriangleIcon,
   EyeIcon,
   WifiIcon,
-  WifiOffIcon,
+  SignalSlashIcon as WifiOffIcon,
   ClockIcon,
-  UserCheckIcon
-} from 'lucide-react';
+  UserIcon as UserCheckIcon
+} from '@heroicons/react/24/outline';
 
 interface Associado {
   id: number;
@@ -478,7 +478,7 @@ export default function AnalisePage() {
                   Analisar
                 </DropdownItem>
                 
-                {(cadastro.status === 'SUBMETIDO' || cadastro.status === 'EM_ANALISE') && (
+                {cadastro.status === 'SUBMETIDO' || cadastro.status === 'EM_ANALISE' ? (
                   <DropdownItem
                     key="approve"
                     startContent={<CheckIcon className="w-4 h-4" />}
@@ -487,9 +487,9 @@ export default function AnalisePage() {
                   >
                     Aprovar
                   </DropdownItem>
-                )}
+                ) : null}
                 
-                {(cadastro.status === 'SUBMETIDO' || cadastro.status === 'EM_ANALISE') && (
+                {cadastro.status === 'SUBMETIDO' || cadastro.status === 'EM_ANALISE' ? (
                   <DropdownItem
                     key="request-changes"
                     startContent={<AlertTriangleIcon className="w-4 h-4" />}
@@ -498,7 +498,7 @@ export default function AnalisePage() {
                   >
                     Solicitar Correções
                   </DropdownItem>
-                )}
+                ) : null}
                 
                 <DropdownItem
                   key="cancel"
@@ -644,38 +644,38 @@ export default function AnalisePage() {
           />
           
           <div className="flex gap-2 flex-wrap">
-            <Chip
+            <Button
               variant={filters.status === 'all' ? 'solid' : 'flat'}
               color={filters.status === 'all' ? 'primary' : 'default'}
               onPress={() => handleStatusFilter('all')}
-              className="cursor-pointer"
+              size="sm"
             >
               Todos
-            </Chip>
-            <Chip
+            </Button>
+            <Button
               variant={filters.status === 'SUBMETIDO' ? 'solid' : 'flat'}
               color={filters.status === 'SUBMETIDO' ? 'primary' : 'default'}
               onPress={() => handleStatusFilter('SUBMETIDO')}
-              className="cursor-pointer"
+              size="sm"
             >
               Submetidos
-            </Chip>
-            <Chip
+            </Button>
+            <Button
               variant={filters.status === 'EM_ANALISE' ? 'solid' : 'flat'}
               color={filters.status === 'EM_ANALISE' ? 'primary' : 'default'}
               onPress={() => handleStatusFilter('EM_ANALISE')}
-              className="cursor-pointer"
+              size="sm"
             >
               Em Análise
-            </Chip>
-            <Chip
+            </Button>
+            <Button
               variant={filters.status === 'PENDENTE' ? 'solid' : 'flat'}
               color={filters.status === 'PENDENTE' ? 'primary' : 'default'}
               onPress={() => handleStatusFilter('PENDENTE')}
-              className="cursor-pointer"
+              size="sm"
             >
               Pendentes
-            </Chip>
+            </Button>
           </div>
         </div>
       </div>
@@ -710,13 +710,9 @@ export default function AnalisePage() {
         </CardHeader>
         <CardBody>
           <DataTable
-            aria-label="Tabela de cadastros para análise"
             columns={columns}
-            items={filteredCadastros}
-            renderCell={renderCell}
-            emptyContent="Nenhum cadastro encontrado para análise"
+            data={filteredCadastros}
             loading={loading}
-            loadingContent={<Spinner />}
           />
         </CardBody>
       </Card>

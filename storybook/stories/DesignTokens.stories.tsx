@@ -12,28 +12,78 @@ const meta: Meta = {
 export default meta;
 type Story = StoryObj;
 
+export const ThemeOverview: Story = {
+  render: () => (
+    <div className="space-y-8">
+      <section>
+        <h2 className="text-2xl font-bold mb-4">ABASE Theme - Verde/Neon</h2>
+        <p className="text-default-600 mb-6">
+          Tema customizado com cores verde neon (#00ff18) como primária e roxo (#7828c8) como secundária.
+          Suporte completo para light e dark mode com variantes 50-900.
+        </p>
+
+        <div className="grid grid-cols-2 gap-6">
+          <Card>
+            <CardBody className="p-6">
+              <h3 className="text-lg font-semibold mb-3">🎨 Cor Primária</h3>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-12 h-12 rounded-lg bg-primary" />
+                <div>
+                  <p className="font-semibold">Verde Neon</p>
+                  <code className="text-xs">#00ff18</code>
+                </div>
+              </div>
+              <p className="text-sm text-default-500">
+                Usada para ações principais, destaques e elementos interativos importantes.
+              </p>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardBody className="p-6">
+              <h3 className="text-lg font-semibold mb-3">🎨 Cor Secundária</h3>
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-12 h-12 rounded-lg bg-secondary" />
+                <div>
+                  <p className="font-semibold">Roxo</p>
+                  <code className="text-xs">#7828c8</code>
+                </div>
+              </div>
+              <p className="text-sm text-default-500">
+                Usada para ações secundárias, elementos de suporte e variações visuais.
+              </p>
+            </CardBody>
+          </Card>
+        </div>
+      </section>
+    </div>
+  ),
+};
+
 export const Colors: Story = {
   render: () => (
     <div className="space-y-8">
       <section>
         <h2 className="text-2xl font-bold mb-4">Cores do Sistema</h2>
 
-        <h3 className="text-lg font-semibold mb-3 mt-6">Primary</h3>
+        <h3 className="text-lg font-semibold mb-3 mt-6">Primary - Verde Neon (#00ff18)</h3>
         <div className="grid grid-cols-5 gap-4">
           {[50, 100, 200, 300, 400, 500, 600, 700, 800, 900].map((shade) => (
             <div key={shade} className="space-y-2">
-              <div className={`h-20 rounded-lg bg-primary-${shade}`} />
+              <div className={`h-20 rounded-lg bg-primary-${shade} border border-default-200`} />
               <p className="text-xs text-default-600">primary-{shade}</p>
+              {shade === 500 && <p className="text-xs font-semibold text-primary">DEFAULT</p>}
             </div>
           ))}
         </div>
 
-        <h3 className="text-lg font-semibold mb-3 mt-6">Secondary</h3>
+        <h3 className="text-lg font-semibold mb-3 mt-6">Secondary - Roxo (#7828c8)</h3>
         <div className="grid grid-cols-5 gap-4">
           {[50, 100, 200, 300, 400, 500, 600, 700, 800, 900].map((shade) => (
             <div key={shade} className="space-y-2">
               <div className={`h-20 rounded-lg bg-secondary-${shade}`} />
               <p className="text-xs text-default-600">secondary-{shade}</p>
+              {shade === 500 && <p className="text-xs font-semibold text-secondary">DEFAULT</p>}
             </div>
           ))}
         </div>

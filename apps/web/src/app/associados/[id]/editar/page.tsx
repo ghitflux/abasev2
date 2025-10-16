@@ -28,7 +28,7 @@ interface Associado {
   observacoes?: string;
 }
 
-export default function EditarAssociadoPage({ params }: { params: { id: string } }) {
+export default function EditarAssociadoPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const { apiClient } = useAuth();
   const { addToast } = useToast();
@@ -37,7 +37,15 @@ export default function EditarAssociadoPage({ params }: { params: { id: string }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
 
-  const associadoId = parseInt(params.id);
+  const [associadoId, setAssociadoId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const loadParams = async () => {
+      const resolvedParams = await params;
+      setAssociadoId(parseInt(resolvedParams.id));
+    };
+    loadParams();
+  }, [params]);
 
   useEffect(() => {
     if (apiClient && associadoId) {
@@ -67,7 +75,7 @@ export default function EditarAssociadoPage({ params }: { params: { id: string }
       
       // Mock data for development
       const mockAssociado: Associado = {
-        id: associadoId,
+        id: associadoId || 0,
         cpf: "12345678901",
         nome: "João Silva",
         email: "joao@email.com",
