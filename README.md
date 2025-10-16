@@ -17,6 +17,7 @@ Monorepo pnpm/Turborepo that powers the next generation of **ABASE Manager**, fe
 - **Realtime stack**: Server-Sent Events (notifications) & WebSockets (updates) orchestrated through Redis pub/sub.
 - **Next.js 15 + React 19** frontend (App Router) with modular hooks (`useSSE*`, `useRealtimeUpdates`) and an updated AuthContext.
 - **Shared UI** with Tailwind CSS 4 + HeroUI components documented in Storybook 8.1.
+- **Business modules**: Complete analysis and treasury management interfaces with real-time updates.
 - **Developer experience**: pnpm workspaces, Turborepo pipelines, linting, formatting, and dockerised local stack.
 
 ---
@@ -77,6 +78,8 @@ docker-compose up --build
 ```
 
 The API container entrypoint executes `scripts/init_db.sh`, which automatically applies Alembic migrations and seeds the default users (`admin@abase.local`, `analista@abase.local`, `tesouraria@abase.local`, `agente@abase.local`).
+
+> 📋 **Detailed Setup Instructions**: See `COMANDOS_EXECUCAO.md` for comprehensive setup, troubleshooting, and execution commands for Windows environments.
 
 ---
 
@@ -211,13 +214,33 @@ After running `scripts/seed_users.py`, the following accounts are created (passw
 
 ---
 
-## 🗺️ Roadmap (Stage 1)
+## 🎯 Current Features
 
-- Port remaining Django domain logic to FastAPI services (cadastro workflows, document uploads, nuvideo/pdf integrations).
+### Business Modules
+- **Analysis Module** (`/analise`): Complete interface for analyzing member registrations with real-time status updates, filtering, and detailed views.
+- **Treasury Module** (`/tesouraria`): Financial management interface with payment tracking, document management, and status monitoring.
+- **Real-time Updates**: SSE integration for live notifications and status changes across all modules.
+
+### UI Components (Storybook)
+- **Button**: All variants, colors, sizes, and icon combinations
+- **StatusBadge**: Business and generic status indicators
+- **DataTable**: Advanced tables with filtering, pagination, and actions
+- **Timeline**: Event tracking and status timelines
+- **FileUpload**: Document upload with progress and validation
+- **FilterBuilder**: Advanced filtering capabilities
+- **FormField**: Complete form field components
+- **MultiStepForm**: Multi-step form workflows
+- **DocumentPreview**: PDF and image preview functionality
+- **DesignTokens**: Complete design system documentation
+
+## 🗺️ Roadmap (Stage 2)
+
 - Expand Alembic migrations and SQLAlchemy models for the full business schema.
-- Harden authentication (PKCE SHA256, audience/issuer validation, audit logs).
+- Implement document upload and management workflows.
+- Add comprehensive audit logging and activity tracking.
 - Improve automated test coverage (backend + frontend e2e).
 - Finalise localisation and accessibility for the React UI/Storybook.
+- Add advanced reporting and analytics features.
 
 ---
 
