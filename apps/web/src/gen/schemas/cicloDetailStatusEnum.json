@@ -1,0 +1,6 @@
+{
+  "enum": ["futuro", "aberto", "ciclo_renovado", "apto_a_renovar", "fechado"],
+  "type": "string",
+  "description": "* `futuro` - Futuro\n* `aberto` - Aberto\n* `ciclo_renovado` - Ciclo renovado\n* `apto_a_renovar` - Apto a renovar\n* `fechado` - Fechado",
+  "x-readme-ref-name": "CicloDetailStatusEnum"
+}

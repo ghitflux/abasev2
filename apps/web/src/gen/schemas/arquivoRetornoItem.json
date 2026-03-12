@@ -1,0 +1,63 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "linha_numero": {
+      "type": "integer",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "format": "int64"
+    },
+    "cpf_cnpj": { "type": "string", "maxLength": 18 },
+    "matricula_servidor": { "type": "string", "maxLength": 50 },
+    "nome_servidor": { "type": "string", "maxLength": 255 },
+    "cargo": { "type": "string", "maxLength": 255 },
+    "competencia": { "type": "string", "maxLength": 7 },
+    "valor_descontado": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "status_codigo": { "type": "string", "maxLength": 1 },
+    "status_desconto": {
+      "enum": ["efetivado", "rejeitado", "cancelado", "pendente"],
+      "type": "string",
+      "description": "* `efetivado` - Efetivado\n* `rejeitado` - Rejeitado\n* `cancelado` - Cancelado\n* `pendente` - Pendente",
+      "x-readme-ref-name": "StatusDescontoEnum"
+    },
+    "status_descricao": { "type": "string", "maxLength": 255 },
+    "motivo_rejeicao": { "type": "string", "nullable": true },
+    "orgao_codigo": { "type": "string", "maxLength": 10 },
+    "orgao_pagto_codigo": { "type": "string", "maxLength": 10 },
+    "orgao_pagto_nome": { "type": "string", "maxLength": 255 },
+    "resultado_processamento": {
+      "enum": [
+        "baixa_efetuada",
+        "nao_descontado",
+        "pendencia_manual",
+        "nao_encontrado",
+        "erro",
+        "ciclo_aberto"
+      ],
+      "type": "string",
+      "description": "* `baixa_efetuada` - Baixa efetuada\n* `nao_descontado` - Não descontado\n* `pendencia_manual` - Pendência manual\n* `nao_encontrado` - Não encontrado\n* `erro` - Erro\n* `ciclo_aberto` - Ciclo aberto",
+      "x-readme-ref-name": "ResultadoProcessamentoEnum"
+    },
+    "observacao": { "type": "string" },
+    "gerou_encerramento": { "type": "boolean" },
+    "gerou_novo_ciclo": { "type": "boolean" },
+    "associado_nome": { "type": "string", "readOnly": true },
+    "contrato_codigo": { "type": "string", "readOnly": true }
+  },
+  "required": [
+    "associado_nome",
+    "competencia",
+    "contrato_codigo",
+    "cpf_cnpj",
+    "id",
+    "linha_numero",
+    "matricula_servidor",
+    "nome_servidor"
+  ],
+  "x-readme-ref-name": "ArquivoRetornoItem"
+}

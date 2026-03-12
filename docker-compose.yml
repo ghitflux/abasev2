@@ -1,0 +1,133 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DATABASE_NAME:-abase_v2}
+      MYSQL_USER: ${DATABASE_USER:-abase}
+      MYSQL_PASSWORD: ${DATABASE_PASSWORD:-abase}
+      MYSQL_ROOT_PASSWORD: ${DATABASE_PASSWORD:-abase}
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DATABASE_PASSWORD:-abase}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.development}
+      SECRET_KEY: ${SECRET_KEY:-change-me-abase-v2-dev-secret-key-2026}
+      DEBUG: ${DEBUG:-True}
+      DATABASE_NAME: ${DATABASE_NAME:-abase_v2}
+      DATABASE_USER: ${DATABASE_USER:-abase}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-abase}
+      DATABASE_HOST: mysql
+      DATABASE_PORT: 3306
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      JWT_ACCESS_TOKEN_LIFETIME: ${JWT_ACCESS_TOKEN_LIFETIME:-15}
+      JWT_REFRESH_TOKEN_LIFETIME: ${JWT_REFRESH_TOKEN_LIFETIME:-10080}
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py seed_dev_data &&
+             python manage.py runserver 0.0.0.0:8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "manage.py", "check"]
+      interval: 20s
+      timeout: 10s
+      retries: 6
+    volumes:
+      - ./backend:/app
+
+  celery:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.development}
+      SECRET_KEY: ${SECRET_KEY:-change-me-abase-v2-dev-secret-key-2026}
+      DEBUG: ${DEBUG:-True}
+      DATABASE_NAME: ${DATABASE_NAME:-abase_v2}
+      DATABASE_USER: ${DATABASE_USER:-abase}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-abase}
+      DATABASE_HOST: mysql
+      DATABASE_PORT: 3306
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+    command: celery -A config worker -l info
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
+      INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:8000/api/v1}
+      CI: "true"
+    command: >
+      sh -c "pnpm install --frozen-lockfile --config.confirmModulesPurge=false --config.package-import-method=copy &&
+             pnpm --filter @abase/web dev --hostname 0.0.0.0 --port 3000"
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_started
+    volumes:
+      - .:/workspace
+      - pnpm_node_modules:/workspace/node_modules
+      - pnpm_store:/pnpm/store
+
+volumes:
+  mysql_data:
+  redis_data:
+  pnpm_node_modules:
+  pnpm_store:

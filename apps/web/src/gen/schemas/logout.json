@@ -1,0 +1,5 @@
+{
+  "type": "object",
+  "properties": { "refresh": { "type": "string" } },
+  "x-readme-ref-name": "Logout"
+}

@@ -1,0 +1,70 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "arquivo_nome": { "type": "string", "maxLength": 255 },
+    "formato": {
+      "enum": ["txt", "csv", "xlsx"],
+      "type": "string",
+      "description": "* `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX",
+      "x-readme-ref-name": "FormatoEnum"
+    },
+    "sistema_origem": { "type": "string", "readOnly": true },
+    "competencia": { "type": "string", "format": "date" },
+    "competencia_display": { "type": "string", "readOnly": true },
+    "total_registros": {
+      "type": "integer",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "format": "int64"
+    },
+    "processados": {
+      "type": "integer",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "format": "int64"
+    },
+    "nao_encontrados": {
+      "type": "integer",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "format": "int64"
+    },
+    "erros": {
+      "type": "integer",
+      "maximum": 4294967295,
+      "minimum": 0,
+      "format": "int64"
+    },
+    "status": {
+      "enum": ["pendente", "processando", "concluido", "erro"],
+      "type": "string",
+      "description": "* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro",
+      "x-readme-ref-name": "Status200Enum"
+    },
+    "resumo": {
+      "type": "object",
+      "additionalProperties": {},
+      "readOnly": true
+    },
+    "uploaded_by_nome": { "type": "string", "readOnly": true },
+    "created_at": { "type": "string", "format": "date-time", "readOnly": true },
+    "processado_em": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+    }
+  },
+  "required": [
+    "arquivo_nome",
+    "competencia",
+    "competencia_display",
+    "created_at",
+    "formato",
+    "id",
+    "resumo",
+    "sistema_origem",
+    "uploaded_by_nome"
+  ],
+  "x-readme-ref-name": "ArquivoRetornoList"
+}

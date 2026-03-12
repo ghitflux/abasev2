@@ -1,0 +1,62 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer" },
+    "competencia": { "type": "string" },
+    "contrato_id": { "type": "integer" },
+    "contrato_codigo": { "type": "string" },
+    "associado_id": { "type": "integer" },
+    "nome_associado": { "type": "string" },
+    "cpf_cnpj": { "type": "string" },
+    "orgao_publico": { "type": "string" },
+    "ciclo_id": { "type": "integer" },
+    "ciclo_numero": { "type": "integer" },
+    "status_ciclo": { "type": "string" },
+    "status_parcela": { "type": "string" },
+    "status_visual": { "type": "string" },
+    "parcelas_pagas": { "type": "integer" },
+    "parcelas_total": { "type": "integer" },
+    "valor_mensalidade": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "valor_parcela": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "data_pagamento": { "type": "string", "format": "date", "nullable": true },
+    "orgao_pagto_nome": { "type": "string" },
+    "resultado_importacao": { "type": "string" },
+    "status_codigo_etipi": { "type": "string" },
+    "gerou_encerramento": { "type": "boolean" },
+    "gerou_novo_ciclo": { "type": "boolean" }
+  },
+  "required": [
+    "associado_id",
+    "ciclo_id",
+    "ciclo_numero",
+    "competencia",
+    "contrato_codigo",
+    "contrato_id",
+    "cpf_cnpj",
+    "data_pagamento",
+    "gerou_encerramento",
+    "gerou_novo_ciclo",
+    "id",
+    "nome_associado",
+    "orgao_pagto_nome",
+    "orgao_publico",
+    "parcelas_pagas",
+    "parcelas_total",
+    "resultado_importacao",
+    "status_ciclo",
+    "status_codigo_etipi",
+    "status_parcela",
+    "status_visual",
+    "valor_mensalidade",
+    "valor_parcela"
+  ],
+  "x-readme-ref-name": "RenovacaoCicloItem"
+}

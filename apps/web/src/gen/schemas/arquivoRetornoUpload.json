@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "properties": { "arquivo": { "type": "string", "format": "uri" } },
+  "required": ["arquivo"],
+  "x-readme-ref-name": "ArquivoRetornoUpload"
+}

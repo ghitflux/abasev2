@@ -1,0 +1,62 @@
+[
+  {
+    "model": "accounts.role",
+    "pk": 1,
+    "fields": {
+      "created_at": "2026-03-11T00:00:00Z",
+      "updated_at": "2026-03-11T00:00:00Z",
+      "deleted_at": null,
+      "codigo": "ADMIN",
+      "nome": "Administrador",
+      "descricao": "Acesso total ao sistema."
+    }
+  },
+  {
+    "model": "accounts.role",
+    "pk": 2,
+    "fields": {
+      "created_at": "2026-03-11T00:00:00Z",
+      "updated_at": "2026-03-11T00:00:00Z",
+      "deleted_at": null,
+      "codigo": "AGENTE",
+      "nome": "Agente",
+      "descricao": "Responsável pelo cadastro inicial de associados."
+    }
+  },
+  {
+    "model": "accounts.role",
+    "pk": 3,
+    "fields": {
+      "created_at": "2026-03-11T00:00:00Z",
+      "updated_at": "2026-03-11T00:00:00Z",
+      "deleted_at": null,
+      "codigo": "ANALISTA",
+      "nome": "Analista",
+      "descricao": "Validação documental e análise inicial."
+    }
+  },
+  {
+    "model": "accounts.role",
+    "pk": 4,
+    "fields": {
+      "created_at": "2026-03-11T00:00:00Z",
+      "updated_at": "2026-03-11T00:00:00Z",
+      "deleted_at": null,
+      "codigo": "COORDENADOR",
+      "nome": "Coordenador",
+      "descricao": "Segunda aprovação do fluxo."
+    }
+  },
+  {
+    "model": "accounts.role",
+    "pk": 5,
+    "fields": {
+      "created_at": "2026-03-11T00:00:00Z",
+      "updated_at": "2026-03-11T00:00:00Z",
+      "deleted_at": null,
+      "codigo": "TESOUREIRO",
+      "nome": "Tesoureiro",
+      "descricao": "Efetivação financeira e confirmações."
+    }
+  }
+]

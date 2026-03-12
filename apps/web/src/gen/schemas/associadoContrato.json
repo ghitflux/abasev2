@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "nome_completo": { "type": "string", "readOnly": true },
+    "matricula": { "type": "string", "readOnly": true },
+    "cpf_cnpj": { "type": "string", "readOnly": true },
+    "orgao_publico": { "type": "string", "readOnly": true },
+    "matricula_orgao": { "type": "string", "readOnly": true }
+  },
+  "required": [
+    "cpf_cnpj",
+    "id",
+    "matricula",
+    "matricula_orgao",
+    "nome_completo",
+    "orgao_publico"
+  ],
+  "x-readme-ref-name": "AssociadoContrato"
+}

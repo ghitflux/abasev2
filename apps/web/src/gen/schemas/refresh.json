@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "properties": { "refresh": { "type": "string" } },
+  "required": ["refresh"],
+  "x-readme-ref-name": "Refresh"
+}

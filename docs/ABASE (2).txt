@@ -1,0 +1,143 @@
+Governo do Estado do Piauí                                                                                                              Pág:    1
+Empresa de Tecnologia da Informação do Estado do Piauí - ETIPI
+Relatório dos Lançamentos da Folha de Pagamento - iNETConsig
+
+Entidade: 2102-Assoc. Benef. e Assist. dos Serv. Públicos - ABASE             Referência: 05/2025   Data da Geração: 23/05/2025
+
+STATUS MATRICULA NOME                           CARGO                          FIN. ORGAO LANC.  TOTAL PAGO  VALOR        ORGAO PAGTO CPF
+====== ========= ============================== ============================== ==== ============ ===== ===== ============ =========== ===========
+  1    030759-9  MARIA DE JESUS SANTANA COSTA   -                              6580      002     999   001          30.00      002    23993596315
+       Órgão Pagamento:  002-SEC. EST. ADMIN. E PREVIDEN.    -  1 Lançamento(s)  -  Total R$ 30.00
+
+  1    214046-2  ACHIELDER JOSE BARROS ROCHA    AUDGOV-AUDITOR GOVERNAMENTAL   6580      009     999   001          30.00      009    77623002368
+       Órgão Pagamento:  009-SEC DA FAZENDA                  -  1 Lançamento(s)  -  Total R$ 30.00
+
+  1    018608-2  MARIA LUCIA MONTEIRO DA SILVA  2-AGENTE OCUPACIONAL DE NIVEL  6580      012     999   001          30.00      012    23984724349
+  1    018993-6  FRANCINEIDE NASCIMENTO SILVA   1-AGENTE OPERACIONAL DE SERVIC 6580      012     999   001          30.00      012    34801383300
+  1    019337-2  JOAO FERREIRA SIMAO            1-AGENTE OPERACIONAL DE SERVIC 6580      012     999   001          30.00      012    37112147115
+  1    019475-1  FRANCISCA MARIA DA SILVA       2-AGENTE OCUPACIONAL DE NIVEL  6580      012     999   001          30.00      012    13875051300
+  1    021906-1  JOSE WILSON RIBEIRO            1-AGENTE OPERACIONAL DE SERVIC 6580      012     999   001          30.00      012    35236370310
+  1    036099-6  JOEDI GALVAO DIAS              1-AGENTE OPERACIONAL DE SERVIC 6580      012     999   001          30.00      012    41168755387
+  1    036839-3  MARIA DA GUIA MARTINS          2-AGENTE OCUPACIONAL DE NIVEL  6580      012     999   001          30.00      012    28740602320
+  1    159561-0  ZILDA DE ARAUJO BARROS         2-AGENTE OCUPACIONAL DE NIVEL  6580      012     999   001          30.00      012    35112344334
+  1    230755-3  ROMERO FERREIRA BASTOS         1-AGENTE OPERACIONAL DE SERVIC 6580      012     999   001          30.00      012    02417982307
+       Órgão Pagamento:  012-SEC DE SAUDE                    -  9 Lançamento(s)  -  Total R$ 270.00
+
+  1    009056-5  MAMEDE RODRIGUES CARDOSO VIEIR DEL.POL-DELEGADO DE POLICIA    6580      027     999   001          30.00      027    48717231787
+       Órgão Pagamento:  027-SEC DE SEGURANCA PUBLICA        -  1 Lançamento(s)  -  Total R$ 30.00
+
+  1    015270-6  CARLOS ALBERTO DOS SANTOS CARD 12-2 SARGENTO                  6580      028     999   001          30.00      028    39483029368
+       Órgão Pagamento:  028-POLICIA MILITAR DO PIAUI        -  1 Lançamento(s)  -  Total R$ 30.00
+
+  1    016376-7  LAUDECY MARIA DE MORAIS FERREI 2-ASSISTENTE / AGENTE DE TRANS 6580      030     999   001          30.00      030    13852540330
+       Órgão Pagamento:  030-DETRAN PI                       -  1 Lançamento(s)  -  Total R$ 30.00
+
+  1    027929-3  MARIA DO SOCORRO SANTOS SILVEI -                              6580      090     999   001          30.00      090    19909454300
+  1    226304-1  MARIA DOS PRAZERES MACEDO DE S -                              6580      090     999   001          30.00      090    78217164720
+  1    232220-0  ANTONIA MARIA DA CONCEICAO     -                              6580      090     999   001          30.00      090    48205885320
+  1    266063-6  TENORIO BARBOSA DE FREITAS     -                              6580      090     999   001          30.00      090    49828401304
+       Órgão Pagamento:  090-PIAUIPREV PENSIONISTAS          -  4 Lançamento(s)  -  Total R$ 120.00
+
+  1    024310-8  JOSE FRANCISCO RIBEIRO DE SOUS 1-POLICIAL PENAL               6580      095     999   001          30.00      095    10529560330
+       Órgão Pagamento:  095-SEC DA JUSTICA E DIR.HUMANOS    -  1 Lançamento(s)  -  Total R$ 30.00
+
+  1    013276-4  GILBERTO SOUSA                 -3o. SARGENTO                  6580      097     999   001          30.00      097    35108010320
+  1    014772-9  RITA MARIA MENDES DA SILVA     -AGENTE OCUPACIONAL DE NIVEL A 6580      097     999   001          30.00      097    15221245353
+  1    014930-6  MARCOS ANTONIO VAZ DE BARROS   -3o. SARGENTO                  6580      097     999   001          30.00      097    37269542368
+  1    018295-8  VERA LUCIA DE FATIMA LOPES     -AGENTE TECNICO DE SERVICO     6580      097     999   001          30.00      097    13028430363
+  1    021833-2  FRANCISCA DAS CHAGAS DE OLIVEI -                              6580      097     999   001          30.00      097    10616985304
+  1    035844-4  SONIA MARIA COSTA LIMA DE FREI -AGENTE OPERACIONAL DE SERVICO 6580      097     999   001          30.00      097    15639754320
+  1    084229-0  JOSE RIBAMAR SILVEIRA SOBRINHO -3o. SARGENTO                  6580      097     999   001          30.00      097    45396647353
+       Órgão Pagamento:  097-PIAUIPREV INATIVOS              -  7 Lançamento(s)  -  Total R$ 210.00
+
+  1    048574-8  MARIA SALOME RABELO            -                              6580      911     999   001          30.00      911    15146820368
+  1    050682-6  VIRGINIA MARIA LIMA MATOS DE C -PROFESSOR-40HS                6580      911     999   001          30.00      911    93574177453
+
+Governo do Estado do Piauí                                                                                                              Pág:    2
+Empresa de Tecnologia da Informação do Estado do Piauí - ETIPI
+Relatório dos Lançamentos da Folha de Pagamento - iNETConsig
+
+Entidade: 2102-Assoc. Benef. e Assist. dos Serv. Públicos - ABASE             Referência: 05/2025   Data da Geração: 23/05/2025
+
+STATUS MATRICULA NOME                           CARGO                          FIN. ORGAO LANC.  TOTAL PAGO  VALOR        ORGAO PAGTO CPF
+====== ========= ============================== ============================== ==== ============ ===== ===== ============ =========== ===========
+  1    051269-9  EDVALDO DA CUNHA COSTA         -PROFESSOR-40HS                6580      911     999   001          30.00      911    07883684353
+  1    052561-8  MARILHA FREITAS DE OLIVEIRA    -PROFESSOR-40HS                6580      911     999   001          30.00      911    88451216315
+  1    052747-5  MARIA LUIZA MUNIZ GUIMARAES    -                              6580      911     999   001          30.00      911    06541062315
+  1    053362-9  MARIA DAS GRACAS PORTELA VELOS -                              6580      911     999   001          30.00      911    03028801353
+  1    057307-8  FRANCISCA MARIA DE SOUSA NETA  -PROFESSOR-40HS                6580      911     999   001          30.00      911    74333437334
+  1    057582-8  ANA ROSALVA DO CARMO FERREIRA  -PROFESSOR-40HS                6580      911     999   001          30.00      911    18444806315
+  1    058361-8  FRANCISCA DAS CHAGAS MELO ANDR -PROFESSOR-40HS                6580      911     999   001          30.00      911    22686240300
+  1    058366-9  TANIA MARY ROSA CAVALCANTE     -PROFESSOR-40HS                6580      911     999   001          30.00      911    19942087320
+  1    058655-2  LUIZA MARIA BATISTA            -PROFESSOR-40HS                6580      911     999   001          30.00      911    28672100387
+  1    059081-9  MARIA DOLORES FERREIRA BONFIM  -PROFESSOR-40HS                6580      911     999   001          30.00      911    13054783391
+  1    061031-3  JANE MARY OLIVEIRA  CRUZ       -PROFESSOR-40HS                6580      911     999   001          30.00      911    14552655353
+  1    064717-9  LIEDA LINO DE CARVALHO         -PROFESSOR-40HS                6580      911     999   001          30.00      911    06670490372
+  1    066842-7  MARIA ESTER DA SILVA           -                              6580      911     999   001          30.00      911    07936672320
+  1    068478-3  FRANCISCA ARAUJO DA ANUNCIACAO -                              6580      911     999   001          30.00      911    19906358300
+  1    073697-0  MARIA DE LOURDES SOUSA         -PROFESSOR-40HS                6580      911     999   001          30.00      911    31507310382
+  1    074061-6  MARIA DO SOCORRO DE SA FREITAS -PROFESSOR-40HS                6580      911     999   001          30.00      911    24011886300
+  1    075051-4  LUZIA PEREIRA DA SILVA         -PROFESSOR-40HS                6580      911     999   001          30.00      911    13258354391
+  1    075932-5  NESTOR NERES DA SILVA          -PROFESSOR-40HS                6580      911     999   001          30.00      911    21712069349
+  1    076122-2  MARIA DA CONCEICAO SILVA DAMIA -PROFESSOR-40HS                6580      911     999   001          30.00      911    22776486391
+  1    098638-X  RAIMUNDO RAMOS NERES           -PROFESSOR-40HS                6580      911     999   001          30.00      911    06646824304
+       Órgão Pagamento:  911-PIAUIPREV INATIVOS EDUCACAO     -  22 Lançamento(s)  -  Total R$ 660.00
+
+  1    061341-0  IVALDO DANIEL DA SILVA         1-AGENTE OPERACIONAL DE SERVIC 6580      914     999   001          30.00      914    22629165353
+  1    073220-6  MARIA DE JESUS LEITE DE SOUSA  -                              6580      914     999   001          30.00      914    32785488334
+  1    076945-2  JOSE RIBAMAR SILVA             1-AGENTE OPERACIONAL DE SERVIC 6580      914     999   001          30.00      914    04707052304
+  1    104338-2  JOAO ROSA PAES LANDIM NETO     1-PROFESSOR 40H                6580      914     999   001          30.00      914    22629149315
+  1    116031-1  PAULO CESAR DO NASCIMENTO REGO 1-PROFESSOR 40H                6580      914     999   001          30.00      914    62220632334
+  1    226742-0  CARLA SUYANNE TORRES SANTANA   1-AGENTE OPERACIONAL DE SERVIC 6580      914     999   001          30.00      914    99753880359
+       Órgão Pagamento:  914-EDUCACAO - FUNDEB               -  6 Lançamento(s)  -  Total R$ 180.00
+              Total do Status:  1  -  54 Lançamento(s)  -  Total R$ 1.620.00
+
+  2    019061-6  FRANCISCO CRISOSTOMO BATISTA   2-AGENTE TECNICO DE SERVICO    6580      012     999   001          30.00      012    21819424391
+       Órgão Pagamento:  012-SEC DE SAUDE                    -  1 Lançamento(s)  -  Total R$ 30.00
+
+  2    030740-8  VALTEMBERG DE BRITO FIRMEZA    -                              6580      097     999   001          30.00      097    04737989304
+  2    166867-6  JUNIVAL DA SILVA RIBEIRO       -SOLDADO                       6580      097     999   001          30.00      097    18220860359
+       Órgão Pagamento:  097-PIAUIPREV INATIVOS              -  2 Lançamento(s)  -  Total R$ 60.00
+              Total do Status:  2  -  3 Lançamento(s)  -  Total R$ 90.00
+
+  3    019135-3  JAQUELINA DA SILVA SOARES      1-AGENTE OPERACIONAL DE SERVIC 6580      012     999   001          30.00             34945466300
+  3    021293-8  MIGUEL ALVES DO NASCIMENTO     1-AGENTE OPERACIONAL DE SERVIC 6580      012     999   001          30.00             18084974300
+  3    026445-8  AURELIO DE JESUS NOLETO        2-NIVEL FUNCIONAL TECNICO      6580      016     999   001          30.00             06841350359
+  3    036813-0  MARIA DA CONCEICAO FERNANDES G                                6580      012     999   001          30.00             28719956304
+  3    047215-8  AILLEY DE MOURA PASSOS         Agente de Polícia              6580      027     999   001          30.00             39752437320
+  3    064032-8  ILMA MAIA DOS SANTOS BATISTA   -AGENTE OPERACIONAL DE SERVICO 6580      911     999   001          30.00             27373185304
+  3    065299-7  ALCEANIRA BOAVENTURA E SILVA   ZELADOR (A)                    6580      911     999   001          30.00             67556906353
+
+Governo do Estado do Piauí                                                                                                              Pág:    3
+Empresa de Tecnologia da Informação do Estado do Piauí - ETIPI
+Relatório dos Lançamentos da Folha de Pagamento - iNETConsig
+
+Entidade: 2102-Assoc. Benef. e Assist. dos Serv. Públicos - ABASE             Referência: 05/2025   Data da Geração: 23/05/2025
+
+STATUS MATRICULA NOME                           CARGO                          FIN. ORGAO LANC.  TOTAL PAGO  VALOR        ORGAO PAGTO CPF
+====== ========= ============================== ============================== ==== ============ ===== ===== ============ =========== ===========
+  3    080050-3  GENIVAL PEREIRA DE ARAUJO      12-CABO                        6580      028     999   001          30.00             45065209391
+  3    092161-X  ALCEANIRA BOAVENTURA E SILVA   SERVENTE - A                   6580      090     999   001          30.00             67556906353
+  3    211908-X  ROMULO LINHARES MOURA          -                              6580      156     999   001          30.00             00455709300
+  3    291797-1  GONCALO PEREIRA DA SILVA       2SG-1o. SARGENTO               6580      028     999   001          30.00             15222748391
+              Total do Status:  3  -  11 Lançamento(s)  -  Total R$ 330.00
+
+  4    108993-5  MARIA DE JESUS ARAUJO GONCALVE -                              6580      090     999   001          30.00      090    48204773315
+       Órgão Pagamento:  090-PIAUIPREV PENSIONISTAS          -  1 Lançamento(s)  -  Total R$ 30.00
+
+  4    054331-4  LUCINEIDE DE SA CARVALHO COELH -PROFESSOR-40HS                6580      911     999   001          30.00      911    18349960310
+  4    059938-7  MARIA CACILDA SOUZA VIEIRA     -AGENTE TECNICO DE SERVICO     6580      911     999   001          30.00      911    15224643368
+       Órgão Pagamento:  911-PIAUIPREV INATIVOS EDUCACAO     -  2 Lançamento(s)  -  Total R$ 60.00
+              Total do Status:  4  -  3 Lançamento(s)  -  Total R$ 90.00
+
+
+Legenda do Status
+---------------------------------------------------------------------------------
+ 1 - Lançado e Efetivado
+ 2 - Não Lançado por Falta de Margem Temporariamente
+ 3 - Não Lançado por Outros Motivos(Ex.Matricula não encontrada; Mudança de órgão)
+ 4 - Lançado com Valor Diferente
+ 5 - Não Lançado por Problemas Técnicos
+ 6 - Lançamento com Erros
+ S - Não Lançado: Compra de Dívida ou Suspensão SEAD
+

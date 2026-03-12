@@ -1,0 +1,16 @@
+{
+  "name": "@abase/monorepo",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm --filter @abase/web dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "type-check": "pnpm --filter @abase/web type-check",
+    "generate:api": "pnpm --filter @abase/web generate:api",
+    "generate:schema": "docker compose run --rm backend python manage.py spectacular --file /app/schema.yaml --validate",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:build": "docker compose up --build -d"
+  }
+}

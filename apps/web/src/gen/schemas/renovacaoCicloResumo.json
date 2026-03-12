@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "competencia": { "type": "string" },
+    "total_associados": { "type": "integer" },
+    "ciclo_renovado": { "type": "integer" },
+    "apto_a_renovar": { "type": "integer" },
+    "em_aberto": { "type": "integer" },
+    "ciclo_iniciado": { "type": "integer" },
+    "inadimplente": { "type": "integer" }
+  },
+  "required": [
+    "apto_a_renovar",
+    "ciclo_iniciado",
+    "ciclo_renovado",
+    "competencia",
+    "em_aberto",
+    "inadimplente",
+    "total_associados"
+  ],
+  "x-readme-ref-name": "RenovacaoCicloResumo"
+}

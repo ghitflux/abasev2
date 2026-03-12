@@ -1,0 +1,6 @@
+{
+  "enum": ["associado", "agente"],
+  "type": "string",
+  "description": "* `associado` - Associado\n* `agente` - Agente",
+  "x-readme-ref-name": "PapelEnum"
+}

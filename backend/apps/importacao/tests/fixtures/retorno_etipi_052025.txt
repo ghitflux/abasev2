@@ -1,0 +1,41 @@
+Governo do Estado do Piauí                                                                                                              Pág:    1
+Empresa de Tecnologia da Informação do Estado do Piauí - ETIPI
+Relatório dos Lançamentos da Folha de Pagamento - iNETConsig
+
+Entidade: 2102-Assoc. Benef. e Assist. dos Serv. Públicos - ABASE             Referência: 05/2025   Data da Geração: 23/05/2025
+
+STATUS MATRICULA NOME                           CARGO                          FIN. ORGAO LANC.  TOTAL PAGO  VALOR        ORGAO PAGTO CPF
+====== ========= ============================== ============================== ==== ============ ===== ===== ============ =========== ===========
+  1    030759-9  MARIA DE JESUS SANTANA COSTA   -                              6580      002     999   001          30.00      002    23993596315
+       Órgão Pagamento:  002-SEC. EST. ADMIN. E PREVIDEN.    -  1 Lançamento(s)  -  Total R$ 30.00
+
+  2    019061-6  FRANCISCO CRISOSTOMO BATISTA   2-AGENTE TECNICO DE SERVICO    6580      012     999   001          30.00      012    21819424391
+       Órgão Pagamento:  012-SEC DE SAUDE                    -  1 Lançamento(s)  -  Total R$ 30.00
+              Total do Status:  2  -  1 Lançamento(s)  -  Total R$ 30.00
+
+
+Governo do Estado do Piauí                                                                                                              Pág:    2
+Empresa de Tecnologia da Informação do Estado do Piauí - ETIPI
+Relatório dos Lançamentos da Folha de Pagamento - iNETConsig
+
+Entidade: 2102-Assoc. Benef. e Assist. dos Serv. Públicos - ABASE             Referência: 05/2025   Data da Geração: 23/05/2025
+
+STATUS MATRICULA NOME                           CARGO                          FIN. ORGAO LANC.  TOTAL PAGO  VALOR        ORGAO PAGTO CPF
+====== ========= ============================== ============================== ==== ============ ===== ===== ============ =========== ===========
+  3    021293-8  MIGUEL ALVES DO NASCIMENTO     1-AGENTE OPERACIONAL DE SERVIC 6580      012     999   001          30.00             18084974300
+              Total do Status:  3  -  1 Lançamento(s)  -  Total R$ 30.00
+
+  4    108993-5  MARIA DE JESUS ARAUJO GONCALVE -                              6580      090     999   001          30.00      090    48204773315
+       Órgão Pagamento:  090-PIAUIPREV PENSIONISTAS          -  1 Lançamento(s)  -  Total R$ 30.00
+              Total do Status:  4  -  1 Lançamento(s)  -  Total R$ 30.00
+
+
+Legenda do Status
+---------------------------------------------------------------------------------
+ 1 - Lançado e Efetivado
+ 2 - Não Lançado por Falta de Margem Temporariamente
+ 3 - Não Lançado por Outros Motivos
+ 4 - Lançado com Valor Diferente
+ 5 - Não Lançado por Problemas Técnicos
+ 6 - Lançamento com Erros
+ S - Não Lançado: Compra de Dívida ou Suspensão SEAD

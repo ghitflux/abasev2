@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "banco": { "type": "string", "maxLength": 100 },
+    "agencia": { "type": "string", "maxLength": 20 },
+    "conta": { "type": "string", "maxLength": 30 },
+    "tipo_conta": {
+      "enum": ["corrente", "poupanca", "salario"],
+      "type": "string",
+      "description": "* `corrente` - Corrente\n* `poupanca` - Poupança\n* `salario` - Salário",
+      "x-readme-ref-name": "TipoContaEnum"
+    },
+    "chave_pix": { "type": "string", "maxLength": 120 }
+  },
+  "required": ["agencia", "banco", "conta"],
+  "x-readme-ref-name": "DadosBancariosWrite"
+}

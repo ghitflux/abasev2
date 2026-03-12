@@ -1,0 +1,147 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "codigo": { "type": "string", "maxLength": 40 },
+    "valor_bruto": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "valor_liquido": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "valor_mensalidade": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "prazo_meses": { "type": "integer", "maximum": 65535, "minimum": 0 },
+    "taxa_antecipacao": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,3}(?:\\.\\d{0,2})?$"
+    },
+    "margem_disponivel": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "valor_total_antecipacao": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "doacao_associado": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "comissao_agente": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "status": {
+      "enum": ["rascunho", "em_analise", "ativo", "encerrado", "cancelado"],
+      "type": "string",
+      "description": "* `rascunho` - Rascunho\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `encerrado` - Encerrado\n* `cancelado` - Cancelado",
+      "x-readme-ref-name": "Status1d4Enum"
+    },
+    "data_contrato": { "type": "string", "format": "date" },
+    "data_aprovacao": { "type": "string", "format": "date", "nullable": true },
+    "data_primeira_mensalidade": {
+      "type": "string",
+      "format": "date",
+      "nullable": true
+    },
+    "mes_averbacao": { "type": "string", "format": "date", "nullable": true },
+    "contato_web": { "type": "boolean" },
+    "termos_web": { "type": "boolean" },
+    "auxilio_liberado_em": {
+      "type": "string",
+      "format": "date",
+      "nullable": true
+    },
+    "ciclos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "numero": { "type": "integer", "maximum": 65535, "minimum": 0 },
+          "data_inicio": { "type": "string", "format": "date" },
+          "data_fim": { "type": "string", "format": "date" },
+          "status": {
+            "enum": [
+              "futuro",
+              "aberto",
+              "ciclo_renovado",
+              "apto_a_renovar",
+              "fechado"
+            ],
+            "type": "string",
+            "description": "* `futuro` - Futuro\n* `aberto` - Aberto\n* `ciclo_renovado` - Ciclo renovado\n* `apto_a_renovar` - Apto a renovar\n* `fechado` - Fechado",
+            "x-readme-ref-name": "CicloDetailStatusEnum"
+          },
+          "valor_total": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+          },
+          "parcelas": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer", "readOnly": true },
+                "numero": { "type": "integer", "maximum": 65535, "minimum": 0 },
+                "referencia_mes": { "type": "string", "format": "date" },
+                "valor": {
+                  "type": "string",
+                  "format": "decimal",
+                  "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+                },
+                "data_vencimento": { "type": "string", "format": "date" },
+                "status": {
+                  "enum": [
+                    "futuro",
+                    "em_aberto",
+                    "descontado",
+                    "nao_descontado",
+                    "cancelado"
+                  ],
+                  "type": "string",
+                  "description": "* `futuro` - Futuro\n* `em_aberto` - Em aberto\n* `descontado` - Descontado\n* `nao_descontado` - Não descontado\n* `cancelado` - Cancelado",
+                  "x-readme-ref-name": "ParcelaStatusEnum"
+                },
+                "data_pagamento": {
+                  "type": "string",
+                  "format": "date",
+                  "nullable": true
+                },
+                "observacao": { "type": "string" }
+              },
+              "required": [
+                "data_vencimento",
+                "id",
+                "numero",
+                "referencia_mes",
+                "valor"
+              ],
+              "x-readme-ref-name": "Parcela"
+            },
+            "readOnly": true
+          }
+        },
+        "required": ["data_fim", "data_inicio", "id", "parcelas"],
+        "x-readme-ref-name": "CicloDetail"
+      },
+      "readOnly": true
+    }
+  },
+  "required": ["ciclos", "id"],
+  "x-readme-ref-name": "ContratoResumo"
+}

@@ -1,0 +1,6 @@
+{
+  "enum": ["pendente", "aprovado", "rejeitado"],
+  "type": "string",
+  "description": "* `pendente` - Pendente\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
+  "x-readme-ref-name": "DocumentoStatusEnum"
+}

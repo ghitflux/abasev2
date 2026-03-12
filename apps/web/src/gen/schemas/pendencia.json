@@ -1,0 +1,37 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "tipo": { "type": "string", "maxLength": 60 },
+    "descricao": { "type": "string" },
+    "status": {
+      "enum": ["aberta", "resolvida", "cancelada"],
+      "type": "string",
+      "description": "* `aberta` - Aberta\n* `resolvida` - Resolvida\n* `cancelada` - Cancelada",
+      "x-readme-ref-name": "PendenciaStatusEnum"
+    },
+    "retornado_para_agente": { "type": "boolean" },
+    "associado_id": { "type": "integer", "readOnly": true },
+    "associado_nome": { "type": "string", "readOnly": true },
+    "matricula": { "type": "string", "readOnly": true },
+    "cpf_cnpj": { "type": "string", "readOnly": true },
+    "contrato_codigo": { "type": "string", "readOnly": true },
+    "created_at": { "type": "string", "format": "date-time", "readOnly": true },
+    "resolvida_em": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+    }
+  },
+  "required": [
+    "associado_id",
+    "associado_nome",
+    "contrato_codigo",
+    "cpf_cnpj",
+    "created_at",
+    "descricao",
+    "id",
+    "matricula"
+  ],
+  "x-readme-ref-name": "Pendencia"
+}

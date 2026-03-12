@@ -1,0 +1,6 @@
+{
+  "enum": ["aberta", "resolvida", "cancelada"],
+  "type": "string",
+  "description": "* `aberta` - Aberta\n* `resolvida` - Resolvida\n* `cancelada` - Cancelada",
+  "x-readme-ref-name": "PendenciaStatusEnum"
+}

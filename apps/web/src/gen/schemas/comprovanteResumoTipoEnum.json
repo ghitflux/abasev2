@@ -1,0 +1,6 @@
+{
+  "enum": ["pix", "contrato", "outro"],
+  "type": "string",
+  "description": "* `pix` - PIX\n* `contrato` - Contrato\n* `outro` - Outro",
+  "x-readme-ref-name": "ComprovanteResumoTipoEnum"
+}

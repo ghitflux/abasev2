@@ -1,0 +1,44 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "created_at": { "type": "string", "format": "date-time", "readOnly": true },
+    "updated_at": { "type": "string", "format": "date-time", "readOnly": true },
+    "deleted_at": { "type": "string", "format": "date-time", "nullable": true },
+    "tipo": {
+      "enum": [
+        "rg",
+        "cpf",
+        "documento_frente",
+        "documento_verso",
+        "comprovante_residencia",
+        "divulgacao",
+        "contracheque",
+        "termo_adesao",
+        "termo_antecipacao",
+        "outro"
+      ],
+      "type": "string",
+      "description": "* `rg` - RG\n* `cpf` - CPF\n* `documento_frente` - Documento (frente)\n* `documento_verso` - Documento (verso)\n* `comprovante_residencia` - Comprovante de residência\n* `divulgacao` - Divulgação\n* `contracheque` - Contracheque\n* `termo_adesao` - Termo de adesão\n* `termo_antecipacao` - Termo de antecipação\n* `outro` - Outro",
+      "x-readme-ref-name": "DocumentoTipoEnum"
+    },
+    "arquivo": { "type": "string", "format": "uri" },
+    "status": {
+      "enum": ["pendente", "aprovado", "rejeitado"],
+      "type": "string",
+      "description": "* `pendente` - Pendente\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
+      "x-readme-ref-name": "DocumentoStatusEnum"
+    },
+    "observacao": { "type": "string" },
+    "associado": { "type": "integer" }
+  },
+  "required": [
+    "arquivo",
+    "associado",
+    "created_at",
+    "id",
+    "tipo",
+    "updated_at"
+  ],
+  "x-readme-ref-name": "Documento"
+}

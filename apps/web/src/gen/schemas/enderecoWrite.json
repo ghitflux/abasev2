@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "cep": { "type": "string", "maxLength": 9 },
+    "endereco": { "type": "string" },
+    "numero": { "type": "string", "maxLength": 20 },
+    "complemento": { "type": "string", "maxLength": 100 },
+    "bairro": { "type": "string", "maxLength": 100 },
+    "cidade": { "type": "string", "maxLength": 100 },
+    "uf": { "type": "string", "maxLength": 2 }
+  },
+  "required": ["bairro", "cep", "cidade", "endereco", "numero", "uf"],
+  "x-readme-ref-name": "EnderecoWrite"
+}

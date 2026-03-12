@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "numero": { "type": "integer", "maximum": 65535, "minimum": 0 },
+    "referencia_mes": { "type": "string", "format": "date" },
+    "valor": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "data_vencimento": { "type": "string", "format": "date" },
+    "status": {
+      "enum": [
+        "futuro",
+        "em_aberto",
+        "descontado",
+        "nao_descontado",
+        "cancelado"
+      ],
+      "type": "string",
+      "description": "* `futuro` - Futuro\n* `em_aberto` - Em aberto\n* `descontado` - Descontado\n* `nao_descontado` - Não descontado\n* `cancelado` - Cancelado",
+      "x-readme-ref-name": "ParcelaStatusEnum"
+    },
+    "data_pagamento": { "type": "string", "format": "date", "nullable": true },
+    "observacao": { "type": "string" }
+  },
+  "required": ["data_vencimento", "id", "numero", "referencia_mes", "valor"],
+  "x-readme-ref-name": "Parcela"
+}

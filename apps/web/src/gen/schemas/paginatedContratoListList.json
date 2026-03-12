@@ -1,0 +1,96 @@
+{
+  "type": "object",
+  "required": ["count", "results"],
+  "properties": {
+    "count": { "type": "integer", "example": 123 },
+    "next": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=4"
+    },
+    "previous": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=2"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "codigo": { "type": "string", "maxLength": 40 },
+          "associado": {
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer", "readOnly": true },
+                  "nome_completo": { "type": "string", "readOnly": true },
+                  "matricula": { "type": "string", "readOnly": true },
+                  "cpf_cnpj": { "type": "string", "readOnly": true },
+                  "orgao_publico": { "type": "string", "readOnly": true },
+                  "matricula_orgao": { "type": "string", "readOnly": true }
+                },
+                "required": [
+                  "cpf_cnpj",
+                  "id",
+                  "matricula",
+                  "matricula_orgao",
+                  "nome_completo",
+                  "orgao_publico"
+                ],
+                "x-readme-ref-name": "AssociadoContrato"
+              }
+            ],
+            "readOnly": true
+          },
+          "status": {
+            "enum": [
+              "rascunho",
+              "em_analise",
+              "ativo",
+              "encerrado",
+              "cancelado"
+            ],
+            "type": "string",
+            "description": "* `rascunho` - Rascunho\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `encerrado` - Encerrado\n* `cancelado` - Cancelado",
+            "x-readme-ref-name": "Status1d4Enum"
+          },
+          "status_resumido": { "type": "string", "readOnly": true },
+          "valor_mensalidade": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+          },
+          "comissao_agente": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+          },
+          "mensalidades": { "type": "string", "readOnly": true },
+          "auxilio_liberado_em": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "pode_solicitar_refinanciamento": {
+            "type": "boolean",
+            "readOnly": true
+          }
+        },
+        "required": [
+          "associado",
+          "id",
+          "mensalidades",
+          "pode_solicitar_refinanciamento",
+          "status_resumido"
+        ],
+        "x-readme-ref-name": "ContratoList"
+      }
+    }
+  },
+  "x-readme-ref-name": "PaginatedContratoListList"
+}

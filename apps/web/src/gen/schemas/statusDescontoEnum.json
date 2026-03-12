@@ -1,0 +1,6 @@
+{
+  "enum": ["efetivado", "rejeitado", "cancelado", "pendente"],
+  "type": "string",
+  "description": "* `efetivado` - Efetivado\n* `rejeitado` - Rejeitado\n* `cancelado` - Cancelado\n* `pendente` - Pendente",
+  "x-readme-ref-name": "StatusDescontoEnum"
+}

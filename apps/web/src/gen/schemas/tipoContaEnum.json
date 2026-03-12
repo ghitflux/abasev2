@@ -1,0 +1,6 @@
+{
+  "enum": ["corrente", "poupanca", "salario"],
+  "type": "string",
+  "description": "* `corrente` - Corrente\n* `poupanca` - Poupança\n* `salario` - Salário",
+  "x-readme-ref-name": "TipoContaEnum"
+}

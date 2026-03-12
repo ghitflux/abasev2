@@ -1,0 +1,139 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "matricula": { "type": "string", "readOnly": true },
+    "tipo_documento": {
+      "enum": ["CPF", "CNPJ"],
+      "type": "string",
+      "description": "* `CPF` - CPF\n* `CNPJ` - CNPJ",
+      "x-readme-ref-name": "TipoDocumentoEnum"
+    },
+    "cpf_cnpj": { "type": "string", "maxLength": 18 },
+    "nome_completo": { "type": "string", "maxLength": 255 },
+    "rg": { "type": "string", "maxLength": 20 },
+    "orgao_expedidor": { "type": "string", "maxLength": 30 },
+    "data_nascimento": { "type": "string", "format": "date", "nullable": true },
+    "profissao": { "type": "string", "maxLength": 120 },
+    "estado_civil": {
+      "oneOf": [
+        {
+          "enum": [
+            "solteiro",
+            "casado",
+            "divorciado",
+            "viuvo",
+            "uniao_estavel"
+          ],
+          "type": "string",
+          "description": "* `solteiro` - Solteiro\n* `casado` - Casado\n* `divorciado` - Divorciado\n* `viuvo` - Viúvo\n* `uniao_estavel` - União estável",
+          "x-readme-ref-name": "EstadoCivilEnum"
+        },
+        { "enum": [""], "x-readme-ref-name": "BlankEnum" }
+      ]
+    },
+    "cargo": { "type": "string", "maxLength": 120 },
+    "observacao": { "type": "string" },
+    "endereco": {
+      "type": "object",
+      "properties": {
+        "cep": { "type": "string", "maxLength": 9 },
+        "endereco": { "type": "string" },
+        "numero": { "type": "string", "maxLength": 20 },
+        "complemento": { "type": "string", "maxLength": 100 },
+        "bairro": { "type": "string", "maxLength": 100 },
+        "cidade": { "type": "string", "maxLength": 100 },
+        "uf": { "type": "string", "maxLength": 2 }
+      },
+      "required": ["bairro", "cep", "cidade", "endereco", "numero", "uf"],
+      "x-readme-ref-name": "EnderecoWrite"
+    },
+    "dados_bancarios": {
+      "type": "object",
+      "properties": {
+        "banco": { "type": "string", "maxLength": 100 },
+        "agencia": { "type": "string", "maxLength": 20 },
+        "conta": { "type": "string", "maxLength": 30 },
+        "tipo_conta": {
+          "enum": ["corrente", "poupanca", "salario"],
+          "type": "string",
+          "description": "* `corrente` - Corrente\n* `poupanca` - Poupança\n* `salario` - Salário",
+          "x-readme-ref-name": "TipoContaEnum"
+        },
+        "chave_pix": { "type": "string", "maxLength": 120 }
+      },
+      "required": ["agencia", "banco", "conta"],
+      "x-readme-ref-name": "DadosBancariosWrite"
+    },
+    "contato": {
+      "type": "object",
+      "properties": {
+        "celular": { "type": "string", "maxLength": 20 },
+        "email": { "type": "string", "format": "email", "maxLength": 254 },
+        "orgao_publico": { "type": "string", "maxLength": 150 },
+        "situacao_servidor": { "type": "string", "maxLength": 80 },
+        "matricula_servidor": { "type": "string", "maxLength": 50 }
+      },
+      "x-readme-ref-name": "ContatoHistoricoWrite"
+    },
+    "valor_bruto_total": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "valor_liquido": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "prazo_meses": { "type": "integer", "minimum": 1, "default": 3 },
+    "taxa_antecipacao": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,3}(?:\\.\\d{0,2})?$",
+      "default": "0.00"
+    },
+    "mensalidade": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "margem_disponivel": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+      "default": "0.00"
+    },
+    "data_aprovacao": { "type": "string", "format": "date", "nullable": true },
+    "data_primeira_mensalidade": {
+      "type": "string",
+      "format": "date",
+      "nullable": true
+    },
+    "mes_averbacao": { "type": "string", "format": "date", "nullable": true },
+    "doacao_associado": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+      "default": "0.00"
+    },
+    "documentos_payload": {
+      "type": "array",
+      "items": { "type": "object", "additionalProperties": {} },
+      "writeOnly": true
+    }
+  },
+  "required": [
+    "contato",
+    "cpf_cnpj",
+    "dados_bancarios",
+    "endereco",
+    "id",
+    "matricula",
+    "mensalidade",
+    "nome_completo",
+    "valor_bruto_total",
+    "valor_liquido"
+  ],
+  "x-readme-ref-name": "AssociadoCreate"
+}

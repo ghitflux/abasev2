@@ -1,0 +1,231 @@
+{
+  "type": "object",
+  "required": ["count", "results"],
+  "properties": {
+    "count": { "type": "integer", "example": 123 },
+    "next": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=4"
+    },
+    "previous": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=2"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "contrato_id": { "type": "integer", "readOnly": true },
+          "contrato_codigo": { "type": "string", "readOnly": true },
+          "associado_id": { "type": "integer", "readOnly": true },
+          "associado_nome": { "type": "string", "readOnly": true },
+          "cpf_cnpj": { "type": "string", "readOnly": true },
+          "agente": {
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer", "readOnly": true },
+                  "full_name": { "type": "string", "readOnly": true }
+                },
+                "required": ["full_name", "id"],
+                "x-readme-ref-name": "SimpleUser"
+              }
+            ],
+            "readOnly": true
+          },
+          "solicitado_por": {
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer", "readOnly": true },
+                  "full_name": { "type": "string", "readOnly": true }
+                },
+                "required": ["full_name", "id"],
+                "x-readme-ref-name": "SimpleUser"
+              }
+            ],
+            "readOnly": true
+          },
+          "aprovado_por": {
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer", "readOnly": true },
+                  "full_name": { "type": "string", "readOnly": true }
+                },
+                "required": ["full_name", "id"],
+                "x-readme-ref-name": "SimpleUser"
+              }
+            ],
+            "readOnly": true
+          },
+          "bloqueado_por": {
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer", "readOnly": true },
+                  "full_name": { "type": "string", "readOnly": true }
+                },
+                "required": ["full_name", "id"],
+                "x-readme-ref-name": "SimpleUser"
+              }
+            ],
+            "readOnly": true
+          },
+          "efetivado_por": {
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer", "readOnly": true },
+                  "full_name": { "type": "string", "readOnly": true }
+                },
+                "required": ["full_name", "id"],
+                "x-readme-ref-name": "SimpleUser"
+              }
+            ],
+            "readOnly": true
+          },
+          "competencia_solicitada": { "type": "string", "format": "date" },
+          "status": {
+            "enum": [
+              "pendente_apto",
+              "bloqueado",
+              "concluido",
+              "revertido",
+              "efetivado",
+              "solicitado",
+              "em_analise",
+              "aprovado",
+              "rejeitado"
+            ],
+            "type": "string",
+            "description": "* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
+            "x-readme-ref-name": "Status3bcEnum"
+          },
+          "valor_refinanciamento": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+          },
+          "repasse_agente": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+          },
+          "ciclo_key": { "type": "string", "readOnly": true },
+          "referencias": {
+            "type": "array",
+            "items": { "type": "string" },
+            "readOnly": true
+          },
+          "itens": { "type": "string", "readOnly": true },
+          "mensalidades_pagas": { "type": "integer", "readOnly": true },
+          "mensalidades_total": { "type": "integer", "readOnly": true },
+          "refinanciamento_numero": { "type": "integer", "readOnly": true },
+          "pagamento_status": { "type": "string", "readOnly": true },
+          "motivo_bloqueio": { "type": "string" },
+          "observacao": { "type": "string" },
+          "executado_em": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "auditoria": { "type": "string", "readOnly": true },
+          "comprovantes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer", "readOnly": true },
+                "tipo": {
+                  "enum": ["pix", "contrato", "outro"],
+                  "type": "string",
+                  "description": "* `pix` - PIX\n* `contrato` - Contrato\n* `outro` - Outro",
+                  "x-readme-ref-name": "ComprovanteResumoTipoEnum"
+                },
+                "papel": {
+                  "enum": ["associado", "agente"],
+                  "type": "string",
+                  "description": "* `associado` - Associado\n* `agente` - Agente",
+                  "x-readme-ref-name": "PapelEnum"
+                },
+                "arquivo": { "type": "string", "format": "uri" },
+                "nome_original": { "type": "string", "maxLength": 255 },
+                "enviado_por": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "integer", "readOnly": true },
+                        "full_name": { "type": "string", "readOnly": true }
+                      },
+                      "required": ["full_name", "id"],
+                      "x-readme-ref-name": "SimpleUser"
+                    }
+                  ],
+                  "readOnly": true
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "readOnly": true
+                }
+              },
+              "required": ["arquivo", "created_at", "enviado_por", "id"],
+              "x-readme-ref-name": "ComprovanteResumo"
+            },
+            "readOnly": true
+          }
+        },
+        "required": [
+          "agente",
+          "aprovado_por",
+          "associado_id",
+          "associado_nome",
+          "auditoria",
+          "bloqueado_por",
+          "ciclo_key",
+          "competencia_solicitada",
+          "comprovantes",
+          "contrato_codigo",
+          "contrato_id",
+          "cpf_cnpj",
+          "created_at",
+          "efetivado_por",
+          "id",
+          "itens",
+          "mensalidades_pagas",
+          "mensalidades_total",
+          "pagamento_status",
+          "referencias",
+          "refinanciamento_numero",
+          "solicitado_por",
+          "updated_at"
+        ],
+        "x-readme-ref-name": "RefinanciamentoList"
+      }
+    }
+  },
+  "x-readme-ref-name": "PaginatedRefinanciamentoListList"
+}

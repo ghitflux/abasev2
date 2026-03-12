@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "email": { "type": "string", "format": "email" },
+    "password": { "type": "string" }
+  },
+  "required": ["email", "password"],
+  "x-readme-ref-name": "Login"
+}

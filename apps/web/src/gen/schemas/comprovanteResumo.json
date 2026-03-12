@@ -1,0 +1,37 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "tipo": {
+      "enum": ["pix", "contrato", "outro"],
+      "type": "string",
+      "description": "* `pix` - PIX\n* `contrato` - Contrato\n* `outro` - Outro",
+      "x-readme-ref-name": "ComprovanteResumoTipoEnum"
+    },
+    "papel": {
+      "enum": ["associado", "agente"],
+      "type": "string",
+      "description": "* `associado` - Associado\n* `agente` - Agente",
+      "x-readme-ref-name": "PapelEnum"
+    },
+    "arquivo": { "type": "string", "format": "uri" },
+    "nome_original": { "type": "string", "maxLength": 255 },
+    "enviado_por": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "readOnly": true },
+            "full_name": { "type": "string", "readOnly": true }
+          },
+          "required": ["full_name", "id"],
+          "x-readme-ref-name": "SimpleUser"
+        }
+      ],
+      "readOnly": true
+    },
+    "created_at": { "type": "string", "format": "date-time", "readOnly": true }
+  },
+  "required": ["arquivo", "created_at", "enviado_por", "id"],
+  "x-readme-ref-name": "ComprovanteResumo"
+}

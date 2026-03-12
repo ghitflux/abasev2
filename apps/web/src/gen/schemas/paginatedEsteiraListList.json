@@ -1,0 +1,101 @@
+{
+  "type": "object",
+  "required": ["count", "results"],
+  "properties": {
+    "count": { "type": "integer", "example": 123 },
+    "next": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=4"
+    },
+    "previous": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=2"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "ordem": { "type": "integer", "readOnly": true },
+          "contrato": { "type": "string", "readOnly": true },
+          "data_assinatura": { "type": "string", "readOnly": true },
+          "valor_disponivel": { "type": "string", "readOnly": true },
+          "comissao_agente": { "type": "string", "readOnly": true },
+          "status_contrato": { "type": "string", "readOnly": true },
+          "status_documentacao": { "type": "string", "readOnly": true },
+          "contato_web": { "type": "string", "readOnly": true },
+          "termos_web": { "type": "string", "readOnly": true },
+          "agente": {
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer", "readOnly": true },
+                  "full_name": { "type": "string", "readOnly": true }
+                },
+                "required": ["full_name", "id"],
+                "x-readme-ref-name": "SimpleUser"
+              }
+            ],
+            "readOnly": true
+          },
+          "orgao_publico": { "type": "string", "readOnly": true },
+          "documentos_count": { "type": "string", "readOnly": true },
+          "acoes_disponiveis": { "type": "string", "readOnly": true },
+          "etapa_atual": {
+            "enum": [
+              "cadastro",
+              "analise",
+              "coordenacao",
+              "tesouraria",
+              "concluido"
+            ],
+            "type": "string",
+            "description": "* `cadastro` - Cadastro\n* `analise` - Análise\n* `coordenacao` - Coordenação\n* `tesouraria` - Tesouraria\n* `concluido` - Concluído",
+            "x-readme-ref-name": "ParaStatusEnum"
+          },
+          "status": {
+            "enum": [
+              "aguardando",
+              "em_andamento",
+              "pendenciado",
+              "aprovado",
+              "rejeitado"
+            ],
+            "type": "string",
+            "description": "* `aguardando` - Aguardando\n* `em_andamento` - Em andamento\n* `pendenciado` - Pendenciado\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
+            "x-readme-ref-name": "ParaSituacaoEnum"
+          },
+          "assumido_em": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "acoes_disponiveis",
+          "agente",
+          "comissao_agente",
+          "contato_web",
+          "contrato",
+          "data_assinatura",
+          "documentos_count",
+          "id",
+          "ordem",
+          "orgao_publico",
+          "status_contrato",
+          "status_documentacao",
+          "termos_web",
+          "valor_disponivel"
+        ],
+        "x-readme-ref-name": "EsteiraList"
+      }
+    }
+  },
+  "x-readme-ref-name": "PaginatedEsteiraListList"
+}

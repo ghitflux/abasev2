@@ -1,0 +1,53 @@
+{
+  "type": "object",
+  "required": ["count", "results"],
+  "properties": {
+    "count": { "type": "integer", "example": 123 },
+    "next": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=4"
+    },
+    "previous": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=2"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "contrato_id": { "type": "integer" },
+          "associado_id": { "type": "integer" },
+          "nome": { "type": "string" },
+          "cpf_cnpj": { "type": "string" },
+          "agente_nome": { "type": "string" },
+          "competencia": { "type": "string", "format": "date" },
+          "link_chamada": { "type": "string" },
+          "ligacao_confirmada": { "type": "boolean" },
+          "averbacao_confirmada": { "type": "boolean" },
+          "status_visual": { "type": "string" }
+        },
+        "required": [
+          "agente_nome",
+          "associado_id",
+          "averbacao_confirmada",
+          "competencia",
+          "contrato_id",
+          "cpf_cnpj",
+          "id",
+          "ligacao_confirmada",
+          "link_chamada",
+          "nome",
+          "status_visual"
+        ],
+        "x-readme-ref-name": "ConfirmacaoList"
+      }
+    }
+  },
+  "x-readme-ref-name": "PaginatedConfirmacaoListList"
+}

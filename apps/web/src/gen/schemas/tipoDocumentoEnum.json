@@ -1,0 +1,6 @@
+{
+  "enum": ["CPF", "CNPJ"],
+  "type": "string",
+  "description": "* `CPF` - CPF\n* `CNPJ` - CNPJ",
+  "x-readme-ref-name": "TipoDocumentoEnum"
+}
