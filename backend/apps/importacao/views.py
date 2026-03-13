@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+from datetime import datetime
+
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, permissions
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.viewsets import GenericViewSet
-from drf_spectacular.utils import extend_schema
 
 from apps.accounts.permissions import IsTesoureiroOrAdmin
 from core.pagination import StandardResultsSetPagination
@@ -29,6 +32,24 @@ class ReprocessarArquivoRetornoRateThrottle(UserRateThrottle):
     rate = "30/hour"
 
 
+def parse_competencia_query(value: str | None):
+    if not value:
+        return None
+
+    try:
+        return datetime.strptime(value, "%Y-%m").date().replace(day=1)
+    except ValueError as exc:
+        raise ValidationError("Competência inválida. Use o formato YYYY-MM.") from exc
+
+
+def parse_periodo_query(value: str | None):
+    if not value:
+        return None
+    if value in {"mes", "trimestre"}:
+        return value
+    raise ValidationError("Período inválido. Use 'mes' ou 'trimestre'.")
+
+
 class ArquivoRetornoViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
@@ -40,7 +61,32 @@ class ArquivoRetornoViewSet(
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return ArquivoRetorno.objects.none()
-        return ArquivoRetorno.objects.select_related("uploaded_by").order_by("-created_at")
+
+        queryset = ArquivoRetorno.objects.select_related("uploaded_by")
+        competencia = parse_competencia_query(
+            self.request.query_params.get("competencia")
+        )
+        periodo = parse_periodo_query(self.request.query_params.get("periodo"))
+
+        if periodo and not competencia:
+            raise ValidationError("O parâmetro periodo exige competencia.")
+
+        if competencia:
+            if periodo == "trimestre":
+                quarter_start_month = ((competencia.month - 1) // 3) * 3 + 1
+                quarter_end_month = quarter_start_month + 2
+                queryset = queryset.filter(
+                    competencia__year=competencia.year,
+                    competencia__month__gte=quarter_start_month,
+                    competencia__month__lte=quarter_end_month,
+                )
+            else:
+                queryset = queryset.filter(
+                    competencia__year=competencia.year,
+                    competencia__month=competencia.month,
+                )
+
+        return queryset.order_by("-created_at")
 
     def get_serializer_class(self):
         if self.action in {"descontados", "nao_descontados", "pendencias_manuais", "encerramentos", "novos_ciclos"}:
@@ -57,6 +103,26 @@ class ArquivoRetornoViewSet(
         if self.action == "reprocessar":
             return [ReprocessarArquivoRetornoRateThrottle()]
         return super().get_throttles()
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="competencia",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Competência base no formato YYYY-MM.",
+            ),
+            OpenApiParameter(
+                name="periodo",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Janela de filtro: mes ou trimestre.",
+            ),
+        ],
+        responses=ArquivoRetornoListSerializer(many=True),
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
 
     @extend_schema(
         request=ArquivoRetornoUploadSerializer,

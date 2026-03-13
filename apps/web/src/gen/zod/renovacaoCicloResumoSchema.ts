@@ -13,4 +13,7 @@ export const renovacaoCicloResumoSchema = z.object({
   em_aberto: z.int(),
   ciclo_iniciado: z.int(),
   inadimplente: z.int(),
+  esperado_total: z.string().regex(/^-?\d{0,10}(?:\.\d{0,2})?$/),
+  arrecadado_total: z.string().regex(/^-?\d{0,10}(?:\.\d{0,2})?$/),
+  percentual_arrecadado: z.number(),
 });

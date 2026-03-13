@@ -25,7 +25,6 @@ export type AssociadoCreate = {
    */
   tipo_documento?: TipoDocumentoEnum;
   /**
-   * @maxLength 18
    * @type string
    */
   cpf_cnpj: string;
@@ -35,12 +34,12 @@ export type AssociadoCreate = {
    */
   nome_completo: string;
   /**
-   * @maxLength 20
+   * @maxLength 30
    * @type string | undefined
    */
   rg?: string;
   /**
-   * @maxLength 30
+   * @maxLength 80
    * @type string | undefined
    */
   orgao_expedidor?: string;
@@ -93,7 +92,7 @@ export type AssociadoCreate = {
   prazo_meses?: number;
   /**
    * @pattern ^-?\d{0,3}(?:\.\d{0,2})?$
-   * @default "0.00"
+   * @default "30.00"
    * @type string | undefined, decimal
    */
   taxa_antecipacao?: string;

@@ -7,6 +7,11 @@ import type { PaginatedArquivoRetornoListList } from "./PaginatedArquivoRetornoL
 
 export type V1ImportacaoArquivoRetornoListQueryParams = {
   /**
+   * @description Competência base no formato YYYY-MM.
+   * @type string | undefined
+   */
+  competencia?: string;
+  /**
    * @description Which field to use when ordering the results.
    * @type string | undefined
    */
@@ -21,6 +26,11 @@ export type V1ImportacaoArquivoRetornoListQueryParams = {
    * @type integer | undefined
    */
   page_size?: number;
+  /**
+   * @description Janela de filtro: mes ou trimestre.
+   * @type string | undefined
+   */
+  periodo?: string;
   /**
    * @description A search term.
    * @type string | undefined

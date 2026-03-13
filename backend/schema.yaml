@@ -150,6 +150,218 @@ paths:
                 type: object
                 additionalProperties: {}
           description: ''
+  /api/v1/agente/pagamentos/:
+    get:
+      operationId: v1_agente_pagamentos_list
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAgentePagamentoContratoList'
+          description: ''
+  /api/v1/analise/:
+    get:
+      operationId: v1_analise_list
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAnaliseDadosList'
+          description: ''
+  /api/v1/analise/ajustes/:
+    get:
+      operationId: v1_analise_ajustes_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalisePagamento'
+          description: ''
+  /api/v1/analise/ajustes/{pagamento_id}/:
+    delete:
+      operationId: v1_analise_ajustes_destroy
+      parameters:
+      - in: path
+        name: pagamento_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/analise/ajustes/{pagamento_id}/data-pagamento/:
+    patch:
+      operationId: v1_analise_ajustes_data_pagamento_partial_update
+      parameters:
+      - in: path
+        name: pagamento_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAnalisePagamentoData'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAnalisePagamentoData'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAnalisePagamentoData'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalisePagamentoData'
+          description: ''
+  /api/v1/analise/dados/:
+    get:
+      operationId: v1_analise_dados_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnaliseDados'
+          description: ''
+  /api/v1/analise/dados/{associado_id}/nome/:
+    patch:
+      operationId: v1_analise_dados_nome_partial_update
+      parameters:
+      - in: path
+        name: associado_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAnaliseDadosUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAnaliseDadosUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAnaliseDadosUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnaliseDadosUpdate'
+          description: ''
+  /api/v1/analise/filas/:
+    get:
+      operationId: v1_analise_filas_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EsteiraList'
+          description: ''
+  /api/v1/analise/margem/:
+    get:
+      operationId: v1_analise_margem_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnaliseMargem'
+          description: ''
   /api/v1/associados/:
     get:
       operationId: v1_associados_list
@@ -430,6 +642,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/AssociadoUpdate'
           description: ''
+  /api/v1/associados/validar-documento/:
+    get:
+      operationId: v1_associados_validar_documento_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssociadoUpdate'
+          description: ''
   /api/v1/auth/login/:
     post:
       operationId: v1_auth_login_create
@@ -518,6 +744,118 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Refresh'
+          description: ''
+  /api/v1/configuracoes/usuarios/:
+    get:
+      operationId: v1_configuracoes_usuarios_list
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminUserListList'
+          description: ''
+  /api/v1/configuracoes/usuarios/{id}/:
+    get:
+      operationId: v1_configuracoes_usuarios_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserList'
+          description: ''
+    patch:
+      operationId: v1_configuracoes_usuarios_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminUserAccessUpdate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminUserAccessUpdate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminUserAccessUpdate'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserAccessUpdate'
+          description: ''
+  /api/v1/configuracoes/usuarios/{id}/resetar-senha/:
+    post:
+      operationId: v1_configuracoes_usuarios_resetar_senha_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordResetResult'
           description: ''
   /api/v1/contratos/:
     get:
@@ -972,6 +1310,11 @@ paths:
     get:
       operationId: v1_importacao_arquivo_retorno_list
       parameters:
+      - in: query
+        name: competencia
+        schema:
+          type: string
+        description: Competência base no formato YYYY-MM.
       - name: ordering
         required: false
         in: query
@@ -990,6 +1333,11 @@ paths:
         description: Number of results to return per page.
         schema:
           type: integer
+      - in: query
+        name: periodo
+        schema:
+          type: string
+        description: 'Janela de filtro: mes ou trimestre.'
       - name: search
         required: false
         in: query
@@ -1560,6 +1908,96 @@ paths:
               schema:
                 $ref: '#/components/schemas/RefinanciamentoList'
           description: ''
+  /api/v1/relatorios/:
+    get:
+      operationId: v1_relatorios_list
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RelatorioGerado'
+          description: ''
+  /api/v1/relatorios/{id}/download/:
+    get:
+      operationId: v1_relatorios_download_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this relatorio gerado.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelatorioGerado'
+          description: ''
+  /api/v1/relatorios/exportar/:
+    post:
+      operationId: v1_relatorios_exportar_create
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RelatorioGerado'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RelatorioGerado'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RelatorioGerado'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelatorioGerado'
+          description: ''
+  /api/v1/relatorios/resumo/:
+    get:
+      operationId: v1_relatorios_resumo_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RelatorioGerado'
+          description: ''
   /api/v1/renovacao-ciclos/:
     get:
       operationId: v1_renovacao_ciclos_list
@@ -2050,6 +2488,316 @@ paths:
           description: ''
 components:
   schemas:
+    AdminUserAccessUpdate:
+      type: object
+      properties:
+        roles:
+          type: array
+          items:
+            type: string
+            maxLength: 30
+        is_active:
+          type: boolean
+    AdminUserList:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        full_name:
+          type: string
+          readOnly: true
+        primary_role:
+          type: string
+          nullable: true
+          readOnly: true
+        roles:
+          type: array
+          items:
+            type: string
+          readOnly: true
+        is_active:
+          type: boolean
+        must_set_password:
+          type: boolean
+        date_joined:
+          type: string
+          format: date-time
+        last_login:
+          type: string
+          format: date-time
+          nullable: true
+          title: Último login
+        is_current_user:
+          type: boolean
+          readOnly: true
+      required:
+      - email
+      - first_name
+      - full_name
+      - id
+      - is_current_user
+      - primary_role
+      - roles
+    AgentePagamentoContrato:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        associado_id:
+          type: integer
+          readOnly: true
+        nome:
+          type: string
+          readOnly: true
+        cpf_cnpj:
+          type: string
+          readOnly: true
+        contrato_codigo:
+          type: string
+          readOnly: true
+        status_contrato:
+          type: string
+          readOnly: true
+        data_contrato:
+          type: string
+          format: date
+        auxilio_liberado_em:
+          type: string
+          format: date
+          nullable: true
+        valor_mensalidade:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        comissao_agente:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        parcelas_total:
+          type: integer
+          readOnly: true
+        parcelas_pagas:
+          type: integer
+          readOnly: true
+        comprovantes_efetivacao:
+          type: string
+          readOnly: true
+        ciclos:
+          type: string
+          readOnly: true
+      required:
+      - associado_id
+      - ciclos
+      - comprovantes_efetivacao
+      - contrato_codigo
+      - cpf_cnpj
+      - id
+      - nome
+      - parcelas_pagas
+      - parcelas_total
+      - status_contrato
+    AnaliseDados:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        nome_completo:
+          type: string
+          maxLength: 255
+        cpf_cnpj:
+          type: string
+          maxLength: 18
+        matricula:
+          type: string
+          maxLength: 20
+        agente:
+          allOf:
+          - $ref: '#/components/schemas/SimpleUser'
+          readOnly: true
+        contrato_codigo:
+          type: string
+          nullable: true
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - agente
+      - contrato_codigo
+      - cpf_cnpj
+      - created_at
+      - id
+      - nome_completo
+    AnaliseDadosUpdate:
+      type: object
+      properties:
+        nome_completo:
+          type: string
+          maxLength: 255
+      required:
+      - nome_completo
+    AnaliseMargem:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        associado_id:
+          type: integer
+          readOnly: true
+        codigo:
+          type: string
+          maxLength: 40
+        nome_completo:
+          type: string
+          readOnly: true
+        cpf_cnpj:
+          type: string
+          readOnly: true
+        agente:
+          allOf:
+          - $ref: '#/components/schemas/SimpleUser'
+          readOnly: true
+        valor_bruto:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        valor_liquido:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        valor_mensalidade:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        prazo_meses:
+          type: integer
+          maximum: 65535
+          minimum: 0
+        calc_trinta_bruto:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        calc_margem:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        calc_valor_antecipacao:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        calc_doacao_fundo:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+          readOnly: true
+        calc_pode_prosseguir:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - agente
+      - associado_id
+      - calc_doacao_fundo
+      - calc_margem
+      - calc_pode_prosseguir
+      - calc_trinta_bruto
+      - calc_valor_antecipacao
+      - cpf_cnpj
+      - created_at
+      - id
+      - nome_completo
+    AnalisePagamento:
+      type: object
+      properties:
+        id:
+          type: integer
+        cadastro_id:
+          type: integer
+          nullable: true
+        contrato_codigo:
+          type: string
+        full_name:
+          type: string
+        cpf_cnpj:
+          type: string
+        agente_responsavel:
+          type: string
+        status:
+          type: string
+        valor_pago:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+        contrato_valor_antecipacao:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+        contrato_margem_disponivel:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+        paid_at:
+          type: string
+          format: date-time
+          nullable: true
+        referencia_at:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+        created_by_name:
+          type: string
+          readOnly: true
+        notes:
+          type: string
+      required:
+      - agente_responsavel
+      - cadastro_id
+      - contrato_codigo
+      - contrato_margem_disponivel
+      - contrato_valor_antecipacao
+      - cpf_cnpj
+      - created_at
+      - created_by_name
+      - full_name
+      - id
+      - notes
+      - paid_at
+      - referencia_at
+      - status
+      - valor_pago
+    AnalisePagamentoData:
+      type: object
+      properties:
+        new_date:
+          type: string
+      required:
+      - new_date
     ArquivoRetornoDetail:
       type: object
       properties:
@@ -2289,6 +3037,9 @@ components:
         matricula_orgao:
           type: string
           readOnly: true
+        status:
+          type: string
+          readOnly: true
       required:
       - cpf_cnpj
       - id
@@ -2296,6 +3047,7 @@ components:
       - matricula_orgao
       - nome_completo
       - orgao_publico
+      - status
     AssociadoCreate:
       type: object
       properties:
@@ -2309,16 +3061,15 @@ components:
           $ref: '#/components/schemas/TipoDocumentoEnum'
         cpf_cnpj:
           type: string
-          maxLength: 18
         nome_completo:
           type: string
           maxLength: 255
         rg:
           type: string
-          maxLength: 20
+          maxLength: 30
         orgao_expedidor:
           type: string
-          maxLength: 30
+          maxLength: 80
         data_nascimento:
           type: string
           format: date
@@ -2357,7 +3108,7 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
-          default: '0.00'
+          default: '30.00'
         mensalidade:
           type: string
           format: decimal
@@ -2420,17 +3171,17 @@ components:
           maxLength: 18
         rg:
           type: string
-          maxLength: 20
+          maxLength: 30
         orgao_expedidor:
           type: string
-          maxLength: 30
+          maxLength: 80
         email:
           type: string
           format: email
           maxLength: 254
         telefone:
           type: string
-          maxLength: 20
+          maxLength: 30
         data_nascimento:
           type: string
           format: date
@@ -2444,10 +3195,10 @@ components:
           - $ref: '#/components/schemas/BlankEnum'
         orgao_publico:
           type: string
-          maxLength: 150
+          maxLength: 160
         matricula_orgao:
           type: string
-          maxLength: 50
+          maxLength: 60
         cargo:
           type: string
           maxLength: 120
@@ -2559,10 +3310,10 @@ components:
           maxLength: 255
         rg:
           type: string
-          maxLength: 20
+          maxLength: 30
         orgao_expedidor:
           type: string
-          maxLength: 30
+          maxLength: 80
         data_nascimento:
           type: string
           format: date
@@ -2815,6 +3566,18 @@ components:
         matricula_servidor:
           type: string
           maxLength: 50
+    ContratoAgente:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        full_name:
+          type: string
+          readOnly: true
+      required:
+      - full_name
+      - id
     ContratoList:
       type: object
       properties:
@@ -2828,11 +3591,24 @@ components:
           allOf:
           - $ref: '#/components/schemas/AssociadoContrato'
           readOnly: true
+        agente:
+          allOf:
+          - $ref: '#/components/schemas/ContratoAgente'
+          readOnly: true
         status:
           $ref: '#/components/schemas/Status1d4Enum'
         status_resumido:
           type: string
           readOnly: true
+        status_contrato_visual:
+          type: string
+          readOnly: true
+        etapa_fluxo:
+          type: string
+          readOnly: true
+        data_contrato:
+          type: string
+          format: date
         valor_mensalidade:
           type: string
           format: decimal
@@ -2852,10 +3628,13 @@ components:
           type: boolean
           readOnly: true
       required:
+      - agente
       - associado
+      - etapa_fluxo
       - id
       - mensalidades
       - pode_solicitar_refinanciamento
+      - status_contrato_visual
       - status_resumido
     ContratoResumo:
       type: object
@@ -3076,21 +3855,21 @@ components:
           readOnly: true
         cep:
           type: string
-          maxLength: 9
+          maxLength: 12
         endereco:
           type: string
         numero:
           type: string
-          maxLength: 20
+          maxLength: 60
         complemento:
           type: string
-          maxLength: 100
+          maxLength: 120
         bairro:
           type: string
-          maxLength: 100
+          maxLength: 120
         cidade:
           type: string
-          maxLength: 100
+          maxLength: 120
         uf:
           type: string
           maxLength: 2
@@ -3109,7 +3888,6 @@ components:
       - created_at
       - endereco
       - id
-      - numero
       - uf
       - updated_at
     EnderecoWrite:
@@ -3117,21 +3895,20 @@ components:
       properties:
         cep:
           type: string
-          maxLength: 9
+          maxLength: 12
         endereco:
           type: string
         numero:
           type: string
-          maxLength: 20
         complemento:
           type: string
-          maxLength: 100
+          maxLength: 120
         bairro:
           type: string
-          maxLength: 100
+          maxLength: 120
         cidade:
           type: string
-          maxLength: 100
+          maxLength: 120
         uf:
           type: string
           maxLength: 2
@@ -3140,7 +3917,6 @@ components:
       - cep
       - cidade
       - endereco
-      - numero
       - uf
     EstadoCivilEnum:
       enum:
@@ -3383,6 +4159,75 @@ components:
       properties:
         refresh:
           type: string
+    PaginatedAdminUserListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminUserList'
+    PaginatedAgentePagamentoContratoList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentePagamentoContrato'
+    PaginatedAnaliseDadosList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnaliseDados'
     PaginatedArquivoRetornoItemList:
       type: object
       required:
@@ -3674,6 +4519,37 @@ components:
         * `descontado` - Descontado
         * `nao_descontado` - Não descontado
         * `cancelado` - Cancelado
+    PasswordResetResult:
+      type: object
+      properties:
+        temporary_password:
+          type: string
+        must_set_password:
+          type: boolean
+      required:
+      - must_set_password
+      - temporary_password
+    PatchedAdminUserAccessUpdate:
+      type: object
+      properties:
+        roles:
+          type: array
+          items:
+            type: string
+            maxLength: 30
+        is_active:
+          type: boolean
+    PatchedAnaliseDadosUpdate:
+      type: object
+      properties:
+        nome_completo:
+          type: string
+          maxLength: 255
+    PatchedAnalisePagamentoData:
+      type: object
+      properties:
+        new_date:
+          type: string
     PatchedAssociadoUpdate:
       type: object
       properties:
@@ -3693,10 +4569,10 @@ components:
           maxLength: 255
         rg:
           type: string
-          maxLength: 20
+          maxLength: 30
         orgao_expedidor:
           type: string
-          maxLength: 30
+          maxLength: 80
         data_nascimento:
           type: string
           format: date
@@ -4082,6 +4958,31 @@ components:
           type: string
       required:
       - refresh
+    RelatorioGerado:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        nome:
+          type: string
+          maxLength: 255
+        formato:
+          type: string
+          maxLength: 20
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        download_url:
+          type: string
+          readOnly: true
+      required:
+      - created_at
+      - download_url
+      - formato
+      - id
+      - nome
     RenovacaoCicloItem:
       type: object
       properties:
@@ -4188,13 +5089,27 @@ components:
           type: integer
         inadimplente:
           type: integer
+        esperado_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        arrecadado_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        percentual_arrecadado:
+          type: number
+          format: double
       required:
       - apto_a_renovar
+      - arrecadado_total
       - ciclo_iniciado
       - ciclo_renovado
       - competencia
       - em_aberto
+      - esperado_total
       - inadimplente
+      - percentual_arrecadado
       - total_associados
     ResultadoProcessamentoEnum:
       enum:
@@ -4484,6 +5399,7 @@ components:
           readOnly: true
         primary_role:
           type: string
+          nullable: true
           readOnly: true
         roles:
           type: array

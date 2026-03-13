@@ -32,4 +32,18 @@ export type RenovacaoCicloResumo = {
    * @type integer
    */
   inadimplente: number;
+  /**
+   * @pattern ^-?\d{0,10}(?:\.\d{0,2})?$
+   * @type string, decimal
+   */
+  esperado_total: string;
+  /**
+   * @pattern ^-?\d{0,10}(?:\.\d{0,2})?$
+   * @type string, decimal
+   */
+  arrecadado_total: string;
+  /**
+   * @type number, double
+   */
+  percentual_arrecadado: number;
 };

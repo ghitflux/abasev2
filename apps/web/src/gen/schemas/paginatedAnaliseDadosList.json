@@ -1,0 +1,65 @@
+{
+  "type": "object",
+  "required": ["count", "results"],
+  "properties": {
+    "count": { "type": "integer", "example": 123 },
+    "next": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=4"
+    },
+    "previous": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=2"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "nome_completo": { "type": "string", "maxLength": 255 },
+          "cpf_cnpj": { "type": "string", "maxLength": 18 },
+          "matricula": { "type": "string", "maxLength": 20 },
+          "agente": {
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer", "readOnly": true },
+                  "full_name": { "type": "string", "readOnly": true }
+                },
+                "required": ["full_name", "id"],
+                "x-readme-ref-name": "SimpleUser"
+              }
+            ],
+            "readOnly": true
+          },
+          "contrato_codigo": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          }
+        },
+        "required": [
+          "agente",
+          "contrato_codigo",
+          "cpf_cnpj",
+          "created_at",
+          "id",
+          "nome_completo"
+        ],
+        "x-readme-ref-name": "AnaliseDados"
+      }
+    }
+  },
+  "x-readme-ref-name": "PaginatedAnaliseDadosList"
+}

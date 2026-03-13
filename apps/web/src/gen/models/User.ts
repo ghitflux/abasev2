@@ -30,7 +30,7 @@ export type User = {
   /**
    * @type string
    */
-  readonly primary_role: string;
+  readonly primary_role: string | null;
   /**
    * @type array
    */

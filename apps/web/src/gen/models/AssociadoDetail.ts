@@ -41,12 +41,12 @@ export type AssociadoDetail = {
    */
   cpf_cnpj: string;
   /**
-   * @maxLength 20
+   * @maxLength 30
    * @type string | undefined
    */
   rg?: string;
   /**
-   * @maxLength 30
+   * @maxLength 80
    * @type string | undefined
    */
   orgao_expedidor?: string;
@@ -56,7 +56,7 @@ export type AssociadoDetail = {
    */
   email?: string;
   /**
-   * @maxLength 20
+   * @maxLength 30
    * @type string | undefined
    */
   telefone?: string;
@@ -71,12 +71,12 @@ export type AssociadoDetail = {
   profissao?: string;
   estado_civil?: EstadoCivilEnum | BlankEnum;
   /**
-   * @maxLength 150
+   * @maxLength 160
    * @type string | undefined
    */
   orgao_publico?: string;
   /**
-   * @maxLength 50
+   * @maxLength 60
    * @type string | undefined
    */
   matricula_orgao?: string;

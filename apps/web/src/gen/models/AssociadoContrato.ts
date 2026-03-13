@@ -28,4 +28,8 @@ export type AssociadoContrato = {
    * @type string
    */
   readonly matricula_orgao: string;
+  /**
+   * @type string
+   */
+  readonly status: string;
 };

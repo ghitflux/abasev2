@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import date
+
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
 
@@ -96,6 +98,43 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
         self.assertEqual(detail_payload["count"], 2)
         self.assertEqual(len(detail_payload["results"]), 2)
         self.assertEqual(detail_payload["results"][0]["status_codigo"], "1")
+
+    def test_list_filtra_por_competencia_e_periodo(self):
+        arquivo_jan = self.create_arquivo_retorno(nome="retorno_janeiro.txt")
+        arquivo_jan.competencia = date(2026, 1, 1)
+        arquivo_jan.status = ArquivoRetorno.Status.CONCLUIDO
+        arquivo_jan.save(update_fields=["competencia", "status", "updated_at"])
+
+        arquivo_fev = self.create_arquivo_retorno(nome="retorno_fevereiro.txt")
+        arquivo_fev.competencia = date(2026, 2, 1)
+        arquivo_fev.status = ArquivoRetorno.Status.CONCLUIDO
+        arquivo_fev.save(update_fields=["competencia", "status", "updated_at"])
+
+        arquivo_mar = self.create_arquivo_retorno(nome="retorno_marco.txt")
+        arquivo_mar.competencia = date(2026, 3, 1)
+        arquivo_mar.status = ArquivoRetorno.Status.CONCLUIDO
+        arquivo_mar.save(update_fields=["competencia", "status", "updated_at"])
+
+        response = self.tes_client.get(
+            "/api/v1/importacao/arquivo-retorno/",
+            {"competencia": "2026-02", "periodo": "mes", "page_size": 10},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["results"][0]["id"], arquivo_fev.id)
+
+        response = self.tes_client.get(
+            "/api/v1/importacao/arquivo-retorno/",
+            {"competencia": "2026-02", "periodo": "trimestre", "page_size": 10},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["count"], 3)
+        self.assertEqual(
+            [row["id"] for row in payload["results"]],
+            [arquivo_mar.id, arquivo_fev.id, arquivo_jan.id],
+        )
 
     def test_processar_reprocessamento_idempotente_nao_duplica_ciclo(self):
         self.create_associado_com_contrato(

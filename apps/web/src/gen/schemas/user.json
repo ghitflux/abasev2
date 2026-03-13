@@ -6,7 +6,7 @@
     "first_name": { "type": "string", "maxLength": 150 },
     "last_name": { "type": "string", "maxLength": 150 },
     "full_name": { "type": "string", "readOnly": true },
-    "primary_role": { "type": "string", "readOnly": true },
+    "primary_role": { "type": "string", "nullable": true, "readOnly": true },
     "roles": {
       "type": "array",
       "items": { "type": "string" },

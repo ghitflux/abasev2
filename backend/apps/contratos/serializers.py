@@ -204,6 +204,9 @@ class RenovacaoCicloResumoSerializer(serializers.Serializer):
     em_aberto = serializers.IntegerField()
     ciclo_iniciado = serializers.IntegerField()
     inadimplente = serializers.IntegerField()
+    esperado_total = serializers.DecimalField(max_digits=12, decimal_places=2)
+    arrecadado_total = serializers.DecimalField(max_digits=12, decimal_places=2)
+    percentual_arrecadado = serializers.FloatField()
 
 
 class RenovacaoCicloMesSerializer(serializers.Serializer):

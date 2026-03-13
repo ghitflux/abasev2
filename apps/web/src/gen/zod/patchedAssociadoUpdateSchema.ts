@@ -22,8 +22,8 @@ export const patchedAssociadoUpdateSchema = z.object({
   },
   cpf_cnpj: z.optional(z.string()),
   nome_completo: z.optional(z.string().max(255)),
-  rg: z.optional(z.string().max(20)),
-  orgao_expedidor: z.optional(z.string().max(30)),
+  rg: z.optional(z.string().max(30)),
+  orgao_expedidor: z.optional(z.string().max(80)),
   data_nascimento: z.iso.date().nullish(),
   profissao: z.optional(z.string().max(120)),
   get estado_civil() {

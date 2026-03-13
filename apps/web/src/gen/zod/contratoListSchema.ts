@@ -5,6 +5,7 @@
 
 import * as z from "zod";
 import { associadoContratoSchema } from "./associadoContratoSchema.ts";
+import { contratoAgenteSchema } from "./contratoAgenteSchema.ts";
 import { status1D4EnumSchema } from "./status1D4EnumSchema.ts";
 
 export const contratoListSchema = z.object({
@@ -12,6 +13,9 @@ export const contratoListSchema = z.object({
   codigo: z.optional(z.string().max(40)),
   get associado() {
     return associadoContratoSchema;
+  },
+  get agente() {
+    return contratoAgenteSchema;
   },
   get status() {
     return status1D4EnumSchema
@@ -21,6 +25,9 @@ export const contratoListSchema = z.object({
       .optional();
   },
   status_resumido: z.string(),
+  status_contrato_visual: z.string(),
+  etapa_fluxo: z.string(),
+  data_contrato: z.optional(z.iso.date()),
   valor_mensalidade: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
   comissao_agente: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
   mensalidades: z.string(),

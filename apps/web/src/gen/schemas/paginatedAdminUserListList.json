@@ -1,0 +1,63 @@
+{
+  "type": "object",
+  "required": ["count", "results"],
+  "properties": {
+    "count": { "type": "integer", "example": 123 },
+    "next": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=4"
+    },
+    "previous": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=2"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "email": { "type": "string", "format": "email", "maxLength": 254 },
+          "first_name": { "type": "string", "maxLength": 150 },
+          "last_name": { "type": "string", "maxLength": 150 },
+          "full_name": { "type": "string", "readOnly": true },
+          "primary_role": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "roles": {
+            "type": "array",
+            "items": { "type": "string" },
+            "readOnly": true
+          },
+          "is_active": { "type": "boolean" },
+          "must_set_password": { "type": "boolean" },
+          "date_joined": { "type": "string", "format": "date-time" },
+          "last_login": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "title": "Último login"
+          },
+          "is_current_user": { "type": "boolean", "readOnly": true }
+        },
+        "required": [
+          "email",
+          "first_name",
+          "full_name",
+          "id",
+          "is_current_user",
+          "primary_role",
+          "roles"
+        ],
+        "x-readme-ref-name": "AdminUserList"
+      }
+    }
+  },
+  "x-readme-ref-name": "PaginatedAdminUserListList"
+}

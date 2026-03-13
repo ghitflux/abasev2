@@ -4,6 +4,7 @@
  */
 
 import type { AssociadoContrato } from "./AssociadoContrato.ts";
+import type { ContratoAgente } from "./ContratoAgente.ts";
 import type { Status1D4Enum } from "./Status1D4Enum.ts";
 
 export type ContratoList = {
@@ -17,6 +18,7 @@ export type ContratoList = {
    */
   codigo?: string;
   readonly associado: AssociadoContrato;
+  readonly agente: ContratoAgente;
   /**
    * @description * `rascunho` - Rascunho\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `encerrado` - Encerrado\n* `cancelado` - Cancelado
    * @type string | undefined
@@ -26,6 +28,18 @@ export type ContratoList = {
    * @type string
    */
   readonly status_resumido: string;
+  /**
+   * @type string
+   */
+  readonly status_contrato_visual: string;
+  /**
+   * @type string
+   */
+  readonly etapa_fluxo: string;
+  /**
+   * @type string | undefined, date
+   */
+  data_contrato?: string;
   /**
    * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
    * @type string | undefined, decimal

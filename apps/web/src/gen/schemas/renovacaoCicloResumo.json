@@ -7,15 +7,29 @@
     "apto_a_renovar": { "type": "integer" },
     "em_aberto": { "type": "integer" },
     "ciclo_iniciado": { "type": "integer" },
-    "inadimplente": { "type": "integer" }
+    "inadimplente": { "type": "integer" },
+    "esperado_total": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+    },
+    "arrecadado_total": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+    },
+    "percentual_arrecadado": { "type": "number", "format": "double" }
   },
   "required": [
     "apto_a_renovar",
+    "arrecadado_total",
     "ciclo_iniciado",
     "ciclo_renovado",
     "competencia",
     "em_aberto",
+    "esperado_total",
     "inadimplente",
+    "percentual_arrecadado",
     "total_associados"
   ],
   "x-readme-ref-name": "RenovacaoCicloResumo"

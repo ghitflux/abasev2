@@ -11,10 +11,10 @@
     },
     "nome_completo": { "type": "string", "maxLength": 255 },
     "cpf_cnpj": { "type": "string", "maxLength": 18 },
-    "rg": { "type": "string", "maxLength": 20 },
-    "orgao_expedidor": { "type": "string", "maxLength": 30 },
+    "rg": { "type": "string", "maxLength": 30 },
+    "orgao_expedidor": { "type": "string", "maxLength": 80 },
     "email": { "type": "string", "format": "email", "maxLength": 254 },
-    "telefone": { "type": "string", "maxLength": 20 },
+    "telefone": { "type": "string", "maxLength": 30 },
     "data_nascimento": { "type": "string", "format": "date", "nullable": true },
     "profissao": { "type": "string", "maxLength": 120 },
     "estado_civil": {
@@ -34,8 +34,8 @@
         { "enum": [""], "x-readme-ref-name": "BlankEnum" }
       ]
     },
-    "orgao_publico": { "type": "string", "maxLength": 150 },
-    "matricula_orgao": { "type": "string", "maxLength": 50 },
+    "orgao_publico": { "type": "string", "maxLength": 160 },
+    "matricula_orgao": { "type": "string", "maxLength": 60 },
     "cargo": { "type": "string", "maxLength": 120 },
     "status": {
       "enum": [
@@ -71,12 +71,12 @@
           "type": "object",
           "properties": {
             "id": { "type": "integer", "readOnly": true },
-            "cep": { "type": "string", "maxLength": 9 },
+            "cep": { "type": "string", "maxLength": 12 },
             "endereco": { "type": "string" },
-            "numero": { "type": "string", "maxLength": 20 },
-            "complemento": { "type": "string", "maxLength": 100 },
-            "bairro": { "type": "string", "maxLength": 100 },
-            "cidade": { "type": "string", "maxLength": 100 },
+            "numero": { "type": "string", "maxLength": 60 },
+            "complemento": { "type": "string", "maxLength": 120 },
+            "bairro": { "type": "string", "maxLength": 120 },
+            "cidade": { "type": "string", "maxLength": 120 },
             "uf": { "type": "string", "maxLength": 2 },
             "created_at": {
               "type": "string",
@@ -96,7 +96,6 @@
             "created_at",
             "endereco",
             "id",
-            "numero",
             "uf",
             "updated_at"
           ],

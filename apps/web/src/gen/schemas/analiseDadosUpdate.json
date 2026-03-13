@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "properties": { "nome_completo": { "type": "string", "maxLength": 255 } },
+  "required": ["nome_completo"],
+  "x-readme-ref-name": "AnaliseDadosUpdate"
+}

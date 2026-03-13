@@ -97,7 +97,7 @@ def ensure_access_users() -> dict[str, SeedUserSpec]:
     specs = default_seed_user_specs()
 
     for spec in specs:
-        user, _ = User.all_objects.get_or_create(
+        user, created = User.all_objects.get_or_create(
             email=spec.email,
             defaults={
                 "first_name": spec.first_name,
@@ -115,7 +115,11 @@ def ensure_access_users() -> dict[str, SeedUserSpec]:
         user.is_staff = spec.is_staff
         user.is_superuser = spec.is_superuser
         user.deleted_at = None
-        user.set_password(spec.password)
+
+        # Preserve existing hashes imported from the dump. New dev users still
+        # receive the configured default password on first creation.
+        if created or not user.has_usable_password():
+            user.set_password(spec.password)
         user.save()
         user.roles.set([roles[spec.role_code]])
 

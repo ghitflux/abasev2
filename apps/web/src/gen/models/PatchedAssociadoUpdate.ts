@@ -35,12 +35,12 @@ export type PatchedAssociadoUpdate = {
    */
   nome_completo?: string;
   /**
-   * @maxLength 20
+   * @maxLength 30
    * @type string | undefined
    */
   rg?: string;
   /**
-   * @maxLength 30
+   * @maxLength 80
    * @type string | undefined
    */
   orgao_expedidor?: string;

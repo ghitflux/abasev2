@@ -1,0 +1,53 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer" },
+    "cadastro_id": { "type": "integer", "nullable": true },
+    "contrato_codigo": { "type": "string" },
+    "full_name": { "type": "string" },
+    "cpf_cnpj": { "type": "string" },
+    "agente_responsavel": { "type": "string" },
+    "status": { "type": "string" },
+    "valor_pago": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+      "nullable": true
+    },
+    "contrato_valor_antecipacao": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+      "nullable": true
+    },
+    "contrato_margem_disponivel": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+      "nullable": true
+    },
+    "paid_at": { "type": "string", "format": "date-time", "nullable": true },
+    "referencia_at": { "type": "string", "readOnly": true },
+    "created_at": { "type": "string", "format": "date-time" },
+    "created_by_name": { "type": "string", "readOnly": true },
+    "notes": { "type": "string" }
+  },
+  "required": [
+    "agente_responsavel",
+    "cadastro_id",
+    "contrato_codigo",
+    "contrato_margem_disponivel",
+    "contrato_valor_antecipacao",
+    "cpf_cnpj",
+    "created_at",
+    "created_by_name",
+    "full_name",
+    "id",
+    "notes",
+    "paid_at",
+    "referencia_at",
+    "status",
+    "valor_pago"
+  ],
+  "x-readme-ref-name": "AnalisePagamento"
+}

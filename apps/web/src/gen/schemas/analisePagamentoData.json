@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "properties": { "new_date": { "type": "string" } },
+  "required": ["new_date"],
+  "x-readme-ref-name": "AnalisePagamentoData"
+}

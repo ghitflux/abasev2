@@ -1,0 +1,5 @@
+{
+  "type": "object",
+  "properties": { "nome_completo": { "type": "string", "maxLength": 255 } },
+  "x-readme-ref-name": "PatchedAnaliseDadosUpdate"
+}

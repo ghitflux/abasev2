@@ -9,7 +9,7 @@ export type Endereco = {
    */
   readonly id: number;
   /**
-   * @maxLength 9
+   * @maxLength 12
    * @type string
    */
   cep: string;
@@ -18,22 +18,22 @@ export type Endereco = {
    */
   endereco: string;
   /**
-   * @maxLength 20
-   * @type string
+   * @maxLength 60
+   * @type string | undefined
    */
-  numero: string;
+  numero?: string;
   /**
-   * @maxLength 100
+   * @maxLength 120
    * @type string | undefined
    */
   complemento?: string;
   /**
-   * @maxLength 100
+   * @maxLength 120
    * @type string
    */
   bairro: string;
   /**
-   * @maxLength 100
+   * @maxLength 120
    * @type string
    */
   cidade: string;

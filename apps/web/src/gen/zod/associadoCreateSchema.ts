@@ -19,10 +19,10 @@ export const associadoCreateSchema = z.object({
       .describe("* `CPF` - CPF\n* `CNPJ` - CNPJ")
       .optional();
   },
-  cpf_cnpj: z.string().max(18),
+  cpf_cnpj: z.string(),
   nome_completo: z.string().max(255),
-  rg: z.optional(z.string().max(20)),
-  orgao_expedidor: z.optional(z.string().max(30)),
+  rg: z.optional(z.string().max(30)),
+  orgao_expedidor: z.optional(z.string().max(80)),
   data_nascimento: z.iso.date().nullish(),
   profissao: z.optional(z.string().max(120)),
   get estado_civil() {
@@ -46,7 +46,7 @@ export const associadoCreateSchema = z.object({
     z
       .string()
       .regex(/^-?\d{0,3}(?:\.\d{0,2})?$/)
-      .default("0.00"),
+      .default("30.00"),
   ),
   mensalidade: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
   margem_disponivel: z.optional(

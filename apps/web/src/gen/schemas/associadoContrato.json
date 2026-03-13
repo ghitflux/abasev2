@@ -6,7 +6,8 @@
     "matricula": { "type": "string", "readOnly": true },
     "cpf_cnpj": { "type": "string", "readOnly": true },
     "orgao_publico": { "type": "string", "readOnly": true },
-    "matricula_orgao": { "type": "string", "readOnly": true }
+    "matricula_orgao": { "type": "string", "readOnly": true },
+    "status": { "type": "string", "readOnly": true }
   },
   "required": [
     "cpf_cnpj",
@@ -14,7 +15,8 @@
     "matricula",
     "matricula_orgao",
     "nome_completo",
-    "orgao_publico"
+    "orgao_publico",
+    "status"
   ],
   "x-readme-ref-name": "AssociadoContrato"
 }

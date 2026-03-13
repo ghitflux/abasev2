@@ -26,17 +26,17 @@ export const associadoDetailSchema = z.object({
   },
   nome_completo: z.string().max(255),
   cpf_cnpj: z.string().max(18),
-  rg: z.optional(z.string().max(20)),
-  orgao_expedidor: z.optional(z.string().max(30)),
+  rg: z.optional(z.string().max(30)),
+  orgao_expedidor: z.optional(z.string().max(80)),
   email: z.optional(z.email().max(254)),
-  telefone: z.optional(z.string().max(20)),
+  telefone: z.optional(z.string().max(30)),
   data_nascimento: z.iso.date().nullish(),
   profissao: z.optional(z.string().max(120)),
   get estado_civil() {
     return z.union([estadoCivilEnumSchema, blankEnumSchema]).optional();
   },
-  orgao_publico: z.optional(z.string().max(150)),
-  matricula_orgao: z.optional(z.string().max(50)),
+  orgao_publico: z.optional(z.string().max(160)),
+  matricula_orgao: z.optional(z.string().max(60)),
   cargo: z.optional(z.string().max(120)),
   get status() {
     return status427EnumSchema

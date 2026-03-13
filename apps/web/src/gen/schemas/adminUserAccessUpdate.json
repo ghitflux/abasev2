@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "roles": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 30 }
+    },
+    "is_active": { "type": "boolean" }
+  },
+  "x-readme-ref-name": "AdminUserAccessUpdate"
+}

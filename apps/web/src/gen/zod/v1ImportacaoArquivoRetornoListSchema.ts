@@ -8,6 +8,9 @@ import { paginatedArquivoRetornoListListSchema } from "./paginatedArquivoRetorno
 
 export const V1ImportacaoArquivoRetornoListQueryParamsSchema = z
   .object({
+    competencia: z.optional(
+      z.string().describe("Competência base no formato YYYY-MM."),
+    ),
     ordering: z.optional(
       z.string().describe("Which field to use when ordering the results."),
     ),
@@ -19,6 +22,9 @@ export const V1ImportacaoArquivoRetornoListQueryParamsSchema = z
     ),
     page_size: z.optional(
       z.coerce.number().int().describe("Number of results to return per page."),
+    ),
+    periodo: z.optional(
+      z.string().describe("Janela de filtro: mes ou trimestre."),
     ),
     search: z.optional(z.string().describe("A search term.")),
   })

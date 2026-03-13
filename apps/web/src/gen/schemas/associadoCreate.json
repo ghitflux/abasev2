@@ -9,10 +9,10 @@
       "description": "* `CPF` - CPF\n* `CNPJ` - CNPJ",
       "x-readme-ref-name": "TipoDocumentoEnum"
     },
-    "cpf_cnpj": { "type": "string", "maxLength": 18 },
+    "cpf_cnpj": { "type": "string" },
     "nome_completo": { "type": "string", "maxLength": 255 },
-    "rg": { "type": "string", "maxLength": 20 },
-    "orgao_expedidor": { "type": "string", "maxLength": 30 },
+    "rg": { "type": "string", "maxLength": 30 },
+    "orgao_expedidor": { "type": "string", "maxLength": 80 },
     "data_nascimento": { "type": "string", "format": "date", "nullable": true },
     "profissao": { "type": "string", "maxLength": 120 },
     "estado_civil": {
@@ -37,15 +37,15 @@
     "endereco": {
       "type": "object",
       "properties": {
-        "cep": { "type": "string", "maxLength": 9 },
+        "cep": { "type": "string", "maxLength": 12 },
         "endereco": { "type": "string" },
-        "numero": { "type": "string", "maxLength": 20 },
-        "complemento": { "type": "string", "maxLength": 100 },
-        "bairro": { "type": "string", "maxLength": 100 },
-        "cidade": { "type": "string", "maxLength": 100 },
+        "numero": { "type": "string" },
+        "complemento": { "type": "string", "maxLength": 120 },
+        "bairro": { "type": "string", "maxLength": 120 },
+        "cidade": { "type": "string", "maxLength": 120 },
         "uf": { "type": "string", "maxLength": 2 }
       },
-      "required": ["bairro", "cep", "cidade", "endereco", "numero", "uf"],
+      "required": ["bairro", "cep", "cidade", "endereco", "uf"],
       "x-readme-ref-name": "EnderecoWrite"
     },
     "dados_bancarios": {
@@ -91,7 +91,7 @@
       "type": "string",
       "format": "decimal",
       "pattern": "^-?\\d{0,3}(?:\\.\\d{0,2})?$",
-      "default": "0.00"
+      "default": "30.00"
     },
     "mensalidade": {
       "type": "string",

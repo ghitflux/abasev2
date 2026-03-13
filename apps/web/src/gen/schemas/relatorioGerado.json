@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "nome": { "type": "string", "maxLength": 255 },
+    "formato": { "type": "string", "maxLength": 20 },
+    "created_at": { "type": "string", "format": "date-time", "readOnly": true },
+    "download_url": { "type": "string", "readOnly": true }
+  },
+  "required": ["created_at", "download_url", "formato", "id", "nome"],
+  "x-readme-ref-name": "RelatorioGerado"
+}

@@ -1,5 +1,20 @@
 export type { SchemaRetrieveQueryKey } from "./hooks/useSchemaRetrieve.ts";
 export type { SchemaRetrieveSuspenseQueryKey } from "./hooks/useSchemaRetrieveSuspense.ts";
+export type { V1AgentePagamentosListQueryKey } from "./hooks/useV1AgentePagamentosList.ts";
+export type { V1AgentePagamentosListSuspenseQueryKey } from "./hooks/useV1AgentePagamentosListSuspense.ts";
+export type { V1AnaliseAjustesDataPagamentoPartialUpdateMutationKey } from "./hooks/useV1AnaliseAjustesDataPagamentoPartialUpdate.ts";
+export type { V1AnaliseAjustesDestroyMutationKey } from "./hooks/useV1AnaliseAjustesDestroy.ts";
+export type { V1AnaliseAjustesRetrieveQueryKey } from "./hooks/useV1AnaliseAjustesRetrieve.ts";
+export type { V1AnaliseAjustesRetrieveSuspenseQueryKey } from "./hooks/useV1AnaliseAjustesRetrieveSuspense.ts";
+export type { V1AnaliseDadosNomePartialUpdateMutationKey } from "./hooks/useV1AnaliseDadosNomePartialUpdate.ts";
+export type { V1AnaliseDadosRetrieveQueryKey } from "./hooks/useV1AnaliseDadosRetrieve.ts";
+export type { V1AnaliseDadosRetrieveSuspenseQueryKey } from "./hooks/useV1AnaliseDadosRetrieveSuspense.ts";
+export type { V1AnaliseFilasRetrieveQueryKey } from "./hooks/useV1AnaliseFilasRetrieve.ts";
+export type { V1AnaliseFilasRetrieveSuspenseQueryKey } from "./hooks/useV1AnaliseFilasRetrieveSuspense.ts";
+export type { V1AnaliseListQueryKey } from "./hooks/useV1AnaliseList.ts";
+export type { V1AnaliseListSuspenseQueryKey } from "./hooks/useV1AnaliseListSuspense.ts";
+export type { V1AnaliseMargemRetrieveQueryKey } from "./hooks/useV1AnaliseMargemRetrieve.ts";
+export type { V1AnaliseMargemRetrieveSuspenseQueryKey } from "./hooks/useV1AnaliseMargemRetrieveSuspense.ts";
 export type { V1AssociadosCiclosRetrieveQueryKey } from "./hooks/useV1AssociadosCiclosRetrieve.ts";
 export type { V1AssociadosCiclosRetrieveSuspenseQueryKey } from "./hooks/useV1AssociadosCiclosRetrieveSuspense.ts";
 export type { V1AssociadosCreateMutationKey } from "./hooks/useV1AssociadosCreate.ts";
@@ -13,11 +28,19 @@ export type { V1AssociadosPartialUpdateMutationKey } from "./hooks/useV1Associad
 export type { V1AssociadosRetrieveQueryKey } from "./hooks/useV1AssociadosRetrieve.ts";
 export type { V1AssociadosRetrieveSuspenseQueryKey } from "./hooks/useV1AssociadosRetrieveSuspense.ts";
 export type { V1AssociadosUpdateMutationKey } from "./hooks/useV1AssociadosUpdate.ts";
+export type { V1AssociadosValidarDocumentoRetrieveQueryKey } from "./hooks/useV1AssociadosValidarDocumentoRetrieve.ts";
+export type { V1AssociadosValidarDocumentoRetrieveSuspenseQueryKey } from "./hooks/useV1AssociadosValidarDocumentoRetrieveSuspense.ts";
 export type { V1AuthLoginCreateMutationKey } from "./hooks/useV1AuthLoginCreate.ts";
 export type { V1AuthLogoutCreateMutationKey } from "./hooks/useV1AuthLogoutCreate.ts";
 export type { V1AuthMeRetrieveQueryKey } from "./hooks/useV1AuthMeRetrieve.ts";
 export type { V1AuthMeRetrieveSuspenseQueryKey } from "./hooks/useV1AuthMeRetrieveSuspense.ts";
 export type { V1AuthRefreshCreateMutationKey } from "./hooks/useV1AuthRefreshCreate.ts";
+export type { V1ConfiguracoesUsuariosListQueryKey } from "./hooks/useV1ConfiguracoesUsuariosList.ts";
+export type { V1ConfiguracoesUsuariosListSuspenseQueryKey } from "./hooks/useV1ConfiguracoesUsuariosListSuspense.ts";
+export type { V1ConfiguracoesUsuariosPartialUpdateMutationKey } from "./hooks/useV1ConfiguracoesUsuariosPartialUpdate.ts";
+export type { V1ConfiguracoesUsuariosResetarSenhaCreateMutationKey } from "./hooks/useV1ConfiguracoesUsuariosResetarSenhaCreate.ts";
+export type { V1ConfiguracoesUsuariosRetrieveQueryKey } from "./hooks/useV1ConfiguracoesUsuariosRetrieve.ts";
+export type { V1ConfiguracoesUsuariosRetrieveSuspenseQueryKey } from "./hooks/useV1ConfiguracoesUsuariosRetrieveSuspense.ts";
 export type { V1ContratosListQueryKey } from "./hooks/useV1ContratosList.ts";
 export type { V1ContratosListSuspenseQueryKey } from "./hooks/useV1ContratosListSuspense.ts";
 export type { V1ContratosResumoRetrieveQueryKey } from "./hooks/useV1ContratosResumoRetrieve.ts";
@@ -74,6 +97,13 @@ export type { V1RefinanciamentosRetrieveQueryKey } from "./hooks/useV1Refinancia
 export type { V1RefinanciamentosRetrieveSuspenseQueryKey } from "./hooks/useV1RefinanciamentosRetrieveSuspense.ts";
 export type { V1RefinanciamentosReverterCreateMutationKey } from "./hooks/useV1RefinanciamentosReverterCreate.ts";
 export type { V1RefinanciamentosSolicitarCreateMutationKey } from "./hooks/useV1RefinanciamentosSolicitarCreate.ts";
+export type { V1RelatoriosDownloadRetrieveQueryKey } from "./hooks/useV1RelatoriosDownloadRetrieve.ts";
+export type { V1RelatoriosDownloadRetrieveSuspenseQueryKey } from "./hooks/useV1RelatoriosDownloadRetrieveSuspense.ts";
+export type { V1RelatoriosExportarCreateMutationKey } from "./hooks/useV1RelatoriosExportarCreate.ts";
+export type { V1RelatoriosListQueryKey } from "./hooks/useV1RelatoriosList.ts";
+export type { V1RelatoriosListSuspenseQueryKey } from "./hooks/useV1RelatoriosListSuspense.ts";
+export type { V1RelatoriosResumoRetrieveQueryKey } from "./hooks/useV1RelatoriosResumoRetrieve.ts";
+export type { V1RelatoriosResumoRetrieveSuspenseQueryKey } from "./hooks/useV1RelatoriosResumoRetrieveSuspense.ts";
 export type { V1RenovacaoCiclosExportarRetrieveQueryKey } from "./hooks/useV1RenovacaoCiclosExportarRetrieve.ts";
 export type { V1RenovacaoCiclosExportarRetrieveSuspenseQueryKey } from "./hooks/useV1RenovacaoCiclosExportarRetrieveSuspense.ts";
 export type { V1RenovacaoCiclosListQueryKey } from "./hooks/useV1RenovacaoCiclosList.ts";
@@ -100,6 +130,14 @@ export type { V1TesourariaRefinanciamentosListQueryKey } from "./hooks/useV1Teso
 export type { V1TesourariaRefinanciamentosListSuspenseQueryKey } from "./hooks/useV1TesourariaRefinanciamentosListSuspense.ts";
 export type { V1TesourariaRefinanciamentosRetrieveQueryKey } from "./hooks/useV1TesourariaRefinanciamentosRetrieve.ts";
 export type { V1TesourariaRefinanciamentosRetrieveSuspenseQueryKey } from "./hooks/useV1TesourariaRefinanciamentosRetrieveSuspense.ts";
+export type { AdminUserAccessUpdate } from "./models/AdminUserAccessUpdate.ts";
+export type { AdminUserList } from "./models/AdminUserList.ts";
+export type { AgentePagamentoContrato } from "./models/AgentePagamentoContrato.ts";
+export type { AnaliseDados } from "./models/AnaliseDados.ts";
+export type { AnaliseDadosUpdate } from "./models/AnaliseDadosUpdate.ts";
+export type { AnaliseMargem } from "./models/AnaliseMargem.ts";
+export type { AnalisePagamento } from "./models/AnalisePagamento.ts";
+export type { AnalisePagamentoData } from "./models/AnalisePagamentoData.ts";
 export type { ArquivoRetornoDetail } from "./models/ArquivoRetornoDetail.ts";
 export type { ArquivoRetornoItem } from "./models/ArquivoRetornoItem.ts";
 export type { ArquivoRetornoList } from "./models/ArquivoRetornoList.ts";
@@ -123,6 +161,7 @@ export type {
 export type { ConfirmacaoList } from "./models/ConfirmacaoList.ts";
 export type { ContatoHistorico } from "./models/ContatoHistorico.ts";
 export type { ContatoHistoricoWrite } from "./models/ContatoHistoricoWrite.ts";
+export type { ContratoAgente } from "./models/ContratoAgente.ts";
 export type { ContratoList } from "./models/ContratoList.ts";
 export type { ContratoResumo } from "./models/ContratoResumo.ts";
 export type { DadosBancarios } from "./models/DadosBancarios.ts";
@@ -148,6 +187,9 @@ export type { EsteiraList } from "./models/EsteiraList.ts";
 export type { FormatoEnum, FormatoEnumEnumKey } from "./models/FormatoEnum.ts";
 export type { Login } from "./models/Login.ts";
 export type { Logout } from "./models/Logout.ts";
+export type { PaginatedAdminUserListList } from "./models/PaginatedAdminUserListList.ts";
+export type { PaginatedAgentePagamentoContratoList } from "./models/PaginatedAgentePagamentoContratoList.ts";
+export type { PaginatedAnaliseDadosList } from "./models/PaginatedAnaliseDadosList.ts";
 export type { PaginatedArquivoRetornoItemList } from "./models/PaginatedArquivoRetornoItemList.ts";
 export type { PaginatedArquivoRetornoListList } from "./models/PaginatedArquivoRetornoListList.ts";
 export type { PaginatedAssociadoListList } from "./models/PaginatedAssociadoListList.ts";
@@ -171,6 +213,10 @@ export type {
   ParcelaStatusEnum,
   ParcelaStatusEnumEnumKey,
 } from "./models/ParcelaStatusEnum.ts";
+export type { PasswordResetResult } from "./models/PasswordResetResult.ts";
+export type { PatchedAdminUserAccessUpdate } from "./models/PatchedAdminUserAccessUpdate.ts";
+export type { PatchedAnaliseDadosUpdate } from "./models/PatchedAnaliseDadosUpdate.ts";
+export type { PatchedAnalisePagamentoData } from "./models/PatchedAnalisePagamentoData.ts";
 export type { PatchedAssociadoUpdate } from "./models/PatchedAssociadoUpdate.ts";
 export type { Pendencia } from "./models/Pendencia.ts";
 export type { PendenciaResumo } from "./models/PendenciaResumo.ts";
@@ -181,6 +227,7 @@ export type {
 export type { RefinanciamentoDetail } from "./models/RefinanciamentoDetail.ts";
 export type { RefinanciamentoList } from "./models/RefinanciamentoList.ts";
 export type { Refresh } from "./models/Refresh.ts";
+export type { RelatorioGerado } from "./models/RelatorioGerado.ts";
 export type { RenovacaoCicloItem } from "./models/RenovacaoCicloItem.ts";
 export type { RenovacaoCicloMes } from "./models/RenovacaoCicloMes.ts";
 export type { RenovacaoCicloResumo } from "./models/RenovacaoCicloResumo.ts";
@@ -229,6 +276,58 @@ export type {
 export type { Transicao } from "./models/Transicao.ts";
 export type { TransicaoResumo } from "./models/TransicaoResumo.ts";
 export type { User } from "./models/User.ts";
+export type {
+  V1AgentePagamentosList200,
+  V1AgentePagamentosListQuery,
+  V1AgentePagamentosListQueryParams,
+  V1AgentePagamentosListQueryResponse,
+} from "./models/V1AgentePagamentosList.ts";
+export type {
+  V1AnaliseAjustesDataPagamentoPartialUpdate200,
+  V1AnaliseAjustesDataPagamentoPartialUpdateMutation,
+  V1AnaliseAjustesDataPagamentoPartialUpdateMutationRequest,
+  V1AnaliseAjustesDataPagamentoPartialUpdateMutationResponse,
+  V1AnaliseAjustesDataPagamentoPartialUpdatePathParams,
+} from "./models/V1AnaliseAjustesDataPagamentoPartialUpdate.ts";
+export type {
+  V1AnaliseAjustesDestroy204,
+  V1AnaliseAjustesDestroyMutation,
+  V1AnaliseAjustesDestroyMutationResponse,
+  V1AnaliseAjustesDestroyPathParams,
+} from "./models/V1AnaliseAjustesDestroy.ts";
+export type {
+  V1AnaliseAjustesRetrieve200,
+  V1AnaliseAjustesRetrieveQuery,
+  V1AnaliseAjustesRetrieveQueryResponse,
+} from "./models/V1AnaliseAjustesRetrieve.ts";
+export type {
+  V1AnaliseDadosNomePartialUpdate200,
+  V1AnaliseDadosNomePartialUpdateMutation,
+  V1AnaliseDadosNomePartialUpdateMutationRequest,
+  V1AnaliseDadosNomePartialUpdateMutationResponse,
+  V1AnaliseDadosNomePartialUpdatePathParams,
+} from "./models/V1AnaliseDadosNomePartialUpdate.ts";
+export type {
+  V1AnaliseDadosRetrieve200,
+  V1AnaliseDadosRetrieveQuery,
+  V1AnaliseDadosRetrieveQueryResponse,
+} from "./models/V1AnaliseDadosRetrieve.ts";
+export type {
+  V1AnaliseFilasRetrieve200,
+  V1AnaliseFilasRetrieveQuery,
+  V1AnaliseFilasRetrieveQueryResponse,
+} from "./models/V1AnaliseFilasRetrieve.ts";
+export type {
+  V1AnaliseList200,
+  V1AnaliseListQuery,
+  V1AnaliseListQueryParams,
+  V1AnaliseListQueryResponse,
+} from "./models/V1AnaliseList.ts";
+export type {
+  V1AnaliseMargemRetrieve200,
+  V1AnaliseMargemRetrieveQuery,
+  V1AnaliseMargemRetrieveQueryResponse,
+} from "./models/V1AnaliseMargemRetrieve.ts";
 export type {
   V1AssociadosCiclosRetrieve200,
   V1AssociadosCiclosRetrievePathParams,
@@ -287,6 +386,11 @@ export type {
   V1AssociadosUpdatePathParams,
 } from "./models/V1AssociadosUpdate.ts";
 export type {
+  V1AssociadosValidarDocumentoRetrieve200,
+  V1AssociadosValidarDocumentoRetrieveQuery,
+  V1AssociadosValidarDocumentoRetrieveQueryResponse,
+} from "./models/V1AssociadosValidarDocumentoRetrieve.ts";
+export type {
   V1AuthLoginCreate200,
   V1AuthLoginCreateMutation,
   V1AuthLoginCreateMutationRequest,
@@ -309,6 +413,31 @@ export type {
   V1AuthRefreshCreateMutationRequest,
   V1AuthRefreshCreateMutationResponse,
 } from "./models/V1AuthRefreshCreate.ts";
+export type {
+  V1ConfiguracoesUsuariosList200,
+  V1ConfiguracoesUsuariosListQuery,
+  V1ConfiguracoesUsuariosListQueryParams,
+  V1ConfiguracoesUsuariosListQueryResponse,
+} from "./models/V1ConfiguracoesUsuariosList.ts";
+export type {
+  V1ConfiguracoesUsuariosPartialUpdate200,
+  V1ConfiguracoesUsuariosPartialUpdateMutation,
+  V1ConfiguracoesUsuariosPartialUpdateMutationRequest,
+  V1ConfiguracoesUsuariosPartialUpdateMutationResponse,
+  V1ConfiguracoesUsuariosPartialUpdatePathParams,
+} from "./models/V1ConfiguracoesUsuariosPartialUpdate.ts";
+export type {
+  V1ConfiguracoesUsuariosResetarSenhaCreate200,
+  V1ConfiguracoesUsuariosResetarSenhaCreateMutation,
+  V1ConfiguracoesUsuariosResetarSenhaCreateMutationResponse,
+  V1ConfiguracoesUsuariosResetarSenhaCreatePathParams,
+} from "./models/V1ConfiguracoesUsuariosResetarSenhaCreate.ts";
+export type {
+  V1ConfiguracoesUsuariosRetrieve200,
+  V1ConfiguracoesUsuariosRetrievePathParams,
+  V1ConfiguracoesUsuariosRetrieveQuery,
+  V1ConfiguracoesUsuariosRetrieveQueryResponse,
+} from "./models/V1ConfiguracoesUsuariosRetrieve.ts";
 export type {
   V1ContratosList200,
   V1ContratosListQuery,
@@ -527,6 +656,29 @@ export type {
   V1RefinanciamentosSolicitarCreatePathParams,
 } from "./models/V1RefinanciamentosSolicitarCreate.ts";
 export type {
+  V1RelatoriosDownloadRetrieve200,
+  V1RelatoriosDownloadRetrievePathParams,
+  V1RelatoriosDownloadRetrieveQuery,
+  V1RelatoriosDownloadRetrieveQueryResponse,
+} from "./models/V1RelatoriosDownloadRetrieve.ts";
+export type {
+  V1RelatoriosExportarCreate200,
+  V1RelatoriosExportarCreateMutation,
+  V1RelatoriosExportarCreateMutationRequest,
+  V1RelatoriosExportarCreateMutationResponse,
+} from "./models/V1RelatoriosExportarCreate.ts";
+export type {
+  V1RelatoriosList200,
+  V1RelatoriosListQuery,
+  V1RelatoriosListQueryParams,
+  V1RelatoriosListQueryResponse,
+} from "./models/V1RelatoriosList.ts";
+export type {
+  V1RelatoriosResumoRetrieve200,
+  V1RelatoriosResumoRetrieveQuery,
+  V1RelatoriosResumoRetrieveQueryResponse,
+} from "./models/V1RelatoriosResumoRetrieve.ts";
+export type {
   V1RenovacaoCiclosExportarRetrieve200,
   V1RenovacaoCiclosExportarRetrieveQuery,
   V1RenovacaoCiclosExportarRetrieveQueryParams,
@@ -629,6 +781,15 @@ export type {
   V1TesourariaRefinanciamentosRetrieveQueryResponse,
 } from "./models/V1TesourariaRefinanciamentosRetrieve.ts";
 export { schemaRetrieve } from "./client/schemaRetrieve.ts";
+export { v1AgentePagamentosList } from "./client/v1AgentePagamentosList.ts";
+export { v1AnaliseAjustesDataPagamentoPartialUpdate } from "./client/v1AnaliseAjustesDataPagamentoPartialUpdate.ts";
+export { v1AnaliseAjustesDestroy } from "./client/v1AnaliseAjustesDestroy.ts";
+export { v1AnaliseAjustesRetrieve } from "./client/v1AnaliseAjustesRetrieve.ts";
+export { v1AnaliseDadosNomePartialUpdate } from "./client/v1AnaliseDadosNomePartialUpdate.ts";
+export { v1AnaliseDadosRetrieve } from "./client/v1AnaliseDadosRetrieve.ts";
+export { v1AnaliseFilasRetrieve } from "./client/v1AnaliseFilasRetrieve.ts";
+export { v1AnaliseList } from "./client/v1AnaliseList.ts";
+export { v1AnaliseMargemRetrieve } from "./client/v1AnaliseMargemRetrieve.ts";
 export { v1AssociadosCiclosRetrieve } from "./client/v1AssociadosCiclosRetrieve.ts";
 export { v1AssociadosCreate } from "./client/v1AssociadosCreate.ts";
 export { v1AssociadosDestroy } from "./client/v1AssociadosDestroy.ts";
@@ -638,10 +799,15 @@ export { v1AssociadosMetricasRetrieve } from "./client/v1AssociadosMetricasRetri
 export { v1AssociadosPartialUpdate } from "./client/v1AssociadosPartialUpdate.ts";
 export { v1AssociadosRetrieve } from "./client/v1AssociadosRetrieve.ts";
 export { v1AssociadosUpdate } from "./client/v1AssociadosUpdate.ts";
+export { v1AssociadosValidarDocumentoRetrieve } from "./client/v1AssociadosValidarDocumentoRetrieve.ts";
 export { v1AuthLoginCreate } from "./client/v1AuthLoginCreate.ts";
 export { v1AuthLogoutCreate } from "./client/v1AuthLogoutCreate.ts";
 export { v1AuthMeRetrieve } from "./client/v1AuthMeRetrieve.ts";
 export { v1AuthRefreshCreate } from "./client/v1AuthRefreshCreate.ts";
+export { v1ConfiguracoesUsuariosList } from "./client/v1ConfiguracoesUsuariosList.ts";
+export { v1ConfiguracoesUsuariosPartialUpdate } from "./client/v1ConfiguracoesUsuariosPartialUpdate.ts";
+export { v1ConfiguracoesUsuariosResetarSenhaCreate } from "./client/v1ConfiguracoesUsuariosResetarSenhaCreate.ts";
+export { v1ConfiguracoesUsuariosRetrieve } from "./client/v1ConfiguracoesUsuariosRetrieve.ts";
 export { v1ContratosList } from "./client/v1ContratosList.ts";
 export { v1ContratosResumoRetrieve } from "./client/v1ContratosResumoRetrieve.ts";
 export { v1ContratosRetrieve } from "./client/v1ContratosRetrieve.ts";
@@ -676,6 +842,10 @@ export { v1RefinanciamentosList } from "./client/v1RefinanciamentosList.ts";
 export { v1RefinanciamentosRetrieve } from "./client/v1RefinanciamentosRetrieve.ts";
 export { v1RefinanciamentosReverterCreate } from "./client/v1RefinanciamentosReverterCreate.ts";
 export { v1RefinanciamentosSolicitarCreate } from "./client/v1RefinanciamentosSolicitarCreate.ts";
+export { v1RelatoriosDownloadRetrieve } from "./client/v1RelatoriosDownloadRetrieve.ts";
+export { v1RelatoriosExportarCreate } from "./client/v1RelatoriosExportarCreate.ts";
+export { v1RelatoriosList } from "./client/v1RelatoriosList.ts";
+export { v1RelatoriosResumoRetrieve } from "./client/v1RelatoriosResumoRetrieve.ts";
 export { v1RenovacaoCiclosExportarRetrieve } from "./client/v1RenovacaoCiclosExportarRetrieve.ts";
 export { v1RenovacaoCiclosList } from "./client/v1RenovacaoCiclosList.ts";
 export { v1RenovacaoCiclosMesesList } from "./client/v1RenovacaoCiclosMesesList.ts";
@@ -698,6 +868,51 @@ export { useSchemaRetrieve } from "./hooks/useSchemaRetrieve.ts";
 export { schemaRetrieveSuspenseQueryKey } from "./hooks/useSchemaRetrieveSuspense.ts";
 export { schemaRetrieveSuspenseQueryOptions } from "./hooks/useSchemaRetrieveSuspense.ts";
 export { useSchemaRetrieveSuspense } from "./hooks/useSchemaRetrieveSuspense.ts";
+export { useV1AgentePagamentosList } from "./hooks/useV1AgentePagamentosList.ts";
+export { v1AgentePagamentosListQueryKey } from "./hooks/useV1AgentePagamentosList.ts";
+export { v1AgentePagamentosListQueryOptions } from "./hooks/useV1AgentePagamentosList.ts";
+export { useV1AgentePagamentosListSuspense } from "./hooks/useV1AgentePagamentosListSuspense.ts";
+export { v1AgentePagamentosListSuspenseQueryKey } from "./hooks/useV1AgentePagamentosListSuspense.ts";
+export { v1AgentePagamentosListSuspenseQueryOptions } from "./hooks/useV1AgentePagamentosListSuspense.ts";
+export { useV1AnaliseAjustesDataPagamentoPartialUpdate } from "./hooks/useV1AnaliseAjustesDataPagamentoPartialUpdate.ts";
+export { v1AnaliseAjustesDataPagamentoPartialUpdateMutationKey } from "./hooks/useV1AnaliseAjustesDataPagamentoPartialUpdate.ts";
+export { v1AnaliseAjustesDataPagamentoPartialUpdateMutationOptions } from "./hooks/useV1AnaliseAjustesDataPagamentoPartialUpdate.ts";
+export { useV1AnaliseAjustesDestroy } from "./hooks/useV1AnaliseAjustesDestroy.ts";
+export { v1AnaliseAjustesDestroyMutationKey } from "./hooks/useV1AnaliseAjustesDestroy.ts";
+export { v1AnaliseAjustesDestroyMutationOptions } from "./hooks/useV1AnaliseAjustesDestroy.ts";
+export { useV1AnaliseAjustesRetrieve } from "./hooks/useV1AnaliseAjustesRetrieve.ts";
+export { v1AnaliseAjustesRetrieveQueryKey } from "./hooks/useV1AnaliseAjustesRetrieve.ts";
+export { v1AnaliseAjustesRetrieveQueryOptions } from "./hooks/useV1AnaliseAjustesRetrieve.ts";
+export { useV1AnaliseAjustesRetrieveSuspense } from "./hooks/useV1AnaliseAjustesRetrieveSuspense.ts";
+export { v1AnaliseAjustesRetrieveSuspenseQueryKey } from "./hooks/useV1AnaliseAjustesRetrieveSuspense.ts";
+export { v1AnaliseAjustesRetrieveSuspenseQueryOptions } from "./hooks/useV1AnaliseAjustesRetrieveSuspense.ts";
+export { useV1AnaliseDadosNomePartialUpdate } from "./hooks/useV1AnaliseDadosNomePartialUpdate.ts";
+export { v1AnaliseDadosNomePartialUpdateMutationKey } from "./hooks/useV1AnaliseDadosNomePartialUpdate.ts";
+export { v1AnaliseDadosNomePartialUpdateMutationOptions } from "./hooks/useV1AnaliseDadosNomePartialUpdate.ts";
+export { useV1AnaliseDadosRetrieve } from "./hooks/useV1AnaliseDadosRetrieve.ts";
+export { v1AnaliseDadosRetrieveQueryKey } from "./hooks/useV1AnaliseDadosRetrieve.ts";
+export { v1AnaliseDadosRetrieveQueryOptions } from "./hooks/useV1AnaliseDadosRetrieve.ts";
+export { useV1AnaliseDadosRetrieveSuspense } from "./hooks/useV1AnaliseDadosRetrieveSuspense.ts";
+export { v1AnaliseDadosRetrieveSuspenseQueryKey } from "./hooks/useV1AnaliseDadosRetrieveSuspense.ts";
+export { v1AnaliseDadosRetrieveSuspenseQueryOptions } from "./hooks/useV1AnaliseDadosRetrieveSuspense.ts";
+export { useV1AnaliseFilasRetrieve } from "./hooks/useV1AnaliseFilasRetrieve.ts";
+export { v1AnaliseFilasRetrieveQueryKey } from "./hooks/useV1AnaliseFilasRetrieve.ts";
+export { v1AnaliseFilasRetrieveQueryOptions } from "./hooks/useV1AnaliseFilasRetrieve.ts";
+export { useV1AnaliseFilasRetrieveSuspense } from "./hooks/useV1AnaliseFilasRetrieveSuspense.ts";
+export { v1AnaliseFilasRetrieveSuspenseQueryKey } from "./hooks/useV1AnaliseFilasRetrieveSuspense.ts";
+export { v1AnaliseFilasRetrieveSuspenseQueryOptions } from "./hooks/useV1AnaliseFilasRetrieveSuspense.ts";
+export { useV1AnaliseList } from "./hooks/useV1AnaliseList.ts";
+export { v1AnaliseListQueryKey } from "./hooks/useV1AnaliseList.ts";
+export { v1AnaliseListQueryOptions } from "./hooks/useV1AnaliseList.ts";
+export { useV1AnaliseListSuspense } from "./hooks/useV1AnaliseListSuspense.ts";
+export { v1AnaliseListSuspenseQueryKey } from "./hooks/useV1AnaliseListSuspense.ts";
+export { v1AnaliseListSuspenseQueryOptions } from "./hooks/useV1AnaliseListSuspense.ts";
+export { useV1AnaliseMargemRetrieve } from "./hooks/useV1AnaliseMargemRetrieve.ts";
+export { v1AnaliseMargemRetrieveQueryKey } from "./hooks/useV1AnaliseMargemRetrieve.ts";
+export { v1AnaliseMargemRetrieveQueryOptions } from "./hooks/useV1AnaliseMargemRetrieve.ts";
+export { useV1AnaliseMargemRetrieveSuspense } from "./hooks/useV1AnaliseMargemRetrieveSuspense.ts";
+export { v1AnaliseMargemRetrieveSuspenseQueryKey } from "./hooks/useV1AnaliseMargemRetrieveSuspense.ts";
+export { v1AnaliseMargemRetrieveSuspenseQueryOptions } from "./hooks/useV1AnaliseMargemRetrieveSuspense.ts";
 export { useV1AssociadosCiclosRetrieve } from "./hooks/useV1AssociadosCiclosRetrieve.ts";
 export { v1AssociadosCiclosRetrieveQueryKey } from "./hooks/useV1AssociadosCiclosRetrieve.ts";
 export { v1AssociadosCiclosRetrieveQueryOptions } from "./hooks/useV1AssociadosCiclosRetrieve.ts";
@@ -737,6 +952,12 @@ export { v1AssociadosRetrieveSuspenseQueryOptions } from "./hooks/useV1Associado
 export { useV1AssociadosUpdate } from "./hooks/useV1AssociadosUpdate.ts";
 export { v1AssociadosUpdateMutationKey } from "./hooks/useV1AssociadosUpdate.ts";
 export { v1AssociadosUpdateMutationOptions } from "./hooks/useV1AssociadosUpdate.ts";
+export { useV1AssociadosValidarDocumentoRetrieve } from "./hooks/useV1AssociadosValidarDocumentoRetrieve.ts";
+export { v1AssociadosValidarDocumentoRetrieveQueryKey } from "./hooks/useV1AssociadosValidarDocumentoRetrieve.ts";
+export { v1AssociadosValidarDocumentoRetrieveQueryOptions } from "./hooks/useV1AssociadosValidarDocumentoRetrieve.ts";
+export { useV1AssociadosValidarDocumentoRetrieveSuspense } from "./hooks/useV1AssociadosValidarDocumentoRetrieveSuspense.ts";
+export { v1AssociadosValidarDocumentoRetrieveSuspenseQueryKey } from "./hooks/useV1AssociadosValidarDocumentoRetrieveSuspense.ts";
+export { v1AssociadosValidarDocumentoRetrieveSuspenseQueryOptions } from "./hooks/useV1AssociadosValidarDocumentoRetrieveSuspense.ts";
 export { useV1AuthLoginCreate } from "./hooks/useV1AuthLoginCreate.ts";
 export { v1AuthLoginCreateMutationKey } from "./hooks/useV1AuthLoginCreate.ts";
 export { v1AuthLoginCreateMutationOptions } from "./hooks/useV1AuthLoginCreate.ts";
@@ -752,6 +973,24 @@ export { v1AuthMeRetrieveSuspenseQueryOptions } from "./hooks/useV1AuthMeRetriev
 export { useV1AuthRefreshCreate } from "./hooks/useV1AuthRefreshCreate.ts";
 export { v1AuthRefreshCreateMutationKey } from "./hooks/useV1AuthRefreshCreate.ts";
 export { v1AuthRefreshCreateMutationOptions } from "./hooks/useV1AuthRefreshCreate.ts";
+export { useV1ConfiguracoesUsuariosList } from "./hooks/useV1ConfiguracoesUsuariosList.ts";
+export { v1ConfiguracoesUsuariosListQueryKey } from "./hooks/useV1ConfiguracoesUsuariosList.ts";
+export { v1ConfiguracoesUsuariosListQueryOptions } from "./hooks/useV1ConfiguracoesUsuariosList.ts";
+export { useV1ConfiguracoesUsuariosListSuspense } from "./hooks/useV1ConfiguracoesUsuariosListSuspense.ts";
+export { v1ConfiguracoesUsuariosListSuspenseQueryKey } from "./hooks/useV1ConfiguracoesUsuariosListSuspense.ts";
+export { v1ConfiguracoesUsuariosListSuspenseQueryOptions } from "./hooks/useV1ConfiguracoesUsuariosListSuspense.ts";
+export { useV1ConfiguracoesUsuariosPartialUpdate } from "./hooks/useV1ConfiguracoesUsuariosPartialUpdate.ts";
+export { v1ConfiguracoesUsuariosPartialUpdateMutationKey } from "./hooks/useV1ConfiguracoesUsuariosPartialUpdate.ts";
+export { v1ConfiguracoesUsuariosPartialUpdateMutationOptions } from "./hooks/useV1ConfiguracoesUsuariosPartialUpdate.ts";
+export { useV1ConfiguracoesUsuariosResetarSenhaCreate } from "./hooks/useV1ConfiguracoesUsuariosResetarSenhaCreate.ts";
+export { v1ConfiguracoesUsuariosResetarSenhaCreateMutationKey } from "./hooks/useV1ConfiguracoesUsuariosResetarSenhaCreate.ts";
+export { v1ConfiguracoesUsuariosResetarSenhaCreateMutationOptions } from "./hooks/useV1ConfiguracoesUsuariosResetarSenhaCreate.ts";
+export { useV1ConfiguracoesUsuariosRetrieve } from "./hooks/useV1ConfiguracoesUsuariosRetrieve.ts";
+export { v1ConfiguracoesUsuariosRetrieveQueryKey } from "./hooks/useV1ConfiguracoesUsuariosRetrieve.ts";
+export { v1ConfiguracoesUsuariosRetrieveQueryOptions } from "./hooks/useV1ConfiguracoesUsuariosRetrieve.ts";
+export { useV1ConfiguracoesUsuariosRetrieveSuspense } from "./hooks/useV1ConfiguracoesUsuariosRetrieveSuspense.ts";
+export { v1ConfiguracoesUsuariosRetrieveSuspenseQueryKey } from "./hooks/useV1ConfiguracoesUsuariosRetrieveSuspense.ts";
+export { v1ConfiguracoesUsuariosRetrieveSuspenseQueryOptions } from "./hooks/useV1ConfiguracoesUsuariosRetrieveSuspense.ts";
 export { useV1ContratosList } from "./hooks/useV1ContratosList.ts";
 export { v1ContratosListQueryKey } from "./hooks/useV1ContratosList.ts";
 export { v1ContratosListQueryOptions } from "./hooks/useV1ContratosList.ts";
@@ -920,6 +1159,27 @@ export { v1RefinanciamentosReverterCreateMutationOptions } from "./hooks/useV1Re
 export { useV1RefinanciamentosSolicitarCreate } from "./hooks/useV1RefinanciamentosSolicitarCreate.ts";
 export { v1RefinanciamentosSolicitarCreateMutationKey } from "./hooks/useV1RefinanciamentosSolicitarCreate.ts";
 export { v1RefinanciamentosSolicitarCreateMutationOptions } from "./hooks/useV1RefinanciamentosSolicitarCreate.ts";
+export { useV1RelatoriosDownloadRetrieve } from "./hooks/useV1RelatoriosDownloadRetrieve.ts";
+export { v1RelatoriosDownloadRetrieveQueryKey } from "./hooks/useV1RelatoriosDownloadRetrieve.ts";
+export { v1RelatoriosDownloadRetrieveQueryOptions } from "./hooks/useV1RelatoriosDownloadRetrieve.ts";
+export { useV1RelatoriosDownloadRetrieveSuspense } from "./hooks/useV1RelatoriosDownloadRetrieveSuspense.ts";
+export { v1RelatoriosDownloadRetrieveSuspenseQueryKey } from "./hooks/useV1RelatoriosDownloadRetrieveSuspense.ts";
+export { v1RelatoriosDownloadRetrieveSuspenseQueryOptions } from "./hooks/useV1RelatoriosDownloadRetrieveSuspense.ts";
+export { useV1RelatoriosExportarCreate } from "./hooks/useV1RelatoriosExportarCreate.ts";
+export { v1RelatoriosExportarCreateMutationKey } from "./hooks/useV1RelatoriosExportarCreate.ts";
+export { v1RelatoriosExportarCreateMutationOptions } from "./hooks/useV1RelatoriosExportarCreate.ts";
+export { useV1RelatoriosList } from "./hooks/useV1RelatoriosList.ts";
+export { v1RelatoriosListQueryKey } from "./hooks/useV1RelatoriosList.ts";
+export { v1RelatoriosListQueryOptions } from "./hooks/useV1RelatoriosList.ts";
+export { useV1RelatoriosListSuspense } from "./hooks/useV1RelatoriosListSuspense.ts";
+export { v1RelatoriosListSuspenseQueryKey } from "./hooks/useV1RelatoriosListSuspense.ts";
+export { v1RelatoriosListSuspenseQueryOptions } from "./hooks/useV1RelatoriosListSuspense.ts";
+export { useV1RelatoriosResumoRetrieve } from "./hooks/useV1RelatoriosResumoRetrieve.ts";
+export { v1RelatoriosResumoRetrieveQueryKey } from "./hooks/useV1RelatoriosResumoRetrieve.ts";
+export { v1RelatoriosResumoRetrieveQueryOptions } from "./hooks/useV1RelatoriosResumoRetrieve.ts";
+export { useV1RelatoriosResumoRetrieveSuspense } from "./hooks/useV1RelatoriosResumoRetrieveSuspense.ts";
+export { v1RelatoriosResumoRetrieveSuspenseQueryKey } from "./hooks/useV1RelatoriosResumoRetrieveSuspense.ts";
+export { v1RelatoriosResumoRetrieveSuspenseQueryOptions } from "./hooks/useV1RelatoriosResumoRetrieveSuspense.ts";
 export { useV1RenovacaoCiclosExportarRetrieve } from "./hooks/useV1RenovacaoCiclosExportarRetrieve.ts";
 export { v1RenovacaoCiclosExportarRetrieveQueryKey } from "./hooks/useV1RenovacaoCiclosExportarRetrieve.ts";
 export { v1RenovacaoCiclosExportarRetrieveQueryOptions } from "./hooks/useV1RenovacaoCiclosExportarRetrieve.ts";
@@ -1021,6 +1281,14 @@ export { statusDescontoEnumEnum } from "./models/StatusDescontoEnum.ts";
 export { tipoContaEnumEnum } from "./models/TipoContaEnum.ts";
 export { tipoDocumentoEnumEnum } from "./models/TipoDocumentoEnum.ts";
 export { V1AssociadosListQueryParamsStatusEnum } from "./models/V1AssociadosList.ts";
+export { adminUserAccessUpdateSchema } from "./zod/adminUserAccessUpdateSchema.ts";
+export { adminUserListSchema } from "./zod/adminUserListSchema.ts";
+export { agentePagamentoContratoSchema } from "./zod/agentePagamentoContratoSchema.ts";
+export { analiseDadosSchema } from "./zod/analiseDadosSchema.ts";
+export { analiseDadosUpdateSchema } from "./zod/analiseDadosUpdateSchema.ts";
+export { analiseMargemSchema } from "./zod/analiseMargemSchema.ts";
+export { analisePagamentoDataSchema } from "./zod/analisePagamentoDataSchema.ts";
+export { analisePagamentoSchema } from "./zod/analisePagamentoSchema.ts";
 export { arquivoRetornoDetailSchema } from "./zod/arquivoRetornoDetailSchema.ts";
 export { arquivoRetornoItemSchema } from "./zod/arquivoRetornoItemSchema.ts";
 export { arquivoRetornoListSchema } from "./zod/arquivoRetornoListSchema.ts";
@@ -1038,6 +1306,7 @@ export { comprovanteResumoTipoEnumSchema } from "./zod/comprovanteResumoTipoEnum
 export { confirmacaoListSchema } from "./zod/confirmacaoListSchema.ts";
 export { contatoHistoricoSchema } from "./zod/contatoHistoricoSchema.ts";
 export { contatoHistoricoWriteSchema } from "./zod/contatoHistoricoWriteSchema.ts";
+export { contratoAgenteSchema } from "./zod/contratoAgenteSchema.ts";
 export { contratoListSchema } from "./zod/contratoListSchema.ts";
 export { contratoResumoSchema } from "./zod/contratoResumoSchema.ts";
 export { dadosBancariosSchema } from "./zod/dadosBancariosSchema.ts";
@@ -1054,6 +1323,9 @@ export { esteiraListSchema } from "./zod/esteiraListSchema.ts";
 export { formatoEnumSchema } from "./zod/formatoEnumSchema.ts";
 export { loginSchema } from "./zod/loginSchema.ts";
 export { logoutSchema } from "./zod/logoutSchema.ts";
+export { paginatedAdminUserListListSchema } from "./zod/paginatedAdminUserListListSchema.ts";
+export { paginatedAgentePagamentoContratoListSchema } from "./zod/paginatedAgentePagamentoContratoListSchema.ts";
+export { paginatedAnaliseDadosListSchema } from "./zod/paginatedAnaliseDadosListSchema.ts";
 export { paginatedArquivoRetornoItemListSchema } from "./zod/paginatedArquivoRetornoItemListSchema.ts";
 export { paginatedArquivoRetornoListListSchema } from "./zod/paginatedArquivoRetornoListListSchema.ts";
 export { paginatedAssociadoListListSchema } from "./zod/paginatedAssociadoListListSchema.ts";
@@ -1068,6 +1340,10 @@ export { paraSituacaoEnumSchema } from "./zod/paraSituacaoEnumSchema.ts";
 export { paraStatusEnumSchema } from "./zod/paraStatusEnumSchema.ts";
 export { parcelaSchema } from "./zod/parcelaSchema.ts";
 export { parcelaStatusEnumSchema } from "./zod/parcelaStatusEnumSchema.ts";
+export { passwordResetResultSchema } from "./zod/passwordResetResultSchema.ts";
+export { patchedAdminUserAccessUpdateSchema } from "./zod/patchedAdminUserAccessUpdateSchema.ts";
+export { patchedAnaliseDadosUpdateSchema } from "./zod/patchedAnaliseDadosUpdateSchema.ts";
+export { patchedAnalisePagamentoDataSchema } from "./zod/patchedAnalisePagamentoDataSchema.ts";
 export { patchedAssociadoUpdateSchema } from "./zod/patchedAssociadoUpdateSchema.ts";
 export { pendenciaResumoSchema } from "./zod/pendenciaResumoSchema.ts";
 export { pendenciaSchema } from "./zod/pendenciaSchema.ts";
@@ -1075,6 +1351,7 @@ export { pendenciaStatusEnumSchema } from "./zod/pendenciaStatusEnumSchema.ts";
 export { refinanciamentoDetailSchema } from "./zod/refinanciamentoDetailSchema.ts";
 export { refinanciamentoListSchema } from "./zod/refinanciamentoListSchema.ts";
 export { refreshSchema } from "./zod/refreshSchema.ts";
+export { relatorioGeradoSchema } from "./zod/relatorioGeradoSchema.ts";
 export { renovacaoCicloItemSchema } from "./zod/renovacaoCicloItemSchema.ts";
 export { renovacaoCicloMesSchema } from "./zod/renovacaoCicloMesSchema.ts";
 export { renovacaoCicloResumoSchema } from "./zod/renovacaoCicloResumoSchema.ts";
@@ -1096,6 +1373,49 @@ export { tipoDocumentoEnumSchema } from "./zod/tipoDocumentoEnumSchema.ts";
 export { transicaoResumoSchema } from "./zod/transicaoResumoSchema.ts";
 export { transicaoSchema } from "./zod/transicaoSchema.ts";
 export { userSchema } from "./zod/userSchema.ts";
+export {
+  V1AgentePagamentosList200Schema,
+  V1AgentePagamentosListQueryParamsSchema,
+  V1AgentePagamentosListQueryResponseSchema,
+} from "./zod/v1AgentePagamentosListSchema.ts";
+export {
+  V1AnaliseAjustesDataPagamentoPartialUpdate200Schema,
+  V1AnaliseAjustesDataPagamentoPartialUpdateMutationRequestSchema,
+  V1AnaliseAjustesDataPagamentoPartialUpdateMutationResponseSchema,
+  V1AnaliseAjustesDataPagamentoPartialUpdatePathParamsSchema,
+} from "./zod/v1AnaliseAjustesDataPagamentoPartialUpdateSchema.ts";
+export {
+  V1AnaliseAjustesDestroy204Schema,
+  V1AnaliseAjustesDestroyMutationResponseSchema,
+  V1AnaliseAjustesDestroyPathParamsSchema,
+} from "./zod/v1AnaliseAjustesDestroySchema.ts";
+export {
+  V1AnaliseAjustesRetrieve200Schema,
+  V1AnaliseAjustesRetrieveQueryResponseSchema,
+} from "./zod/v1AnaliseAjustesRetrieveSchema.ts";
+export {
+  V1AnaliseDadosNomePartialUpdate200Schema,
+  V1AnaliseDadosNomePartialUpdateMutationRequestSchema,
+  V1AnaliseDadosNomePartialUpdateMutationResponseSchema,
+  V1AnaliseDadosNomePartialUpdatePathParamsSchema,
+} from "./zod/v1AnaliseDadosNomePartialUpdateSchema.ts";
+export {
+  V1AnaliseDadosRetrieve200Schema,
+  V1AnaliseDadosRetrieveQueryResponseSchema,
+} from "./zod/v1AnaliseDadosRetrieveSchema.ts";
+export {
+  V1AnaliseFilasRetrieve200Schema,
+  V1AnaliseFilasRetrieveQueryResponseSchema,
+} from "./zod/v1AnaliseFilasRetrieveSchema.ts";
+export {
+  V1AnaliseList200Schema,
+  V1AnaliseListQueryParamsSchema,
+  V1AnaliseListQueryResponseSchema,
+} from "./zod/v1AnaliseListSchema.ts";
+export {
+  V1AnaliseMargemRetrieve200Schema,
+  V1AnaliseMargemRetrieveQueryResponseSchema,
+} from "./zod/v1AnaliseMargemRetrieveSchema.ts";
 export {
   V1AssociadosCiclosRetrieve200Schema,
   V1AssociadosCiclosRetrievePathParamsSchema,
@@ -1144,6 +1464,10 @@ export {
   V1AssociadosUpdatePathParamsSchema,
 } from "./zod/v1AssociadosUpdateSchema.ts";
 export {
+  V1AssociadosValidarDocumentoRetrieve200Schema,
+  V1AssociadosValidarDocumentoRetrieveQueryResponseSchema,
+} from "./zod/v1AssociadosValidarDocumentoRetrieveSchema.ts";
+export {
   V1AuthLoginCreate200Schema,
   V1AuthLoginCreateMutationRequestSchema,
   V1AuthLoginCreateMutationResponseSchema,
@@ -1162,6 +1486,27 @@ export {
   V1AuthRefreshCreateMutationRequestSchema,
   V1AuthRefreshCreateMutationResponseSchema,
 } from "./zod/v1AuthRefreshCreateSchema.ts";
+export {
+  V1ConfiguracoesUsuariosList200Schema,
+  V1ConfiguracoesUsuariosListQueryParamsSchema,
+  V1ConfiguracoesUsuariosListQueryResponseSchema,
+} from "./zod/v1ConfiguracoesUsuariosListSchema.ts";
+export {
+  V1ConfiguracoesUsuariosPartialUpdate200Schema,
+  V1ConfiguracoesUsuariosPartialUpdateMutationRequestSchema,
+  V1ConfiguracoesUsuariosPartialUpdateMutationResponseSchema,
+  V1ConfiguracoesUsuariosPartialUpdatePathParamsSchema,
+} from "./zod/v1ConfiguracoesUsuariosPartialUpdateSchema.ts";
+export {
+  V1ConfiguracoesUsuariosResetarSenhaCreate200Schema,
+  V1ConfiguracoesUsuariosResetarSenhaCreateMutationResponseSchema,
+  V1ConfiguracoesUsuariosResetarSenhaCreatePathParamsSchema,
+} from "./zod/v1ConfiguracoesUsuariosResetarSenhaCreateSchema.ts";
+export {
+  V1ConfiguracoesUsuariosRetrieve200Schema,
+  V1ConfiguracoesUsuariosRetrievePathParamsSchema,
+  V1ConfiguracoesUsuariosRetrieveQueryResponseSchema,
+} from "./zod/v1ConfiguracoesUsuariosRetrieveSchema.ts";
 export {
   V1ContratosList200Schema,
   V1ContratosListQueryParamsSchema,
@@ -1345,6 +1690,25 @@ export {
   V1RefinanciamentosSolicitarCreateMutationResponseSchema,
   V1RefinanciamentosSolicitarCreatePathParamsSchema,
 } from "./zod/v1RefinanciamentosSolicitarCreateSchema.ts";
+export {
+  V1RelatoriosDownloadRetrieve200Schema,
+  V1RelatoriosDownloadRetrievePathParamsSchema,
+  V1RelatoriosDownloadRetrieveQueryResponseSchema,
+} from "./zod/v1RelatoriosDownloadRetrieveSchema.ts";
+export {
+  V1RelatoriosExportarCreate200Schema,
+  V1RelatoriosExportarCreateMutationRequestSchema,
+  V1RelatoriosExportarCreateMutationResponseSchema,
+} from "./zod/v1RelatoriosExportarCreateSchema.ts";
+export {
+  V1RelatoriosList200Schema,
+  V1RelatoriosListQueryParamsSchema,
+  V1RelatoriosListQueryResponseSchema,
+} from "./zod/v1RelatoriosListSchema.ts";
+export {
+  V1RelatoriosResumoRetrieve200Schema,
+  V1RelatoriosResumoRetrieveQueryResponseSchema,
+} from "./zod/v1RelatoriosResumoRetrieveSchema.ts";
 export {
   V1RenovacaoCiclosExportarRetrieve200Schema,
   V1RenovacaoCiclosExportarRetrieveQueryParamsSchema,

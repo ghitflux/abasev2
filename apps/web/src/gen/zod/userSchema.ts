@@ -11,6 +11,6 @@ export const userSchema = z.object({
   first_name: z.string().max(150),
   last_name: z.optional(z.string().max(150)),
   full_name: z.string(),
-  primary_role: z.string(),
+  primary_role: z.nullable(z.string()),
   roles: z.array(z.string()),
 });

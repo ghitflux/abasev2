@@ -32,7 +32,8 @@
                   "matricula": { "type": "string", "readOnly": true },
                   "cpf_cnpj": { "type": "string", "readOnly": true },
                   "orgao_publico": { "type": "string", "readOnly": true },
-                  "matricula_orgao": { "type": "string", "readOnly": true }
+                  "matricula_orgao": { "type": "string", "readOnly": true },
+                  "status": { "type": "string", "readOnly": true }
                 },
                 "required": [
                   "cpf_cnpj",
@@ -40,9 +41,24 @@
                   "matricula",
                   "matricula_orgao",
                   "nome_completo",
-                  "orgao_publico"
+                  "orgao_publico",
+                  "status"
                 ],
                 "x-readme-ref-name": "AssociadoContrato"
+              }
+            ],
+            "readOnly": true
+          },
+          "agente": {
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer", "readOnly": true },
+                  "full_name": { "type": "string", "readOnly": true }
+                },
+                "required": ["full_name", "id"],
+                "x-readme-ref-name": "ContratoAgente"
               }
             ],
             "readOnly": true
@@ -60,6 +76,9 @@
             "x-readme-ref-name": "Status1d4Enum"
           },
           "status_resumido": { "type": "string", "readOnly": true },
+          "status_contrato_visual": { "type": "string", "readOnly": true },
+          "etapa_fluxo": { "type": "string", "readOnly": true },
+          "data_contrato": { "type": "string", "format": "date" },
           "valor_mensalidade": {
             "type": "string",
             "format": "decimal",
@@ -82,10 +101,13 @@
           }
         },
         "required": [
+          "agente",
           "associado",
+          "etapa_fluxo",
           "id",
           "mensalidades",
           "pode_solicitar_refinanciamento",
+          "status_contrato_visual",
           "status_resumido"
         ],
         "x-readme-ref-name": "ContratoList"

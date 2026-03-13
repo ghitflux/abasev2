@@ -12,4 +12,5 @@ export const associadoContratoSchema = z.object({
   cpf_cnpj: z.string(),
   orgao_publico: z.string(),
   matricula_orgao: z.string(),
+  status: z.string(),
 });

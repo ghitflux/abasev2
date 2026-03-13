@@ -18,7 +18,10 @@ Na raiz do projeto:
 
 ```bash
 cp .env.example .env
-docker compose up -d
+docker compose down -v
+docker compose build mysql
+docker compose up -d mysql
+docker compose up -d backend celery frontend
 ```
 
 O `backend` já sobe executando:
@@ -32,6 +35,12 @@ Depois confirme:
 ```bash
 docker compose ps
 ```
+
+Observações importantes:
+
+- O dump oficial `scriptsphp/abasedb1203.sql` agora é embutido na imagem `docker/mysql/Dockerfile` e importado apenas no primeiro boot do volume `mysql_data`.
+- Para restaurar o banco corretamente, recriar `mysql_data` é obrigatório. `backend`, `celery` e `frontend` só precisam subir novamente depois do `mysql` ficar saudável; não exigem recriação de volume próprio.
+- Não rode `python manage.py seed_demo_data` nesse fluxo de restauração.
 
 Serviços esperados:
 
@@ -51,6 +60,7 @@ Serviços esperados:
 ## 3. Credenciais de acesso ao sistema
 
 O comando `seed_dev_data` cria e atualiza um usuário para cada papel base do sistema.
+Ele preserva hashes já existentes e só define a senha padrão em usuários de acesso recém-criados ou sem hash utilizável.
 
 Credenciais padrão:
 
@@ -74,6 +84,8 @@ Se você alterar essas variáveis, reinicie o backend ou rode:
 docker compose exec -T backend python manage.py seed_dev_data
 ```
 
+Se o usuário de desenvolvimento já existir no banco restaurado, o comando preserva o hash atual. Para forçar a senha padrão novamente, recrie o usuário de desenvolvimento correspondente e reexecute o seed.
+
 ## 3.1 Seed demo completo
 
 Para popular a aplicação com dados de exemplo de associados, contratos, esteira,
@@ -91,7 +103,10 @@ O comando é determinístico e recria apenas os registros reservados do seed dem
 
 ```bash
 cp .env.example .env
-docker compose up -d
+docker compose down -v
+docker compose build mysql
+docker compose up -d mysql
+docker compose up -d backend celery frontend
 docker compose ps
 ```
 

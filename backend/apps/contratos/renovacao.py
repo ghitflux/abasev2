@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -94,8 +95,16 @@ class RenovacaoCicloService:
         item_prefetch = Prefetch(
             "itens_retorno",
             queryset=ArquivoRetornoItem.objects.filter(
-                arquivo_retorno__competencia=competencia
-            ).select_related("arquivo_retorno"),
+                arquivo_retorno__competencia=competencia,
+                arquivo_retorno__status=ArquivoRetorno.Status.CONCLUIDO,
+            )
+            .select_related("arquivo_retorno")
+            .order_by(
+                "-arquivo_retorno__processado_em",
+                "-arquivo_retorno__created_at",
+                "-created_at",
+                "-id",
+            ),
             to_attr="itens_retorno_filtrados",
         )
         parcelas = (
@@ -116,8 +125,17 @@ class RenovacaoCicloService:
             .order_by("ciclo__contrato__associado__nome_completo")
         )
 
+        search_value = (search or "").strip()
+        if search_value:
+            parcelas = parcelas.filter(
+                Q(ciclo__contrato__associado__nome_completo__icontains=search_value)
+                | Q(ciclo__contrato__associado__cpf_cnpj__icontains=search_value)
+                | Q(ciclo__contrato__associado__matricula__icontains=search_value)
+                | Q(ciclo__contrato__associado__matricula_orgao__icontains=search_value)
+                | Q(ciclo__contrato__codigo__icontains=search_value)
+            )
+
         rows: list[dict[str, object]] = []
-        search_value = (search or "").strip().lower()
         for parcela in parcelas:
             itens = getattr(parcela, "itens_retorno_filtrados", [])
             import_item = itens[0] if itens else None
@@ -126,8 +144,6 @@ class RenovacaoCicloService:
                 competencia.strftime("%m/%Y"),
                 import_item,
             )
-            if search_value and search_value not in row["nome_associado"].lower() and search_value not in row["cpf_cnpj"]:
-                continue
             if status and row["status_visual"] != status:
                 continue
             rows.append(row)
@@ -148,10 +164,23 @@ class RenovacaoCicloService:
             "em_aberto": 0,
             "ciclo_iniciado": 0,
             "inadimplente": 0,
+            "esperado_total": Decimal("0.00"),
+            "arrecadado_total": Decimal("0.00"),
+            "percentual_arrecadado": 0.0,
         }
         for row in rows:
             if row["status_visual"] in resumo:
                 resumo[row["status_visual"]] += 1
+            valor_parcela = Decimal(str(row.get("valor_parcela") or 0))
+            resumo["esperado_total"] += valor_parcela
+            if row["resultado_importacao"] == ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA or row[
+                "status_parcela"
+            ] == Parcela.Status.DESCONTADO:
+                resumo["arrecadado_total"] += valor_parcela
+        if resumo["esperado_total"] > 0:
+            resumo["percentual_arrecadado"] = float(
+                (resumo["arrecadado_total"] / resumo["esperado_total"]) * Decimal("100")
+            )
         return resumo
 
     @staticmethod
