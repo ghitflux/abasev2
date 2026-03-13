@@ -47,6 +47,6 @@ class RelatorioViewSet(mixins.ListModelMixin, GenericViewSet):
             relatorio.arquivo.open("rb"),
             as_attachment=True,
             filename=RelatorioService.download_filename(relatorio),
+            content_type=RelatorioService.content_type(relatorio.formato),
         )
-        response["Content-Type"] = "application/octet-stream"
         return response

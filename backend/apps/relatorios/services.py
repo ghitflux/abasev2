@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import csv
 import json
-from io import StringIO
+from dataclasses import dataclass
+from datetime import date, datetime
+from decimal import Decimal
+from io import BytesIO, StringIO
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from django.core.files.base import ContentFile
 from django.db.models import Sum
@@ -16,6 +20,21 @@ from apps.importacao.models import ArquivoRetorno
 from apps.refinanciamento.models import Refinanciamento
 
 from .models import RelatorioGerado
+
+
+@dataclass(frozen=True)
+class ReportColumn:
+    key: str
+    header: str
+    width: float = 1.0
+
+
+@dataclass(frozen=True)
+class ReportDefinition:
+    tipo: str
+    title: str
+    description: str
+    columns: tuple[ReportColumn, ...]
 
 
 class RelatorioService:
@@ -72,16 +91,24 @@ class RelatorioService:
         rows = RelatorioService._rows_for_tipo(tipo)
         timestamp = timezone.now().strftime("%Y%m%d%H%M%S")
         file_name = f"{tipo}_{timestamp}.{formato}"
-        content = RelatorioService._render_content(rows, formato)
+        content = RelatorioService._render_content(tipo, rows, formato)
 
         relatorio = RelatorioGerado(nome=file_name, formato=formato)
-        relatorio.arquivo.save(file_name, ContentFile(content.encode("utf-8")), save=False)
+        relatorio.arquivo.save(file_name, ContentFile(content), save=False)
         relatorio.save()
         return relatorio
 
     @staticmethod
     def download_filename(relatorio: RelatorioGerado) -> str:
         return Path(relatorio.arquivo.name or relatorio.nome).name
+
+    @staticmethod
+    def content_type(formato: str) -> str:
+        return {
+            "csv": "text/csv; charset=utf-8",
+            "json": "application/json; charset=utf-8",
+            "pdf": "application/pdf",
+        }.get(formato, "application/octet-stream")
 
     @staticmethod
     def _serialize_importacao(arquivo: ArquivoRetorno | None) -> dict[str, object] | None:
@@ -96,16 +123,19 @@ class RelatorioService:
         }
 
     @staticmethod
-    def _render_content(rows: list[dict[str, object]], formato: str) -> str:
+    def _render_content(tipo: str, rows: list[dict[str, object]], formato: str) -> bytes:
+        if formato == "pdf":
+            return RelatorioService._render_pdf(tipo, rows)
+
         if formato == "json":
-            return json.dumps(rows, ensure_ascii=True, indent=2, default=str)
+            return json.dumps(rows, ensure_ascii=True, indent=2, default=str).encode("utf-8")
 
         headers = list(rows[0].keys()) if rows else []
         output = StringIO()
         writer = csv.DictWriter(output, fieldnames=headers)
         writer.writeheader()
         writer.writerows(rows)
-        return output.getvalue()
+        return output.getvalue().encode("utf-8")
 
     @staticmethod
     def _rows_for_tipo(tipo: str) -> list[dict[str, object]]:
@@ -194,3 +224,348 @@ class RelatorioService:
             }
             for arquivo in queryset
         ]
+
+    @staticmethod
+    def _definition_for_tipo(tipo: str) -> ReportDefinition:
+        definitions = {
+            "associados": ReportDefinition(
+                tipo="associados",
+                title="Relatorio de Associados",
+                description="Base cadastral com status do associado, orgao publico e agente responsavel.",
+                columns=(
+                    ReportColumn("nome_completo", "Associado", 2.5),
+                    ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("status", "Status", 1.0),
+                    ReportColumn("orgao_publico", "Orgao", 1.8),
+                    ReportColumn("agente", "Agente responsavel", 2.0),
+                    ReportColumn("created_at", "Criado em", 1.3),
+                ),
+            ),
+            "tesouraria": ReportDefinition(
+                tipo="tesouraria",
+                title="Relatorio de Tesouraria",
+                description="Contratos ativos e historicos financeiros com mensalidade, comissao e agente.",
+                columns=(
+                    ReportColumn("codigo", "Contrato", 1.4),
+                    ReportColumn("associado", "Associado", 2.4),
+                    ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("status", "Status", 1.0),
+                    ReportColumn("valor_mensalidade", "Mensalidade", 1.1),
+                    ReportColumn("comissao_agente", "Comissao", 1.0),
+                    ReportColumn("agente", "Agente", 1.8),
+                    ReportColumn("auxilio_liberado_em", "Liberado em", 1.2),
+                ),
+            ),
+            "refinanciamentos": ReportDefinition(
+                tipo="refinanciamentos",
+                title="Relatorio de Refinanciamentos",
+                description="Solicitacoes de refinanciamento com status, valor, repasse e responsavel pela acao.",
+                columns=(
+                    ReportColumn("associado", "Associado", 2.3),
+                    ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("contrato", "Contrato", 1.3),
+                    ReportColumn("status", "Status", 1.2),
+                    ReportColumn("valor_refinanciamento", "Valor", 1.1),
+                    ReportColumn("repasse_agente", "Repasse agente", 1.1),
+                    ReportColumn("solicitado_por", "Solicitado por", 1.7),
+                    ReportColumn("executado_em", "Executado em", 1.2),
+                ),
+            ),
+            "importacao": ReportDefinition(
+                tipo="importacao",
+                title="Relatorio de Importacao",
+                description="Historico de arquivos retorno com competencia, processamento e inconsistencias.",
+                columns=(
+                    ReportColumn("arquivo_nome", "Arquivo", 2.6),
+                    ReportColumn("competencia", "Competencia", 1.0),
+                    ReportColumn("status", "Status", 1.1),
+                    ReportColumn("total_registros", "Total", 0.8),
+                    ReportColumn("processados", "Processados", 0.9),
+                    ReportColumn("nao_encontrados", "Nao encontrados", 1.1),
+                    ReportColumn("erros", "Erros", 0.7),
+                    ReportColumn("created_at", "Importado em", 1.4),
+                ),
+            ),
+        }
+        try:
+            return definitions[tipo]
+        except KeyError as exc:
+            raise ValueError(f"Tipo de relatorio invalido: {tipo}") from exc
+
+    @staticmethod
+    def _summary_for_tipo(tipo: str) -> list[tuple[str, str]]:
+        if tipo == "associados":
+            return [
+                ("Total", str(Associado.objects.count())),
+                ("Ativos", str(Associado.objects.filter(status=Associado.Status.ATIVO).count())),
+                (
+                    "Em analise",
+                    str(Associado.objects.filter(status=Associado.Status.EM_ANALISE).count()),
+                ),
+                (
+                    "Inadimplentes",
+                    str(Associado.objects.filter(status=Associado.Status.INADIMPLENTE).count()),
+                ),
+            ]
+
+        if tipo == "tesouraria":
+            total_mensalidades = (
+                Contrato.objects.aggregate(total=Sum("valor_mensalidade"))["total"] or Decimal("0")
+            )
+            return [
+                ("Total contratos", str(Contrato.objects.count())),
+                ("Ativos", str(Contrato.objects.filter(status=Contrato.Status.ATIVO).count())),
+                (
+                    "Em analise",
+                    str(Contrato.objects.filter(status=Contrato.Status.EM_ANALISE).count()),
+                ),
+                ("Mensalidade total", RelatorioService._format_number(total_mensalidades)),
+            ]
+
+        if tipo == "refinanciamentos":
+            total_refinanciado = (
+                Refinanciamento.objects.aggregate(total=Sum("valor_refinanciamento"))["total"]
+                or Decimal("0")
+            )
+            return [
+                ("Total registros", str(Refinanciamento.objects.count())),
+                (
+                    "Pendentes",
+                    str(
+                        Refinanciamento.objects.filter(
+                            status__in=[
+                                Refinanciamento.Status.PENDENTE_APTO,
+                                Refinanciamento.Status.BLOQUEADO,
+                                Refinanciamento.Status.SOLICITADO,
+                                Refinanciamento.Status.EM_ANALISE,
+                                Refinanciamento.Status.APROVADO,
+                            ]
+                        ).count()
+                    ),
+                ),
+                (
+                    "Efetivados",
+                    str(
+                        Refinanciamento.objects.filter(
+                            status__in=[
+                                Refinanciamento.Status.CONCLUIDO,
+                                Refinanciamento.Status.EFETIVADO,
+                            ]
+                        ).count()
+                    ),
+                ),
+                ("Valor total", RelatorioService._format_number(total_refinanciado)),
+            ]
+
+        if tipo == "importacao":
+            totais = ArquivoRetorno.objects.aggregate(
+                total_registros=Sum("total_registros"),
+                total_processados=Sum("processados"),
+                total_erros=Sum("erros"),
+            )
+            return [
+                ("Arquivos", str(ArquivoRetorno.objects.count())),
+                (
+                    "Concluidos",
+                    str(
+                        ArquivoRetorno.objects.filter(status=ArquivoRetorno.Status.CONCLUIDO).count()
+                    ),
+                ),
+                ("Registros", str(totais["total_registros"] or 0)),
+                ("Processados", str(totais["total_processados"] or 0)),
+                ("Erros", str(totais["total_erros"] or 0)),
+            ]
+
+        raise ValueError(f"Tipo de relatorio invalido: {tipo}")
+
+    @staticmethod
+    def _render_pdf(tipo: str, rows: list[dict[str, object]]) -> bytes:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.lib.units import mm
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+
+        definition = RelatorioService._definition_for_tipo(tipo)
+        summary = RelatorioService._summary_for_tipo(tipo)
+        buffer = BytesIO()
+        document = SimpleDocTemplate(
+            buffer,
+            pagesize=landscape(A4),
+            leftMargin=12 * mm,
+            rightMargin=12 * mm,
+            topMargin=12 * mm,
+            bottomMargin=12 * mm,
+            title=definition.title,
+        )
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            "RelatorioTitle",
+            parent=styles["Heading1"],
+            fontName="Helvetica-Bold",
+            fontSize=17,
+            leading=20,
+            textColor=colors.HexColor("#111827"),
+            spaceAfter=4,
+        )
+        description_style = ParagraphStyle(
+            "RelatorioDescription",
+            parent=styles["BodyText"],
+            fontName="Helvetica",
+            fontSize=9,
+            leading=12,
+            textColor=colors.HexColor("#475569"),
+        )
+        meta_style = ParagraphStyle(
+            "RelatorioMeta",
+            parent=styles["BodyText"],
+            fontName="Helvetica",
+            fontSize=8,
+            leading=10,
+            textColor=colors.HexColor("#64748B"),
+        )
+        cell_style = ParagraphStyle(
+            "RelatorioCell",
+            parent=styles["BodyText"],
+            fontName="Helvetica",
+            fontSize=8,
+            leading=10,
+            textColor=colors.HexColor("#0F172A"),
+        )
+        header_style = ParagraphStyle(
+            "RelatorioHeader",
+            parent=cell_style,
+            fontName="Helvetica-Bold",
+            textColor=colors.white,
+        )
+
+        generated_at = timezone.localtime(timezone.now()).strftime("%d/%m/%Y %H:%M")
+        story = [
+            Paragraph(escape(definition.title), title_style),
+            Paragraph(escape(definition.description), description_style),
+            Spacer(1, 4 * mm),
+            Paragraph(
+                escape(f"Gerado em {generated_at} | Total de registros: {len(rows)}"),
+                meta_style,
+            ),
+        ]
+
+        if summary:
+            summary_rows: list[list[Paragraph]] = []
+            chunk: list[Paragraph] = []
+            for label, value in summary:
+                chunk.append(Paragraph(escape(f"<b>{label}:</b> {value}"), meta_style))
+                if len(chunk) == 2:
+                    summary_rows.append(chunk)
+                    chunk = []
+            if chunk:
+                chunk.append(Paragraph("", meta_style))
+                summary_rows.append(chunk)
+
+            summary_table = Table(summary_rows, colWidths=[document.width / 2, document.width / 2])
+            summary_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
+                        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E2E8F0")),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                        ("TOPPADDING", (0, 0), (-1, -1), 6),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ]
+                )
+            )
+            story.extend([Spacer(1, 4 * mm), summary_table])
+
+        story.append(Spacer(1, 5 * mm))
+
+        table_rows: list[list[Paragraph]] = [
+            [Paragraph(escape(column.header), header_style) for column in definition.columns]
+        ]
+
+        if rows:
+            for row in rows:
+                table_rows.append(
+                    [
+                        Paragraph(
+                            escape(RelatorioService._format_pdf_value(row.get(column.key))),
+                            cell_style,
+                        )
+                        for column in definition.columns
+                    ]
+                )
+        else:
+            table_rows.append(
+                [
+                    Paragraph("Nenhum registro encontrado para este relatorio.", cell_style),
+                    *[Paragraph("", cell_style) for _ in definition.columns[1:]],
+                ]
+            )
+
+        total_weight = sum(column.width for column in definition.columns) or 1
+        col_widths = [
+            document.width * (column.width / total_weight) for column in definition.columns
+        ]
+        table = Table(table_rows, repeatRows=1, colWidths=col_widths)
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0F172A")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F8FAFC")]),
+                    ("TEXTCOLOR", (0, 1), (-1, -1), colors.HexColor("#0F172A")),
+                    ("LINEBELOW", (0, 0), (-1, 0), 0.75, colors.HexColor("#1E293B")),
+                    ("GRID", (0, 1), (-1, -1), 0.25, colors.HexColor("#CBD5E1")),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ]
+            )
+        )
+        story.append(table)
+        document.build(story)
+        return buffer.getvalue()
+
+    @staticmethod
+    def _format_pdf_value(value: object) -> str:
+        if value is None or value == "":
+            return "-"
+        if isinstance(value, Decimal):
+            return RelatorioService._format_number(value)
+        if isinstance(value, bool):
+            return "Sim" if value else "Nao"
+        if isinstance(value, datetime):
+            if timezone.is_aware(value):
+                value = timezone.localtime(value)
+            return value.strftime("%d/%m/%Y %H:%M")
+        if isinstance(value, date):
+            return value.strftime("%d/%m/%Y")
+        if isinstance(value, str):
+            formatted = RelatorioService._format_iso_string(value)
+            return formatted if formatted is not None else value
+        return str(value)
+
+    @staticmethod
+    def _format_number(value: Decimal) -> str:
+        normalized = f"{value:,.2f}"
+        return normalized.replace(",", "X").replace(".", ",").replace("X", ".")
+
+    @staticmethod
+    def _format_iso_string(value: str) -> str | None:
+        if "T" in value:
+            try:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+            if timezone.is_aware(parsed):
+                parsed = timezone.localtime(parsed)
+            return parsed.strftime("%d/%m/%Y %H:%M")
+        if len(value) == 10:
+            try:
+                parsed_date = date.fromisoformat(value)
+            except ValueError:
+                return None
+            return parsed_date.strftime("%d/%m/%Y")
+        return None

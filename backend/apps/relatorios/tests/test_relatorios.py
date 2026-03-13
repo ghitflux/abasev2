@@ -42,7 +42,7 @@ class RelatoriosViewSetTestCase(TestCase):
         self.client = APIClient()
         self.client.force_authenticate(self.admin)
 
-    def test_resumo_agrega_dados_operacionais(self):
+    def _seed_operational_data(self):
         associado = Associado.objects.create(
             nome_completo="Maria Teste",
             cpf_cnpj="12345678901",
@@ -55,6 +55,7 @@ class RelatoriosViewSetTestCase(TestCase):
             valor_bruto=Decimal("1200.00"),
             valor_liquido=Decimal("1000.00"),
             valor_mensalidade=Decimal("300.00"),
+            comissao_agente=Decimal("45.00"),
             status=Contrato.Status.ATIVO,
         )
         Parcela.objects.create(
@@ -89,6 +90,7 @@ class RelatoriosViewSetTestCase(TestCase):
             competencia_solicitada=date(2026, 3, 1),
             status=Refinanciamento.Status.PENDENTE_APTO,
             valor_refinanciamento=Decimal("1500.00"),
+            repasse_agente=Decimal("120.00"),
         )
         ArquivoRetorno.objects.create(
             arquivo_nome="retorno_teste.txt",
@@ -100,7 +102,13 @@ class RelatoriosViewSetTestCase(TestCase):
             uploaded_by=self.admin,
             total_registros=10,
             processados=9,
+            nao_encontrados=1,
+            erros=0,
         )
+        return associado, contrato
+
+    def test_resumo_agrega_dados_operacionais(self):
+        self._seed_operational_data()
 
         response = self.client.get("/api/v1/relatorios/resumo/")
         self.assertEqual(response.status_code, 200, response.json())
@@ -135,3 +143,53 @@ class RelatoriosViewSetTestCase(TestCase):
         content = b"".join(download_response.streaming_content)
         exported = json.loads(content.decode("utf-8"))
         self.assertEqual(exported[0]["nome_completo"], "Joao Exportacao")
+
+    def test_exportar_gera_json_para_todos_os_tipos(self):
+        self._seed_operational_data()
+
+        expected_keys = {
+            "associados": "nome_completo",
+            "tesouraria": "codigo",
+            "refinanciamentos": "valor_refinanciamento",
+            "importacao": "arquivo_nome",
+        }
+
+        for tipo, expected_key in expected_keys.items():
+            with self.subTest(tipo=tipo):
+                response = self.client.post(
+                    "/api/v1/relatorios/exportar/",
+                    {"tipo": tipo, "formato": "json"},
+                    format="json",
+                )
+                self.assertEqual(response.status_code, 201, response.json())
+                payload = response.json()
+
+                download_response = self.client.get(f"/api/v1/relatorios/{payload['id']}/download/")
+                self.assertEqual(download_response.status_code, 200)
+                self.assertTrue(download_response["Content-Type"].startswith("application/json"))
+
+                content = b"".join(download_response.streaming_content)
+                exported = json.loads(content.decode("utf-8"))
+                self.assertGreaterEqual(len(exported), 1)
+                self.assertIn(expected_key, exported[0])
+
+    def test_exportar_gera_pdf_personalizado_para_todos_os_tipos(self):
+        self._seed_operational_data()
+
+        for tipo in ["associados", "tesouraria", "refinanciamentos", "importacao"]:
+            with self.subTest(tipo=tipo):
+                response = self.client.post(
+                    "/api/v1/relatorios/exportar/",
+                    {"tipo": tipo, "formato": "pdf"},
+                    format="json",
+                )
+                self.assertEqual(response.status_code, 201, response.json())
+                payload = response.json()
+                self.assertEqual(payload["formato"], "pdf")
+
+                download_response = self.client.get(f"/api/v1/relatorios/{payload['id']}/download/")
+                self.assertEqual(download_response.status_code, 200)
+                self.assertEqual(download_response["Content-Type"], "application/pdf")
+
+                content = b"".join(download_response.streaming_content)
+                self.assertTrue(content.startswith(b"%PDF-"))

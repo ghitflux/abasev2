@@ -7,6 +7,7 @@ import {
   DownloadIcon,
   FileCogIcon,
   FileSpreadsheetIcon,
+  FileTextIcon,
   RefreshCcwIcon,
   WalletIcon,
 } from "lucide-react";
@@ -47,8 +48,31 @@ const EXPORT_OPTIONS = [
   },
 ];
 
+type ReportType = (typeof EXPORT_OPTIONS)[number]["tipo"];
+type ReportFormat = "csv" | "json" | "pdf";
+
+const REPORT_LABELS: Record<ReportType, string> = {
+  associados: "Associados",
+  tesouraria: "Tesouraria",
+  refinanciamentos: "Refinanciamentos",
+  importacao: "Importacao",
+};
+
+function inferReportTypeLabel(name: string) {
+  const normalized = name.toLowerCase();
+  return (
+    EXPORT_OPTIONS.find((option) => normalized.startsWith(`${option.tipo}_`))?.title ?? "Exportacao"
+  );
+}
+
 function downloadRelatorio(item: RelatorioGeradoItem) {
-  window.open(`/api/backend/relatorios/${item.id}/download`, "_blank", "noopener,noreferrer");
+  const link = document.createElement("a");
+  link.href = `/api/backend/relatorios/${item.id}/download`;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 }
 
 export default function RelatoriosPage() {
@@ -68,7 +92,7 @@ export default function RelatoriosPage() {
   });
 
   const exportMutation = useMutation({
-    mutationFn: (payload: { tipo: (typeof EXPORT_OPTIONS)[number]["tipo"]; formato: "csv" | "json" }) =>
+    mutationFn: (payload: { tipo: ReportType; formato: ReportFormat }) =>
       apiFetch<RelatorioGeradoItem>("relatorios/exportar", {
         method: "POST",
         body: payload,
@@ -91,7 +115,9 @@ export default function RelatoriosPage() {
         cell: (row) => (
           <div>
             <p className="font-medium text-foreground">{row.nome}</p>
-            <p className="text-xs text-muted-foreground">Relatorio persistido em disco</p>
+            <p className="text-xs text-muted-foreground">
+              {inferReportTypeLabel(row.nome)} persistido em disco
+            </p>
           </div>
         ),
       },
@@ -202,23 +228,38 @@ export default function RelatoriosPage() {
 
       <section className="grid gap-4 xl:grid-cols-2">
         {EXPORT_OPTIONS.map((option) => (
-          <Card key={option.tipo} className="rounded-[1.75rem] border-border/60 bg-card/70 shadow-xl shadow-black/20">
+          <Card
+            key={option.tipo}
+            data-testid={`relatorio-card-${option.tipo}`}
+            className="rounded-[1.75rem] border-border/60 bg-card/70 shadow-xl shadow-black/20"
+          >
             <CardHeader>
               <CardTitle>{option.title}</CardTitle>
               <CardDescription>{option.description}</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-3">
-              <Button
-                onClick={() => exportMutation.mutate({ tipo: option.tipo, formato: "csv" })}
-                disabled={exportMutation.isPending}
-              >
-                <FileSpreadsheetIcon className="size-4" />
-                Exportar CSV
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => exportMutation.mutate({ tipo: option.tipo, formato: "json" })}
-                disabled={exportMutation.isPending}
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            <Button
+              aria-label={`Exportar ${REPORT_LABELS[option.tipo]} em PDF`}
+              onClick={() => exportMutation.mutate({ tipo: option.tipo, formato: "pdf" })}
+              disabled={exportMutation.isPending}
+            >
+              <FileTextIcon className="size-4" />
+              Exportar PDF
+            </Button>
+            <Button
+              aria-label={`Exportar ${REPORT_LABELS[option.tipo]} em CSV`}
+              onClick={() => exportMutation.mutate({ tipo: option.tipo, formato: "csv" })}
+              disabled={exportMutation.isPending}
+              variant="outline"
+            >
+              <FileSpreadsheetIcon className="size-4" />
+              Exportar CSV
+            </Button>
+            <Button
+              aria-label={`Exportar ${REPORT_LABELS[option.tipo]} em JSON`}
+              variant="outline"
+              onClick={() => exportMutation.mutate({ tipo: option.tipo, formato: "json" })}
+              disabled={exportMutation.isPending}
               >
                 <FileCogIcon className="size-4" />
                 Exportar JSON

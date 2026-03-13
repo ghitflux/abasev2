@@ -848,6 +848,18 @@ paths:
         required: true
       tags:
       - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+        required: true
       security:
       - jwtAuth: []
       responses:
@@ -2926,13 +2938,25 @@ components:
           type: boolean
         gerou_novo_ciclo:
           type: boolean
+        associado_id:
+          type: integer
+          readOnly: true
         associado_nome:
+          type: string
+          readOnly: true
+        associado_matricula:
+          type: string
+          readOnly: true
+        agente_responsavel:
           type: string
           readOnly: true
         contrato_codigo:
           type: string
           readOnly: true
       required:
+      - agente_responsavel
+      - associado_id
+      - associado_matricula
       - associado_nome
       - competencia
       - contrato_codigo
@@ -4519,16 +4543,28 @@ components:
         * `descontado` - Descontado
         * `nao_descontado` - Não descontado
         * `cancelado` - Cancelado
+    PasswordResetRequest:
+      type: object
+      properties:
+        password:
+          type: string
+          writeOnly: true
+        password_confirm:
+          type: string
+          writeOnly: true
+      required:
+      - password
+      - password_confirm
     PasswordResetResult:
       type: object
       properties:
-        temporary_password:
+        detail:
           type: string
         must_set_password:
           type: boolean
       required:
+      - detail
       - must_set_password
-      - temporary_password
     PatchedAdminUserAccessUpdate:
       type: object
       properties:
@@ -5012,6 +5048,10 @@ components:
           type: string
         status_visual:
           type: string
+        matricula:
+          type: string
+        agente_responsavel:
+          type: string
         parcelas_pagas:
           type: integer
         parcelas_total:
@@ -5034,11 +5074,14 @@ components:
           type: string
         status_codigo_etipi:
           type: string
+        status_descricao_etipi:
+          type: string
         gerou_encerramento:
           type: boolean
         gerou_novo_ciclo:
           type: boolean
       required:
+      - agente_responsavel
       - associado_id
       - ciclo_id
       - ciclo_numero
@@ -5050,6 +5093,7 @@ components:
       - gerou_encerramento
       - gerou_novo_ciclo
       - id
+      - matricula
       - nome_associado
       - orgao_pagto_nome
       - orgao_publico
@@ -5058,6 +5102,7 @@ components:
       - resultado_importacao
       - status_ciclo
       - status_codigo_etipi
+      - status_descricao_etipi
       - status_parcela
       - status_visual
       - valor_mensalidade

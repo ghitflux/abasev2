@@ -50,4 +50,4 @@ class RelatorioExportarSerializer(serializers.Serializer):
             ("importacao", "Importacao"),
         ]
     )
-    formato = serializers.ChoiceField(choices=[("csv", "CSV"), ("json", "JSON")])
+    formato = serializers.ChoiceField(choices=[("csv", "CSV"), ("json", "JSON"), ("pdf", "PDF")])
