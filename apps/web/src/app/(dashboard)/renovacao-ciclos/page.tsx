@@ -2,11 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useQueries } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { format, isWithinInterval, startOfQuarter, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
-  CalendarDaysIcon,
+  ArrowUpRightIcon,
   ChevronDownIcon,
   ChevronRightIcon,
   CircleAlertIcon,
@@ -40,7 +40,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
   SelectContent,
@@ -66,26 +65,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  useV1ImportacaoArquivoRetornoDescontadosList,
   useV1ImportacaoArquivoRetornoList,
-  useV1ImportacaoArquivoRetornoNaoDescontadosList,
-  useV1ImportacaoArquivoRetornoPendenciasManuaisList,
   useV1RenovacaoCiclosList,
   useV1RenovacaoCiclosMesesList,
   useV1RenovacaoCiclosVisaoMensalRetrieve,
 } from "@/gen";
-import type {
-  ArquivoRetornoItem,
-  ArquivoRetornoList,
-  RenovacaoCicloItem,
-} from "@/gen/models";
-import type {
-  AssociadoDetail,
-  AssociadoListItem,
-  PaginatedResponse,
-} from "@/lib/api/types";
+import type { RenovacaoCicloItem } from "@/gen/models";
 import { apiFetch } from "@/lib/api/client";
 import {
   formatDateValue,
@@ -99,6 +88,15 @@ import {
   formatDateTime,
   formatLongMonthYear,
 } from "@/lib/formatters";
+import {
+  getArquivoFinanceiroResumo,
+  type ArquivoRetornoFinanceiroItem,
+  type ArquivoRetornoFinanceiroPayload,
+  type ArquivoRetornoFinanceiroResumo,
+  type ArquivoRetornoWithFinanceiro,
+  toFinanceiroNumber,
+  toFinanceiroStatus,
+} from "@/lib/importacao-financeiro";
 import { maskCPFCNPJ } from "@/lib/masks";
 import { cn } from "@/lib/utils";
 
@@ -141,18 +139,19 @@ type AdvancedFilters = {
 };
 
 type EnrichedCycleItem = RenovacaoCicloItem & {
-  matricula: string;
   agenteResponsavel: string;
   associadoUrl: string;
 };
 
-type EnrichedReturnItem = ArquivoRetornoItem & {
+type EnrichedReturnItem = ArquivoRetornoFinanceiroItem & {
   associadoId?: number;
   agenteResponsavel: string;
   matriculaResolvida: string;
   esperado: string | number;
   recebido: string | number;
   situacao: string;
+  nome_servidor: string;
+  statusBadge: string;
 };
 
 type TableExportColumn<T> = {
@@ -171,6 +170,70 @@ type RenovacaoCicloResumoData = {
   arrecadado_total?: string | number;
   percentual_arrecadado?: string | number;
 };
+
+type CycleParcelCard = {
+  parcela: number;
+  status: string;
+  paid: boolean;
+  active: boolean;
+  reason: string;
+};
+
+type MetricStatusKey =
+  | "ciclo_renovado"
+  | "apto_a_renovar"
+  | "em_aberto"
+  | "inadimplente";
+
+const MONTHLY_METRIC_META: Record<
+  MetricStatusKey,
+  {
+    label: string;
+    tone?: "neutral" | "warning" | "danger";
+    accent?: "cyan";
+    description: string;
+  }
+> = {
+  ciclo_renovado: {
+    label: "Renovados",
+    description: "Associados com ciclo encerrado e renovacao efetivada na competencia.",
+  },
+  apto_a_renovar: {
+    label: "Aptos a renovar",
+    accent: "cyan",
+    description: "Associados prontos para renovacao, mas ainda sem abertura do proximo ciclo.",
+  },
+  em_aberto: {
+    label: "Em aberto",
+    tone: "warning",
+    description: "Associados com parcela atual em aberto na competencia filtrada.",
+  },
+  inadimplente: {
+    label: "Inadimplentes",
+    tone: "danger",
+    description: "Associados com retorno nao descontado ou status consolidado de inadimplencia.",
+  },
+};
+
+function buildPageItems(currentPage: number, totalPages: number) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const pages = new Set<number>([1, totalPages, currentPage, currentPage - 1, currentPage + 1]);
+  const sorted = [...pages].filter((page) => page >= 1 && page <= totalPages).sort((a, b) => a - b);
+  const items: Array<number | string> = [];
+
+  sorted.forEach((page, index) => {
+    const previous = sorted[index - 1];
+    if (previous && page - previous > 1) {
+      items.push(`ellipsis-${previous}-${page}`);
+    }
+    items.push(page);
+  });
+
+  return items;
+}
 
 function normalizeText(value?: string | null) {
   return (value ?? "")
@@ -227,6 +290,19 @@ function resolveParcelaStatusLabel(status?: string | null) {
   const normalized = normalizeText(status).replaceAll(" ", "_");
   if (!normalized) return "Pendente";
   return normalized.replaceAll("_", " ");
+}
+
+function formatEtipiStatusLabel(
+  statusCode?: string | null,
+  statusDescription?: string | null,
+) {
+  const code = (statusCode ?? "").trim();
+  const description = (statusDescription ?? "").trim();
+
+  if (code && description) {
+    return `${code} - ${description}`;
+  }
+  return description || code || "-";
 }
 
 function isParcelaPaid(row: RenovacaoCicloItem) {
@@ -292,6 +368,24 @@ function buildMonthlyMetricsFromResumo(resumo?: RenovacaoCicloResumoData | null)
   };
 }
 
+function applyFinanceiroToMonthlyMetrics(
+  metrics: ReturnType<typeof buildMonthlyMetrics>,
+  financeiro?: ArquivoRetornoFinanceiroResumo | null,
+) {
+  if (!financeiro) return metrics;
+
+  return {
+    ...metrics,
+    total: financeiro.total ?? metrics.total,
+    esperado: toFinanceiroNumber(financeiro.esperado),
+    arrecadado: toFinanceiroNumber(financeiro.recebido),
+    percentual:
+      typeof financeiro.percentual === "number"
+        ? financeiro.percentual
+        : metrics.percentual,
+  };
+}
+
 function hasUnsupportedResumoFilters(advancedFilters: AdvancedFilters) {
   return (
     advancedFilters.periodPreset !== "todos" ||
@@ -339,17 +433,7 @@ function matchesCycleRow(
   selectedStatus: string,
   advancedFilters: AdvancedFilters,
 ) {
-  const comparableText = [
-    row.nome_associado,
-    row.cpf_cnpj,
-    row.matricula,
-    row.agenteResponsavel,
-    row.contrato_codigo,
-  ]
-    .map(normalizeText)
-    .join(" ");
-
-  if (searchValue && !comparableText.includes(normalizeText(searchValue))) {
+  if (!matchesCycleSearchValue(row, searchValue)) {
     return false;
   }
 
@@ -393,6 +477,23 @@ function matchesCycleRow(
   return true;
 }
 
+function matchesCycleSearchValue(row: EnrichedCycleItem, searchValue: string) {
+  const comparableText = [
+    row.nome_associado,
+    row.cpf_cnpj,
+    row.matricula,
+    row.agenteResponsavel,
+    row.contrato_codigo,
+  ]
+    .map(normalizeText)
+    .join(" ");
+
+  if (searchValue && !comparableText.includes(normalizeText(searchValue))) {
+    return false;
+  }
+  return true;
+}
+
 function countActiveFilters(selectedStatus: string, advancedFilters: AdvancedFilters) {
   return [
     selectedStatus !== "todos",
@@ -404,37 +505,20 @@ function countActiveFilters(selectedStatus: string, advancedFilters: AdvancedFil
   ].filter(Boolean).length;
 }
 
-function extractResumoValue(arquivo: { resumo?: Record<string, unknown> } | undefined, key: string) {
-  const value = arquivo?.resumo?.[key];
-  if (typeof value === "number") return value;
-  if (typeof value === "string") return Number.parseInt(value, 10) || 0;
-  return 0;
-}
-
 function buildAutocompleteOptions(rows: EnrichedCycleItem[]) {
   const seen = new Set<string>();
   const options: SelectOption[] = [];
 
   rows.forEach((row) => {
-    const entries = [
-      {
-        key: `nome::${row.nome_associado}`,
-        label: `${row.nome_associado} • ${maskCPFCNPJ(row.cpf_cnpj)} • ${row.matricula}`,
-      },
-      {
-        key: `cpf::${row.cpf_cnpj}`,
-        label: `${maskCPFCNPJ(row.cpf_cnpj)} • ${row.nome_associado}`,
-      },
-      {
-        key: `matricula::${row.matricula}`,
-        label: `${row.matricula} • ${row.nome_associado}`,
-      },
-    ];
+    const uniqueKey = onlyDigits(row.cpf_cnpj) || normalizeText(row.matricula) || normalizeText(row.nome_associado);
+    if (!uniqueKey || seen.has(uniqueKey)) {
+      return;
+    }
 
-    entries.forEach((entry) => {
-      if (seen.has(entry.key)) return;
-      seen.add(entry.key);
-      options.push({ value: entry.key, label: entry.label });
+    seen.add(uniqueKey);
+    options.push({
+      value: `assoc::${uniqueKey}`,
+      label: `${row.nome_associado} • ${maskCPFCNPJ(row.cpf_cnpj)} • ${row.matricula}`,
     });
   });
 
@@ -446,7 +530,7 @@ function decodeAutocompleteValue(value: string) {
   return decoded;
 }
 
-function buildCycleParcelCards(row: RenovacaoCicloItem) {
+function buildCycleParcelCards(row: RenovacaoCicloItem): CycleParcelCard[] {
   return Array.from({ length: row.parcelas_total }, (_, index) => {
     const parcela = index + 1;
     const isCurrent = parcela === Math.min(row.parcelas_total, Math.max(row.parcelas_pagas, 1));
@@ -456,14 +540,106 @@ function buildCycleParcelCards(row: RenovacaoCicloItem) {
         : isCurrent
           ? capitalize(resolveParcelaStatusLabel(row.status_parcela))
           : "Pendente";
+    const reason =
+      status === "Pago"
+        ? "Parcela já baixada em competência anterior do ciclo."
+        : isCurrent
+          ? row.status_descricao_etipi
+            ? `Parcela atual marcada como ${status.toLowerCase()} porque o retorno ETIPI veio como ${formatEtipiStatusLabel(
+                row.status_codigo_etipi,
+                row.status_descricao_etipi,
+              )}.`
+            : `Parcela atual marcada como ${status.toLowerCase()} pelo status consolidado da competência.`
+          : "Parcela futura do ciclo. Ainda não houve processamento desta etapa na competência selecionada.";
 
     return {
       parcela,
       status,
       paid: status === "Pago",
       active: isCurrent,
+      reason,
     };
   });
+}
+
+function TablePagination({
+  page,
+  totalPages,
+  onPageChange,
+}: {
+  page: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}) {
+  if (totalPages <= 1) {
+    return null;
+  }
+
+  const pageItems = buildPageItems(page, totalPages);
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 px-4 py-3">
+      <p className="text-xs text-muted-foreground">
+        Página {page} de {totalPages}
+      </p>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          disabled={page === 1}
+          onClick={() => onPageChange(1)}
+        >
+          Primeira
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          disabled={page === 1}
+          onClick={() => onPageChange(Math.max(1, page - 1))}
+        >
+          Anterior
+        </Button>
+        {pageItems.map((item) =>
+          typeof item === "number" ? (
+            <Button
+              key={item}
+              type="button"
+              variant={item === page ? "secondary" : "outline"}
+              size="xs"
+              className="min-w-8 rounded-xl"
+              onClick={() => onPageChange(item)}
+            >
+              {item}
+            </Button>
+          ) : (
+            <span key={item} className="px-1 text-xs text-muted-foreground">
+              ...
+            </span>
+          ),
+        )}
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          disabled={page === totalPages}
+          onClick={() => onPageChange(Math.min(totalPages, page + 1))}
+        >
+          Próxima
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          disabled={page === totalPages}
+          onClick={() => onPageChange(totalPages)}
+        >
+          Última
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function sanitizeFileName(value: string) {
@@ -505,31 +681,34 @@ function exportAsSeparatedText<T>(
   downloadFile(filename, [header, ...lines].join("\n"), "application/vnd.ms-excel;charset=utf-8");
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function exportAsPrintableHtml<T>(
   title: string,
   columns: TableExportColumn<T>[],
   rows: T[],
 ) {
-  const popup = window.open("", "_blank", "noopener,noreferrer,width=1200,height=900");
-  if (!popup) {
-    toast.error("Não foi possível abrir a visualização para PDF.");
-    return;
-  }
-
-  const headers = columns.map((column) => `<th>${column.header}</th>`).join("");
+  const escapedTitle = escapeHtml(title);
+  const headers = columns.map((column) => `<th>${escapeHtml(column.header)}</th>`).join("");
   const body = rows
     .map(
       (row) =>
         `<tr>${columns
-          .map((column) => `<td>${String(column.value(row) ?? "-")}</td>`)
+          .map((column) => `<td>${escapeHtml(String(column.value(row) ?? "-"))}</td>`)
           .join("")}</tr>`,
     )
     .join("");
-
-  popup.document.write(`
+  const html = `
     <html lang="pt-BR">
       <head>
-        <title>${title}</title>
+        <title>${escapedTitle}</title>
         <style>
           body { font-family: Arial, sans-serif; padding: 24px; color: #111827; }
           h1 { margin: 0 0 16px; font-size: 22px; }
@@ -539,17 +718,65 @@ function exportAsPrintableHtml<T>(
         </style>
       </head>
       <body>
-        <h1>${title}</h1>
+        <h1>${escapedTitle}</h1>
         <table>
           <thead><tr>${headers}</tr></thead>
           <tbody>${body}</tbody>
         </table>
       </body>
     </html>
-  `);
-  popup.document.close();
-  popup.focus();
-  popup.print();
+  `;
+
+  const iframe = document.createElement("iframe");
+  iframe.setAttribute("aria-hidden", "true");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  iframe.style.opacity = "0";
+  iframe.style.pointerEvents = "none";
+
+  document.body.appendChild(iframe);
+
+  const cleanup = () => {
+    window.setTimeout(() => {
+      iframe.remove();
+    }, 0);
+  };
+
+  const printWindow = iframe.contentWindow;
+  const printDocument = printWindow?.document;
+
+  if (!printWindow || !printDocument) {
+    cleanup();
+    toast.error("Não foi possível preparar a visualização para PDF.");
+    return;
+  }
+
+  try {
+    printDocument.open();
+    printDocument.write(html);
+    printDocument.close();
+
+    const triggerPrint = () => {
+      try {
+        printWindow.focus();
+        printWindow.print();
+      } catch {
+        toast.error("Não foi possível gerar a visualização para PDF.");
+      } finally {
+        window.setTimeout(cleanup, 1500);
+      }
+    };
+
+    printWindow.addEventListener("afterprint", cleanup, { once: true });
+    window.setTimeout(triggerPrint, 150);
+  } catch {
+    cleanup();
+    toast.error("Não foi possível gerar a visualização para PDF.");
+  }
 }
 
 function exportRows<T>(
@@ -586,81 +813,223 @@ function returnExportColumns(): TableExportColumn<EnrichedReturnItem>[] {
     { header: "CPF", value: (row) => maskCPFCNPJ(row.cpf_cnpj) },
     { header: "Matrícula", value: (row) => row.matriculaResolvida },
     { header: "Agente responsável", value: (row) => row.agenteResponsavel },
-    {
-      header: "Status",
-      value: (row) => row.status_desconto || row.resultado_processamento || "pendente",
-    },
+    { header: "Status", value: (row) => row.status_label || row.situacao },
     { header: "Esperado", value: (row) => formatCurrency(row.esperado) },
     { header: "Recebido", value: (row) => formatCurrency(row.recebido) },
     { header: "Situação", value: (row) => row.situacao },
   ];
 }
 
-function useEnrichedCycleRows(rows: RenovacaoCicloItem[]) {
-  const uniqueAssociadoIds = React.useMemo(
-    () => [...new Set(rows.map((row) => row.associado_id).filter(Boolean))],
-    [rows],
-  );
+function matchesReturnSearchValue(row: EnrichedReturnItem, searchValue: string) {
+  const comparableText = [
+    row.associado_nome,
+    row.nome_servidor,
+    row.cpf_cnpj,
+    row.matriculaResolvida,
+    row.agenteResponsavel,
+    row.status_label,
+    row.situacao,
+  ]
+    .map(normalizeText)
+    .join(" ");
 
-  const detailQueries = useQueries({
-    queries: uniqueAssociadoIds.map((associadoId) => ({
-      queryKey: ["associado-renovacao-ciclo", associadoId],
-      queryFn: () => apiFetch<AssociadoDetail>(`associados/${associadoId}`),
-      staleTime: 5 * 60 * 1000,
-      retry: false,
-    })),
+  if (searchValue && !comparableText.includes(normalizeText(searchValue))) {
+    return false;
+  }
+
+  return true;
+}
+
+function buildEnrichedReturnRows(
+  rows: ArquivoRetornoFinanceiroItem[],
+  cycleLookup: Map<string, EnrichedCycleItem>,
+  options: {
+    searchValue?: string;
+    agent?: string;
+  } = {},
+) {
+  const searchValue = options.searchValue ?? "";
+  const agent = options.agent ?? "todos";
+
+  return rows
+    .map((item) => {
+      const normalizedCpf = onlyDigits(item.cpf_cnpj);
+      const cycleMatch = cycleLookup.get(normalizedCpf);
+
+      return {
+        ...item,
+        associadoId: item.associado_id ?? cycleMatch?.associado_id,
+        agenteResponsavel:
+          item.agente_responsavel ||
+          cycleMatch?.agenteResponsavel ||
+          "Sem agente vinculado",
+        matriculaResolvida: item.matricula || cycleMatch?.matricula || "-",
+        esperado: item.esperado || cycleMatch?.valor_parcela || item.valor || 0,
+        recebido: item.recebido || 0,
+        situacao: item.situacao_label,
+        nome_servidor: item.relatorio || item.associado_nome || cycleMatch?.nome_associado || "-",
+        statusBadge: toFinanceiroStatus(item.situacao_code),
+        associado_nome: item.associado_nome || cycleMatch?.nome_associado || item.relatorio || "-",
+      } satisfies EnrichedReturnItem;
+    })
+    .filter((item) => {
+      if (!matchesReturnSearchValue(item, searchValue)) {
+        return false;
+      }
+
+      if (
+        agent !== "todos" &&
+        normalizeText(item.agenteResponsavel) !== normalizeText(agent)
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+}
+
+function buildReturnAutocompleteOptions(rows: EnrichedReturnItem[]) {
+  const seen = new Set<string>();
+  const options: SelectOption[] = [];
+
+  rows.forEach((row) => {
+    const uniqueKey = onlyDigits(row.cpf_cnpj) || normalizeText(row.matriculaResolvida) || normalizeText(row.associado_nome || row.nome_servidor);
+    if (!uniqueKey || seen.has(uniqueKey)) {
+      return;
+    }
+
+    seen.add(uniqueKey);
+    options.push({
+      value: `assoc::${uniqueKey}`,
+      label: `${row.associado_nome || row.nome_servidor} • ${maskCPFCNPJ(row.cpf_cnpj)} • ${row.matriculaResolvida}`,
+    });
   });
 
-  const detailsById = React.useMemo(() => {
-    return new Map<number, AssociadoDetail>(
-      uniqueAssociadoIds
-        .map((associadoId, index) => [associadoId, detailQueries[index]?.data] as const)
-        .filter((entry): entry is [number, AssociadoDetail] => Boolean(entry[1])),
-    );
-  }, [detailQueries, uniqueAssociadoIds]);
+  return options;
+}
 
+function matchesMetricStatus(row: EnrichedCycleItem, status: MetricStatusKey) {
+  if (status === "ciclo_renovado") {
+    return row.status_visual === "ciclo_renovado" || row.gerou_encerramento;
+  }
+
+  return row.status_visual === status;
+}
+
+function buildReturnColumns({
+  compact = false,
+  includeActions = false,
+}: {
+  compact?: boolean;
+  includeActions?: boolean;
+} = {}): DataTableColumn<EnrichedReturnItem>[] {
+  const columns: DataTableColumn<EnrichedReturnItem>[] = [
+    {
+      id: "nome",
+      header: compact ? "Associado" : "Nome",
+      cell: (row) => (
+        <CopySnippet
+          label="Nome"
+          value={row.associado_nome || row.nome_servidor}
+          inline
+          className="max-w-full"
+        />
+      ),
+      headerClassName: compact ? "min-w-[16rem]" : "min-w-[18rem]",
+      cellClassName: compact ? "min-w-[16rem]" : "min-w-[18rem]",
+    },
+  ];
+
+  if (!compact) {
+    columns.push(
+      {
+        id: "cpf",
+        header: "CPF",
+        cell: (row) => <CopySnippet label="CPF" value={row.cpf_cnpj} mono />,
+      },
+      {
+        id: "matricula",
+        header: "Matrícula",
+        cell: (row) => <CopySnippet label="Matrícula" value={row.matriculaResolvida} mono />,
+      },
+      {
+        id: "agente",
+        header: "Agente responsável",
+        accessor: "agenteResponsavel",
+        cell: (row) => <span className="text-sm text-foreground">{row.agenteResponsavel}</span>,
+      },
+    );
+  }
+
+  columns.push(
+    {
+      id: "status",
+      header: "Status",
+      cell: (row) => (
+        <StatusBadge status={row.statusBadge} label={row.status_label || row.situacao} />
+      ),
+    },
+    {
+      id: "esperado",
+      header: "Esperado",
+      cell: (row) => <span className="text-sm text-foreground">{formatCurrency(row.esperado)}</span>,
+    },
+    {
+      id: "recebido",
+      header: "Recebido",
+      cell: (row) => (
+        <span className="text-sm font-medium text-foreground">{formatCurrency(row.recebido)}</span>
+      ),
+    },
+  );
+
+  if (!compact) {
+    columns.push({
+      id: "situacao",
+      header: "Situação",
+      accessor: "situacao",
+      cell: (row) => <span className="text-sm text-muted-foreground">{row.situacao}</span>,
+      headerClassName: "min-w-[18rem]",
+      cellClassName: "min-w-[18rem] whitespace-normal",
+    });
+  }
+
+  if (includeActions) {
+    columns.push({
+      id: "acoes",
+      header: "Ações",
+      cell: (row) =>
+        row.associadoId ? (
+          <Button asChild variant="outline" size="sm" className="rounded-2xl">
+            <Link href={`/associados/${row.associadoId}`}>
+              <ArrowUpRightIcon className="size-4" />
+              Ver detalhes do associado
+            </Link>
+          </Button>
+        ) : (
+          <Button disabled variant="outline" size="sm" className="rounded-2xl">
+            Ver detalhes do associado
+          </Button>
+        ),
+      headerClassName: "min-w-[12rem]",
+      cellClassName: "min-w-[12rem]",
+    });
+  }
+
+  return columns;
+}
+
+function useEnrichedCycleRows(rows: RenovacaoCicloItem[]) {
   return React.useMemo<EnrichedCycleItem[]>(() => {
     return rows.map((row) => {
-      const detail = detailsById.get(row.associado_id);
       return {
         ...row,
-        matricula:
-          detail?.matricula_orgao ||
-          detail?.contato?.matricula_servidor ||
-          detail?.matricula ||
-          row.contrato_codigo,
-        agenteResponsavel: detail?.agente?.full_name || "Sem agente vinculado",
+        matricula: row.matricula || row.contrato_codigo,
+        agenteResponsavel: row.agente_responsavel || "Sem agente vinculado",
         associadoUrl: `/associados/${row.associado_id}`,
       };
     });
-  }, [detailsById, rows]);
-}
-
-function useAssociadosByCpf(cpfs: string[]) {
-  const uniqueCpfs = React.useMemo(
-    () => [...new Set(cpfs.map(onlyDigits).filter(Boolean))],
-    [cpfs],
-  );
-
-  const associadoQueries = useQueries({
-    queries: uniqueCpfs.map((cpf) => ({
-      queryKey: ["associado-by-cpf", cpf],
-      queryFn: () =>
-        apiFetch<PaginatedResponse<AssociadoListItem>>("associados", {
-          query: { search: cpf, page_size: 1 },
-        }),
-      staleTime: 5 * 60 * 1000,
-      retry: false,
-    })),
-  });
-
-  return React.useMemo(() => {
-    return new Map<string, AssociadoListItem>(
-      uniqueCpfs
-        .map((cpf, index) => [cpf, associadoQueries[index]?.data?.results?.[0]] as const)
-        .filter((entry): entry is [string, AssociadoListItem] => Boolean(entry[1])),
-    );
-  }, [associadoQueries, uniqueCpfs]);
+  }, [rows]);
 }
 
 function FilterField({
@@ -683,6 +1052,8 @@ type CycleMembersTableProps = {
   monthLabel: string;
   compact?: boolean;
   emptyMessage?: string;
+  pageSize?: number;
+  tableClassName?: string;
 };
 
 function CycleMembersTable({
@@ -690,12 +1061,28 @@ function CycleMembersTable({
   monthLabel,
   compact = false,
   emptyMessage = "Nenhum associado encontrado para este mês.",
+  pageSize = compact ? 4 : 10,
+  tableClassName,
 }: CycleMembersTableProps) {
   const [expandedRow, setExpandedRow] = React.useState<number | null>(null);
+  const [page, setPage] = React.useState(1);
+  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const currentRows = React.useMemo(
+    () => rows.slice((page - 1) * pageSize, page * pageSize),
+    [page, pageSize, rows],
+  );
+
+  React.useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
+
+  React.useEffect(() => {
+    setExpandedRow(null);
+  }, [page]);
 
   return (
     <div className="overflow-hidden rounded-[1.35rem] border border-border/60 bg-background/55">
-      <Table>
+      <Table className={cn(compact ? "min-w-[42rem]" : "min-w-[72rem]", tableClassName)}>
         <TableHeader>
           <TableRow className="border-border/60 hover:bg-transparent">
             <TableHead className="h-11 px-4 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
@@ -723,8 +1110,8 @@ function CycleMembersTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {rows.length ? (
-            rows.map((row) => {
+          {currentRows.length ? (
+            currentRows.map((row) => {
               const parcelCards = buildCycleParcelCards(row);
               const isExpanded = expandedRow === row.id;
 
@@ -793,40 +1180,48 @@ function CycleMembersTable({
                                 <span className="font-medium">{monthLabel}</span>
                               </p>
                             </div>
-                            <Link
-                              href={row.associadoUrl}
-                              className="text-sm text-primary transition-colors hover:text-primary/80"
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              Ver detalhes do associado
-                            </Link>
+                            <Button variant="outline" size="sm" className="rounded-2xl" asChild>
+                              <Link href={row.associadoUrl} onClick={(event) => event.stopPropagation()}>
+                                  <ArrowUpRightIcon className="size-4" />
+                                  Ver detalhes do associado
+                              </Link>
+                            </Button>
                           </div>
 
                           <div className="grid gap-3 sm:grid-cols-3">
                             {parcelCards.map((parcelCard) => (
-                              <div
-                                key={`${row.id}-${parcelCard.parcela}`}
-                                className={cn(
-                                  "rounded-2xl border border-border/60 px-4 py-3",
-                                  parcelCard.active && "border-primary/45 bg-primary/8",
-                                )}
-                              >
-                                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                                  Parcela {parcelCard.parcela}/{row.parcelas_total}
-                                </p>
-                                <p
-                                  className={cn(
-                                    "mt-2 text-sm font-semibold",
-                                    parcelCard.paid
-                                      ? "text-emerald-300"
-                                      : parcelCard.active
-                                        ? "text-amber-300"
-                                        : "text-muted-foreground",
-                                  )}
-                                >
-                                  {parcelCard.status}
-                                </p>
-                              </div>
+                              <Tooltip key={`${row.id}-${parcelCard.parcela}`}>
+                                <TooltipTrigger asChild>
+                                  <div
+                                    tabIndex={0}
+                                    role="button"
+                                    aria-label={`Parcela ${parcelCard.parcela} de ${row.parcelas_total}: ${parcelCard.status}`}
+                                    className={cn(
+                                      "rounded-2xl border border-border/60 px-4 py-3 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50",
+                                      parcelCard.active && "border-primary/45 bg-primary/8",
+                                    )}
+                                  >
+                                    <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                                      Parcela {parcelCard.parcela}/{row.parcelas_total}
+                                    </p>
+                                    <p
+                                      className={cn(
+                                        "mt-2 text-sm font-semibold",
+                                        parcelCard.paid
+                                          ? "text-emerald-300"
+                                          : parcelCard.active
+                                            ? "text-amber-300"
+                                            : "text-muted-foreground",
+                                      )}
+                                    >
+                                      {parcelCard.status}
+                                    </p>
+                                  </div>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="max-w-72">
+                                  {parcelCard.reason}
+                                </TooltipContent>
+                              </Tooltip>
                             ))}
                           </div>
 
@@ -874,7 +1269,195 @@ function CycleMembersTable({
           )}
         </TableBody>
       </Table>
+      <TablePagination page={page} totalPages={totalPages} onPageChange={setPage} />
     </div>
+  );
+}
+
+function TableSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="space-y-3 rounded-[1.35rem] border border-border/60 bg-background/55 p-4">
+      <Skeleton className="h-10 w-full rounded-xl" />
+      {Array.from({ length: rows }, (_, index) => (
+        <Skeleton key={index} className="h-14 w-full rounded-xl" />
+      ))}
+    </div>
+  );
+}
+
+function MetricTileSkeleton() {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-background/55 px-4 py-3">
+      <Skeleton className="h-3 w-20" />
+      <Skeleton className="mt-3 h-7 w-14" />
+    </div>
+  );
+}
+
+function MonthlyCycleCardSkeleton() {
+  return (
+    <Card className="border-border/60 bg-card/80 shadow-xl shadow-black/15">
+      <CardHeader className="gap-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-32" />
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-4 w-44" />
+          </div>
+          <Skeleton className="h-10 w-24 rounded-2xl" />
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-12" />
+          </div>
+          <Skeleton className="h-2.5 w-full rounded-full" />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <MetricTileSkeleton />
+          <MetricTileSkeleton />
+          <MetricTileSkeleton />
+          <MetricTileSkeleton />
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-28" />
+          </div>
+          <Skeleton className="h-9 w-32 rounded-2xl" />
+        </div>
+        <TableSkeleton rows={4} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReturnFileCardSkeleton() {
+  return (
+    <Card className="border-border/60 bg-card/80 shadow-xl shadow-black/15">
+      <CardHeader className="gap-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-44" />
+            <Skeleton className="h-4 w-60" />
+          </div>
+          <Skeleton className="h-7 w-24 rounded-full" />
+        </div>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-4 w-12" />
+          </div>
+          <Skeleton className="h-2.5 w-full rounded-full" />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <MetricTileSkeleton />
+          <MetricTileSkeleton />
+          <MetricTileSkeleton />
+          <MetricTileSkeleton />
+        </div>
+        <Skeleton className="h-14 w-full rounded-2xl" />
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Skeleton className="h-9 w-44 rounded-2xl" />
+      </CardContent>
+    </Card>
+  );
+}
+
+type MetricStatusDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  status: MetricStatusKey | null;
+  rows: EnrichedCycleItem[];
+  monthLabel: string;
+  competenciaId: string;
+};
+
+function MetricStatusDialog({
+  open,
+  onOpenChange,
+  status,
+  rows,
+  monthLabel,
+  competenciaId,
+}: MetricStatusDialogProps) {
+  const [autocompleteValue, setAutocompleteValue] = React.useState("");
+  const meta = status ? MONTHLY_METRIC_META[status] : null;
+  const searchValue = decodeAutocompleteValue(autocompleteValue);
+  const filteredRows = React.useMemo(
+    () => rows.filter((row) => matchesCycleSearchValue(row, searchValue)),
+    [rows, searchValue],
+  );
+  const autocompleteOptions = React.useMemo(
+    () => buildAutocompleteOptions(rows),
+    [rows],
+  );
+
+  React.useEffect(() => {
+    if (!open) {
+      setAutocompleteValue("");
+    }
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[96vw] max-w-[96vw] overflow-hidden border-border/60 bg-background/95 p-5 sm:p-6 lg:max-w-[88vw] 2xl:max-w-[96rem]">
+        <DialogHeader>
+          <DialogTitle>{meta ? `${meta.label} em ${monthLabel}` : "Detalhamento por status"}</DialogTitle>
+          <DialogDescription>
+            {meta?.description ?? "Associados consolidados para o status selecionado na competencia."}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
+            <SearchableSelect
+              options={autocompleteOptions}
+              value={autocompleteValue}
+              onChange={setAutocompleteValue}
+              placeholder="Buscar associado neste status"
+              searchPlaceholder="Buscar por nome, CPF ou matricula"
+              emptyLabel="Nenhum associado encontrado neste status."
+              className="min-w-0 rounded-2xl sm:min-w-[22rem]"
+            />
+            {autocompleteValue ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-2xl sm:self-start"
+                onClick={() => setAutocompleteValue("")}
+              >
+                Limpar busca
+              </Button>
+            ) : null}
+          </div>
+          <ExportButton
+            onExport={(format) =>
+              exportRows(
+                format,
+                `${meta?.label ?? "Detalhamento"} - ${monthLabel}`,
+                sanitizeFileName(`status-${status ?? "detalhamento"}-${competenciaId}`),
+                cycleExportColumns(monthLabel),
+                filteredRows,
+              )
+            }
+          />
+        </div>
+
+        <div className="max-w-full overflow-x-auto">
+          <CycleMembersTable
+            rows={filteredRows}
+            monthLabel={monthLabel}
+            pageSize={10}
+            tableClassName="min-w-[82rem]"
+            emptyMessage="Nenhum associado encontrado para este status com os filtros atuais."
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -893,13 +1476,45 @@ function MonthlyCycleCard({
   selectedStatus,
   advancedFilters,
 }: MonthlyCycleCardProps) {
+  const [isDialogOpen, setIsDialogOpen] = React.useState(false);
+  const [dialogAutocomplete, setDialogAutocomplete] = React.useState("");
+  const [metricDialogStatus, setMetricDialogStatus] = React.useState<MetricStatusKey | null>(null);
   const monthLabel = formatCompetenciaHeading(competenciaId);
+  const canUseServerResumo = !hasUnsupportedResumoFilters(advancedFilters);
+  const canUseFinanceiroResumo =
+    !searchValue && selectedStatus === "todos" && !hasUnsupportedResumoFilters(advancedFilters);
 
   const listQuery = useV1RenovacaoCiclosList(
-    { competencia: competenciaId, page_size: 50 },
-    { query: { enabled: Boolean(competenciaId) } },
+    { competencia: competenciaId, page_size: 1000 },
+    {
+      query: {
+        enabled: Boolean(competenciaId),
+        staleTime: 30 * 1000,
+        placeholderData: (previousData) => previousData,
+      },
+    },
   );
+  const importacaoMensalQuery = useQuery({
+    queryKey: ["arquivo-retorno-mensal-card", competenciaId],
+    queryFn: () =>
+      apiFetch<{ results: ArquivoRetornoWithFinanceiro[] }>("importacao/arquivo-retorno", {
+        query: {
+          competencia: competenciaId,
+          periodo: "mes",
+          page_size: 1,
+          ordering: "-created_at",
+        },
+      }),
+    enabled: Boolean(competenciaId),
+    staleTime: 30 * 1000,
+    placeholderData: (previousData: { results: ArquivoRetornoWithFinanceiro[] } | undefined) =>
+      previousData,
+  });
   const enrichedRows = useEnrichedCycleRows(listQuery.data?.results ?? []);
+  const cycleLookup = React.useMemo(
+    () => new Map<string, EnrichedCycleItem>(enrichedRows.map((row) => [onlyDigits(row.cpf_cnpj), row])),
+    [enrichedRows],
+  );
   const filteredRows = React.useMemo(
     () =>
       enrichedRows.filter((row) =>
@@ -907,7 +1522,6 @@ function MonthlyCycleCard({
       ),
     [advancedFilters, enrichedRows, searchValue, selectedStatus],
   );
-  const canUseServerResumo = !hasUnsupportedResumoFilters(advancedFilters);
   const resumoMensalQuery = useV1RenovacaoCiclosVisaoMensalRetrieve(
     {
       competencia: competenciaId,
@@ -917,41 +1531,140 @@ function MonthlyCycleCard({
     {
       query: {
         enabled: Boolean(competenciaId) && canUseServerResumo,
+        staleTime: 30 * 1000,
+        placeholderData: (previousData) => previousData,
       },
     },
   );
-  const monthlyMetrics = React.useMemo(() => {
-    if (canUseServerResumo && resumoMensalQuery.data) {
-      return buildMonthlyMetricsFromResumo(resumoMensalQuery.data);
-    }
-    return buildMonthlyMetrics(filteredRows);
-  }, [canUseServerResumo, filteredRows, resumoMensalQuery.data]);
+  const arquivoMensal = (importacaoMensalQuery.data?.results?.[0] ?? null) as
+    | ArquivoRetornoWithFinanceiro
+    | null;
+  const financeiroMensal = getArquivoFinanceiroResumo(arquivoMensal);
+  const financeiroDetalheQuery = useQuery({
+    queryKey: ["arquivo-retorno-mensal-card-financeiro", arquivoMensal?.id],
+    queryFn: () => {
+      if (!arquivoMensal?.id) {
+        throw new Error("Arquivo retorno mensal indisponível.");
+      }
 
-  const visibleRows = layoutMode === "grid" ? filteredRows.slice(0, 4) : filteredRows.slice(0, 6);
+      return apiFetch<ArquivoRetornoFinanceiroPayload>(
+        `importacao/arquivo-retorno/${arquivoMensal.id}/financeiro`,
+      );
+    },
+    enabled: canUseFinanceiroResumo && Boolean(arquivoMensal?.id),
+    staleTime: 30 * 1000,
+    placeholderData: (previousData: ArquivoRetornoFinanceiroPayload | undefined) =>
+      previousData,
+  });
+  const monthlyMetrics = React.useMemo(() => {
+    const metrics =
+      canUseServerResumo && resumoMensalQuery.data
+        ? buildMonthlyMetricsFromResumo(resumoMensalQuery.data)
+        : buildMonthlyMetrics(filteredRows);
+
+    if (canUseFinanceiroResumo) {
+      return applyFinanceiroToMonthlyMetrics(metrics, financeiroMensal);
+    }
+    return metrics;
+  }, [
+    canUseFinanceiroResumo,
+    canUseServerResumo,
+    filteredRows,
+    financeiroMensal,
+    resumoMensalQuery.data,
+  ]);
+  const financeRows = React.useMemo(
+    () => buildEnrichedReturnRows(financeiroDetalheQuery.data?.rows ?? [], cycleLookup),
+    [cycleLookup, financeiroDetalheQuery.data?.rows],
+  );
+  const hasConciliatedRows = enrichedRows.length > 0;
+  const cardPageSize = layoutMode === "grid" ? 4 : 6;
+  const dialogSearchValue = decodeAutocompleteValue(dialogAutocomplete);
+  const useFinanceiroDetalhe =
+    canUseFinanceiroResumo && Boolean(arquivoMensal?.id) && Boolean(financeiroDetalheQuery.data);
+  const dialogAutocompleteOptions = React.useMemo(() => {
+    if (useFinanceiroDetalhe) {
+      return buildReturnAutocompleteOptions(financeRows);
+    }
+
+    return buildAutocompleteOptions(filteredRows);
+  }, [filteredRows, financeRows, useFinanceiroDetalhe]);
+  const dialogCycleRows = React.useMemo(
+    () => filteredRows.filter((row) => matchesCycleSearchValue(row, dialogSearchValue)),
+    [dialogSearchValue, filteredRows],
+  );
+  const dialogFinanceRows = React.useMemo(
+    () => financeRows.filter((row) => matchesReturnSearchValue(row, dialogSearchValue)),
+    [dialogSearchValue, financeRows],
+  );
+  const financeCompactColumns = React.useMemo(
+    () => buildReturnColumns({ compact: true }),
+    [],
+  );
+  const financeDetailColumns = React.useMemo(
+    () => buildReturnColumns({ includeActions: true }),
+    [],
+  );
+  const metricRowsByStatus = React.useMemo(
+    () => ({
+      ciclo_renovado: filteredRows.filter((row) => matchesMetricStatus(row, "ciclo_renovado")),
+      apto_a_renovar: filteredRows.filter((row) => matchesMetricStatus(row, "apto_a_renovar")),
+      em_aberto: filteredRows.filter((row) => matchesMetricStatus(row, "em_aberto")),
+      inadimplente: filteredRows.filter((row) => matchesMetricStatus(row, "inadimplente")),
+    }),
+    [filteredRows],
+  );
+  const metricDialogRows = metricDialogStatus ? metricRowsByStatus[metricDialogStatus] : [];
+  const isFetchingFinanceiro = useFinanceiroDetalhe && financeiroDetalheQuery.isFetching;
+  const isCardLoading =
+    (listQuery.isLoading && !listQuery.data) ||
+    (canUseServerResumo && resumoMensalQuery.isLoading && !resumoMensalQuery.data) ||
+    (importacaoMensalQuery.isLoading && !importacaoMensalQuery.data) ||
+    (canUseFinanceiroResumo && Boolean(arquivoMensal?.id) && financeiroDetalheQuery.isLoading && !financeiroDetalheQuery.data);
+
+  if (isCardLoading) {
+    return <MonthlyCycleCardSkeleton />;
+  }
 
   return (
     <Card className="border-border/60 bg-card/80 shadow-xl shadow-black/15">
       <CardHeader className="gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-2xl">{monthLabel}</CardTitle>
+            <CardTitle className="text-xl">{monthLabel}</CardTitle>
             <CardDescription className="mt-2">
               Esperado: <span className="font-semibold text-foreground">{formatCurrency(monthlyMetrics.esperado)}</span>
             </CardDescription>
             <CardDescription>
               Arrecadado: <span className="font-semibold text-emerald-300">{formatCurrency(monthlyMetrics.arrecadado)}</span>
             </CardDescription>
+            {financeiroMensal ? (
+              <CardDescription>
+                Fonte: <span className="font-semibold text-cyan-300">arquivo retorno</span>
+              </CardDescription>
+            ) : null}
           </div>
           <ExportButton
-            onExport={(format) =>
+            onExport={(format) => {
+              if (useFinanceiroDetalhe) {
+                exportRows(
+                  format,
+                  `Gestão detalhada ${monthLabel}`,
+                  sanitizeFileName(`gestao-financeira-${competenciaId}`),
+                  returnExportColumns(),
+                  financeRows,
+                );
+                return;
+              }
+
               exportRows(
                 format,
                 `Gestão detalhada ${monthLabel}`,
                 sanitizeFileName(`gestao-ciclo-${competenciaId}`),
                 cycleExportColumns(monthLabel),
                 filteredRows,
-              )
-            }
+              );
+            }}
           />
         </div>
 
@@ -964,91 +1677,209 @@ function MonthlyCycleCard({
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <MetricTile label="Renovados" value={monthlyMetrics.cicloRenovado} />
-          <MetricTile label="Aptos a renovar" value={monthlyMetrics.aptoRenovar} />
-          <MetricTile label="Em aberto" value={monthlyMetrics.emAberto} tone="warning" />
-          <MetricTile label="Inadimplentes" value={monthlyMetrics.inadimplente} tone="danger" />
+          <MetricTile
+            label="Renovados"
+            value={monthlyMetrics.cicloRenovado}
+            onClick={() => setMetricDialogStatus("ciclo_renovado")}
+          />
+          <MetricTile
+            label="Aptos a renovar"
+            value={monthlyMetrics.aptoRenovar}
+            accent="cyan"
+            onClick={() => setMetricDialogStatus("apto_a_renovar")}
+          />
+          <MetricTile
+            label="Em aberto"
+            value={monthlyMetrics.emAberto}
+            tone="warning"
+            onClick={() => setMetricDialogStatus("em_aberto")}
+          />
+          <MetricTile
+            label="Inadimplentes"
+            value={monthlyMetrics.inadimplente}
+            tone="danger"
+            onClick={() => setMetricDialogStatus("inadimplente")}
+          />
         </div>
       </CardHeader>
 
       <CardContent className="space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium text-foreground">Detalhamento de associados</p>
-            <p className="text-xs text-muted-foreground">{filteredRows.length} registros disponíveis</p>
+        {!hasConciliatedRows ? (
+          <div className="flex items-start gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            <CircleAlertIcon className="mt-0.5 size-4 shrink-0 text-amber-300" />
+            <div>
+              Há arquivo retorno para {monthLabel}, mas a base local não possui parcelas conciliadas nessa competência.
+            </div>
           </div>
-          <Dialog>
+        ) : null}
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium text-foreground">
+              {useFinanceiroDetalhe ? "Detalhamento financeiro" : "Detalhamento de associados"}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {useFinanceiroDetalhe ? financeRows.length : filteredRows.length} registros disponíveis
+            </p>
+          </div>
+          {listQuery.isFetching || resumoMensalQuery.isFetching || isFetchingFinanceiro ? (
+            <Badge variant="outline" className="rounded-full border-border/60">
+              Atualizando
+            </Badge>
+          ) : null}
+          <Dialog
+            open={isDialogOpen}
+            onOpenChange={(open) => {
+              setIsDialogOpen(open);
+              if (!open) {
+                setDialogAutocomplete("");
+              }
+            }}
+          >
             <DialogTrigger asChild>
               <Button variant="outline" size="sm" className="rounded-2xl">
                 <EyeIcon className="size-4" />
                 Ampliar tabela
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-6xl border-border/60 bg-background/95">
+            <DialogContent className="w-[98vw] max-w-[98vw] overflow-hidden border-border/60 bg-background/95 p-5 sm:p-6 lg:max-w-[92vw] 2xl:max-w-[104rem]">
               <DialogHeader>
-                <DialogTitle>Gestão detalhada de {monthLabel}</DialogTitle>
+                <DialogTitle>
+                  {useFinanceiroDetalhe
+                    ? `Gestão financeira de ${monthLabel}`
+                    : `Gestão detalhada de ${monthLabel}`}
+                </DialogTitle>
                 <DialogDescription>
-                  Associados, agente responsável, parcelas do ciclo e status da parcela da competência.
+                  {useFinanceiroDetalhe
+                    ? "Associados do arquivo retorno, valores esperados, recebidos e situação conciliada."
+                    : "Associados, agente responsável, parcelas do ciclo e status da parcela da competência."}
                 </DialogDescription>
               </DialogHeader>
-              <div className="flex justify-end">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
+                  <SearchableSelect
+                    options={dialogAutocompleteOptions}
+                    value={dialogAutocomplete}
+                    onChange={setDialogAutocomplete}
+                    placeholder={
+                      useFinanceiroDetalhe
+                        ? "Buscar associado neste retorno"
+                        : "Buscar associado nesta tabela"
+                    }
+                    searchPlaceholder="Buscar por nome, CPF ou matrícula"
+                    emptyLabel={
+                      useFinanceiroDetalhe
+                        ? "Nenhum associado encontrado neste retorno."
+                        : "Nenhum associado encontrado nesta tabela."
+                    }
+                    className="min-w-0 rounded-2xl sm:min-w-[22rem]"
+                  />
+                  {dialogAutocomplete ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-2xl sm:self-start"
+                      onClick={() => setDialogAutocomplete("")}
+                    >
+                      Limpar busca
+                    </Button>
+                  ) : null}
+                </div>
                 <ExportButton
-                  onExport={(format) =>
+                  onExport={(format) => {
+                    if (useFinanceiroDetalhe) {
+                      exportRows(
+                        format,
+                        `Gestão detalhada ${monthLabel}`,
+                        sanitizeFileName(`gestao-financeira-${competenciaId}`),
+                        returnExportColumns(),
+                        dialogFinanceRows,
+                      );
+                      return;
+                    }
+
                     exportRows(
                       format,
                       `Gestão detalhada ${monthLabel}`,
                       sanitizeFileName(`gestao-ciclo-${competenciaId}`),
                       cycleExportColumns(monthLabel),
-                      filteredRows,
-                    )
-                  }
+                      dialogCycleRows,
+                    );
+                  }}
                 />
               </div>
-              <ScrollArea className="max-h-[60vh]">
-                <CycleMembersTable rows={filteredRows} monthLabel={monthLabel} />
-              </ScrollArea>
+              <div className="max-w-full overflow-x-auto">
+                {useFinanceiroDetalhe ? (
+                  <DataTable
+                    columns={financeDetailColumns}
+                    data={dialogFinanceRows}
+                    pageSize={10}
+                    className="rounded-[1.35rem] border border-border/60 bg-background/55 shadow-none"
+                    tableClassName="min-w-[82rem]"
+                    emptyMessage="Nenhum lançamento encontrado no arquivo retorno desta competência."
+                  />
+                ) : (
+                  <CycleMembersTable
+                    rows={dialogCycleRows}
+                    monthLabel={monthLabel}
+                    pageSize={10}
+                    tableClassName="min-w-[82rem]"
+                  />
+                )}
+              </div>
             </DialogContent>
           </Dialog>
         </div>
 
-        <ScrollArea className="max-h-[22rem]">
-          <CycleMembersTable
-            rows={visibleRows}
-            monthLabel={monthLabel}
-            compact
-            emptyMessage="Nenhum associado corresponde aos filtros deste card."
-          />
-        </ScrollArea>
+        <div className="max-w-full overflow-x-auto">
+          {useFinanceiroDetalhe ? (
+            <DataTable
+              columns={financeCompactColumns}
+              data={financeRows}
+              pageSize={cardPageSize}
+              className="rounded-[1.35rem] border border-border/60 bg-background/55 shadow-none"
+              tableClassName="min-w-[44rem]"
+              emptyMessage="Nenhum lançamento encontrado no arquivo retorno desta competência."
+            />
+          ) : (
+            <CycleMembersTable
+              rows={filteredRows}
+              monthLabel={monthLabel}
+              compact
+              pageSize={cardPageSize}
+              tableClassName="min-w-[42rem]"
+              emptyMessage={
+                hasConciliatedRows
+                  ? "Nenhum associado corresponde aos filtros deste card."
+                  : "Nenhuma parcela conciliada encontrada para esta competência."
+              }
+            />
+          )}
+        </div>
       </CardContent>
+
+      <MetricStatusDialog
+        open={Boolean(metricDialogStatus)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setMetricDialogStatus(null);
+          }
+        }}
+        status={metricDialogStatus}
+        rows={metricDialogRows}
+        monthLabel={monthLabel}
+        competenciaId={competenciaId}
+      />
     </Card>
   );
 }
 
 type ReturnFileCardProps = {
-  arquivo: ArquivoRetornoList;
+  arquivo: ArquivoRetornoWithFinanceiro;
   cycleLookup: Map<string, EnrichedCycleItem>;
   searchValue: string;
   advancedFilters: AdvancedFilters;
 };
-
-function buildReturnSituation(row: ArquivoRetornoItem) {
-  if (row.gerou_encerramento && row.gerou_novo_ciclo) {
-    return "Encerramento e novo ciclo gerados";
-  }
-  if (row.gerou_encerramento) {
-    return "Encerramento do ciclo";
-  }
-  if (row.gerou_novo_ciclo) {
-    return "Novo ciclo iniciado";
-  }
-  if (row.motivo_rejeicao) {
-    return row.motivo_rejeicao;
-  }
-  if (row.observacao) {
-    return row.observacao;
-  }
-  return capitalize((row.resultado_processamento || row.status_desconto || "pendente").replaceAll("_", " "));
-}
 
 function ReturnFileCard({
   arquivo,
@@ -1057,107 +1888,55 @@ function ReturnFileCard({
   advancedFilters,
 }: ReturnFileCardProps) {
   const [isExpanded, setIsExpanded] = React.useState(false);
+  const financeiroResumo = getArquivoFinanceiroResumo(arquivo);
+  const financeiroQuery = useQuery({
+    queryKey: ["arquivo-retorno-financeiro", arquivo.id],
+    queryFn: () =>
+      apiFetch<ArquivoRetornoFinanceiroPayload>(
+        `importacao/arquivo-retorno/${arquivo.id}/financeiro`,
+      ),
+    enabled: isExpanded,
+    staleTime: 30 * 1000,
+    placeholderData: (previousData: ArquivoRetornoFinanceiroPayload | undefined) => previousData,
+  });
+  const isDetailLoading = isExpanded && financeiroQuery.isLoading && !financeiroQuery.data;
 
-  const descontadosQuery = useV1ImportacaoArquivoRetornoDescontadosList(
-    arquivo.id,
-    { page_size: 20 },
-    { query: { enabled: isExpanded } },
-  );
-  const naoDescontadosQuery = useV1ImportacaoArquivoRetornoNaoDescontadosList(
-    arquivo.id,
-    { page_size: 20 },
-    { query: { enabled: isExpanded } },
-  );
-  const pendenciasQuery = useV1ImportacaoArquivoRetornoPendenciasManuaisList(
-    arquivo.id,
-    { page_size: 20 },
-    { query: { enabled: isExpanded } },
-  );
-
-  const rawItems = React.useMemo(() => {
+  const rawItems = React.useMemo<ArquivoRetornoFinanceiroItem[]>(() => {
     if (!isExpanded) return [];
-
-    const collected = [
-      ...(descontadosQuery.data?.results ?? []),
-      ...(naoDescontadosQuery.data?.results ?? []),
-      ...(pendenciasQuery.data?.results ?? []),
-    ];
-
-    const byId = new Map<number, ArquivoRetornoItem>();
-    collected.forEach((item) => byId.set(item.id, item));
-    return [...byId.values()];
-  }, [
-    descontadosQuery.data?.results,
-    isExpanded,
-    naoDescontadosQuery.data?.results,
-    pendenciasQuery.data?.results,
-  ]);
-
-  const associadosByCpf = useAssociadosByCpf(rawItems.map((item) => item.cpf_cnpj));
+    return financeiroQuery.data?.rows ?? [];
+  }, [financeiroQuery.data?.rows, isExpanded]);
 
   const detailRows = React.useMemo<EnrichedReturnItem[]>(() => {
-    return rawItems
-      .map((item) => {
-        const normalizedCpf = onlyDigits(item.cpf_cnpj);
-        const associado = associadosByCpf.get(normalizedCpf);
-        const cycleMatch = cycleLookup.get(normalizedCpf);
+    return buildEnrichedReturnRows(rawItems, cycleLookup, {
+      searchValue,
+      agent: advancedFilters.agent,
+    });
+  }, [advancedFilters.agent, cycleLookup, rawItems, searchValue]);
+  const detailColumns = React.useMemo<DataTableColumn<EnrichedReturnItem>[]>(
+    () => buildReturnColumns({ includeActions: true }),
+    [],
+  );
 
-        const resolved: EnrichedReturnItem = {
-          ...item,
-          associadoId: associado?.id ?? cycleMatch?.associado_id,
-          agenteResponsavel:
-            associado?.agente?.full_name ||
-            cycleMatch?.agenteResponsavel ||
-            "Sem agente vinculado",
-          matriculaResolvida:
-            associado?.matricula || cycleMatch?.matricula || item.matricula_servidor,
-          esperado: cycleMatch?.valor_parcela || item.valor_descontado || 0,
-          recebido: item.valor_descontado || 0,
-          situacao: buildReturnSituation(item),
-        };
-
-        const comparableText = [
-          resolved.associado_nome,
-          resolved.nome_servidor,
-          resolved.cpf_cnpj,
-          resolved.matriculaResolvida,
-          resolved.agenteResponsavel,
-          resolved.situacao,
-        ]
-          .map(normalizeText)
-          .join(" ");
-
-        if (searchValue && !comparableText.includes(normalizeText(searchValue))) {
-          return null;
-        }
-
-        if (
-          advancedFilters.agent !== "todos" &&
-          normalizeText(resolved.agenteResponsavel) !== normalizeText(advancedFilters.agent)
-        ) {
-          return null;
-        }
-
-        return resolved;
-      })
-      .filter((item): item is EnrichedReturnItem => item !== null);
-  }, [advancedFilters.agent, associadosByCpf, cycleLookup, rawItems, searchValue]);
-
-  const processados = arquivo.processados ?? 0;
-  const total = arquivo.total_registros ?? 0;
-  const progresso = total ? (processados / total) * 100 : 0;
+  const total = financeiroResumo?.total ?? arquivo.total_registros ?? 0;
+  const quitados = financeiroResumo?.ok ?? 0;
+  const faltando = financeiroResumo?.faltando ?? Math.max(total - quitados, 0);
+  const recebido = financeiroResumo?.recebido ?? 0;
+  const esperado = financeiroResumo?.esperado ?? 0;
+  const pendente = financeiroResumo?.pendente ?? 0;
+  const progresso = financeiroResumo?.percentual ?? (total ? (quitados / total) * 100 : 0);
+  const mensalidades = financeiroResumo?.mensalidades;
+  const valores3050 = financeiroResumo?.valores_30_50;
   const fileTitle = formatCompetenciaHeading(
     arquivo.competencia_display,
     arquivo.competencia,
   );
-  const cicloAberto = extractResumoValue(arquivo, "ciclo_aberto");
 
   return (
     <Card className="border-border/60 bg-card/80 shadow-xl shadow-black/15">
       <CardHeader className="gap-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-xl">{arquivo.arquivo_nome}</CardTitle>
+            <CardTitle className="text-lg">{arquivo.arquivo_nome}</CardTitle>
             <CardDescription className="mt-2">
               Competência {arquivo.competencia_display || formatCompetenciaHeading(arquivo.competencia)} • Processado em{" "}
               {formatDateTime(arquivo.processado_em || arquivo.created_at)}
@@ -1169,22 +1948,43 @@ function ReturnFileCard({
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3 text-sm">
             <span className="text-muted-foreground">
-              Processados: <span className="font-medium text-foreground">{processados}</span> de{" "}
-              <span className="font-medium text-foreground">{total}</span>
+              Recebido: <span className="font-medium text-foreground">{formatCurrency(recebido)}</span> de{" "}
+              <span className="font-medium text-foreground">{formatCurrency(esperado)}</span>
             </span>
             <span className="font-medium text-foreground">{progresso.toFixed(1)}%</span>
           </div>
           <Progress value={progresso} className="h-2.5" />
+          <p className="text-sm text-muted-foreground">
+            Quitados: <span className="font-medium text-foreground">{quitados}</span> de{" "}
+            <span className="font-medium text-foreground">{total}</span> contratos.
+            {faltando > 0 ? (
+              <>
+                {" "}
+                Restam <span className="font-medium text-foreground">{faltando}</span> registros e{" "}
+                <span className="font-medium text-foreground">{formatCurrency(pendente)}</span> pendentes.
+              </>
+            ) : null}
+          </p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <MetricTile label="Descontados" value={extractResumoValue(arquivo, "efetivados") || extractResumoValue(arquivo, "baixa_efetuada")} accent="cyan" />
-          <MetricTile label="Não descontados" value={extractResumoValue(arquivo, "nao_descontados") || extractResumoValue(arquivo, "nao_descontado")} tone="warning" />
-          <MetricTile label="Pendências" value={extractResumoValue(arquivo, "pendencias_manuais")} tone="warning" />
-          <MetricTile label="Não encontrados" value={extractResumoValue(arquivo, "nao_encontrado")} tone="danger" />
-          {cicloAberto > 0 ? (
-            <MetricTile label="Ciclo aberto" value={cicloAberto} tone="warning" />
-          ) : null}
+          <MetricTile label="Quitados" value={`${quitados}/${total}`} accent="cyan" />
+          <MetricTile
+            label="Faltando"
+            value={faltando}
+            tone={faltando > 0 ? "warning" : "neutral"}
+            hint={formatCurrency(pendente)}
+          />
+          <MetricTile
+            label="Mensalidades"
+            value={formatCurrency(mensalidades?.recebido)}
+            hint={`de ${formatCurrency(mensalidades?.esperado)}`}
+          />
+          <MetricTile
+            label="Valores 30/50"
+            value={formatCurrency(valores3050?.recebido)}
+            hint={`de ${formatCurrency(valores3050?.esperado)}`}
+          />
         </div>
 
         <div className="rounded-2xl border border-border/60 bg-background/55 px-4 py-3 text-sm text-muted-foreground">
@@ -1219,97 +2019,20 @@ function ReturnFileCard({
         </div>
 
         {isExpanded ? (
-          <ScrollArea className="max-h-[26rem]">
-            <div className="overflow-hidden rounded-[1.35rem] border border-border/60 bg-background/55">
-              <Table>
-                <TableHeader>
-                  <TableRow className="border-border/60 hover:bg-transparent">
-                    <TableHead className="px-4 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      Nome
-                    </TableHead>
-                    <TableHead className="px-4 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      CPF
-                    </TableHead>
-                    <TableHead className="px-4 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      Matrícula
-                    </TableHead>
-                    <TableHead className="px-4 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      Agente responsável
-                    </TableHead>
-                    <TableHead className="px-4 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      Status
-                    </TableHead>
-                    <TableHead className="px-4 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      Esperado
-                    </TableHead>
-                    <TableHead className="px-4 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      Recebido
-                    </TableHead>
-                    <TableHead className="px-4 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      Situação
-                    </TableHead>
-                    <TableHead className="px-4 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                      Ações
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {detailRows.length ? (
-                    detailRows.map((row) => (
-                      <TableRow key={row.id} className="border-border/60 hover:bg-white/3">
-                        <TableCell className="px-4 py-3">
-                          <CopySnippet
-                            label="Nome"
-                            value={row.associado_nome || row.nome_servidor}
-                            inline
-                            className="max-w-full"
-                          />
-                        </TableCell>
-                        <TableCell className="px-4 py-3">
-                          <CopySnippet label="CPF" value={row.cpf_cnpj} mono />
-                        </TableCell>
-                        <TableCell className="px-4 py-3">
-                          <CopySnippet label="Matrícula" value={row.matriculaResolvida} mono />
-                        </TableCell>
-                        <TableCell className="px-4 py-3 text-sm text-foreground">
-                          {row.agenteResponsavel}
-                        </TableCell>
-                        <TableCell className="px-4 py-3">
-                          <StatusBadge status={row.status_desconto || row.resultado_processamento || "pendente"} />
-                        </TableCell>
-                        <TableCell className="px-4 py-3 text-sm text-foreground">
-                          {formatCurrency(row.esperado)}
-                        </TableCell>
-                        <TableCell className="px-4 py-3 text-sm font-medium text-foreground">
-                          {formatCurrency(row.recebido)}
-                        </TableCell>
-                        <TableCell className="px-4 py-3 text-sm text-muted-foreground">
-                          {row.situacao}
-                        </TableCell>
-                        <TableCell className="px-4 py-3">
-                          {row.associadoId ? (
-                            <Button asChild variant="outline" size="sm" className="rounded-2xl">
-                              <Link href={`/associados/${row.associadoId}`}>Ver detalhes do associado</Link>
-                            </Button>
-                          ) : (
-                            <Button disabled variant="outline" size="sm" className="rounded-2xl">
-                              Ver detalhes do associado
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow className="border-border/60">
-                      <TableCell colSpan={9} className="px-4 py-10 text-center text-sm text-muted-foreground">
-                        Nenhum item detalhado disponível para este arquivo com os filtros atuais.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </ScrollArea>
+          <div className="max-w-full overflow-x-auto">
+            {isDetailLoading ? (
+              <TableSkeleton rows={5} />
+            ) : (
+              <DataTable
+                columns={detailColumns}
+                data={detailRows}
+                pageSize={8}
+                className="rounded-[1.35rem] border border-border/60 bg-background/55 shadow-none"
+                tableClassName="min-w-[86rem]"
+                emptyMessage="Nenhum item detalhado disponível para este arquivo com os filtros atuais."
+              />
+            )}
+          </div>
         ) : null}
       </CardContent>
     </Card>
@@ -1319,19 +2042,46 @@ function ReturnFileCard({
 function MetricTile({
   label,
   value,
+  hint,
   tone = "neutral",
   accent,
+  onClick,
 }: {
   label: string;
-  value: number;
+  value: React.ReactNode;
+  hint?: string;
   tone?: "neutral" | "warning" | "danger";
   accent?: "cyan";
+  onClick?: () => void;
 }) {
   const toneClasses = {
     neutral: "border-border/60 text-foreground",
     warning: "border-amber-500/30 text-amber-300",
     danger: "border-rose-500/30 text-rose-300",
   } as const;
+
+  const content = (
+    <>
+      <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <p className="mt-2 text-xl font-semibold md:text-2xl">{value}</p>
+      {hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "rounded-2xl border bg-background/55 px-4 py-3 text-left transition-colors hover:bg-background/70 focus-visible:ring-2 focus-visible:ring-ring/50",
+          accent === "cyan" ? "border-cyan-500/30 text-cyan-300" : toneClasses[tone],
+        )}
+      >
+        {content}
+      </button>
+    );
+  }
 
   return (
     <div
@@ -1340,8 +2090,7 @@ function MetricTile({
         accent === "cyan" ? "border-cyan-500/30 text-cyan-300" : toneClasses[tone],
       )}
     >
-      <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
+      {content}
     </div>
   );
 }
@@ -1366,10 +2115,10 @@ function MonitoringCard({
             : "border-border/60",
       )}
     >
-      <p className="text-sm text-muted-foreground">{title}</p>
+      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{title}</p>
       <p
         className={cn(
-          "mt-3 text-4xl font-semibold",
+          "mt-3 text-3xl font-semibold",
           tone === "danger"
             ? "text-rose-300"
             : tone === "warning"
@@ -1384,7 +2133,12 @@ function MonitoringCard({
 }
 
 export default function RenovacaoCiclosPage() {
-  const monthsQuery = useV1RenovacaoCiclosMesesList();
+  const monthsQuery = useV1RenovacaoCiclosMesesList(undefined, {
+    query: {
+      staleTime: 5 * 60 * 1000,
+      placeholderData: (previousData) => previousData,
+    },
+  });
   const [selectedCompetencia, setSelectedCompetencia] = React.useState("");
   const [selectedStatus, setSelectedStatus] = React.useState("todos");
   const [selectedAutocomplete, setSelectedAutocomplete] = React.useState("");
@@ -1412,6 +2166,7 @@ export default function RenovacaoCiclosPage() {
     agent: "todos",
     status: "todos",
   });
+  const deferredAutocomplete = React.useDeferredValue(selectedAutocomplete);
 
   React.useEffect(() => {
     if (!selectedCompetencia && monthsQuery.data?.[0]?.id) {
@@ -1419,13 +2174,7 @@ export default function RenovacaoCiclosPage() {
     }
   }, [monthsQuery.data, selectedCompetencia]);
 
-  React.useEffect(() => {
-    if (!retornoCompetencia && (selectedCompetencia || monthsQuery.data?.[0]?.id)) {
-      setRetornoCompetencia(selectedCompetencia || monthsQuery.data?.[0]?.id || "");
-    }
-  }, [monthsQuery.data, retornoCompetencia, selectedCompetencia]);
-
-  const searchValue = decodeAutocompleteValue(selectedAutocomplete);
+  const searchValue = decodeAutocompleteValue(deferredAutocomplete);
   const canUseServerResumo = !hasUnsupportedResumoFilters(advancedFilters);
   const detailResumoQuery = useV1RenovacaoCiclosVisaoMensalRetrieve(
     {
@@ -1436,21 +2185,35 @@ export default function RenovacaoCiclosPage() {
     {
       query: {
         enabled: Boolean(selectedCompetencia) && canUseServerResumo,
+        staleTime: 30 * 1000,
+        placeholderData: (previousData) => previousData,
       },
     },
   );
   const detailListQuery = useV1RenovacaoCiclosList(
-    { competencia: selectedCompetencia || undefined, page_size: 100 },
-    { query: { enabled: Boolean(selectedCompetencia) } },
+    { competencia: selectedCompetencia || undefined, page_size: 1000 },
+    {
+      query: {
+        enabled: Boolean(selectedCompetencia),
+        staleTime: 30 * 1000,
+        placeholderData: (previousData) => previousData,
+      },
+    },
   );
   const importacaoQuery = useV1ImportacaoArquivoRetornoList(
     {
       competencia: retornoCompetencia || undefined,
       periodo: retornoPeriod,
-      page_size: 12,
+      page_size: 100,
       ordering: "-created_at",
     },
-    { query: { enabled: Boolean(retornoCompetencia) } },
+    {
+      query: {
+        enabled: true,
+        staleTime: 30 * 1000,
+        placeholderData: (previousData) => previousData,
+      },
+    },
   );
 
   const detailRows = useEnrichedCycleRows(detailListQuery.data?.results ?? []);
@@ -1508,7 +2271,10 @@ export default function RenovacaoCiclosPage() {
     });
   }, [advancedFilters.dateEnd, advancedFilters.dateStart, advancedFilters.periodPreset, monthsQuery.data, selectedMonth, selectedYear]);
 
-  const visibleMonths = filteredMonths.slice(0, visibleMonthsCount);
+  const visibleMonths = React.useMemo(
+    () => filteredMonths.slice(0, visibleMonthsCount).reverse(),
+    [filteredMonths, visibleMonthsCount],
+  );
 
   const cycleLookup = React.useMemo(() => {
     return new Map<string, EnrichedCycleItem>(
@@ -1546,10 +2312,34 @@ export default function RenovacaoCiclosPage() {
   }, [filteredDetailRows, monitoringMode]);
 
   const activeAdvancedFiltersCount = countActiveFilters(selectedStatus, advancedFilters);
-  const todayLabel = capitalize(
-    format(new Date(), "EEE, dd 'de' MMM 'de' yyyy", { locale: ptBR }),
-  );
   const selectedCompetenciaLabel = formatCompetenciaHeading(selectedCompetencia);
+  const isMonthsLoading = monthsQuery.isLoading && !(monthsQuery.data ?? []).length;
+  const isDetailLoading =
+    (detailListQuery.isLoading && !detailListQuery.data) ||
+    (canUseServerResumo && detailResumoQuery.isLoading && !detailResumoQuery.data);
+  const isImportacaoLoading = importacaoQuery.isLoading && !importacaoQuery.data;
+  const resetMainFilters = React.useCallback(() => {
+    setSelectedAutocomplete("");
+    setSelectedStatus("todos");
+    setSelectedYear("todos");
+    setSelectedMonth("todos");
+    setVisibleMonthsCount(3);
+    setAdvancedFilters({
+      periodPreset: "todos",
+      dateStart: "",
+      dateEnd: "",
+      parcelStatus: "todos",
+      agent: "todos",
+    });
+    setDraftAdvancedFilters({
+      periodPreset: "todos",
+      dateStart: "",
+      dateEnd: "",
+      parcelStatus: "todos",
+      agent: "todos",
+      status: "todos",
+    });
+  }, []);
 
   const columns: DataTableColumn<EnrichedCycleItem>[] = [
     {
@@ -1609,7 +2399,7 @@ export default function RenovacaoCiclosPage() {
       <div className="space-y-5 rounded-[2rem] border border-border/60 bg-card/75 p-6 shadow-2xl shadow-black/20">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-2">
-            <h1 className="text-4xl font-semibold tracking-tight text-foreground">
+            <h1 className="text-3xl font-semibold tracking-tight text-foreground md:text-[2.4rem]">
               Renovação de Ciclos
             </h1>
             <p className="max-w-3xl text-sm text-muted-foreground">
@@ -1810,29 +2600,19 @@ export default function RenovacaoCiclosPage() {
                 </SheetFooter>
               </SheetContent>
             </Sheet>
-
-            <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-background/70 px-4 py-3 text-sm text-muted-foreground">
-              <CalendarDaysIcon className="size-4" />
-              {todayLabel}
-            </div>
           </div>
         </div>
 
-        <div className="grid gap-3 xl:grid-cols-[1.15fr_0.9fr_0.9fr_0.8fr]">
+        <div className="grid items-start gap-3 lg:grid-cols-[minmax(14rem,16rem)_minmax(0,1fr)] xl:grid-cols-[minmax(14rem,16rem)_minmax(0,1fr)_minmax(12rem,14rem)_auto_auto]">
           <Select
             value={selectedCompetencia}
-            onValueChange={(value) => {
-              setSelectedCompetencia(value);
-              if (!retornoCompetencia) {
-                setRetornoCompetencia(value);
-              }
-            }}
+            onValueChange={setSelectedCompetencia}
           >
             <SelectTrigger className="rounded-2xl bg-background/60">
               <SelectValue placeholder="Competência base" />
             </SelectTrigger>
             <SelectContent>
-              {monthsQuery.data?.map((month) => (
+              {(monthsQuery.data ?? []).map((month) => (
                 <SelectItem key={month.id} value={month.id}>
                   {month.label}
                 </SelectItem>
@@ -1840,19 +2620,19 @@ export default function RenovacaoCiclosPage() {
             </SelectContent>
           </Select>
 
-          <div className="flex gap-2">
+          <div className="flex min-w-0 flex-col gap-2 sm:flex-row">
             <SearchableSelect
               options={autocompleteOptions}
               value={selectedAutocomplete}
               onChange={setSelectedAutocomplete}
-              placeholder="Buscar por CPF, matrícula ou nome"
-              searchPlaceholder="Digite para localizar"
-              className="rounded-2xl"
+              placeholder="Buscar associado, CPF ou matricula"
+              searchPlaceholder="Digite para localizar associado"
+              className="min-w-0 rounded-2xl"
             />
             {selectedAutocomplete ? (
               <Button
                 variant="outline"
-                className="rounded-2xl"
+                className="rounded-2xl sm:self-start"
                 onClick={() => setSelectedAutocomplete("")}
               >
                 Limpar
@@ -1873,6 +2653,10 @@ export default function RenovacaoCiclosPage() {
             </SelectContent>
           </Select>
 
+          <Button variant="outline" className="rounded-2xl" onClick={resetMainFilters}>
+            Limpar filtros
+          </Button>
+
           <ExportButton
             onExport={(format) =>
               exportRows(
@@ -1890,13 +2674,57 @@ export default function RenovacaoCiclosPage() {
       <section className="space-y-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <h2 className="text-2xl font-semibold text-foreground">Gestão detalhada por mês</h2>
+            <h2 className="text-xl font-semibold text-foreground">
+              Monitoramento de ciclos ({monitoringMode === "trimestral" ? "trimestral" : "semestral"})
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              KPIs derivados da competência filtrada para identificar abertura, andamento, encerramento e pendências acumuladas.
+            </p>
+          </div>
+
+          <Tabs value={monitoringMode} onValueChange={(value) => setMonitoringMode(value as MonitoringMode)}>
+            <TabsList variant="line">
+              <TabsTrigger value="trimestral">Trimestral</TabsTrigger>
+              <TabsTrigger value="semestral">Semestral</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+
+        <Tabs value={monitoringMode} onValueChange={(value) => setMonitoringMode(value as MonitoringMode)}>
+          <TabsContent value={monitoringMode} className="space-y-4">
+            <div className="grid gap-4 xl:grid-cols-4">
+              {monitoringCards.map((card) => (
+                <MonitoringCard
+                  key={card.title}
+                  title={card.title}
+                  value={card.value}
+                  tone={card.tone}
+                />
+              ))}
+            </div>
+
+            <div className="rounded-[1.35rem] border border-border/60 bg-card/80 px-5 py-4 text-sm text-muted-foreground">
+              <div className="flex items-start gap-3">
+                <CircleAlertIcon className="mt-0.5 size-4 text-cyan-300" />
+                <p>
+                  Regra de renovação automática: cada ciclo mantém três parcelas. No modo semestral, a leitura projeta dois ciclos consecutivos para antecipar acúmulo de pendências.
+                </p>
+              </div>
+            </div>
+          </TabsContent>
+        </Tabs>
+      </section>
+
+      <section className="space-y-5">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-foreground">Gestão detalhada por mês</h2>
             <p className="text-sm text-muted-foreground">
               Cards mensais com visão executiva, tabela dinâmica por associado e exportação em XLS/PDF.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex w-full flex-wrap items-center gap-3 xl:w-auto xl:justify-end">
             <Select value={selectedYear} onValueChange={setSelectedYear}>
               <SelectTrigger className="min-w-36 rounded-2xl bg-card/60">
                 <SelectValue placeholder="Todos os anos" />
@@ -1954,16 +2782,18 @@ export default function RenovacaoCiclosPage() {
             layoutMode === "grid" ? "xl:grid-cols-3" : "grid-cols-1",
           )}
         >
-          {visibleMonths.map((month) => (
-            <MonthlyCycleCard
-              key={month.id}
-              competenciaId={month.id}
-              layoutMode={layoutMode}
-              searchValue={searchValue}
-              selectedStatus={selectedStatus}
-              advancedFilters={advancedFilters}
-            />
-          ))}
+          {isMonthsLoading
+            ? Array.from({ length: 3 }, (_, index) => <MonthlyCycleCardSkeleton key={index} />)
+            : visibleMonths.map((month) => (
+                <MonthlyCycleCard
+                  key={month.id}
+                  competenciaId={month.id}
+                  layoutMode={layoutMode}
+                  searchValue={searchValue}
+                  selectedStatus={selectedStatus}
+                  advancedFilters={advancedFilters}
+                />
+              ))}
         </div>
 
         {visibleMonths.length < filteredMonths.length ? (
@@ -1981,18 +2811,30 @@ export default function RenovacaoCiclosPage() {
 
       <section className="space-y-5">
         <div>
-          <h2 className="text-2xl font-semibold text-foreground">Detalhamento mensal</h2>
+          <h2 className="text-xl font-semibold text-foreground">Detalhamento mensal</h2>
           <p className="text-sm text-muted-foreground">
             Competência base {selectedCompetenciaLabel} com visão detalhada por associado e conciliação ETIPI.
           </p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-5">
-          <MetricTile label="Total" value={detailMetrics.total} />
-          <MetricTile label="Ciclo renovado" value={detailMetrics.cicloRenovado} />
-          <MetricTile label="Apto a renovar" value={detailMetrics.aptoRenovar} accent="cyan" />
-          <MetricTile label="Em aberto" value={detailMetrics.emAberto} tone="warning" />
-          <MetricTile label="Inadimplentes" value={detailMetrics.inadimplente} tone="danger" />
+          {isDetailLoading ? (
+            <>
+              <MetricTileSkeleton />
+              <MetricTileSkeleton />
+              <MetricTileSkeleton />
+              <MetricTileSkeleton />
+              <MetricTileSkeleton />
+            </>
+          ) : (
+            <>
+              <MetricTile label="Total" value={detailMetrics.total} />
+              <MetricTile label="Ciclo renovado" value={detailMetrics.cicloRenovado} />
+              <MetricTile label="Apto a renovar" value={detailMetrics.aptoRenovar} accent="cyan" />
+              <MetricTile label="Em aberto" value={detailMetrics.emAberto} tone="warning" />
+              <MetricTile label="Inadimplentes" value={detailMetrics.inadimplente} tone="danger" />
+            </>
+          )}
         </div>
 
         <Card className="border-border/60 bg-card/80">
@@ -2016,71 +2858,82 @@ export default function RenovacaoCiclosPage() {
             />
           </CardHeader>
           <CardContent>
-            <DataTable
-              columns={columns}
-              data={filteredDetailRows}
-              pageSize={8}
-              emptyMessage="Nenhum ciclo encontrado para a competência selecionada."
-              renderExpanded={(row) => (
-                <div className="grid gap-4 md:grid-cols-[1.2fr_1fr_1fr_1.2fr]">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-                      Status ETIPI
-                    </p>
-                    <p className="mt-2 font-medium text-foreground">{row.status_codigo_etipi || "-"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-                      Resultado importação
-                    </p>
-                    <div className="mt-2">
-                      <StatusBadge status={row.resultado_importacao} />
+            {isDetailLoading ? (
+              <TableSkeleton rows={6} />
+            ) : (
+              <DataTable
+                columns={columns}
+                data={filteredDetailRows}
+                pageSize={8}
+                className="rounded-[1.35rem] shadow-none"
+                tableClassName="min-w-[72rem]"
+                emptyMessage="Nenhum ciclo encontrado para a competência selecionada."
+                renderExpanded={(row) => (
+                  <div className="grid gap-4 md:grid-cols-[1.2fr_1fr_1fr_1.2fr]">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                        Status ETIPI
+                      </p>
+                      <p className="mt-2 font-medium text-foreground">
+                        {formatEtipiStatusLabel(
+                          row.status_codigo_etipi,
+                          row.status_descricao_etipi,
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                        Resultado importação
+                      </p>
+                      <div className="mt-2">
+                        <StatusBadge status={row.resultado_importacao} />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                        Pagamento
+                      </p>
+                      <p className="mt-2 font-medium text-foreground">{formatDate(row.data_pagamento)}</p>
+                    </div>
+                    <div className="space-y-3">
+                      <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                        Ações rápidas
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          className="rounded-2xl"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toast.success(`Fluxo de renovação iniciado para ${row.nome_associado}.`);
+                          }}
+                        >
+                          <RefreshCcwIcon className="size-4" />
+                          Renovar ciclo
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="rounded-2xl"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toast.success(`Solicitação de desativação aberta para ${row.nome_associado}.`);
+                          }}
+                        >
+                          <UserMinusIcon className="size-4" />
+                          Desativar associado
+                        </Button>
+                        <Button asChild variant="outline" size="sm" className="rounded-2xl">
+                          <Link href={row.associadoUrl} onClick={(event) => event.stopPropagation()}>
+                            Abrir associado
+                          </Link>
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-                      Pagamento
-                    </p>
-                    <p className="mt-2 font-medium text-foreground">{formatDate(row.data_pagamento)}</p>
-                  </div>
-                  <div className="space-y-3">
-                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-                      Ações rápidas
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        className="rounded-2xl"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          toast.success(`Fluxo de renovação iniciado para ${row.nome_associado}.`);
-                        }}
-                      >
-                        <RefreshCcwIcon className="size-4" />
-                        Renovar ciclo
-                      </Button>
-                      <Button
-                        variant="destructive"
-                        size="sm"
-                        className="rounded-2xl"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          toast.success(`Solicitação de desativação aberta para ${row.nome_associado}.`);
-                        }}
-                      >
-                        <UserMinusIcon className="size-4" />
-                        Desativar associado
-                      </Button>
-                      <Button asChild variant="outline" size="sm" className="rounded-2xl">
-                        <Link href={row.associadoUrl} onClick={(event) => event.stopPropagation()}>
-                          Abrir associado
-                        </Link>
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )}
-            />
+                )}
+              />
+            )}
           </CardContent>
         </Card>
       </section>
@@ -2088,9 +2941,9 @@ export default function RenovacaoCiclosPage() {
       <section className="space-y-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <h2 className="text-2xl font-semibold text-foreground">Arquivos retorno</h2>
+            <h2 className="text-xl font-semibold text-foreground">Arquivos retorno</h2>
             <p className="text-sm text-muted-foreground">
-              Grid de três cards com progresso do processamento e detalhamento expansível por associado.
+              Listagem completa dos arquivos retorno processados, com progresso financeiro e detalhamento expansível por associado.
             </p>
           </div>
 
@@ -2118,72 +2971,41 @@ export default function RenovacaoCiclosPage() {
             >
               Competência base
             </Button>
+            <Button
+              variant="outline"
+              className="rounded-2xl"
+              onClick={() => {
+                setRetornoCompetencia("");
+                setRetornoPeriod("mes");
+              }}
+            >
+              Limpar filtro
+            </Button>
           </div>
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-3">
-          {(importacaoQuery.data?.results ?? []).slice(0, 3).map((arquivo) => (
-            <ReturnFileCard
-              key={arquivo.id}
-              arquivo={arquivo}
-              cycleLookup={cycleLookup}
-              searchValue={searchValue}
-              advancedFilters={advancedFilters}
-            />
-          ))}
+        <div className="grid gap-5 xl:grid-cols-2 2xl:grid-cols-3">
+          {isImportacaoLoading
+            ? Array.from({ length: 3 }, (_, index) => <ReturnFileCardSkeleton key={index} />)
+            : (importacaoQuery.data?.results ?? []).map((arquivo) => (
+                <ReturnFileCard
+                  key={arquivo.id}
+                  arquivo={arquivo}
+                  cycleLookup={cycleLookup}
+                  searchValue={searchValue}
+                  advancedFilters={advancedFilters}
+                />
+              ))}
         </div>
 
         {!(importacaoQuery.data?.results ?? []).length ? (
           <Card className="border-border/60 bg-card/80">
             <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              Nenhum arquivo retorno encontrado para {formatCompetenciaHeading(retornoCompetencia)}.
+              Nenhum arquivo retorno encontrado para{" "}
+              {retornoCompetencia ? formatCompetenciaHeading(retornoCompetencia) : "o historico atual"}.
             </CardContent>
           </Card>
         ) : null}
-      </section>
-
-      <section className="space-y-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <h2 className="text-2xl font-semibold text-foreground">
-              Monitoramento de ciclos ({monitoringMode === "trimestral" ? "trimestral" : "semestral"})
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              KPIs derivados da competência filtrada para identificar abertura, andamento, encerramento e pendências acumuladas.
-            </p>
-          </div>
-
-          <Tabs value={monitoringMode} onValueChange={(value) => setMonitoringMode(value as MonitoringMode)}>
-            <TabsList variant="line">
-              <TabsTrigger value="trimestral">Trimestral</TabsTrigger>
-              <TabsTrigger value="semestral">Semestral</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-
-        <Tabs value={monitoringMode} onValueChange={(value) => setMonitoringMode(value as MonitoringMode)}>
-          <TabsContent value={monitoringMode} className="space-y-4">
-            <div className="grid gap-4 xl:grid-cols-4">
-              {monitoringCards.map((card) => (
-                <MonitoringCard
-                  key={card.title}
-                  title={card.title}
-                  value={card.value}
-                  tone={card.tone}
-                />
-              ))}
-            </div>
-
-            <div className="rounded-[1.35rem] border border-border/60 bg-card/80 px-5 py-4 text-sm text-muted-foreground">
-              <div className="flex items-start gap-3">
-                <CircleAlertIcon className="mt-0.5 size-4 text-cyan-300" />
-                <p>
-                  Regra de renovação automática: cada ciclo mantém três parcelas. No modo semestral, a leitura projeta dois ciclos consecutivos para antecipar acúmulo de pendências.
-                </p>
-              </div>
-            </div>
-          </TabsContent>
-        </Tabs>
       </section>
     </div>
   );
