@@ -5,22 +5,28 @@ import { usePathname, useRouter } from "next/navigation";
 
 import { usePermissions } from "@/hooks/use-permissions";
 import { canAccessPath, getDefaultRouteForRole } from "@/lib/navigation";
+import { useRouteTransition } from "@/providers/route-transition-provider";
 import { Spinner } from "@/components/ui/spinner";
 
 export default function AuthGuard({ children }: React.PropsWithChildren) {
   const router = useRouter();
   const pathname = usePathname();
+  const { startRouteTransition } = useRouteTransition();
   const { isAuthenticated, role, roles, status } = usePermissions();
   const isAuthorizedPath = React.useMemo(() => canAccessPath(pathname, roles), [pathname, roles]);
 
   React.useEffect(() => {
     if (status === "unauthenticated") {
-      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      const loginHref = `/login?next=${encodeURIComponent(pathname)}`;
+      startRouteTransition(loginHref);
+      router.replace(loginHref);
     }
     if (status === "authenticated" && !isAuthorizedPath) {
-      router.replace(getDefaultRouteForRole(role));
+      const targetHref = getDefaultRouteForRole(role);
+      startRouteTransition(targetHref);
+      router.replace(targetHref);
     }
-  }, [isAuthorizedPath, pathname, role, router, status]);
+  }, [isAuthorizedPath, pathname, role, router, startRouteTransition, status]);
 
   if (!isAuthenticated || (status === "authenticated" && !isAuthorizedPath)) {
     return (

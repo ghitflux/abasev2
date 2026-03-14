@@ -26,6 +26,7 @@ import {
 } from "@/lib/formatters";
 import { onlyDigits } from "@/lib/masks";
 import { useAuth } from "@/hooks/use-auth";
+import { useRouteTransition } from "@/providers/route-transition-provider";
 import DatePicker from "@/components/custom/date-picker";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import InputCep from "@/components/custom/input-cep";
@@ -354,6 +355,7 @@ export default function AssociadoForm({
   onSuccess,
 }: AssociadoFormProps) {
   const router = useRouter();
+  const { startRouteTransition } = useRouteTransition();
   const { user } = useAuth();
   const [step, setStep] = React.useState(0);
   const [documentos, setDocumentos] = React.useState<
@@ -682,7 +684,7 @@ export default function AssociadoForm({
 
   const previousStep = () => setStep((current) => Math.max(0, current - 1));
   const handleStepClick = (targetStep: number) => {
-    if (targetStep > step || isSubmitting || mutation.isPending) return;
+    if (isSubmitting || mutation.isPending) return;
     setStep(targetStep);
   };
 
@@ -691,6 +693,8 @@ export default function AssociadoForm({
       className="space-y-6"
       autoComplete="on"
       onSubmit={handleSubmit(async (values) => {
+        // Guard: só processa o submit quando estiver na última etapa
+        if (step !== stepTitles.length - 1) return;
         try {
           const associado = await mutation.mutateAsync(values);
           setIsCompletingFlow(true);
@@ -709,6 +713,7 @@ export default function AssociadoForm({
             typeof successHref === "function"
               ? successHref(associado)
               : successHref;
+          startRouteTransition(nextHref);
           router.push(nextHref);
           router.refresh();
         } catch (error) {
@@ -743,7 +748,7 @@ export default function AssociadoForm({
                 type="button"
                 key={title}
                 onClick={() => handleStepClick(index)}
-                disabled={index > step || isBusy}
+                disabled={isBusy}
                 className={`rounded-2xl border px-4 py-3 text-sm ${
                   index === step
                     ? "border-primary/60 bg-primary/10 text-foreground"
@@ -751,7 +756,7 @@ export default function AssociadoForm({
                       ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-200"
                       : "border-border/60 bg-card/60 text-muted-foreground"
                 } ${
-                  index <= step && !isBusy
+                  !isBusy
                     ? "cursor-pointer text-left transition hover:border-primary/60 hover:bg-primary/5"
                     : "cursor-not-allowed text-left"
                 }`}
@@ -1223,7 +1228,7 @@ export default function AssociadoForm({
                   </p>
                 </CardHeader>
                 <CardContent>
-                  <FieldGroup className="grid gap-5 md:grid-cols-2">
+                  <FieldGroup className="grid gap-5 md:grid-cols-5">
                     <Field>
                       <FieldLabel>Valor bruto total</FieldLabel>
                       <FieldContent>
@@ -1289,7 +1294,7 @@ export default function AssociadoForm({
                         />
                       </FieldContent>
                     </Field>
-                    <Field className="md:col-span-2">
+                    <Field>
                       <FieldLabel>Margem (líquido - 30% do bruto)</FieldLabel>
                       <FieldContent>
                         <Input
@@ -1315,7 +1320,7 @@ export default function AssociadoForm({
                   </p>
                 </CardHeader>
                 <CardContent>
-                  <FieldGroup className="grid gap-5 md:grid-cols-2">
+                  <FieldGroup className="grid gap-5 md:grid-cols-4">
                     <Field>
                       <FieldLabel>Mensalidade associativa (R$)</FieldLabel>
                       <FieldContent>
@@ -1464,7 +1469,7 @@ export default function AssociadoForm({
                         <p className="text-base font-semibold">
                           Linha {parcela.numero}
                         </p>
-                        <FieldGroup className="mt-4 grid gap-5 md:grid-cols-2">
+                        <FieldGroup className="mt-4 grid gap-5 md:grid-cols-4">
                           <Field>
                             <FieldLabel>Nº Mensalidade</FieldLabel>
                             <FieldContent>
@@ -1546,7 +1551,7 @@ export default function AssociadoForm({
                     </p>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid gap-4 md:grid-cols-4">
                       {documentFields.map((field) => {
                         const currentDocument = currentDocumentsByType.get(
                           field.key,
@@ -1620,12 +1625,12 @@ export default function AssociadoForm({
           Voltar
         </Button>
         {step < stepTitles.length - 1 ? (
-          <Button type="button" onClick={nextStep} disabled={isBusy}>
+          <Button key="btn-next" type="button" onClick={nextStep} disabled={isBusy}>
             Próximo
             <ArrowRightIcon className="size-4" />
           </Button>
         ) : (
-          <Button type="submit" disabled={isBusy}>
+          <Button key="btn-submit" type="submit" disabled={isBusy}>
             <SaveIcon className="size-4" />
             {resolvedSubmitLabel}
           </Button>

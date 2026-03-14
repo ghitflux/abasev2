@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { getNavigationForRole } from "@/lib/navigation";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useRouteTransition } from "@/providers/route-transition-provider";
 import { useAuthStore } from "@/store/auth-store";
 import {
   Collapsible,
@@ -38,6 +39,7 @@ export default function AppSidebar() {
   const router = useRouter();
   const { state, toggleSidebar } = useSidebar();
   const { role, user } = usePermissions();
+  const { startRouteTransition } = useRouteTransition();
   const clear = useAuthStore((s) => s.clear);
   const isCollapsed = state === "collapsed";
 
@@ -58,6 +60,7 @@ export default function AppSidebar() {
 
   const handleLogout = () => {
     startTransition(async () => {
+      startRouteTransition("/login");
       await fetch("/api/auth/logout", { method: "POST" });
       clear();
       toast.success("Sessão encerrada.");

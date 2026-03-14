@@ -10,6 +10,7 @@ import { z } from "zod";
 import { ArrowRightIcon, LockKeyholeIcon, MailIcon } from "lucide-react";
 
 import { resolvePostLoginPath } from "@/lib/navigation";
+import { useRouteTransition } from "@/providers/route-transition-provider";
 import { useAuthStore } from "@/store/auth-store";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +31,7 @@ type LoginFormProps = {
 
 export default function LoginForm({ next }: LoginFormProps) {
   const router = useRouter();
+  const { startRouteTransition } = useRouteTransition();
   const clear = useAuthStore((state) => state.clear);
   const setLoading = useAuthStore((state) => state.setLoading);
   const setUser = useAuthStore((state) => state.setUser);
@@ -75,9 +77,13 @@ export default function LoginForm({ next }: LoginFormProps) {
 
       setUser(payload.user);
       toast.success("Sessão iniciada.");
-      router.replace(
-        resolvePostLoginPath(next, payload.user.roles, payload.user.primary_role),
+      const nextHref = resolvePostLoginPath(
+        next,
+        payload.user.roles,
+        payload.user.primary_role,
       );
+      startRouteTransition(nextHref);
+      router.replace(nextHref);
       router.refresh();
       setIsPending(false);
     });

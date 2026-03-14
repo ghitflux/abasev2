@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { usePermissions } from "@/hooks/use-permissions";
+import { useRouteTransition } from "@/providers/route-transition-provider";
 import { useAuthStore } from "@/store/auth-store";
 import GlobalHeaderSearch from "@/components/layout/global-header-search";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -20,6 +21,7 @@ import {
 export default function AppHeader() {
   const router = useRouter();
   const { user, role } = usePermissions();
+  const { startRouteTransition } = useRouteTransition();
   const clear = useAuthStore((state) => state.clear);
 
   return (
@@ -48,11 +50,19 @@ export default function AppHeader() {
             <DropdownMenuContent align="end" className="rounded-2xl">
               <DropdownMenuLabel>{user?.email}</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push("/dashboard")}>Dashboard</DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  startRouteTransition("/dashboard");
+                  router.push("/dashboard");
+                }}
+              >
+                Dashboard
+              </DropdownMenuItem>
               <DropdownMenuItem
                 variant="destructive"
                 onClick={() => {
                   startTransition(async () => {
+                    startRouteTransition("/login");
                     await fetch("/api/auth/logout", { method: "POST" });
                     clear();
                     toast.success("Sessão encerrada.");

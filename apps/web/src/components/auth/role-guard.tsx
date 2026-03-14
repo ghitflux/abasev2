@@ -6,6 +6,7 @@ import type { Role } from "@abase/shared-types";
 
 import { usePermissions } from "@/hooks/use-permissions";
 import { getDefaultRouteForRole } from "@/lib/navigation";
+import { useRouteTransition } from "@/providers/route-transition-provider";
 import { Spinner } from "@/components/ui/spinner";
 
 type RoleGuardProps = {
@@ -16,15 +17,17 @@ type RoleGuardProps = {
 
 export default function RoleGuard({ allow, children, fallbackHref }: RoleGuardProps) {
   const router = useRouter();
+  const { startRouteTransition } = useRouteTransition();
   const { role, status } = usePermissions();
   const isAllowed = Boolean(role && allow.includes(role));
   const targetHref = fallbackHref ?? getDefaultRouteForRole(role);
 
   React.useEffect(() => {
     if (status === "authenticated" && !isAllowed) {
+      startRouteTransition(targetHref);
       router.replace(targetHref);
     }
-  }, [isAllowed, router, status, targetHref]);
+  }, [isAllowed, router, startRouteTransition, status, targetHref]);
 
   if (status !== "authenticated" || !isAllowed) {
     return (

@@ -3,13 +3,14 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowUpRightIcon, SearchIcon, XIcon } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { apiFetch } from "@/lib/api/client";
 import type { ContratoListItem, PaginatedResponse } from "@/lib/api/types";
 import { maskCPFCNPJ } from "@/lib/masks";
 import { cn } from "@/lib/utils";
+import { useRouteTransition } from "@/providers/route-transition-provider";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { Spinner } from "@/components/ui/spinner";
@@ -52,6 +53,8 @@ function dedupeSuggestions(rows: ContratoListItem[]) {
 
 export default function GlobalHeaderSearch({ className }: GlobalHeaderSearchProps) {
   const router = useRouter();
+  const pathname = usePathname();
+  const { startRouteTransition } = useRouteTransition();
   const [query, setQuery] = React.useState("");
   const [open, setOpen] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement | null>(null);
@@ -81,15 +84,27 @@ export default function GlobalHeaderSearch({ className }: GlobalHeaderSearchProp
 
   const handleSelect = React.useCallback(
     (suggestion: SearchSuggestion) => {
+      const targetPath = `/associados/${suggestion.associadoId}`;
+
       setOpen(false);
-      setQuery(`${suggestion.nome} • ${maskCPFCNPJ(suggestion.cpfCnpj)}`);
-      router.push(`/associados/${suggestion.associadoId}`);
+      setQuery("");
+      inputRef.current?.blur();
+
+      if (pathname !== targetPath) {
+        startRouteTransition(targetPath);
+        router.push(targetPath);
+      }
     },
-    [router],
+    [pathname, router, startRouteTransition],
   );
 
+  React.useEffect(() => {
+    setQuery("");
+    setOpen(false);
+  }, [pathname]);
+
   return (
-    <Popover open={shouldShowPopover} onOpenChange={setOpen}>
+    <Popover open={shouldShowPopover} onOpenChange={setOpen} modal={false}>
       <PopoverAnchor asChild>
         <div className={cn("relative w-full", className)}>
           <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -137,6 +152,11 @@ export default function GlobalHeaderSearch({ className }: GlobalHeaderSearchProp
       <PopoverContent
         align="start"
         className="w-[var(--radix-popover-anchor-width)] rounded-2xl border-border/60 bg-background/96 p-2"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          inputRef.current?.focus();
+        }}
       >
         {debouncedQuery.length < 2 ? (
           <div className="px-3 py-4 text-sm text-muted-foreground">
