@@ -1,6 +1,7 @@
 "use client";
 
-import { CheckIcon, ChevronsUpDownIcon } from "lucide-react";
+import * as React from "react";
+import { CheckIcon, ChevronsUpDownIcon, XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,8 @@ type SearchableSelectProps = {
   placeholder?: string;
   searchPlaceholder?: string;
   emptyLabel?: string;
+  clearLabel?: string;
+  clearValue?: string;
   className?: string;
 };
 
@@ -36,24 +39,30 @@ export default function SearchableSelect({
   placeholder = "Selecione uma opção",
   searchPlaceholder = "Buscar...",
   emptyLabel = "Nenhum resultado encontrado.",
+  clearLabel = "Limpar seleção",
+  clearValue = "",
   className,
 }: SearchableSelectProps) {
+  const [open, setOpen] = React.useState(false);
   const selected = options.find((option) => option.value === value);
+  const canClear = Boolean(selected) && value !== clearValue;
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
           role="combobox"
           className={cn(
-            "w-full justify-between rounded-xl border-border/60 bg-card/60",
+            "min-w-0 w-full justify-between gap-2 rounded-xl border-border/60 bg-card/60",
             !selected && "text-muted-foreground",
             className,
           )}
         >
-          {selected?.label ?? placeholder}
-          <ChevronsUpDownIcon className="size-4 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate text-left">
+            {selected?.label ?? placeholder}
+          </span>
+          <ChevronsUpDownIcon className="size-4 shrink-0 text-muted-foreground" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-[var(--radix-popover-trigger-width)] rounded-2xl border-border/60 p-0">
@@ -62,11 +71,26 @@ export default function SearchableSelect({
           <CommandList>
             <CommandEmpty>{emptyLabel}</CommandEmpty>
             <CommandGroup>
+              {canClear ? (
+                <CommandItem
+                  value={`clear ${selected?.label ?? clearLabel}`}
+                  onSelect={() => {
+                    onChange?.(clearValue);
+                    setOpen(false);
+                  }}
+                >
+                  <XIcon className="size-4 text-muted-foreground" />
+                  {clearLabel}
+                </CommandItem>
+              ) : null}
               {options.map((option) => (
                 <CommandItem
                   key={option.value}
                   value={`${option.label} ${option.value}`}
-                  onSelect={() => onChange?.(option.value)}
+                  onSelect={() => {
+                    onChange?.(option.value === value ? clearValue : option.value);
+                    setOpen(false);
+                  }}
                 >
                   <CheckIcon
                     className={cn(

@@ -141,6 +141,10 @@ type AdvancedFilters = {
 type EnrichedCycleItem = RenovacaoCicloItem & {
   agenteResponsavel: string;
   associadoUrl: string;
+  statusExplicacao: string;
+  contratoReferenciaRenovacaoId: number;
+  contratoReferenciaRenovacaoCodigo: string;
+  possuiMultiplosContratos: boolean;
 };
 
 type EnrichedReturnItem = ArquivoRetornoFinanceiroItem & {
@@ -184,6 +188,55 @@ type MetricStatusKey =
   | "apto_a_renovar"
   | "em_aberto"
   | "inadimplente";
+
+type CycleMetricDialogConfig = {
+  key: string;
+  title: string;
+  description: string;
+  rows: EnrichedCycleItem[];
+  monthLabel: string;
+  exportTitle: string;
+  exportFilename: string;
+  emptyMessage: string;
+};
+
+type ReturnMetricDialogConfig = {
+  key: "quitados" | "faltando" | "mensalidades" | "valores_30_50";
+  title: string;
+  description: string;
+  exportTitle: string;
+  exportFilename: string;
+  emptyMessage: string;
+};
+
+type MonitoringCardDefinition = {
+  title: string;
+  value: number;
+  tone?: "neutral" | "warning" | "danger";
+  rows: EnrichedCycleItem[];
+  dialogTitle: string;
+  dialogDescription: string;
+  exportTitle: string;
+  exportFilename: string;
+  emptyMessage: string;
+};
+
+const DETAIL_PAGE_SIZE_OPTIONS = [
+  { label: "5", value: 5 },
+  { label: "10", value: 10 },
+  { label: "20", value: 20 },
+  { label: "50+", value: 50 },
+] satisfies Array<{ label: string; value: number }>;
+
+type PageSizeOption = (typeof DETAIL_PAGE_SIZE_OPTIONS)[number];
+
+const KPI_SURFACE_CLASS = "min-w-0 overflow-hidden";
+const TABLE_VIEWPORT_CLASS = "min-w-0 max-w-full overflow-x-auto";
+const MODAL_SCROLL_VIEWPORT_CLASS = "min-h-0 overflow-y-auto pr-1";
+const DETAIL_DIALOG_CONTENT_CLASS =
+  "grid max-h-[calc(100vh-2rem)] w-[96vw] max-w-[96vw] grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-border/60 bg-background/95 p-5 sm:p-6 lg:max-w-[88vw] 2xl:max-w-[96rem]";
+const WIDE_DIALOG_CONTENT_CLASS =
+  "grid max-h-[calc(100vh-2rem)] w-[98vw] max-w-[98vw] grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-border/60 bg-background/95 p-5 sm:p-6 lg:max-w-[92vw] 2xl:max-w-[104rem]";
 
 const MONTHLY_METRIC_META: Record<
   MetricStatusKey,
@@ -566,12 +619,20 @@ function TablePagination({
   page,
   totalPages,
   onPageChange,
+  pageSize,
+  pageSizeOptions,
+  pageSizeLabel = "Por página",
+  onPageSizeChange,
 }: {
   page: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+  pageSize?: number;
+  pageSizeOptions?: PageSizeOption[];
+  pageSizeLabel?: string;
+  onPageSizeChange?: (pageSize: number) => void;
 }) {
-  if (totalPages <= 1) {
+  if (totalPages <= 1 && !(pageSizeOptions?.length && onPageSizeChange && pageSize)) {
     return null;
   }
 
@@ -582,7 +643,27 @@ function TablePagination({
       <p className="text-xs text-muted-foreground">
         Página {page} de {totalPages}
       </p>
-      <div className="flex flex-wrap items-center justify-end gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {pageSizeOptions?.length && onPageSizeChange && pageSize ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">{pageSizeLabel}</span>
+            <Select
+              value={String(pageSize)}
+              onValueChange={(value) => onPageSizeChange(Number(value))}
+            >
+              <SelectTrigger className="h-8 min-w-24 rounded-xl bg-card/60 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {pageSizeOptions.map((option) => (
+                  <SelectItem key={option.value} value={String(option.value)}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
         <Button
           type="button"
           variant="outline"
@@ -908,6 +989,63 @@ function buildReturnAutocompleteOptions(rows: EnrichedReturnItem[]) {
   return options;
 }
 
+function normalizeCategoria(value?: string | null) {
+  return normalizeText(value).replaceAll("/", "_").replaceAll("-", "_").replaceAll(" ", "_");
+}
+
+function isMensalidadesCategoria(value?: string | null) {
+  const normalized = normalizeCategoria(value);
+  return normalized === "mensalidades" || normalized === "mensalidade";
+}
+
+function isValores3050Categoria(value?: string | null) {
+  const normalized = normalizeCategoria(value);
+  return normalized === "valores_30_50" || normalized === "valores3050";
+}
+
+function summarizeReturnRows(rows: EnrichedReturnItem[]) {
+  const quitadosRows = rows.filter((row) => row.ok);
+  const faltandoRows = rows.filter((row) => !row.ok);
+  const mensalidadesRows = rows.filter((row) => isMensalidadesCategoria(row.categoria));
+  const valores3050Rows = rows.filter((row) => isValores3050Categoria(row.categoria));
+
+  const sumRows = (items: EnrichedReturnItem[]) =>
+    items.reduce(
+      (accumulator, row) => {
+        accumulator.esperado += toFinanceiroNumber(row.esperado);
+        accumulator.recebido += toFinanceiroNumber(row.recebido);
+        return accumulator;
+      },
+      { esperado: 0, recebido: 0 },
+    );
+
+  const quitados = sumRows(quitadosRows);
+  const faltando = sumRows(faltandoRows);
+  const mensalidades = sumRows(mensalidadesRows);
+  const valores3050 = sumRows(valores3050Rows);
+
+  return {
+    total: rows.length,
+    quitados: {
+      count: quitadosRows.length,
+      ...quitados,
+    },
+    faltando: {
+      count: faltandoRows.length,
+      ...faltando,
+      pendente: Math.max(faltando.esperado - faltando.recebido, 0),
+    },
+    mensalidades: {
+      count: mensalidadesRows.length,
+      ...mensalidades,
+    },
+    valores_30_50: {
+      count: valores3050Rows.length,
+      ...valores3050,
+    },
+  };
+}
+
 function matchesMetricStatus(row: EnrichedCycleItem, status: MetricStatusKey) {
   if (status === "ciclo_renovado") {
     return row.status_visual === "ciclo_renovado" || row.gerou_encerramento;
@@ -1022,11 +1160,23 @@ function buildReturnColumns({
 function useEnrichedCycleRows(rows: RenovacaoCicloItem[]) {
   return React.useMemo<EnrichedCycleItem[]>(() => {
     return rows.map((row) => {
+      const rawRow = row as RenovacaoCicloItem & {
+        status_explicacao?: string;
+        contrato_referencia_renovacao_id?: number;
+        contrato_referencia_renovacao_codigo?: string;
+        possui_multiplos_contratos?: boolean;
+      };
       return {
         ...row,
         matricula: row.matricula || row.contrato_codigo,
         agenteResponsavel: row.agente_responsavel || "Sem agente vinculado",
         associadoUrl: `/associados/${row.associado_id}`,
+        statusExplicacao: rawRow.status_explicacao || "",
+        contratoReferenciaRenovacaoId:
+          rawRow.contrato_referencia_renovacao_id ?? row.contrato_id,
+        contratoReferenciaRenovacaoCodigo:
+          rawRow.contrato_referencia_renovacao_codigo ?? row.contrato_codigo,
+        possuiMultiplosContratos: Boolean(rawRow.possui_multiplos_contratos),
       };
     });
   }, [rows]);
@@ -1053,6 +1203,8 @@ type CycleMembersTableProps = {
   compact?: boolean;
   emptyMessage?: string;
   pageSize?: number;
+  pageSizeOptions?: PageSizeOption[];
+  pageSizeLabel?: string;
   tableClassName?: string;
 };
 
@@ -1062,14 +1214,18 @@ function CycleMembersTable({
   compact = false,
   emptyMessage = "Nenhum associado encontrado para este mês.",
   pageSize = compact ? 4 : 10,
+  pageSizeOptions,
+  pageSizeLabel,
   tableClassName,
 }: CycleMembersTableProps) {
   const [expandedRow, setExpandedRow] = React.useState<number | null>(null);
   const [page, setPage] = React.useState(1);
-  const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const [currentPageSize, setCurrentPageSize] = React.useState(pageSize);
+  const resolvedPageSize = pageSizeOptions?.length ? currentPageSize : pageSize;
+  const totalPages = Math.max(1, Math.ceil(rows.length / resolvedPageSize));
   const currentRows = React.useMemo(
-    () => rows.slice((page - 1) * pageSize, page * pageSize),
-    [page, pageSize, rows],
+    () => rows.slice((page - 1) * resolvedPageSize, page * resolvedPageSize),
+    [page, resolvedPageSize, rows],
   );
 
   React.useEffect(() => {
@@ -1079,6 +1235,10 @@ function CycleMembersTable({
   React.useEffect(() => {
     setExpandedRow(null);
   }, [page]);
+
+  React.useEffect(() => {
+    setCurrentPageSize(pageSize);
+  }, [pageSize]);
 
   return (
     <div className="overflow-hidden rounded-[1.35rem] border border-border/60 bg-background/55">
@@ -1170,6 +1330,11 @@ function CycleMembersTable({
                     <TableRow className="border-border/60 bg-white/3">
                       <TableCell colSpan={compact ? 3 : 6} className="px-4 py-4">
                         <div className="space-y-4">
+                          {row.status_visual === "apto_a_renovar" && row.statusExplicacao ? (
+                            <div className="rounded-2xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-50">
+                              {row.statusExplicacao}
+                            </div>
+                          ) : null}
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
                               <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
@@ -1269,7 +1434,19 @@ function CycleMembersTable({
           )}
         </TableBody>
       </Table>
-      <TablePagination page={page} totalPages={totalPages} onPageChange={setPage} />
+      <TablePagination
+        page={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        pageSize={resolvedPageSize}
+        pageSizeOptions={pageSizeOptions}
+        pageSizeLabel={pageSizeLabel}
+        onPageSizeChange={(nextPageSize) => {
+          setCurrentPageSize(nextPageSize);
+          setPage(1);
+          setExpandedRow(null);
+        }}
+      />
     </div>
   );
 }
@@ -1296,7 +1473,7 @@ function MetricTileSkeleton() {
 
 function MonthlyCycleCardSkeleton() {
   return (
-    <Card className="border-border/60 bg-card/80 shadow-xl shadow-black/15">
+    <Card className="min-w-0 border-border/60 bg-card/80 shadow-xl shadow-black/15">
       <CardHeader className="gap-4">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-2">
@@ -1336,7 +1513,7 @@ function MonthlyCycleCardSkeleton() {
 
 function ReturnFileCardSkeleton() {
   return (
-    <Card className="border-border/60 bg-card/80 shadow-xl shadow-black/15">
+    <Card className="min-w-0 border-border/60 bg-card/80 shadow-xl shadow-black/15">
       <CardHeader className="gap-5">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-2">
@@ -1367,33 +1544,46 @@ function ReturnFileCardSkeleton() {
   );
 }
 
-type MetricStatusDialogProps = {
+type MetricDetailDialogProps<T extends { id: number | string }> = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  status: MetricStatusKey | null;
-  rows: EnrichedCycleItem[];
-  monthLabel: string;
-  competenciaId: string;
+  title: string;
+  description: string;
+  rows: T[];
+  isLoading?: boolean;
+  autocompleteOptions: SelectOption[];
+  matchesSearch: (row: T, searchValue: string) => boolean;
+  placeholder: string;
+  searchPlaceholder: string;
+  emptyLabel: string;
+  exportTitle: string;
+  exportFilename: string;
+  exportColumns: TableExportColumn<T>[];
+  renderTable: (rows: T[]) => React.ReactNode;
 };
 
-function MetricStatusDialog({
+function MetricDetailDialog<T extends { id: number | string }>({
   open,
   onOpenChange,
-  status,
+  title,
+  description,
   rows,
-  monthLabel,
-  competenciaId,
-}: MetricStatusDialogProps) {
+  isLoading = false,
+  autocompleteOptions,
+  matchesSearch,
+  placeholder,
+  searchPlaceholder,
+  emptyLabel,
+  exportTitle,
+  exportFilename,
+  exportColumns,
+  renderTable,
+}: MetricDetailDialogProps<T>) {
   const [autocompleteValue, setAutocompleteValue] = React.useState("");
-  const meta = status ? MONTHLY_METRIC_META[status] : null;
   const searchValue = decodeAutocompleteValue(autocompleteValue);
   const filteredRows = React.useMemo(
-    () => rows.filter((row) => matchesCycleSearchValue(row, searchValue)),
-    [rows, searchValue],
-  );
-  const autocompleteOptions = React.useMemo(
-    () => buildAutocompleteOptions(rows),
-    [rows],
+    () => rows.filter((row) => matchesSearch(row, searchValue)),
+    [matchesSearch, rows, searchValue],
   );
 
   React.useEffect(() => {
@@ -1404,57 +1594,39 @@ function MetricStatusDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[96vw] max-w-[96vw] overflow-hidden border-border/60 bg-background/95 p-5 sm:p-6 lg:max-w-[88vw] 2xl:max-w-[96rem]">
-        <DialogHeader>
-          <DialogTitle>{meta ? `${meta.label} em ${monthLabel}` : "Detalhamento por status"}</DialogTitle>
-          <DialogDescription>
-            {meta?.description ?? "Associados consolidados para o status selecionado na competencia."}
-          </DialogDescription>
+      <DialogContent className={DETAIL_DIALOG_CONTENT_CLASS}>
+        <DialogHeader className="shrink-0">
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
             <SearchableSelect
               options={autocompleteOptions}
               value={autocompleteValue}
               onChange={setAutocompleteValue}
-              placeholder="Buscar associado neste status"
-              searchPlaceholder="Buscar por nome, CPF ou matricula"
-              emptyLabel="Nenhum associado encontrado neste status."
-              className="min-w-0 rounded-2xl sm:min-w-[22rem]"
+              placeholder={placeholder}
+              searchPlaceholder={searchPlaceholder}
+              emptyLabel={emptyLabel}
+              className="min-w-0 flex-1 rounded-2xl sm:min-w-[22rem]"
             />
-            {autocompleteValue ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="rounded-2xl sm:self-start"
-                onClick={() => setAutocompleteValue("")}
-              >
-                Limpar busca
-              </Button>
-            ) : null}
           </div>
           <ExportButton
             onExport={(format) =>
               exportRows(
                 format,
-                `${meta?.label ?? "Detalhamento"} - ${monthLabel}`,
-                sanitizeFileName(`status-${status ?? "detalhamento"}-${competenciaId}`),
-                cycleExportColumns(monthLabel),
+                exportTitle,
+                exportFilename,
+                exportColumns,
                 filteredRows,
               )
             }
           />
         </div>
 
-        <div className="max-w-full overflow-x-auto">
-          <CycleMembersTable
-            rows={filteredRows}
-            monthLabel={monthLabel}
-            pageSize={10}
-            tableClassName="min-w-[82rem]"
-            emptyMessage="Nenhum associado encontrado para este status com os filtros atuais."
-          />
+        <div className={MODAL_SCROLL_VIEWPORT_CLASS}>
+          {isLoading ? <TableSkeleton rows={6} /> : renderTable(filteredRows)}
         </div>
       </DialogContent>
     </Dialog>
@@ -1478,7 +1650,8 @@ function MonthlyCycleCard({
 }: MonthlyCycleCardProps) {
   const [isDialogOpen, setIsDialogOpen] = React.useState(false);
   const [dialogAutocomplete, setDialogAutocomplete] = React.useState("");
-  const [metricDialogStatus, setMetricDialogStatus] = React.useState<MetricStatusKey | null>(null);
+  const [metricDialogConfig, setMetricDialogConfig] =
+    React.useState<CycleMetricDialogConfig | null>(null);
   const monthLabel = formatCompetenciaHeading(competenciaId);
   const canUseServerResumo = !hasUnsupportedResumoFilters(advancedFilters);
   const canUseFinanceiroResumo =
@@ -1614,7 +1787,35 @@ function MonthlyCycleCard({
     }),
     [filteredRows],
   );
-  const metricDialogRows = metricDialogStatus ? metricRowsByStatus[metricDialogStatus] : [];
+  const monthlyMetricCounts = React.useMemo(
+    () => ({
+      cicloRenovado: metricRowsByStatus.ciclo_renovado.length,
+      aptoRenovar: metricRowsByStatus.apto_a_renovar.length,
+      emAberto: metricRowsByStatus.em_aberto.length,
+      inadimplente: metricRowsByStatus.inadimplente.length,
+    }),
+    [metricRowsByStatus],
+  );
+  const cycleMetricAutocompleteOptions = React.useMemo(
+    () => buildAutocompleteOptions(metricDialogConfig?.rows ?? []),
+    [metricDialogConfig?.rows],
+  );
+  const openMetricDialog = React.useCallback(
+    (status: MetricStatusKey) => {
+      const meta = MONTHLY_METRIC_META[status];
+      setMetricDialogConfig({
+        key: status,
+        title: `${meta.label} em ${monthLabel}`,
+        description: meta.description,
+        rows: metricRowsByStatus[status],
+        monthLabel,
+        exportTitle: `${meta.label} - ${monthLabel}`,
+        exportFilename: sanitizeFileName(`status-${status}-${competenciaId}`),
+        emptyMessage: "Nenhum associado encontrado para este status com os filtros atuais.",
+      });
+    },
+    [competenciaId, metricRowsByStatus, monthLabel],
+  );
   const isFetchingFinanceiro = useFinanceiroDetalhe && financeiroDetalheQuery.isFetching;
   const isCardLoading =
     (listQuery.isLoading && !listQuery.data) ||
@@ -1627,7 +1828,7 @@ function MonthlyCycleCard({
   }
 
   return (
-    <Card className="border-border/60 bg-card/80 shadow-xl shadow-black/15">
+    <Card className="min-w-0 border-border/60 bg-card/80 shadow-xl shadow-black/15">
       <CardHeader className="gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -1679,26 +1880,26 @@ function MonthlyCycleCard({
         <div className="grid gap-3 sm:grid-cols-2">
           <MetricTile
             label="Renovados"
-            value={monthlyMetrics.cicloRenovado}
-            onClick={() => setMetricDialogStatus("ciclo_renovado")}
+            value={monthlyMetricCounts.cicloRenovado}
+            onClick={() => openMetricDialog("ciclo_renovado")}
           />
           <MetricTile
             label="Aptos a renovar"
-            value={monthlyMetrics.aptoRenovar}
+            value={monthlyMetricCounts.aptoRenovar}
             accent="cyan"
-            onClick={() => setMetricDialogStatus("apto_a_renovar")}
+            onClick={() => openMetricDialog("apto_a_renovar")}
           />
           <MetricTile
             label="Em aberto"
-            value={monthlyMetrics.emAberto}
+            value={monthlyMetricCounts.emAberto}
             tone="warning"
-            onClick={() => setMetricDialogStatus("em_aberto")}
+            onClick={() => openMetricDialog("em_aberto")}
           />
           <MetricTile
             label="Inadimplentes"
-            value={monthlyMetrics.inadimplente}
+            value={monthlyMetricCounts.inadimplente}
             tone="danger"
-            onClick={() => setMetricDialogStatus("inadimplente")}
+            onClick={() => openMetricDialog("inadimplente")}
           />
         </div>
       </CardHeader>
@@ -1742,8 +1943,8 @@ function MonthlyCycleCard({
                 Ampliar tabela
               </Button>
             </DialogTrigger>
-            <DialogContent className="w-[98vw] max-w-[98vw] overflow-hidden border-border/60 bg-background/95 p-5 sm:p-6 lg:max-w-[92vw] 2xl:max-w-[104rem]">
-              <DialogHeader>
+            <DialogContent className={WIDE_DIALOG_CONTENT_CLASS}>
+              <DialogHeader className="shrink-0">
                 <DialogTitle>
                   {useFinanceiroDetalhe
                     ? `Gestão financeira de ${monthLabel}`
@@ -1755,7 +1956,7 @@ function MonthlyCycleCard({
                     : "Associados, agente responsável, parcelas do ciclo e status da parcela da competência."}
                 </DialogDescription>
               </DialogHeader>
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row">
                   <SearchableSelect
                     options={dialogAutocompleteOptions}
@@ -1772,18 +1973,8 @@ function MonthlyCycleCard({
                         ? "Nenhum associado encontrado neste retorno."
                         : "Nenhum associado encontrado nesta tabela."
                     }
-                    className="min-w-0 rounded-2xl sm:min-w-[22rem]"
+                    className="min-w-0 flex-1 rounded-2xl sm:min-w-[22rem]"
                   />
-                  {dialogAutocomplete ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="rounded-2xl sm:self-start"
-                      onClick={() => setDialogAutocomplete("")}
-                    >
-                      Limpar busca
-                    </Button>
-                  ) : null}
                 </div>
                 <ExportButton
                   onExport={(format) => {
@@ -1808,30 +1999,34 @@ function MonthlyCycleCard({
                   }}
                 />
               </div>
-              <div className="max-w-full overflow-x-auto">
-                {useFinanceiroDetalhe ? (
-                  <DataTable
-                    columns={financeDetailColumns}
-                    data={dialogFinanceRows}
-                    pageSize={10}
-                    className="rounded-[1.35rem] border border-border/60 bg-background/55 shadow-none"
-                    tableClassName="min-w-[82rem]"
-                    emptyMessage="Nenhum lançamento encontrado no arquivo retorno desta competência."
-                  />
-                ) : (
-                  <CycleMembersTable
-                    rows={dialogCycleRows}
-                    monthLabel={monthLabel}
-                    pageSize={10}
-                    tableClassName="min-w-[82rem]"
-                  />
-                )}
+              <div className={MODAL_SCROLL_VIEWPORT_CLASS}>
+                <div className={TABLE_VIEWPORT_CLASS}>
+                  {useFinanceiroDetalhe ? (
+                    <DataTable
+                      columns={financeDetailColumns}
+                      data={dialogFinanceRows}
+                      pageSize={10}
+                      pageSizeOptions={DETAIL_PAGE_SIZE_OPTIONS}
+                      className="rounded-[1.35rem] border border-border/60 bg-background/55 shadow-none"
+                      tableClassName="min-w-[82rem]"
+                      emptyMessage="Nenhum lançamento encontrado no arquivo retorno desta competência."
+                    />
+                  ) : (
+                    <CycleMembersTable
+                      rows={dialogCycleRows}
+                      monthLabel={monthLabel}
+                      pageSize={10}
+                      pageSizeOptions={DETAIL_PAGE_SIZE_OPTIONS}
+                      tableClassName="min-w-[82rem]"
+                    />
+                  )}
+                </div>
               </div>
             </DialogContent>
           </Dialog>
         </div>
 
-        <div className="max-w-full overflow-x-auto">
+        <div className={TABLE_VIEWPORT_CLASS}>
           {useFinanceiroDetalhe ? (
             <DataTable
               columns={financeCompactColumns}
@@ -1858,17 +2053,45 @@ function MonthlyCycleCard({
         </div>
       </CardContent>
 
-      <MetricStatusDialog
-        open={Boolean(metricDialogStatus)}
+      <MetricDetailDialog
+        open={Boolean(metricDialogConfig)}
         onOpenChange={(open) => {
           if (!open) {
-            setMetricDialogStatus(null);
+            setMetricDialogConfig(null);
           }
         }}
-        status={metricDialogStatus}
-        rows={metricDialogRows}
-        monthLabel={monthLabel}
-        competenciaId={competenciaId}
+        title={metricDialogConfig?.title ?? "Detalhamento por status"}
+        description={
+          metricDialogConfig?.description ??
+          "Associados consolidados para o status selecionado na competência."
+        }
+        rows={metricDialogConfig?.rows ?? []}
+        autocompleteOptions={cycleMetricAutocompleteOptions}
+        matchesSearch={matchesCycleSearchValue}
+        placeholder="Buscar associado neste status"
+        searchPlaceholder="Buscar por nome, CPF ou matrícula"
+        emptyLabel={metricDialogConfig?.emptyMessage ?? "Nenhum associado encontrado neste status."}
+        exportTitle={metricDialogConfig?.exportTitle ?? `Detalhamento ${monthLabel}`}
+        exportFilename={
+          metricDialogConfig?.exportFilename ??
+          sanitizeFileName(`status-detalhamento-${competenciaId}`)
+        }
+        exportColumns={cycleExportColumns(metricDialogConfig?.monthLabel ?? monthLabel)}
+        renderTable={(rows) => (
+          <div className={TABLE_VIEWPORT_CLASS}>
+            <CycleMembersTable
+              rows={rows}
+              monthLabel={metricDialogConfig?.monthLabel ?? monthLabel}
+              pageSize={10}
+              pageSizeOptions={DETAIL_PAGE_SIZE_OPTIONS}
+              tableClassName="min-w-[82rem]"
+              emptyMessage={
+                metricDialogConfig?.emptyMessage ??
+                "Nenhum associado encontrado para este status com os filtros atuais."
+              }
+            />
+          </div>
+        )}
       />
     </Card>
   );
@@ -1888,51 +2111,159 @@ function ReturnFileCard({
   advancedFilters,
 }: ReturnFileCardProps) {
   const [isExpanded, setIsExpanded] = React.useState(false);
+  const [metricDialogConfig, setMetricDialogConfig] =
+    React.useState<ReturnMetricDialogConfig | null>(null);
   const financeiroResumo = getArquivoFinanceiroResumo(arquivo);
+  const shouldLoadFinanceiro = Boolean(arquivo.id);
   const financeiroQuery = useQuery({
     queryKey: ["arquivo-retorno-financeiro", arquivo.id],
     queryFn: () =>
       apiFetch<ArquivoRetornoFinanceiroPayload>(
         `importacao/arquivo-retorno/${arquivo.id}/financeiro`,
       ),
-    enabled: isExpanded,
+    enabled: shouldLoadFinanceiro,
     staleTime: 30 * 1000,
     placeholderData: (previousData: ArquivoRetornoFinanceiroPayload | undefined) => previousData,
   });
   const isDetailLoading = isExpanded && financeiroQuery.isLoading && !financeiroQuery.data;
 
   const rawItems = React.useMemo<ArquivoRetornoFinanceiroItem[]>(() => {
-    if (!isExpanded) return [];
+    if (!shouldLoadFinanceiro) return [];
     return financeiroQuery.data?.rows ?? [];
-  }, [financeiroQuery.data?.rows, isExpanded]);
+  }, [financeiroQuery.data?.rows, shouldLoadFinanceiro]);
+
+  const allDetailRows = React.useMemo<EnrichedReturnItem[]>(
+    () => buildEnrichedReturnRows(rawItems, cycleLookup),
+    [cycleLookup, rawItems],
+  );
 
   const detailRows = React.useMemo<EnrichedReturnItem[]>(() => {
-    return buildEnrichedReturnRows(rawItems, cycleLookup, {
-      searchValue,
-      agent: advancedFilters.agent,
+    return allDetailRows.filter((item) => {
+      if (!matchesReturnSearchValue(item, searchValue)) {
+        return false;
+      }
+
+      if (
+        advancedFilters.agent !== "todos" &&
+        normalizeText(item.agenteResponsavel) !== normalizeText(advancedFilters.agent)
+      ) {
+        return false;
+      }
+
+      return true;
     });
-  }, [advancedFilters.agent, cycleLookup, rawItems, searchValue]);
+  }, [advancedFilters.agent, allDetailRows, searchValue]);
   const detailColumns = React.useMemo<DataTableColumn<EnrichedReturnItem>[]>(
     () => buildReturnColumns({ includeActions: true }),
     [],
   );
 
-  const total = financeiroResumo?.total ?? arquivo.total_registros ?? 0;
-  const quitados = financeiroResumo?.ok ?? 0;
-  const faltando = financeiroResumo?.faltando ?? Math.max(total - quitados, 0);
-  const recebido = financeiroResumo?.recebido ?? 0;
-  const esperado = financeiroResumo?.esperado ?? 0;
-  const pendente = financeiroResumo?.pendente ?? 0;
-  const progresso = financeiroResumo?.percentual ?? (total ? (quitados / total) * 100 : 0);
-  const mensalidades = financeiroResumo?.mensalidades;
-  const valores3050 = financeiroResumo?.valores_30_50;
   const fileTitle = formatCompetenciaHeading(
     arquivo.competencia_display,
     arquivo.competencia,
   );
+  const metricRowsByStatus = React.useMemo(
+    () => ({
+      quitados: detailRows.filter((row) => row.ok),
+      faltando: detailRows.filter((row) => !row.ok),
+      mensalidades: detailRows.filter((row) => isMensalidadesCategoria(row.categoria)),
+      valores_30_50: detailRows.filter((row) => isValores3050Categoria(row.categoria)),
+    }),
+    [detailRows],
+  );
+  const detailSummary = React.useMemo(() => summarizeReturnRows(detailRows), [detailRows]);
+  const total =
+    financeiroQuery.data && shouldLoadFinanceiro
+      ? detailSummary.total
+      : financeiroResumo?.total ?? arquivo.total_registros ?? 0;
+  const quitados =
+    financeiroQuery.data && shouldLoadFinanceiro
+      ? detailSummary.quitados.count
+      : financeiroResumo?.ok ?? 0;
+  const faltando =
+    financeiroQuery.data && shouldLoadFinanceiro
+      ? detailSummary.faltando.count
+      : financeiroResumo?.faltando ?? Math.max(total - quitados, 0);
+  const recebido =
+    financeiroQuery.data && shouldLoadFinanceiro
+      ? detailRows.reduce(
+          (accumulator, row) => accumulator + toFinanceiroNumber(row.recebido),
+          0,
+        )
+      : toFinanceiroNumber(financeiroResumo?.recebido);
+  const esperado =
+    financeiroQuery.data && shouldLoadFinanceiro
+      ? detailRows.reduce(
+          (accumulator, row) => accumulator + toFinanceiroNumber(row.esperado),
+          0,
+        )
+      : toFinanceiroNumber(financeiroResumo?.esperado);
+  const pendente =
+    financeiroQuery.data && shouldLoadFinanceiro
+      ? detailSummary.faltando.pendente
+      : toFinanceiroNumber(financeiroResumo?.pendente);
+  const progresso = esperado > 0 ? (recebido / esperado) * 100 : 0;
+  const mensalidades =
+    financeiroQuery.data && shouldLoadFinanceiro
+      ? detailSummary.mensalidades
+      : financeiroResumo?.mensalidades;
+  const valores3050 =
+    financeiroQuery.data && shouldLoadFinanceiro
+      ? detailSummary.valores_30_50
+      : financeiroResumo?.valores_30_50;
+  const metricDialogRows = metricDialogConfig
+    ? metricRowsByStatus[metricDialogConfig.key]
+    : [];
+  const metricAutocompleteOptions = React.useMemo(
+    () => buildReturnAutocompleteOptions(metricDialogRows),
+    [metricDialogRows],
+  );
+  const openMetricDialog = React.useCallback(
+    (metric: keyof typeof metricRowsByStatus) => {
+      const configMap: Record<keyof typeof metricRowsByStatus, ReturnMetricDialogConfig> = {
+        quitados: {
+          key: "quitados",
+          title: `Quitados no arquivo ${fileTitle}`,
+          description: "Associados efetivados neste arquivo retorno.",
+          exportTitle: `Quitados - ${arquivo.arquivo_nome}`,
+          exportFilename: sanitizeFileName(`arquivo-retorno-${arquivo.id}-quitados`),
+          emptyMessage: "Nenhum associado quitado encontrado neste arquivo.",
+        },
+        faltando: {
+          key: "faltando",
+          title: `Faltando no arquivo ${fileTitle}`,
+          description: "Associados que ainda permanecem pendentes neste arquivo retorno.",
+          exportTitle: `Faltando - ${arquivo.arquivo_nome}`,
+          exportFilename: sanitizeFileName(`arquivo-retorno-${arquivo.id}-faltando`),
+          emptyMessage: "Nenhum associado pendente encontrado neste arquivo.",
+        },
+        mensalidades: {
+          key: "mensalidades",
+          title: `Mensalidades no arquivo ${fileTitle}`,
+          description: "Associados classificados como mensalidades no resumo financeiro.",
+          exportTitle: `Mensalidades - ${arquivo.arquivo_nome}`,
+          exportFilename: sanitizeFileName(`arquivo-retorno-${arquivo.id}-mensalidades`),
+          emptyMessage: "Nenhum associado classificado como mensalidade neste arquivo.",
+        },
+        valores_30_50: {
+          key: "valores_30_50",
+          title: `Valores 30/50 no arquivo ${fileTitle}`,
+          description: "Associados classificados na faixa de valores 30/50 neste arquivo retorno.",
+          exportTitle: `Valores 30/50 - ${arquivo.arquivo_nome}`,
+          exportFilename: sanitizeFileName(`arquivo-retorno-${arquivo.id}-valores-30-50`),
+          emptyMessage: "Nenhum associado classificado como valor 30/50 neste arquivo.",
+        },
+      };
+
+      setMetricDialogConfig({
+        ...configMap[metric],
+      });
+    },
+    [arquivo.arquivo_nome, arquivo.id, fileTitle],
+  );
 
   return (
-    <Card className="border-border/60 bg-card/80 shadow-xl shadow-black/15">
+    <Card className="min-w-0 border-border/60 bg-card/80 shadow-xl shadow-black/15">
       <CardHeader className="gap-5">
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -1968,22 +2299,30 @@ function ReturnFileCard({
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <MetricTile label="Quitados" value={`${quitados}/${total}`} accent="cyan" />
+          <MetricTile
+            label="Quitados"
+            value={`${quitados}/${total}`}
+            accent="cyan"
+            onClick={() => openMetricDialog("quitados")}
+          />
           <MetricTile
             label="Faltando"
             value={faltando}
             tone={faltando > 0 ? "warning" : "neutral"}
             hint={formatCurrency(pendente)}
+            onClick={() => openMetricDialog("faltando")}
           />
           <MetricTile
             label="Mensalidades"
             value={formatCurrency(mensalidades?.recebido)}
             hint={`de ${formatCurrency(mensalidades?.esperado)}`}
+            onClick={() => openMetricDialog("mensalidades")}
           />
           <MetricTile
             label="Valores 30/50"
             value={formatCurrency(valores3050?.recebido)}
             hint={`de ${formatCurrency(valores3050?.esperado)}`}
+            onClick={() => openMetricDialog("valores_30_50")}
           />
         </div>
 
@@ -2019,7 +2358,7 @@ function ReturnFileCard({
         </div>
 
         {isExpanded ? (
-          <div className="max-w-full overflow-x-auto">
+          <div className={TABLE_VIEWPORT_CLASS}>
             {isDetailLoading ? (
               <TableSkeleton rows={5} />
             ) : (
@@ -2027,6 +2366,7 @@ function ReturnFileCard({
                 columns={detailColumns}
                 data={detailRows}
                 pageSize={8}
+                pageSizeOptions={DETAIL_PAGE_SIZE_OPTIONS}
                 className="rounded-[1.35rem] border border-border/60 bg-background/55 shadow-none"
                 tableClassName="min-w-[86rem]"
                 emptyMessage="Nenhum item detalhado disponível para este arquivo com os filtros atuais."
@@ -2035,6 +2375,52 @@ function ReturnFileCard({
           </div>
         ) : null}
       </CardContent>
+
+      <MetricDetailDialog
+        open={Boolean(metricDialogConfig)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setMetricDialogConfig(null);
+          }
+        }}
+        title={metricDialogConfig?.title ?? `Detalhamento do arquivo ${arquivo.arquivo_nome}`}
+        description={
+          metricDialogConfig?.description ??
+          "Associados relacionados ao indicador selecionado deste arquivo retorno."
+        }
+        rows={metricDialogRows}
+        isLoading={Boolean(metricDialogConfig) && shouldLoadFinanceiro && financeiroQuery.isLoading && !financeiroQuery.data}
+        autocompleteOptions={metricAutocompleteOptions}
+        matchesSearch={matchesReturnSearchValue}
+        placeholder="Buscar associado neste indicador"
+        searchPlaceholder="Buscar por nome, CPF ou matrícula"
+        emptyLabel={
+          metricDialogConfig?.emptyMessage ??
+          "Nenhum associado encontrado para este indicador."
+        }
+        exportTitle={metricDialogConfig?.exportTitle ?? `Arquivo retorno ${arquivo.arquivo_nome}`}
+        exportFilename={
+          metricDialogConfig?.exportFilename ??
+          sanitizeFileName(`arquivo-retorno-${arquivo.id}-detalhamento`)
+        }
+        exportColumns={returnExportColumns()}
+        renderTable={(rows) => (
+          <div className={TABLE_VIEWPORT_CLASS}>
+            <DataTable
+              columns={detailColumns}
+              data={rows}
+              pageSize={10}
+              pageSizeOptions={DETAIL_PAGE_SIZE_OPTIONS}
+              className="rounded-[1.35rem] border border-border/60 bg-background/55 shadow-none"
+              tableClassName="min-w-[86rem]"
+              emptyMessage={
+                metricDialogConfig?.emptyMessage ??
+                "Nenhum item detalhado disponível para este indicador."
+              }
+            />
+          </div>
+        )}
+      />
     </Card>
   );
 }
@@ -2062,9 +2448,9 @@ function MetricTile({
 
   const content = (
     <>
-      <p className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <p className="mt-2 text-xl font-semibold md:text-2xl">{value}</p>
-      {hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
+      <p className="break-words text-[10px] uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <p className="mt-2 break-words text-xl font-semibold md:text-2xl">{value}</p>
+      {hint ? <p className="mt-1 break-words text-xs text-muted-foreground">{hint}</p> : null}
     </>
   );
 
@@ -2074,6 +2460,7 @@ function MetricTile({
         type="button"
         onClick={onClick}
         className={cn(
+          KPI_SURFACE_CLASS,
           "rounded-2xl border bg-background/55 px-4 py-3 text-left transition-colors hover:bg-background/70 focus-visible:ring-2 focus-visible:ring-ring/50",
           accent === "cyan" ? "border-cyan-500/30 text-cyan-300" : toneClasses[tone],
         )}
@@ -2086,6 +2473,7 @@ function MetricTile({
   return (
     <div
       className={cn(
+        KPI_SURFACE_CLASS,
         "rounded-2xl border bg-background/55 px-4 py-3",
         accent === "cyan" ? "border-cyan-500/30 text-cyan-300" : toneClasses[tone],
       )}
@@ -2099,26 +2487,19 @@ function MonitoringCard({
   title,
   value,
   tone = "neutral",
+  onClick,
 }: {
   title: string;
   value: number;
   tone?: "neutral" | "warning" | "danger";
+  onClick?: () => void;
 }) {
-  return (
-    <div
-      className={cn(
-        "rounded-[1.35rem] border bg-card/80 px-5 py-4 shadow-lg shadow-black/10",
-        tone === "danger"
-          ? "border-rose-500/35"
-          : tone === "warning"
-            ? "border-amber-500/35"
-            : "border-border/60",
-      )}
-    >
-      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{title}</p>
+  const content = (
+    <>
+      <p className="break-words text-xs uppercase tracking-[0.18em] text-muted-foreground">{title}</p>
       <p
         className={cn(
-          "mt-3 text-3xl font-semibold",
+          "mt-3 break-words text-3xl font-semibold",
           tone === "danger"
             ? "text-rose-300"
             : tone === "warning"
@@ -2128,6 +2509,42 @@ function MonitoringCard({
       >
         {value}
       </p>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          KPI_SURFACE_CLASS,
+          "rounded-[1.35rem] border bg-card/80 px-5 py-4 text-left shadow-lg shadow-black/10 transition-colors hover:bg-card focus-visible:ring-2 focus-visible:ring-ring/50",
+          tone === "danger"
+            ? "border-rose-500/35"
+            : tone === "warning"
+              ? "border-amber-500/35"
+              : "border-border/60",
+        )}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        KPI_SURFACE_CLASS,
+        "rounded-[1.35rem] border bg-card/80 px-5 py-4 shadow-lg shadow-black/10",
+        tone === "danger"
+          ? "border-rose-500/35"
+          : tone === "warning"
+            ? "border-amber-500/35"
+            : "border-border/60",
+      )}
+    >
+      {content}
     </div>
   );
 }
@@ -2148,7 +2565,12 @@ export default function RenovacaoCiclosPage() {
   const [selectedMonth, setSelectedMonth] = React.useState("todos");
   const [retornoCompetencia, setRetornoCompetencia] = React.useState("");
   const [retornoPeriod, setRetornoPeriod] = React.useState<"mes" | "trimestre">("mes");
+  const [visibleReturnFilesCount, setVisibleReturnFilesCount] = React.useState(3);
   const [monitoringMode, setMonitoringMode] = React.useState<MonitoringMode>("trimestral");
+  const [detailMetricDialogConfig, setDetailMetricDialogConfig] =
+    React.useState<CycleMetricDialogConfig | null>(null);
+  const [monitoringMetricDialogConfig, setMonitoringMetricDialogConfig] =
+    React.useState<CycleMetricDialogConfig | null>(null);
   const [advancedFilters, setAdvancedFilters] = React.useState<AdvancedFilters>({
     periodPreset: "todos",
     dateStart: "",
@@ -2173,6 +2595,10 @@ export default function RenovacaoCiclosPage() {
       setSelectedCompetencia(monthsQuery.data[0].id);
     }
   }, [monthsQuery.data, selectedCompetencia]);
+
+  React.useEffect(() => {
+    setVisibleReturnFilesCount(3);
+  }, [retornoCompetencia, retornoPeriod]);
 
   const searchValue = decodeAutocompleteValue(deferredAutocomplete);
   const canUseServerResumo = !hasUnsupportedResumoFilters(advancedFilters);
@@ -2203,8 +2629,8 @@ export default function RenovacaoCiclosPage() {
   const importacaoQuery = useV1ImportacaoArquivoRetornoList(
     {
       competencia: retornoCompetencia || undefined,
-      periodo: retornoPeriod,
-      page_size: 100,
+      periodo: retornoCompetencia ? retornoPeriod : undefined,
+      page_size: visibleReturnFilesCount,
       ordering: "-created_at",
     },
     {
@@ -2239,12 +2665,58 @@ export default function RenovacaoCiclosPage() {
     [advancedFilters, detailRows, searchValue, selectedStatus],
   );
 
-  const detailMetrics = React.useMemo(
-    () =>
-      canUseServerResumo && detailResumoQuery.data
-        ? buildMonthlyMetricsFromResumo(detailResumoQuery.data)
-        : buildMonthlyMetrics(filteredDetailRows),
-    [canUseServerResumo, detailResumoQuery.data, filteredDetailRows],
+  const selectedCompetenciaLabel = formatCompetenciaHeading(selectedCompetencia);
+  const detailMetricRows = React.useMemo(
+    () => ({
+      total: filteredDetailRows,
+      ciclo_renovado: filteredDetailRows.filter((row) =>
+        matchesMetricStatus(row, "ciclo_renovado"),
+      ),
+      apto_a_renovar: filteredDetailRows.filter((row) =>
+        matchesMetricStatus(row, "apto_a_renovar"),
+      ),
+      em_aberto: filteredDetailRows.filter((row) => matchesMetricStatus(row, "em_aberto")),
+      inadimplente: filteredDetailRows.filter((row) =>
+        matchesMetricStatus(row, "inadimplente"),
+      ),
+    }),
+    [filteredDetailRows],
+  );
+  const detailMetricCounts = React.useMemo(
+    () => ({
+      total: detailMetricRows.total.length,
+      cicloRenovado: detailMetricRows.ciclo_renovado.length,
+      aptoRenovar: detailMetricRows.apto_a_renovar.length,
+      emAberto: detailMetricRows.em_aberto.length,
+      inadimplente: detailMetricRows.inadimplente.length,
+    }),
+    [detailMetricRows],
+  );
+  const detailMetricAutocompleteOptions = React.useMemo(
+    () => buildAutocompleteOptions(detailMetricDialogConfig?.rows ?? []),
+    [detailMetricDialogConfig?.rows],
+  );
+  const openDetailMetricDialog = React.useCallback(
+    (
+      key: keyof typeof detailMetricRows,
+      title: string,
+      description: string,
+      emptyMessage: string,
+    ) => {
+      setDetailMetricDialogConfig({
+        key,
+        title,
+        description,
+        rows: detailMetricRows[key],
+        monthLabel: selectedCompetenciaLabel,
+        exportTitle: `${title} - ${selectedCompetenciaLabel}`,
+        exportFilename: sanitizeFileName(
+          `detalhamento-mensal-${selectedCompetencia || "atual"}-${key}`,
+        ),
+        emptyMessage,
+      });
+    },
+    [detailMetricRows, selectedCompetencia, selectedCompetenciaLabel],
   );
 
   const years = React.useMemo(() => {
@@ -2282,37 +2754,150 @@ export default function RenovacaoCiclosPage() {
     );
   }, [detailRows]);
 
-  const monitoringCards = React.useMemo(() => {
-    const total = filteredDetailRows.length;
-    const firstStage = filteredDetailRows.filter((row) => row.parcelas_pagas <= 1).length;
-    const secondStage = filteredDetailRows.filter((row) => row.parcelas_pagas === 2).length;
-    const thirdStage = filteredDetailRows.filter((row) => row.parcelas_pagas >= 3).length;
-    const pending = filteredDetailRows.filter(
+  const monitoringCards = React.useMemo<MonitoringCardDefinition[]>(() => {
+    const competenciaLabel = formatCompetenciaHeading(selectedCompetencia);
+    const firstStageRows = filteredDetailRows.filter((row) => row.parcelas_pagas <= 1);
+    const secondStageRows = filteredDetailRows.filter((row) => row.parcelas_pagas === 2);
+    const thirdStageRows = filteredDetailRows.filter((row) => row.parcelas_pagas >= 3);
+    const pendingRows = filteredDetailRows.filter(
       (row) =>
         row.status_visual === "inadimplente" ||
         row.status_visual === "em_aberto" ||
         row.resultado_importacao === "nao_descontado",
-    ).length;
+    );
 
     if (monitoringMode === "semestral") {
       return [
-        { title: "Meses 1-2 (Abertura)", value: Math.round(firstStage * 1.2) || firstStage },
-        { title: "Meses 3-4 (Acompanhamento)", value: Math.round(secondStage * 1.1) || secondStage, tone: "neutral" as const },
-        { title: "Meses 5-6 (Encerramento)", value: Math.max(thirdStage, Math.round(total * 0.35)), tone: "warning" as const },
-        { title: "Pendências acumuladas", value: pending, tone: "danger" as const },
+        {
+          title: "Meses 1-2 (Abertura)",
+          value: firstStageRows.length,
+          rows: firstStageRows,
+          dialogTitle: `Meses 1-2 (Abertura) em ${competenciaLabel}`,
+          dialogDescription:
+            "Associados reais do estágio inicial no recorte semestral.",
+          exportTitle: `Meses 1-2 (Abertura) - ${competenciaLabel}`,
+          exportFilename: sanitizeFileName(
+            `monitoramento-${selectedCompetencia || "atual"}-meses-1-2`,
+          ),
+          emptyMessage: "Nenhum associado encontrado para o estágio de abertura.",
+        },
+        {
+          title: "Meses 3-4 (Acompanhamento)",
+          value: secondStageRows.length,
+          tone: "neutral",
+          rows: secondStageRows,
+          dialogTitle: `Meses 3-4 (Acompanhamento) em ${competenciaLabel}`,
+          dialogDescription:
+            "Associados reais do estágio intermediário no recorte semestral.",
+          exportTitle: `Meses 3-4 (Acompanhamento) - ${competenciaLabel}`,
+          exportFilename: sanitizeFileName(
+            `monitoramento-${selectedCompetencia || "atual"}-meses-3-4`,
+          ),
+          emptyMessage: "Nenhum associado encontrado para o estágio intermediário.",
+        },
+        {
+          title: "Meses 5-6 (Encerramento)",
+          value: thirdStageRows.length,
+          tone: "warning",
+          rows: thirdStageRows,
+          dialogTitle: `Meses 5-6 (Encerramento) em ${competenciaLabel}`,
+          dialogDescription:
+            "Associados reais em encerramento no recorte semestral do ciclo.",
+          exportTitle: `Meses 5-6 (Encerramento) - ${competenciaLabel}`,
+          exportFilename: sanitizeFileName(
+            `monitoramento-${selectedCompetencia || "atual"}-meses-5-6`,
+          ),
+          emptyMessage: "Nenhum associado encontrado para o estágio de encerramento.",
+        },
+        {
+          title: "Pendências acumuladas",
+          value: pendingRows.length,
+          tone: "danger",
+          rows: pendingRows,
+          dialogTitle: `Pendências acumuladas em ${competenciaLabel}`,
+          dialogDescription:
+            "Associados com pendência operacional acumulada no recorte semestral.",
+          exportTitle: `Pendências acumuladas - ${competenciaLabel}`,
+          exportFilename: sanitizeFileName(
+            `monitoramento-${selectedCompetencia || "atual"}-pendencias`,
+          ),
+          emptyMessage: "Nenhuma pendência acumulada encontrada para esta competência.",
+        },
       ];
     }
 
     return [
-      { title: "Mês 1/3 (Início)", value: firstStage },
-      { title: "Mês 2/3 (Meio)", value: secondStage },
-      { title: "Mês 3/3 (Encerramento)", value: thirdStage, tone: "warning" as const },
-      { title: "Pendências acumuladas", value: pending, tone: "danger" as const },
+      {
+        title: "Mês 1/3 (Início)",
+        value: firstStageRows.length,
+        rows: firstStageRows,
+        dialogTitle: `Mês 1/3 (Início) em ${competenciaLabel}`,
+        dialogDescription: "Associados ainda no primeiro estágio do ciclo atual.",
+        exportTitle: `Mês 1/3 (Início) - ${competenciaLabel}`,
+        exportFilename: sanitizeFileName(
+          `monitoramento-${selectedCompetencia || "atual"}-mes-1-3`,
+        ),
+        emptyMessage: "Nenhum associado encontrado para o primeiro estágio do ciclo.",
+      },
+      {
+        title: "Mês 2/3 (Meio)",
+        value: secondStageRows.length,
+        rows: secondStageRows,
+        dialogTitle: `Mês 2/3 (Meio) em ${competenciaLabel}`,
+        dialogDescription: "Associados no estágio intermediário do ciclo atual.",
+        exportTitle: `Mês 2/3 (Meio) - ${competenciaLabel}`,
+        exportFilename: sanitizeFileName(
+          `monitoramento-${selectedCompetencia || "atual"}-mes-2-3`,
+        ),
+        emptyMessage: "Nenhum associado encontrado para o estágio intermediário.",
+      },
+      {
+        title: "Mês 3/3 (Encerramento)",
+        value: thirdStageRows.length,
+        tone: "warning",
+        rows: thirdStageRows,
+        dialogTitle: `Mês 3/3 (Encerramento) em ${competenciaLabel}`,
+        dialogDescription: "Associados prontos para encerramento ou renovação do ciclo.",
+        exportTitle: `Mês 3/3 (Encerramento) - ${competenciaLabel}`,
+        exportFilename: sanitizeFileName(
+          `monitoramento-${selectedCompetencia || "atual"}-mes-3-3`,
+        ),
+        emptyMessage: "Nenhum associado encontrado para o encerramento do ciclo.",
+      },
+      {
+        title: "Pendências acumuladas",
+        value: pendingRows.length,
+        tone: "danger",
+        rows: pendingRows,
+        dialogTitle: `Pendências acumuladas em ${competenciaLabel}`,
+        dialogDescription:
+          "Associados com inadimplência, parcela em aberto ou retorno não descontado.",
+        exportTitle: `Pendências acumuladas - ${competenciaLabel}`,
+        exportFilename: sanitizeFileName(
+          `monitoramento-${selectedCompetencia || "atual"}-pendencias`,
+        ),
+        emptyMessage: "Nenhuma pendência acumulada encontrada para esta competência.",
+      },
     ];
-  }, [filteredDetailRows, monitoringMode]);
+  }, [filteredDetailRows, monitoringMode, selectedCompetencia]);
+  const monitoringMetricAutocompleteOptions = React.useMemo(
+    () => buildAutocompleteOptions(monitoringMetricDialogConfig?.rows ?? []),
+    [monitoringMetricDialogConfig?.rows],
+  );
+  const openMonitoringMetricDialog = React.useCallback((card: MonitoringCardDefinition) => {
+    setMonitoringMetricDialogConfig({
+      key: card.title,
+      title: card.dialogTitle,
+      description: card.dialogDescription,
+      rows: card.rows,
+      monthLabel: selectedCompetenciaLabel,
+      exportTitle: card.exportTitle,
+      exportFilename: card.exportFilename,
+      emptyMessage: card.emptyMessage,
+    });
+  }, [selectedCompetenciaLabel]);
 
   const activeAdvancedFiltersCount = countActiveFilters(selectedStatus, advancedFilters);
-  const selectedCompetenciaLabel = formatCompetenciaHeading(selectedCompetencia);
   const isMonthsLoading = monthsQuery.isLoading && !(monthsQuery.data ?? []).length;
   const isDetailLoading =
     (detailListQuery.isLoading && !detailListQuery.data) ||
@@ -2346,9 +2931,9 @@ export default function RenovacaoCiclosPage() {
       id: "associado",
       header: "Associado",
       cell: (row) => (
-        <div className="space-y-3">
+        <div className="space-y-2">
           <div className="flex items-center gap-3">
-            <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+            <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[expanded=true]:rotate-90" />
             <div className="min-w-0 space-y-1">
               <CopySnippet
                 label="Nome"
@@ -2359,19 +2944,27 @@ export default function RenovacaoCiclosPage() {
               <p className="text-xs text-muted-foreground">{row.contrato_codigo}</p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 pl-7">
-            <CopySnippet label="CPF" value={row.cpf_cnpj} mono />
-            <CopySnippet label="Matrícula" value={row.matricula} mono />
-          </div>
         </div>
       ),
-      headerClassName: "w-[24%]",
+      headerClassName: "w-[22%]",
+    },
+    {
+      id: "cpf",
+      header: "CPF",
+      cell: (row) => <CopySnippet label="CPF" value={row.cpf_cnpj} mono />,
+      headerClassName: "w-[14%]",
+    },
+    {
+      id: "matricula",
+      header: "Matrícula",
+      cell: (row) => <CopySnippet label="Matrícula" value={row.matricula} mono />,
+      headerClassName: "w-[14%]",
     },
     {
       id: "agente",
       header: "Agente responsável",
       cell: (row) => row.agenteResponsavel,
-      headerClassName: "w-[18%]",
+      headerClassName: "w-[16%]",
     },
     {
       id: "parcelas",
@@ -2549,6 +3142,8 @@ export default function RenovacaoCiclosPage() {
                       }
                       placeholder="Todos os agentes"
                       searchPlaceholder="Buscar agente"
+                      clearValue="todos"
+                      clearLabel="Todos os agentes"
                     />
                   </FilterField>
                 </div>
@@ -2603,7 +3198,7 @@ export default function RenovacaoCiclosPage() {
           </div>
         </div>
 
-        <div className="grid items-start gap-3 lg:grid-cols-[minmax(14rem,16rem)_minmax(0,1fr)] xl:grid-cols-[minmax(14rem,16rem)_minmax(0,1fr)_minmax(12rem,14rem)_auto_auto]">
+        <div className="grid items-start gap-3 lg:grid-cols-[minmax(14rem,16rem)_minmax(0,1fr)] xl:grid-cols-[minmax(14rem,16rem)_minmax(0,1fr)_auto_auto]">
           <Select
             value={selectedCompetencia}
             onValueChange={setSelectedCompetencia}
@@ -2627,31 +3222,9 @@ export default function RenovacaoCiclosPage() {
               onChange={setSelectedAutocomplete}
               placeholder="Buscar associado, CPF ou matricula"
               searchPlaceholder="Digite para localizar associado"
-              className="min-w-0 rounded-2xl"
+              className="min-w-0 flex-1 rounded-2xl"
             />
-            {selectedAutocomplete ? (
-              <Button
-                variant="outline"
-                className="rounded-2xl sm:self-start"
-                onClick={() => setSelectedAutocomplete("")}
-              >
-                Limpar
-              </Button>
-            ) : null}
           </div>
-
-          <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-            <SelectTrigger className="rounded-2xl bg-background/60">
-              <SelectValue placeholder="Status" />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((status) => (
-                <SelectItem key={status.value} value={status.value}>
-                  {status.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
 
           <Button variant="outline" className="rounded-2xl" onClick={resetMainFilters}>
             Limpar filtros
@@ -2699,6 +3272,7 @@ export default function RenovacaoCiclosPage() {
                   title={card.title}
                   value={card.value}
                   tone={card.tone}
+                  onClick={() => openMonitoringMetricDialog(card)}
                 />
               ))}
             </div>
@@ -2828,16 +3402,74 @@ export default function RenovacaoCiclosPage() {
             </>
           ) : (
             <>
-              <MetricTile label="Total" value={detailMetrics.total} />
-              <MetricTile label="Ciclo renovado" value={detailMetrics.cicloRenovado} />
-              <MetricTile label="Apto a renovar" value={detailMetrics.aptoRenovar} accent="cyan" />
-              <MetricTile label="Em aberto" value={detailMetrics.emAberto} tone="warning" />
-              <MetricTile label="Inadimplentes" value={detailMetrics.inadimplente} tone="danger" />
+              <MetricTile
+                label="Total"
+                value={detailMetricCounts.total}
+                onClick={() =>
+                  openDetailMetricDialog(
+                    "total",
+                    `Total de associados em ${selectedCompetenciaLabel}`,
+                    "Todos os associados conciliados na competência base selecionada.",
+                    "Nenhum associado encontrado para a competência selecionada.",
+                  )
+                }
+              />
+              <MetricTile
+                label="Ciclo renovado"
+                value={detailMetricCounts.cicloRenovado}
+                onClick={() =>
+                  openDetailMetricDialog(
+                    "ciclo_renovado",
+                    `Ciclo renovado em ${selectedCompetenciaLabel}`,
+                    "Associados com ciclo encerrado e renovação efetivada na competência base.",
+                    "Nenhum associado renovado encontrado para a competência selecionada.",
+                  )
+                }
+              />
+              <MetricTile
+                label="Apto a renovar"
+                value={detailMetricCounts.aptoRenovar}
+                accent="cyan"
+                onClick={() =>
+                  openDetailMetricDialog(
+                    "apto_a_renovar",
+                    `Aptos a renovar em ${selectedCompetenciaLabel}`,
+                    "Associados prontos para renovação na competência base.",
+                    "Nenhum associado apto a renovar encontrado para a competência selecionada.",
+                  )
+                }
+              />
+              <MetricTile
+                label="Em aberto"
+                value={detailMetricCounts.emAberto}
+                tone="warning"
+                onClick={() =>
+                  openDetailMetricDialog(
+                    "em_aberto",
+                    `Em aberto em ${selectedCompetenciaLabel}`,
+                    "Associados com parcela atual em aberto na competência base.",
+                    "Nenhum associado em aberto encontrado para a competência selecionada.",
+                  )
+                }
+              />
+              <MetricTile
+                label="Inadimplentes"
+                value={detailMetricCounts.inadimplente}
+                tone="danger"
+                onClick={() =>
+                  openDetailMetricDialog(
+                    "inadimplente",
+                    `Inadimplentes em ${selectedCompetenciaLabel}`,
+                    "Associados com inadimplência consolidada na competência base.",
+                    "Nenhum associado inadimplente encontrado para a competência selecionada.",
+                  )
+                }
+              />
             </>
           )}
         </div>
 
-        <Card className="border-border/60 bg-card/80">
+        <Card className="min-w-0 border-border/60 bg-card/80">
           <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
               <CardTitle>Detalhamento mensal já conciliado</CardTitle>
@@ -2864,70 +3496,78 @@ export default function RenovacaoCiclosPage() {
               <DataTable
                 columns={columns}
                 data={filteredDetailRows}
-                pageSize={8}
+                pageSize={10}
+                pageSizeOptions={DETAIL_PAGE_SIZE_OPTIONS}
                 className="rounded-[1.35rem] shadow-none"
-                tableClassName="min-w-[72rem]"
+                tableClassName="min-w-[82rem]"
                 emptyMessage="Nenhum ciclo encontrado para a competência selecionada."
                 renderExpanded={(row) => (
-                  <div className="grid gap-4 md:grid-cols-[1.2fr_1fr_1fr_1.2fr]">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-                        Status ETIPI
-                      </p>
-                      <p className="mt-2 font-medium text-foreground">
-                        {formatEtipiStatusLabel(
-                          row.status_codigo_etipi,
-                          row.status_descricao_etipi,
-                        )}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-                        Resultado importação
-                      </p>
-                      <div className="mt-2">
-                        <StatusBadge status={row.resultado_importacao} />
+                  <div className="space-y-4">
+                    {row.status_visual === "apto_a_renovar" && row.statusExplicacao ? (
+                      <div className="rounded-2xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-50">
+                        {row.statusExplicacao}
                       </div>
-                    </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-                        Pagamento
-                      </p>
-                      <p className="mt-2 font-medium text-foreground">{formatDate(row.data_pagamento)}</p>
-                    </div>
-                    <div className="space-y-3">
-                      <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
-                        Ações rápidas
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          className="rounded-2xl"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            toast.success(`Fluxo de renovação iniciado para ${row.nome_associado}.`);
-                          }}
-                        >
-                          <RefreshCcwIcon className="size-4" />
-                          Renovar ciclo
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          className="rounded-2xl"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            toast.success(`Solicitação de desativação aberta para ${row.nome_associado}.`);
-                          }}
-                        >
-                          <UserMinusIcon className="size-4" />
-                          Desativar associado
-                        </Button>
-                        <Button asChild variant="outline" size="sm" className="rounded-2xl">
-                          <Link href={row.associadoUrl} onClick={(event) => event.stopPropagation()}>
-                            Abrir associado
-                          </Link>
-                        </Button>
+                    ) : null}
+                    <div className="grid gap-4 md:grid-cols-[1.2fr_1fr_1fr_1.2fr]">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                          Status ETIPI
+                        </p>
+                        <p className="mt-2 font-medium text-foreground">
+                          {formatEtipiStatusLabel(
+                            row.status_codigo_etipi,
+                            row.status_descricao_etipi,
+                          )}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                          Resultado importação
+                        </p>
+                        <div className="mt-2">
+                          <StatusBadge status={row.resultado_importacao} />
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                          Pagamento
+                        </p>
+                        <p className="mt-2 font-medium text-foreground">{formatDate(row.data_pagamento)}</p>
+                      </div>
+                      <div className="space-y-3">
+                        <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                          Ações rápidas
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            className="rounded-2xl"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              toast.success(`Fluxo de renovação iniciado para ${row.nome_associado}.`);
+                            }}
+                          >
+                            <RefreshCcwIcon className="size-4" />
+                            Renovar ciclo
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            className="rounded-2xl"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              toast.success(`Solicitação de desativação aberta para ${row.nome_associado}.`);
+                            }}
+                          >
+                            <UserMinusIcon className="size-4" />
+                            Desativar associado
+                          </Button>
+                          <Button asChild variant="outline" size="sm" className="rounded-2xl">
+                            <Link href={row.associadoUrl} onClick={(event) => event.stopPropagation()}>
+                              Abrir associado
+                            </Link>
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2998,8 +3638,20 @@ export default function RenovacaoCiclosPage() {
               ))}
         </div>
 
+        {(importacaoQuery.data?.count ?? 0) > (importacaoQuery.data?.results ?? []).length ? (
+          <div className="flex justify-center">
+            <Button
+              variant="outline"
+              className="rounded-2xl"
+              onClick={() => setVisibleReturnFilesCount((current) => current + 3)}
+            >
+              Ver mais arquivos
+            </Button>
+          </div>
+        ) : null}
+
         {!(importacaoQuery.data?.results ?? []).length ? (
-          <Card className="border-border/60 bg-card/80">
+          <Card className="min-w-0 border-border/60 bg-card/80">
             <CardContent className="py-10 text-center text-sm text-muted-foreground">
               Nenhum arquivo retorno encontrado para{" "}
               {retornoCompetencia ? formatCompetenciaHeading(retornoCompetencia) : "o historico atual"}.
@@ -3007,6 +3659,103 @@ export default function RenovacaoCiclosPage() {
           </Card>
         ) : null}
       </section>
+
+      <MetricDetailDialog
+        open={Boolean(detailMetricDialogConfig)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailMetricDialogConfig(null);
+          }
+        }}
+        title={detailMetricDialogConfig?.title ?? `Detalhamento mensal ${selectedCompetenciaLabel}`}
+        description={
+          detailMetricDialogConfig?.description ??
+          "Associados relacionados ao indicador selecionado da competência base."
+        }
+        rows={detailMetricDialogConfig?.rows ?? []}
+        autocompleteOptions={detailMetricAutocompleteOptions}
+        matchesSearch={matchesCycleSearchValue}
+        placeholder="Buscar associado neste indicador"
+        searchPlaceholder="Buscar por nome, CPF ou matrícula"
+        emptyLabel={
+          detailMetricDialogConfig?.emptyMessage ??
+          "Nenhum associado encontrado para este indicador."
+        }
+        exportTitle={
+          detailMetricDialogConfig?.exportTitle ??
+          `Detalhamento mensal ${selectedCompetenciaLabel}`
+        }
+        exportFilename={
+          detailMetricDialogConfig?.exportFilename ??
+          sanitizeFileName(`detalhamento-mensal-${selectedCompetencia || "atual"}-kpi`)
+        }
+        exportColumns={cycleExportColumns(detailMetricDialogConfig?.monthLabel ?? selectedCompetenciaLabel)}
+        renderTable={(rows) => (
+          <div className={TABLE_VIEWPORT_CLASS}>
+            <CycleMembersTable
+              rows={rows}
+              monthLabel={detailMetricDialogConfig?.monthLabel ?? selectedCompetenciaLabel}
+              pageSize={10}
+              pageSizeOptions={DETAIL_PAGE_SIZE_OPTIONS}
+              tableClassName="min-w-[82rem]"
+              emptyMessage={
+                detailMetricDialogConfig?.emptyMessage ??
+                "Nenhum associado encontrado para este indicador."
+              }
+            />
+          </div>
+        )}
+      />
+
+      <MetricDetailDialog
+        open={Boolean(monitoringMetricDialogConfig)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setMonitoringMetricDialogConfig(null);
+          }
+        }}
+        title={
+          monitoringMetricDialogConfig?.title ??
+          `Monitoramento de ciclos em ${selectedCompetenciaLabel}`
+        }
+        description={
+          monitoringMetricDialogConfig?.description ??
+          "Associados relacionados ao indicador selecionado do monitoramento."
+        }
+        rows={monitoringMetricDialogConfig?.rows ?? []}
+        autocompleteOptions={monitoringMetricAutocompleteOptions}
+        matchesSearch={matchesCycleSearchValue}
+        placeholder="Buscar associado neste indicador"
+        searchPlaceholder="Buscar por nome, CPF ou matrícula"
+        emptyLabel={
+          monitoringMetricDialogConfig?.emptyMessage ??
+          "Nenhum associado encontrado para este indicador."
+        }
+        exportTitle={
+          monitoringMetricDialogConfig?.exportTitle ??
+          `Monitoramento de ciclos ${selectedCompetenciaLabel}`
+        }
+        exportFilename={
+          monitoringMetricDialogConfig?.exportFilename ??
+          sanitizeFileName(`monitoramento-${selectedCompetencia || "atual"}-kpi`)
+        }
+        exportColumns={cycleExportColumns(monitoringMetricDialogConfig?.monthLabel ?? selectedCompetenciaLabel)}
+        renderTable={(rows) => (
+          <div className={TABLE_VIEWPORT_CLASS}>
+            <CycleMembersTable
+              rows={rows}
+              monthLabel={monitoringMetricDialogConfig?.monthLabel ?? selectedCompetenciaLabel}
+              pageSize={10}
+              pageSizeOptions={DETAIL_PAGE_SIZE_OPTIONS}
+              tableClassName="min-w-[82rem]"
+              emptyMessage={
+                monitoringMetricDialogConfig?.emptyMessage ??
+                "Nenhum associado encontrado para este indicador."
+              }
+            />
+          </div>
+        )}
+      />
     </div>
   );
 }

@@ -6,6 +6,13 @@ import { ChevronDownIcon, ChevronUpIcon, ChevronsLeftIcon, ChevronsRightIcon } f
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -24,11 +31,20 @@ export type DataTableColumn<T> = {
   cellClassName?: string;
 };
 
+type DataTablePageSizeOption =
+  | number
+  | {
+      label: string;
+      value: number;
+    };
+
 type DataTableProps<T extends { id: number | string }> = {
   columns: DataTableColumn<T>[];
   data: T[];
   renderExpanded?: (row: T) => React.ReactNode;
   pageSize?: number;
+  pageSizeOptions?: DataTablePageSizeOption[];
+  pageSizeLabel?: string;
   currentPage?: number;
   totalPages?: number;
   onPageChange?: (page: number) => void;
@@ -37,11 +53,41 @@ type DataTableProps<T extends { id: number | string }> = {
   tableClassName?: string;
 };
 
+function buildPageItems(currentPage: number, totalPages: number) {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const pages = new Set<number>([1, totalPages, currentPage, currentPage - 1, currentPage + 1]);
+  const sorted = [...pages].filter((page) => page >= 1 && page <= totalPages).sort((a, b) => a - b);
+  const items: Array<number | string> = [];
+
+  sorted.forEach((page, index) => {
+    const previous = sorted[index - 1];
+    if (previous && page - previous > 1) {
+      items.push(`ellipsis-${previous}-${page}`);
+    }
+    items.push(page);
+  });
+
+  return items;
+}
+
+function normalizePageSizeOption(option: DataTablePageSizeOption) {
+  if (typeof option === "number") {
+    return { label: String(option), value: option };
+  }
+
+  return option;
+}
+
 export default function DataTable<T extends { id: number | string }>({
   columns,
   data,
   renderExpanded,
   pageSize = 5,
+  pageSizeOptions,
+  pageSizeLabel = "Por página",
   currentPage,
   totalPages,
   onPageChange,
@@ -50,11 +96,30 @@ export default function DataTable<T extends { id: number | string }>({
   tableClassName,
 }: DataTableProps<T>) {
   const [internalPage, setInternalPage] = React.useState(1);
+  const [internalPageSize, setInternalPageSize] = React.useState(pageSize);
   const [sortBy, setSortBy] = React.useState<string | null>(null);
   const [direction, setDirection] = React.useState<"asc" | "desc">("asc");
   const [expandedRow, setExpandedRow] = React.useState<number | string | null>(null);
   const isControlledPagination =
     currentPage !== undefined && totalPages !== undefined && !!onPageChange;
+  const normalizedPageSizeOptions = React.useMemo(() => {
+    const options = (pageSizeOptions ?? []).map(normalizePageSizeOption);
+
+    if (!options.length) {
+      return [];
+    }
+
+    if (!options.some((option) => option.value === pageSize)) {
+      return [{ label: String(pageSize), value: pageSize }, ...options];
+    }
+
+    return options;
+  }, [pageSize, pageSizeOptions]);
+  const resolvedPageSize = isControlledPagination
+    ? pageSize
+    : normalizedPageSizeOptions.length
+      ? internalPageSize
+      : pageSize;
 
   const page = isControlledPagination ? currentPage : internalPage;
 
@@ -75,10 +140,10 @@ export default function DataTable<T extends { id: number | string }>({
 
   const resolvedTotalPages = isControlledPagination
     ? Math.max(1, totalPages ?? 1)
-    : Math.max(1, Math.ceil(sortedData.length / pageSize));
+    : Math.max(1, Math.ceil(sortedData.length / resolvedPageSize));
   const currentRows = isControlledPagination
     ? sortedData
-    : sortedData.slice((page - 1) * pageSize, page * pageSize);
+    : sortedData.slice((page - 1) * resolvedPageSize, page * resolvedPageSize);
   const changePage = (nextPage: number) => {
     if (isControlledPagination) {
       onPageChange?.(nextPage);
@@ -86,6 +151,34 @@ export default function DataTable<T extends { id: number | string }>({
     }
     setInternalPage(nextPage);
   };
+  const pageItems = React.useMemo(
+    () => buildPageItems(page, resolvedTotalPages),
+    [page, resolvedTotalPages],
+  );
+
+  React.useEffect(() => {
+    if (!isControlledPagination) {
+      setInternalPageSize(pageSize);
+    }
+  }, [isControlledPagination, pageSize]);
+
+  React.useEffect(() => {
+    if (
+      !isControlledPagination &&
+      normalizedPageSizeOptions.length > 0 &&
+      !normalizedPageSizeOptions.some((option) => option.value === internalPageSize)
+    ) {
+      setInternalPageSize(normalizedPageSizeOptions[0].value);
+    }
+  }, [internalPageSize, isControlledPagination, normalizedPageSizeOptions]);
+
+  React.useEffect(() => {
+    if (isControlledPagination) {
+      return;
+    }
+
+    setInternalPage((current) => Math.min(current, resolvedTotalPages));
+  }, [isControlledPagination, resolvedTotalPages]);
 
   return (
     <div
@@ -94,7 +187,7 @@ export default function DataTable<T extends { id: number | string }>({
         className,
       )}
     >
-      <Table className={tableClassName}>
+      <Table className={cn("min-w-full", tableClassName)}>
         <TableHeader>
           <TableRow className="border-border/60 hover:bg-transparent">
             {columns.map((column) => (
@@ -135,7 +228,8 @@ export default function DataTable<T extends { id: number | string }>({
             currentRows.map((row) => (
               <React.Fragment key={row.id}>
                 <TableRow
-                  className="border-border/60 hover:bg-white/3"
+                  className="group border-border/60 hover:bg-white/3"
+                  data-expanded={expandedRow === row.id ? "true" : "false"}
                   onClick={() => {
                     if (!renderExpanded) return;
                     setExpandedRow((current) => (current === row.id ? null : row.id));
@@ -173,16 +267,58 @@ export default function DataTable<T extends { id: number | string }>({
         </TableBody>
       </Table>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 px-5 py-4">
-        <p className="text-sm text-muted-foreground">
-          Página {page} de {resolvedTotalPages}
-        </p>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-muted-foreground">
+            Página {page} de {resolvedTotalPages}
+          </p>
+          {!isControlledPagination && normalizedPageSizeOptions.length > 0 ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">{pageSizeLabel}</span>
+              <Select
+                value={String(resolvedPageSize)}
+                onValueChange={(value) => {
+                  setInternalPageSize(Number(value));
+                  setInternalPage(1);
+                }}
+              >
+                <SelectTrigger className="h-9 w-[7.5rem] rounded-xl bg-background/70">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {normalizedPageSizeOptions.map((option) => (
+                    <SelectItem key={option.value} value={String(option.value)}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button variant="outline" size="icon-sm" disabled={page === 1} onClick={() => changePage(1)}>
             <ChevronsLeftIcon className="size-4" />
           </Button>
           <Button variant="outline" size="icon-sm" disabled={page === 1} onClick={() => changePage(Math.max(1, page - 1))}>
             <ChevronUpIcon className="size-4 rotate-90" />
           </Button>
+          {pageItems.map((item) =>
+            typeof item === "number" ? (
+              <Button
+                key={item}
+                variant={item === page ? "secondary" : "outline"}
+                size="icon-sm"
+                className="rounded-xl"
+                onClick={() => changePage(item)}
+              >
+                {item}
+              </Button>
+            ) : (
+              <span key={item} className="px-1 text-sm text-muted-foreground">
+                ...
+              </span>
+            ),
+          )}
           <Button variant="outline" size="icon-sm" disabled={page === resolvedTotalPages} onClick={() => changePage(Math.min(resolvedTotalPages, page + 1))}>
             <ChevronDownIcon className="size-4 -rotate-90" />
           </Button>
