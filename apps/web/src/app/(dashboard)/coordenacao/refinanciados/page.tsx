@@ -8,8 +8,8 @@ import { FileSearchIcon, PrinterIcon } from "lucide-react";
 import type { PaginatedResponse, RefinanciamentoItem } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { formatDateTime, formatMonthYear } from "@/lib/formatters";
-import { maskCPFCNPJ } from "@/lib/masks";
 import StatusBadge from "@/components/custom/status-badge";
+import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
 
 export default function CoordenacaoRefinanciadosPage() {
   const [page, setPage] = React.useState(1);
@@ -69,7 +68,7 @@ export default function CoordenacaoRefinanciadosPage() {
       {
         id: "cpf",
         header: "CPF/CNPJ",
-        cell: (row) => maskCPFCNPJ(row.cpf_cnpj),
+        cell: (row) => <CopySnippet label="CPF" value={row.cpf_cnpj} mono inline />,
       },
       {
         id: "ref1",
@@ -138,7 +137,7 @@ export default function CoordenacaoRefinanciadosPage() {
               </Button>
             </div>
             <h1 className="text-3xl font-semibold">
-              Refinanciados — {year}-01|{year}-02|{year}-03
+              Refinanciados por referências consumidas
             </h1>
             <p className="text-sm text-muted-foreground">
               Modo: somente refinanciados. Total: {totalCount} | Filtrados: {totalCount} | Exibindo: {rows.length}
@@ -173,21 +172,16 @@ export default function CoordenacaoRefinanciadosPage() {
         <Button onClick={() => setPage(1)}>Aplicar</Button>
       </section>
 
-      {refinanciadosQuery.isLoading ? (
-        <div className="flex items-center gap-3 rounded-[1.75rem] border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-          <Spinner />
-          Carregando refinanciados...
-        </div>
-      ) : (
-        <DataTable
-          data={rows}
-          columns={columns}
-          currentPage={page}
-          totalPages={Math.max(1, Math.ceil(totalCount / 20))}
-          onPageChange={setPage}
-          emptyMessage="Nenhum refinanciado encontrado."
-        />
-      )}
+      <DataTable
+        data={rows}
+        columns={columns}
+        currentPage={page}
+        totalPages={Math.max(1, Math.ceil(totalCount / 20))}
+        onPageChange={setPage}
+        emptyMessage="Nenhum refinanciado encontrado."
+        loading={refinanciadosQuery.isLoading}
+        skeletonRows={6}
+      />
 
       <Dialog open={!!auditTarget} onOpenChange={(open) => !open && setAuditTarget(null)}>
         <DialogContent>

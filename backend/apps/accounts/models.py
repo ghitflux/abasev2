@@ -71,11 +71,19 @@ class User(AbstractBaseUser, PermissionsMixin, BaseModel):
 
     @property
     def primary_role(self) -> str | None:
-        role = self.roles.order_by("id").first()
-        return role.codigo if role else None
+        user_role = (
+            self.user_roles.filter(deleted_at__isnull=True)
+            .select_related("role")
+            .order_by("role_id")
+            .first()
+        )
+        return user_role.role.codigo if user_role else None
 
     def has_role(self, *codigos: str) -> bool:
-        return self.roles.filter(codigo__in=codigos).exists()
+        return self.user_roles.filter(
+            deleted_at__isnull=True,
+            role__codigo__in=codigos,
+        ).exists()
 
 
 class UserRole(BaseModel):

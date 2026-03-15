@@ -59,6 +59,7 @@ class BaseRefinanciamentoViewSet(
                 Prefetch("ciclo_destino__parcelas"),
                 Prefetch("ciclo_origem__parcelas"),
                 Prefetch("comprovantes__enviado_por"),
+                Prefetch("itens__pagamento_mensalidade"),
             )
             .order_by("-created_at")
         )

@@ -28,6 +28,7 @@ export const V1ImportacaoArquivoRetornoReprocessarCreateMutationRequestSchema =
       sistema_origem: true,
       competencia_display: true,
       resumo: true,
+      financeiro: true,
       uploaded_by_nome: true,
       created_at: true,
     });

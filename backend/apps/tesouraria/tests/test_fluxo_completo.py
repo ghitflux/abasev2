@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 import tempfile
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -11,6 +12,7 @@ from apps.accounts.models import Role, User
 from apps.associados.models import Associado, Documento
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.models import EsteiraItem, Pendencia
+from apps.importacao.models import PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante, Refinanciamento
 from apps.tesouraria.models import Confirmacao
 
@@ -205,6 +207,47 @@ class TestFluxoCompleto(TestCase):
         ids = {row["id"] for row in response.json()["results"]}
         self.assertIn(contrato.id, ids)
 
+    def test_tesouraria_separa_concluidos_e_cancelados(self):
+        associado_pago = self._criar_associado("17345678904")
+        contrato_pago = self._levar_para_tesouraria(associado_pago)
+        self._efetivar_contrato(contrato_pago)
+
+        associado_cancelado = self._criar_associado("17345678905")
+        contrato_cancelado = self._levar_para_tesouraria(associado_cancelado)
+        contrato_cancelado.status = Contrato.Status.CANCELADO
+        contrato_cancelado.save(update_fields=["status", "updated_at"])
+
+        competencia = timezone.localdate().strftime("%Y-%m")
+
+        response_concluido = self.tes_client.get(
+            "/api/v1/tesouraria/contratos/",
+            {"competencia": competencia, "pagamento": "concluido"},
+        )
+        self.assertEqual(response_concluido.status_code, 200, response_concluido.json())
+
+        payload_concluido = response_concluido.json()["results"]
+        ids_concluidos = {row["id"] for row in payload_concluido}
+        self.assertIn(contrato_pago.id, ids_concluidos)
+        self.assertNotIn(contrato_cancelado.id, ids_concluidos)
+        contrato_pago_row = next(row for row in payload_concluido if row["id"] == contrato_pago.id)
+        self.assertEqual(contrato_pago_row["status"], "concluido")
+        self.assertEqual(contrato_pago_row["comissao_agente"], "50.00")
+
+        response_cancelado = self.tes_client.get(
+            "/api/v1/tesouraria/contratos/",
+            {"competencia": competencia, "pagamento": "cancelado"},
+        )
+        self.assertEqual(response_cancelado.status_code, 200, response_cancelado.json())
+
+        payload_cancelado = response_cancelado.json()["results"]
+        ids_cancelados = {row["id"] for row in payload_cancelado}
+        self.assertIn(contrato_cancelado.id, ids_cancelados)
+        self.assertNotIn(contrato_pago.id, ids_cancelados)
+        contrato_cancelado_row = next(
+            row for row in payload_cancelado if row["id"] == contrato_cancelado.id
+        )
+        self.assertEqual(contrato_cancelado_row["status"], "cancelado")
+
     def _efetivar_contrato(self, contrato: Contrato):
         response = self.tes_client.post(
             f"/api/v1/tesouraria/contratos/{contrato.id}/efetivar/",
@@ -219,6 +262,24 @@ class TestFluxoCompleto(TestCase):
             format="multipart",
         )
         self.assertEqual(response.status_code, 200, response.json())
+
+    def _registrar_pagamentos_refinanciamento(
+        self, contrato: Contrato, referencias: list[date]
+    ):
+        for referencia in referencias:
+            PagamentoMensalidade.objects.create(
+                created_by=self.admin,
+                import_uuid=f"teste-{contrato.id}-{referencia.isoformat()}",
+                referencia_month=referencia,
+                status_code="1",
+                matricula=contrato.associado.matricula_orgao or contrato.associado.matricula,
+                orgao_pagto=contrato.associado.orgao_publico,
+                nome_relatorio=contrato.associado.nome_completo,
+                cpf_cnpj=contrato.associado.cpf_cnpj,
+                associado=contrato.associado,
+                valor=contrato.valor_mensalidade,
+                source_file_path=f"retornos/{referencia.strftime('%Y-%m')}.txt",
+            )
 
     def test_fluxo_cadastro_ate_efetivacao(self):
         associado = self._criar_associado()
@@ -270,6 +331,10 @@ class TestFluxoCompleto(TestCase):
 
         ciclo = contrato.ciclos.get()
         ciclo.parcelas.update(status=Parcela.Status.DESCONTADO, data_pagamento=timezone.localdate())
+        self._registrar_pagamentos_refinanciamento(
+            contrato,
+            list(ciclo.parcelas.order_by("numero").values_list("referencia_mes", flat=True)),
+        )
 
         response = self.agent_client.post(f"/api/v1/refinanciamentos/{contrato.id}/solicitar/")
         self.assertEqual(response.status_code, 201, response.json())
@@ -294,6 +359,14 @@ class TestFluxoCompleto(TestCase):
         contrato.ciclos.get().parcelas.update(
             status=Parcela.Status.DESCONTADO,
             data_pagamento=timezone.localdate(),
+        )
+        self._registrar_pagamentos_refinanciamento(
+            contrato,
+            list(
+                contrato.ciclos.get()
+                .parcelas.order_by("numero")
+                .values_list("referencia_mes", flat=True)
+            ),
         )
 
         response = self.agent_client.post(f"/api/v1/refinanciamentos/{contrato.id}/solicitar/")

@@ -9,10 +9,7 @@ class BaseRolePermission(BasePermission):
         return bool(
             user
             and user.is_authenticated
-            and (
-                user.is_superuser
-                or user.roles.filter(codigo__in=self.allowed_roles).exists()
-            )
+            and (user.is_superuser or user.has_role(*self.allowed_roles))
         )
 
 
@@ -54,3 +51,15 @@ class IsTesoureiroOrAdmin(BaseRolePermission):
 
 class IsAgenteOrTesoureiroOrAdmin(BaseRolePermission):
     allowed_roles = ("AGENTE", "TESOUREIRO", "ADMIN")
+
+
+class IsCoordenadorOrTesoureiroOrAdmin(BaseRolePermission):
+    allowed_roles = ("COORDENADOR", "TESOUREIRO", "ADMIN")
+
+
+class IsAssociado(BaseRolePermission):
+    allowed_roles = ("ASSOCIADO",)
+
+
+class IsAssociadoOrAdmin(BaseRolePermission):
+    allowed_roles = ("ASSOCIADO", "ADMIN")

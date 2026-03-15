@@ -11,11 +11,11 @@ import { buildBackendFileUrl } from "@/lib/backend-files";
 import { formatCurrency, formatDate, formatMonthYear } from "@/lib/formatters";
 import { usePermissions } from "@/hooks/use-permissions";
 import RoleGuard from "@/components/auth/role-guard";
+import { DetailRouteSkeleton } from "@/components/shared/page-skeletons";
 import StatusBadge from "@/components/custom/status-badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Spinner } from "@/components/ui/spinner";
 
 type AssociadoPageProps = {
   params: Promise<{ id: string }>;
@@ -34,12 +34,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   });
 
   if (associadoQuery.isLoading) {
-    return (
-      <div className="flex items-center gap-3 rounded-3xl border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-        <Spinner />
-        Carregando detalhe do associado...
-      </div>
-    );
+    return <DetailRouteSkeleton />;
   }
 
   const associado = associadoQuery.data;
@@ -157,67 +152,79 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             </span>
           </AccordionTrigger>
           <AccordionContent className="space-y-4">
-            {associado.contratos.map((contrato) => (
-              <Card key={contrato.id} className="rounded-[1.5rem] border-border/60 bg-background/40">
-                <CardHeader>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <CardTitle className="text-lg">{contrato.codigo}</CardTitle>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        Contrato em {formatDate(contrato.data_contrato)} com mensalidade de{" "}
-                        {formatCurrency(contrato.valor_mensalidade)}
-                      </p>
+            <Accordion
+              type="multiple"
+              defaultValue={
+                associado.contratos.length ? [`contrato-${associado.contratos[0].id}`] : []
+              }
+              className="space-y-4"
+            >
+              {associado.contratos.map((contrato) => (
+                <AccordionItem
+                  key={contrato.id}
+                  value={`contrato-${contrato.id}`}
+                  className="overflow-hidden rounded-[1.5rem] border border-border/60 bg-background/40"
+                >
+                  <AccordionTrigger className="px-6 py-5 text-base hover:no-underline">
+                    <div className="flex w-full flex-wrap items-center justify-between gap-3 pr-4">
+                      <div className="text-left">
+                        <CardTitle className="text-lg">{contrato.codigo}</CardTitle>
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          Contrato em {formatDate(contrato.data_contrato)} com mensalidade de{" "}
+                          {formatCurrency(contrato.valor_mensalidade)}
+                        </p>
+                      </div>
+                      <StatusBadge status={contrato.status} />
                     </div>
-                    <StatusBadge status={contrato.status} />
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <DetailItem label="Valor bruto" value={formatCurrency(contrato.valor_bruto)} />
-                    <DetailItem label="Valor líquido" value={formatCurrency(contrato.valor_liquido)} />
-                    <DetailItem label="Mensalidade associativa" value={formatCurrency(contrato.valor_mensalidade)} />
-                    <DetailItem label="Taxa de antecipação" value={`${contrato.taxa_antecipacao}%`} />
-                    <DetailItem label="Disponível" value={formatCurrency(contrato.margem_disponivel)} />
-                    <DetailItem label="Valor total antecipação" value={formatCurrency(contrato.valor_total_antecipacao)} />
-                    <DetailItem label="Prazo (meses)" value={String(contrato.prazo_meses)} />
-                    <DetailItem label="Comissão do agente" value={formatCurrency(contrato.comissao_agente)} />
-                    <DetailItem label="Data de aprovação" value={formatDate(contrato.data_aprovacao)} />
-                    <DetailItem label="Primeira mensalidade" value={formatDate(contrato.data_primeira_mensalidade)} />
-                    <DetailItem label="Mês de averbação" value={formatMonthYear(contrato.mes_averbacao)} />
-                  </div>
-                  <div className="grid gap-4 xl:grid-cols-3">
-                    {contrato.ciclos.map((ciclo) => (
-                      <Card key={ciclo.id} className="rounded-[1.5rem] border-border/60 bg-card/60">
-                        <CardHeader>
-                          <div className="flex items-center justify-between">
-                            <CardTitle className="text-base">Ciclo {ciclo.numero}</CardTitle>
-                            <StatusBadge status={ciclo.status} />
-                          </div>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                          {ciclo.parcelas.map((parcela) => (
-                            <div key={parcela.id} className="rounded-2xl border border-border/60 bg-background/60 p-4">
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="font-medium">
-                                  Parcela {parcela.numero}/{ciclo.parcelas.length}
-                                </p>
-                                <StatusBadge status={parcela.status} />
-                              </div>
-                              <p className="mt-2 text-sm text-muted-foreground">
-                                {formatMonthYear(parcela.referencia_mes)} · {formatCurrency(parcela.valor)}
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                Vencimento {formatDate(parcela.data_vencimento)}
-                              </p>
+                  </AccordionTrigger>
+                  <AccordionContent className="space-y-4 px-6">
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      <DetailItem label="Valor bruto" value={formatCurrency(contrato.valor_bruto)} />
+                      <DetailItem label="Valor líquido" value={formatCurrency(contrato.valor_liquido)} />
+                      <DetailItem label="Mensalidade associativa" value={formatCurrency(contrato.valor_mensalidade)} />
+                      <DetailItem label="Taxa de antecipação" value={`${contrato.taxa_antecipacao}%`} />
+                      <DetailItem label="Disponível" value={formatCurrency(contrato.margem_disponivel)} />
+                      <DetailItem label="Valor total antecipação" value={formatCurrency(contrato.valor_total_antecipacao)} />
+                      <DetailItem label="Prazo (meses)" value={String(contrato.prazo_meses)} />
+                      <DetailItem label="Comissão do agente" value={formatCurrency(contrato.comissao_agente)} />
+                      <DetailItem label="Data de aprovação" value={formatDate(contrato.data_aprovacao)} />
+                      <DetailItem label="Primeira mensalidade" value={formatDate(contrato.data_primeira_mensalidade)} />
+                      <DetailItem label="Mês de averbação" value={formatMonthYear(contrato.mes_averbacao)} />
+                    </div>
+                    <div className="grid gap-4 xl:grid-cols-3">
+                      {contrato.ciclos.map((ciclo) => (
+                        <Card key={ciclo.id} className="rounded-[1.5rem] border-border/60 bg-card/60">
+                          <CardHeader>
+                            <div className="flex items-center justify-between">
+                              <CardTitle className="text-base">Ciclo {ciclo.numero}</CardTitle>
+                              <StatusBadge status={ciclo.status} />
                             </div>
-                          ))}
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            {ciclo.parcelas.map((parcela) => (
+                              <div key={parcela.id} className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="font-medium">
+                                    Parcela {parcela.numero}/{ciclo.parcelas.length}
+                                  </p>
+                                  <StatusBadge status={parcela.status} />
+                                </div>
+                                <p className="mt-2 text-sm text-muted-foreground">
+                                  {formatMonthYear(parcela.referencia_mes)} · {formatCurrency(parcela.valor)}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  Vencimento {formatDate(parcela.data_vencimento)}
+                                </p>
+                              </div>
+                            ))}
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
           </AccordionContent>
         </AccordionItem>
 

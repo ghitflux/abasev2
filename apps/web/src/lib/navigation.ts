@@ -13,6 +13,7 @@ import {
   ShieldCheck,
   Users,
   Wallet,
+  ArrowDownToLine,
 } from "lucide-react";
 
 export type NavigationItem = {
@@ -26,6 +27,14 @@ export type NavigationItem = {
 export type NavigationSection = {
   title: string;
   items: NavigationItem[];
+};
+
+export type NavigationRouteSearchEntry = {
+  title: string;
+  href: string;
+  sectionTitle: string;
+  parentTitle?: string;
+  searchTerms: string[];
 };
 
 const ALL_ROLES: Role[] = [
@@ -44,7 +53,7 @@ const DEFAULT_ROUTE_BY_ROLE: Record<Role, string> = {
   TESOUREIRO: "/tesouraria",
 };
 
-const SHARED_AUTH_PATHS = ["/dashboard", "/pagamentos", "/renovacoes"] as const;
+const SHARED_AUTH_PATHS = ["/pagamentos", "/renovacoes"] as const;
 
 const ROLE_ROUTE_PREFIXES: Record<Role, string[]> = {
   ADMIN: ["/"],
@@ -52,6 +61,36 @@ const ROLE_ROUTE_PREFIXES: Record<Role, string[]> = {
   ANALISTA: ["/analise"],
   COORDENADOR: ["/coordenacao"],
   TESOUREIRO: ["/tesouraria", "/importacao", "/renovacao-ciclos"],
+};
+
+const ROUTE_SEARCH_ALIASES: Partial<Record<string, string[]>> = {
+  "/dashboard": ["inicio", "painel", "visao geral"],
+  "/agentes/meus-contratos": ["contratos", "meus contratos", "cadastros"],
+  "/agentes/cadastrar-associado": [
+    "novo associado",
+    "cadastro associado",
+    "cadastrar associado",
+  ],
+  "/associados": ["lista de associados", "cadastro de associados"],
+  "/agentes/esteira-pendencias": ["esteira", "pendencias", "esteira de pendencias"],
+  "/analise": ["dashboard analise", "analise"],
+  "/coordenacao/refinanciamento": ["refinanciamento", "coordenacao refinanciamento"],
+  "/coordenacao/refinanciados": ["coordenacao refinanciados", "refinanciados"],
+  "/agentes/pagamentos": ["pagamentos", "meus pagamentos", "financeiro"],
+  "/agentes/refinanciados": ["meus refinanciados", "refinanciados"],
+  "/tesouraria": ["dashboard contratos", "tesouraria", "contratos"],
+  "/tesouraria/confirmacoes": ["confirmacoes", "tesouraria confirmacoes"],
+  "/tesouraria/refinanciamentos": ["refinanciamentos", "tesouraria refinanciamentos"],
+  "/tesouraria/baixa-manual": ["baixa manual", "baixa", "manual"],
+  "/importacao": ["importacao", "arquivo retorno", "importar retorno"],
+  "/renovacao-ciclos": [
+    "renovacao de ciclos",
+    "renovacao de ciclo",
+    "ciclos",
+    "renovacoes",
+  ],
+  "/relatorios": ["relatorios", "exportacoes"],
+  "/configuracoes/usuarios": ["usuarios", "configuracoes usuarios", "gestao de usuarios"],
 };
 
 function isAgentAssociadoDetailPath(pathname: string) {
@@ -62,6 +101,10 @@ function isTesoureiroPagamentosPath(pathname: string) {
   return matchesPathPrefix(pathname, "/agentes/pagamentos");
 }
 
+function isCoordenadorBaixaManualPath(pathname: string) {
+  return matchesPathPrefix(pathname, "/tesouraria/baixa-manual");
+}
+
 export const navigationSections: NavigationSection[] = [
   {
     title: "Visão Geral",
@@ -70,7 +113,7 @@ export const navigationSections: NavigationSection[] = [
         title: "Dashboard",
         href: "/dashboard",
         icon: LayoutDashboard,
-        roles: ALL_ROLES,
+        roles: ["ADMIN"],
       },
     ],
   },
@@ -141,7 +184,7 @@ export const navigationSections: NavigationSection[] = [
       {
         title: "Tesouraria",
         icon: Wallet,
-        roles: ["TESOUREIRO", "ADMIN", "AGENTE"],
+        roles: ["TESOUREIRO", "ADMIN", "AGENTE", "COORDENADOR"],
         children: [
           {
             title: "Meus Pagamentos",
@@ -173,6 +216,12 @@ export const navigationSections: NavigationSection[] = [
             icon: HandCoins,
             roles: ["TESOUREIRO", "ADMIN"],
           },
+          {
+            title: "Baixa Manual",
+            href: "/tesouraria/baixa-manual",
+            icon: ArrowDownToLine,
+            roles: ["TESOUREIRO", "COORDENADOR", "ADMIN"],
+          },
         ],
       },
       {
@@ -192,6 +241,24 @@ export const navigationSections: NavigationSection[] = [
         href: "/relatorios",
         icon: FileBarChart2,
         roles: ["ADMIN"],
+      },
+    ],
+  },
+  {
+    title: "Administração",
+    items: [
+      {
+        title: "Configurações",
+        icon: FileCog,
+        roles: ["ADMIN"],
+        children: [
+          {
+            title: "Usuários",
+            href: "/configuracoes/usuarios",
+            icon: Users,
+            roles: ["ADMIN"],
+          },
+        ],
       },
     ],
   },
@@ -220,6 +287,72 @@ export function getNavigationForRoles(roles: Role[] = []) {
 
 export function getNavigationForRole(role?: Role) {
   return getNavigationForRoles(role ? [role] : []);
+}
+
+function buildRouteSearchTerms({
+  href,
+  title,
+  sectionTitle,
+  parentTitle,
+}: Omit<NavigationRouteSearchEntry, "searchTerms">) {
+  return Array.from(
+    new Set(
+      [
+        title,
+        sectionTitle,
+        parentTitle,
+        parentTitle ? `${parentTitle} ${title}` : null,
+        parentTitle ? `${sectionTitle} ${parentTitle} ${title}` : `${sectionTitle} ${title}`,
+        href.replaceAll("/", " ").replaceAll("-", " ").trim(),
+        ...(ROUTE_SEARCH_ALIASES[href] ?? []),
+      ].filter((value): value is string => Boolean(value)),
+    ),
+  );
+}
+
+export function getNavigationRouteSearchEntries(roles: Role[] = []) {
+  const seen = new Set<string>();
+  const entries: NavigationRouteSearchEntry[] = [];
+
+  getNavigationForRoles(roles).forEach((section) => {
+    section.items.forEach((item) => {
+      if (item.href && !seen.has(item.href)) {
+        seen.add(item.href);
+        entries.push({
+          title: item.title,
+          href: item.href,
+          sectionTitle: section.title,
+          searchTerms: buildRouteSearchTerms({
+            title: item.title,
+            href: item.href,
+            sectionTitle: section.title,
+          }),
+        });
+      }
+
+      item.children?.forEach((child) => {
+        if (!child.href || seen.has(child.href)) {
+          return;
+        }
+
+        seen.add(child.href);
+        entries.push({
+          title: child.title,
+          href: child.href,
+          sectionTitle: section.title,
+          parentTitle: item.title,
+          searchTerms: buildRouteSearchTerms({
+            title: child.title,
+            href: child.href,
+            sectionTitle: section.title,
+            parentTitle: item.title,
+          }),
+        });
+      });
+    });
+  });
+
+  return entries;
 }
 
 export function getDefaultRouteForRole(role?: Role) {
@@ -267,6 +400,10 @@ export function canAccessPath(path: string, roles: Role[] = []) {
   }
 
   if (roles.includes("TESOUREIRO") && isTesoureiroPagamentosPath(pathname)) {
+    return true;
+  }
+
+  if (roles.includes("COORDENADOR") && isCoordenadorBaixaManualPath(pathname)) {
     return true;
   }
 

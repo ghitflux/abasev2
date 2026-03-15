@@ -19,11 +19,11 @@ import { formatCurrency, formatDateTime } from "@/lib/formatters";
 import { usePermissions } from "@/hooks/use-permissions";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import EmptyState from "@/components/shared/empty-state";
+import { ListRouteSkeleton, MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Spinner } from "@/components/ui/spinner";
 
 const EXPORT_OPTIONS = [
   {
@@ -149,12 +149,7 @@ export default function RelatoriosPage() {
   const historico = historicoQuery.data ?? [];
 
   if (status !== "authenticated") {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center gap-3 rounded-[1.75rem] border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-        <Spinner />
-        Carregando modulo de relatorios...
-      </div>
-    );
+    return <ListRouteSkeleton metricCards={4} />;
   }
 
   if (!hasRole("ADMIN")) {
@@ -183,11 +178,12 @@ export default function RelatoriosPage() {
         ) : null}
       </section>
 
-      {resumoQuery.isLoading ? (
-        <div className="flex items-center gap-3 rounded-[1.75rem] border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-          <Spinner />
-          Carregando resumo dos relatorios...
-        </div>
+      {resumoQuery.isLoading && !resumo ? (
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <MetricCardSkeleton key={index} />
+          ))}
+        </section>
       ) : resumo ? (
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatsCard
@@ -276,18 +272,13 @@ export default function RelatoriosPage() {
             Cada geracao fica registrada e pode ser baixada novamente a qualquer momento.
           </p>
         </div>
-        {historicoQuery.isLoading ? (
-          <div className="flex items-center gap-3 rounded-[1.75rem] border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-            <Spinner />
-            Carregando historico...
-          </div>
-        ) : (
-          <DataTable
-            columns={columns}
-            data={historico}
-            emptyMessage="Nenhum relatorio foi gerado ainda."
-          />
-        )}
+        <DataTable
+          columns={columns}
+          data={historico}
+          emptyMessage="Nenhum relatorio foi gerado ainda."
+          loading={historicoQuery.isLoading}
+          skeletonRows={6}
+        />
       </section>
     </div>
   );

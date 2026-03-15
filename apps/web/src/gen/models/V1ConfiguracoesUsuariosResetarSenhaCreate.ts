@@ -3,6 +3,7 @@
  * Do not edit manually.
  */
 
+import type { PasswordResetRequest } from "./PasswordResetRequest.ts";
 import type { PasswordResetResult } from "./PasswordResetResult.ts";
 
 export type V1ConfiguracoesUsuariosResetarSenhaCreatePathParams = {
@@ -15,11 +16,15 @@ export type V1ConfiguracoesUsuariosResetarSenhaCreatePathParams = {
 
 export type V1ConfiguracoesUsuariosResetarSenhaCreate200 = PasswordResetResult;
 
+export type V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequest =
+  PasswordResetRequest;
+
 export type V1ConfiguracoesUsuariosResetarSenhaCreateMutationResponse =
   V1ConfiguracoesUsuariosResetarSenhaCreate200;
 
 export type V1ConfiguracoesUsuariosResetarSenhaCreateMutation = {
   Response: V1ConfiguracoesUsuariosResetarSenhaCreate200;
+  Request: V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequest;
   PathParams: V1ConfiguracoesUsuariosResetarSenhaCreatePathParams;
   Errors: any;
 };

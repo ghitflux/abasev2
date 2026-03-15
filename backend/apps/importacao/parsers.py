@@ -88,7 +88,8 @@ def parse_linha_spacesplit(line: str) -> dict | None:
 
     # parse valor
     v = _LINHA_MONEY_RE.sub("", valor_tok)
-    v = v.replace(".", "").replace(",", ".")
+    if "," in v:
+        v = v.replace(".", "").replace(",", ".")
     try:
         valor = Decimal(v) if v else None
     except InvalidOperation:
@@ -129,14 +130,23 @@ class ParseStrategy(ABC):
 
 
 class ETIPITxtRetornoParser(ParseStrategy):
-    STATUS_MAP = {
-        "1": ("efetivado", "Lançado e Efetivado"),
-        "2": ("rejeitado", "Não Lançado por Falta de Margem Temporariamente"),
-        "3": ("rejeitado", "Não Lançado por Outros Motivos"),
-        "4": ("pendente", "Lançado com Valor Diferente"),
-        "5": ("pendente", "Não Lançado por Problemas Técnicos"),
-        "6": ("pendente", "Lançamento com Erros"),
-        "S": ("rejeitado", "Não Lançado: Compra de Dívida ou Suspensão SEAD"),
+    STATUS_CATEGORY_MAP = {
+        "1": "efetivado",
+        "2": "rejeitado",
+        "3": "rejeitado",
+        "4": "pendente",
+        "5": "pendente",
+        "6": "pendente",
+        "S": "rejeitado",
+    }
+    DEFAULT_STATUS_DESCRIPTION_MAP = {
+        "1": "Lançado e Efetivado",
+        "2": "Não Lançado por Falta de Margem Temporariamente",
+        "3": "Não Lançado por Outros Motivos",
+        "4": "Lançado com Valor Diferente",
+        "5": "Não Lançado por Problemas Técnicos",
+        "6": "Lançamento com Erros",
+        "S": "Não Lançado: Compra de Dívida ou Suspensão SEAD",
     }
 
     ENCODINGS = ("latin-1", "iso-8859-1", "cp1252", "utf-8")
@@ -148,6 +158,7 @@ class ETIPITxtRetornoParser(ParseStrategy):
         r"Org[aã]o Pagamento:\s*(?P<codigo>\d+)-(?P<nome>.+?)\s+-\s+\d+\s+Lan",
         re.IGNORECASE,
     )
+    STATUS_LEGEND_PATTERN = re.compile(r"^\s*([1-6S])\s*-\s*(.+?)\s*$", re.IGNORECASE)
 
     STATUS_SLICE = slice(0, 7)
     MATRICULA_SLICE = slice(7, 17)
@@ -228,6 +239,7 @@ class ETIPITxtRetornoParser(ParseStrategy):
         text, encoding = self.decode_bytes(raw_bytes)
         lines = normalize_lines(text)
         meta = self.extract_meta(lines)
+        status_legend = self._extract_status_legend(lines)
 
         items: list[dict] = []
         warnings: list[dict] = []
@@ -278,6 +290,28 @@ class ETIPITxtRetornoParser(ParseStrategy):
                 bloco_atual = []
                 continue
 
+            legacy_row = parse_linha_spacesplit(stripped)
+            if legacy_row and self._prefer_legacy_parse(stripped):
+                try:
+                    bloco_atual.append(
+                        self._parse_detail_line_legacy(
+                            line=stripped,
+                            legacy_row=legacy_row,
+                            linha_numero=linha_numero,
+                            competencia=meta.competencia,
+                            status_legend=status_legend,
+                        )
+                    )
+                except ValueError as exc:
+                    warnings.append(
+                        {
+                            "linha_numero": linha_numero,
+                            "erro": str(exc),
+                            "conteudo": stripped,
+                        }
+                    )
+                continue
+
             if not self._is_detail_line(stripped):
                 continue
 
@@ -287,6 +321,7 @@ class ETIPITxtRetornoParser(ParseStrategy):
                         line=stripped,
                         linha_numero=linha_numero,
                         competencia=meta.competencia,
+                        status_legend=status_legend,
                     )
                 )
             except ValueError as exc:
@@ -303,12 +338,21 @@ class ETIPITxtRetornoParser(ParseStrategy):
 
         # Fallback: se o parser fixed-width não encontrou itens, tenta space-split (estilo PHP)
         if not items:
-            items, warnings = self._parse_spacesplit_fallback(lines, meta.competencia, warnings)
+            items, warnings = self._parse_spacesplit_fallback(
+                lines,
+                meta.competencia,
+                warnings,
+                status_legend,
+            )
 
         return ParsedRetorno(meta=meta, items=items, warnings=warnings, encoding=encoding)
 
     def _parse_spacesplit_fallback(
-        self, lines: list[str], competencia: str, warnings: list[dict]
+        self,
+        lines: list[str],
+        competencia: str,
+        warnings: list[dict],
+        status_legend: dict[str, str],
     ) -> tuple[list[dict], list[dict]]:
         """Fallback que usa parse_linha_spacesplit (estilo PHP parseAbaseLinha).
         Ativado quando o parser fixed-width ETIPI não encontra nenhum item.
@@ -319,9 +363,8 @@ class ETIPITxtRetornoParser(ParseStrategy):
             if not row:
                 continue
             try:
-                status_desconto, status_descricao = self.STATUS_MAP.get(
-                    row["status_code"], ("pendente", "Status desconhecido")
-                )
+                status_desconto = self.STATUS_CATEGORY_MAP.get(row["status_code"], "pendente")
+                status_descricao = status_legend.get(row["status_code"], "Status desconhecido")
                 valor = row["valor"]
                 items.append({
                     "linha_numero": linha_numero,
@@ -355,6 +398,27 @@ class ETIPITxtRetornoParser(ParseStrategy):
                     "conteudo": line.rstrip(),
                 })
         return items, warnings
+
+    def _extract_status_legend(self, lines: list[str]) -> dict[str, str]:
+        status_legend = dict(self.DEFAULT_STATUS_DESCRIPTION_MAP)
+        in_legend = False
+
+        for line in lines:
+            folded = fold_text(line).strip()
+            if "legenda do status" in folded:
+                in_legend = True
+                continue
+
+            if not in_legend:
+                continue
+
+            match = self.STATUS_LEGEND_PATTERN.match(line)
+            if not match:
+                continue
+
+            status_legend[match.group(1).upper()] = match.group(2).strip()
+
+        return status_legend
 
     def _is_noise_line(self, line: str, folded: str) -> bool:
         return any(
@@ -400,26 +464,16 @@ class ETIPITxtRetornoParser(ParseStrategy):
     def _is_detail_line(self, line: str) -> bool:
         status_code = line[self.STATUS_SLICE].strip().upper()
         cpf = re.sub(r"\D", "", line[self.CPF_SLICE].strip())
-        return status_code in self.STATUS_MAP and len(cpf) == 11
+        return status_code in self.STATUS_CATEGORY_MAP and len(cpf) == 11
 
-    def _parse_detail_line(self, line: str, linha_numero: int, competencia: str) -> dict:
+    def _prefer_legacy_parse(self, line: str) -> bool:
+        payload = self._build_fixed_width_payload(line)
+        return "," in payload["valor_fixed_width"]
+
+    def _build_fixed_width_payload(self, line: str) -> dict[str, str]:
         padded = line.ljust(self.CPF_SLICE.start)
-        status_codigo = padded[self.STATUS_SLICE].strip().upper()
-        if status_codigo not in self.STATUS_MAP:
-            raise ValueError(f"Status ETIPI inválido: {status_codigo!r}")
-
-        valor_raw = padded[self.VALOR_SLICE].strip()
-        try:
-            valor = self._parse_decimal(valor_raw)
-        except InvalidOperation as exc:
-            raise ValueError(f"Valor inválido na linha {linha_numero}: {valor_raw!r}") from exc
-
-        status_desconto, status_descricao = self.STATUS_MAP[status_codigo]
-        cpf = re.sub(r"\D", "", padded[self.CPF_SLICE].strip())
-        orgao_pagto_codigo = padded[self.ORGAO_PAGTO_SLICE].strip()
-
-        payload = {
-            "status_codigo": status_codigo,
+        return {
+            "status_codigo": padded[self.STATUS_SLICE].strip().upper(),
             "matricula": padded[self.MATRICULA_SLICE].strip(),
             "nome": padded[self.NOME_SLICE].rstrip(),
             "cargo": padded[self.CARGO_SLICE].rstrip(),
@@ -427,10 +481,77 @@ class ETIPITxtRetornoParser(ParseStrategy):
             "orgao_codigo": padded[self.ORGAO_SLICE].strip(),
             "lancamento": padded[self.LANCAMENTO_SLICE].strip(),
             "total_pago": padded[self.TOTAL_PAGO_SLICE].strip(),
-            "valor": valor_raw,
-            "orgao_pagto_codigo": orgao_pagto_codigo,
-            "cpf": cpf,
+            "valor_fixed_width": padded[self.VALOR_SLICE].strip(),
+            "orgao_pagto_codigo_fixed_width": padded[self.ORGAO_PAGTO_SLICE].strip(),
+            "cpf": re.sub(r"\D", "", padded[self.CPF_SLICE].strip()),
         }
+
+    def _parse_detail_line_legacy(
+        self,
+        *,
+        line: str,
+        legacy_row: dict,
+        linha_numero: int,
+        competencia: str,
+        status_legend: dict[str, str],
+    ) -> dict:
+        status_codigo = legacy_row["status_code"].upper()
+        if status_codigo not in self.STATUS_CATEGORY_MAP:
+            raise ValueError(f"Status ETIPI inválido: {status_codigo!r}")
+
+        payload = self._build_fixed_width_payload(line)
+        status_desconto = self.STATUS_CATEGORY_MAP[status_codigo]
+        status_descricao = status_legend.get(status_codigo, "Status desconhecido")
+        orgao_pagto_codigo = legacy_row["orgao_pagto"] or payload["orgao_pagto_codigo_fixed_width"]
+
+        payload.update(
+            {
+                "valor_legacy": str(legacy_row["valor"]),
+                "orgao_pagto_legacy": legacy_row["orgao_pagto"],
+                "_parser": "legacy_spacesplit",
+            }
+        )
+
+        return {
+            "linha_numero": linha_numero,
+            "cpf_cnpj": legacy_row["cpf"],
+            "matricula_servidor": legacy_row["matricula"],
+            "nome_servidor": legacy_row["nome"].strip().upper(),
+            "cargo": payload["cargo"].strip() or "-",
+            "competencia": competencia,
+            "valor_descontado": legacy_row["valor"],
+            "status_codigo": status_codigo,
+            "status_desconto": status_desconto,
+            "status_descricao": status_descricao,
+            "motivo_rejeicao": status_descricao if status_desconto == "rejeitado" else None,
+            "orgao_codigo": payload["orgao_codigo"],
+            "orgao_pagto_codigo": orgao_pagto_codigo,
+            "orgao_pagto_nome": "",
+            "payload_bruto": payload,
+        }
+
+    def _parse_detail_line(
+        self,
+        line: str,
+        linha_numero: int,
+        competencia: str,
+        status_legend: dict[str, str],
+    ) -> dict:
+        payload = self._build_fixed_width_payload(line)
+        status_codigo = payload["status_codigo"]
+        if status_codigo not in self.STATUS_CATEGORY_MAP:
+            raise ValueError(f"Status ETIPI inválido: {status_codigo!r}")
+
+        valor_raw = payload["valor_fixed_width"]
+        try:
+            valor = self._parse_decimal(valor_raw)
+        except InvalidOperation as exc:
+            raise ValueError(f"Valor inválido na linha {linha_numero}: {valor_raw!r}") from exc
+
+        status_desconto = self.STATUS_CATEGORY_MAP[status_codigo]
+        status_descricao = status_legend.get(status_codigo, "Status desconhecido")
+        cpf = payload["cpf"]
+        orgao_pagto_codigo = payload["orgao_pagto_codigo_fixed_width"]
 
         return {
             "linha_numero": linha_numero,

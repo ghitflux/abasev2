@@ -5,6 +5,32 @@ from django.utils import timezone
 from core.models import BaseModel
 
 
+class BaixaManual(BaseModel):
+    """Baixa manual de parcela pendente ou não descontada, com comprovante de pagamento."""
+
+    parcela = models.OneToOneField(
+        "contratos.Parcela",
+        on_delete=models.PROTECT,
+        related_name="baixa_manual",
+    )
+    realizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="baixas_manuais",
+    )
+    comprovante = models.FileField(upload_to="baixas_manuais/")
+    nome_comprovante = models.CharField(max_length=255, blank=True)
+    observacao = models.TextField(blank=True)
+    valor_pago = models.DecimalField(max_digits=10, decimal_places=2)
+    data_baixa = models.DateField()
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"BaixaManual Parcela#{self.parcela_id} - {self.data_baixa}"
+
+
 class Confirmacao(BaseModel):
     class Tipo(models.TextChoices):
         LIGACAO = "ligacao", "Ligação"

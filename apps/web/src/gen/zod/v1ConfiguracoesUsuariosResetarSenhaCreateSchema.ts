@@ -4,6 +4,7 @@
  */
 
 import * as z from "zod";
+import { passwordResetRequestSchema } from "./passwordResetRequestSchema.ts";
 import { passwordResetResultSchema } from "./passwordResetResultSchema.ts";
 
 export const V1ConfiguracoesUsuariosResetarSenhaCreatePathParamsSchema =
@@ -17,6 +18,9 @@ export const V1ConfiguracoesUsuariosResetarSenhaCreatePathParamsSchema =
 export const V1ConfiguracoesUsuariosResetarSenhaCreate200Schema = z.lazy(
   () => passwordResetResultSchema,
 );
+
+export const V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequestSchema =
+  z.lazy(() => passwordResetRequestSchema);
 
 export const V1ConfiguracoesUsuariosResetarSenhaCreateMutationResponseSchema =
   z.lazy(() => V1ConfiguracoesUsuariosResetarSenhaCreate200Schema);

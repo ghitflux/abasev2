@@ -8,7 +8,8 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from apps.accounts.permissions import IsAdmin, IsAgenteOrAdmin
-from apps.contratos.models import Ciclo
+from apps.contratos.cycle_normalization import dedupe_cycles_for_display
+from apps.contratos.models import Ciclo, Contrato
 from apps.contratos.serializers import CicloDetailSerializer
 from core.pagination import StandardResultsSetPagination
 
@@ -133,12 +134,17 @@ class AssociadoViewSet(ModelViewSet):
     @action(detail=True, methods=["get"])
     def ciclos(self, request, pk=None):
         associado = self.get_object()
-        ciclos = (
+        ciclos = list(
             Ciclo.objects.filter(contrato__associado=associado)
+            .exclude(contrato__status=Contrato.Status.CANCELADO)
+            .select_related("contrato")
             .prefetch_related("parcelas")
-            .order_by("-numero")
+            .order_by("-numero", "-data_inicio", "-contrato_id")
         )
-        serializer = CicloDetailSerializer(ciclos, many=True)
+        serializer = CicloDetailSerializer(
+            dedupe_cycles_for_display(ciclos),
+            many=True,
+        )
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser])

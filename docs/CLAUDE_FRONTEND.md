@@ -13,6 +13,7 @@ Frontend do ABASE v2 dentro de um monorepo gerenciado por pnpm workspaces. O wor
 - TypeScript estrito
 - Tailwind CSS 4 (nunca CSS modules ou styled-components)
 - shadcn/ui + Radix UI — TODOS os 50 componentes instalados
+- shadcn charts via `src/components/ui/chart.tsx` + Recharts primitives para dashboards e analytics
 - TanStack Query v5 (React Query)
 - Zod para validação
 - Zustand para state global (apenas auth)
@@ -147,6 +148,97 @@ export default function proxy(request: NextRequest) {
 
 ADMIN: Todos os itens. AGENTE: Meus Contratos, Esteira, Renovações, Pagamentos, Refinanciados. ANALISTA: Dashboard Análise, Refinanciamento. COORDENADOR: Refinanciados, Refinanciamento. TESOUREIRO: Dashboard Contratos, Confirmações, Refinanciamentos.
 
+## Padrão Universal de Tabelas
+
+Todas as tabelas do sistema devem seguir este padrão consistente, tendo como referência o módulo **Meus Contratos** (`agentes/meus-contratos/page.tsx`).
+
+### Componente CopySnippet
+
+**SEMPRE usar o componente compartilhado** `src/components/shared/copy-snippet.tsx`. **NUNCA duplicar** uma versão local do componente.
+
+```tsx
+import CopySnippet from "@/components/shared/copy-snippet";
+
+// Modo padrão (pill com label + valor + ícone de cópia)
+<CopySnippet label="CPF" value={row.cpf_cnpj} mono />
+<CopySnippet label="Matrícula do Servidor" value={row.matricula_orgao} mono />
+<CopySnippet label="Contrato" value={row.contrato_codigo} mono />
+
+// Modo inline (só o valor, sem pill — para células de texto corrido)
+<CopySnippet label="Nome" value={row.nome_completo} inline />
+```
+
+### Regras para campos de CPF e Matrícula
+
+- **CPF**: sempre renderizar via `<CopySnippet label="CPF" value={row.cpf_cnpj} mono />`. Nunca usar `maskCPFCNPJ()` diretamente em células de tabela.
+- **Matrícula do Servidor**: campo correto é `matricula_orgao` (preenchido manualmente no cadastro). O campo `matricula` é um ID interno auto-gerado (`MAT-XXXXX`) e **não deve ser exibido** como matrícula do servidor.
+  - Sempre usar: `<CopySnippet label="Matrícula do Servidor" value={row.matricula_orgao || row.matricula} mono />`
+  - Cabeçalho da coluna: **"Matrícula do Servidor"** (não "Matrícula")
+
+### Expandir/Colapsar linhas
+
+Usar o `renderExpanded` prop do `DataTable`. O chevron de expansão fica na primeira coluna e usa o seletor `group-data-[expanded=true]:rotate-90` do Tailwind:
+
+```tsx
+{
+  id: "expand",
+  header: "",
+  headerClassName: "w-8 px-3",
+  cellClassName: "w-8 px-3",
+  cell: () => (
+    <ChevronRightIcon className="size-4 text-muted-foreground transition-transform duration-200 group-data-[expanded=true]:rotate-90" />
+  ),
+},
+```
+
+O `DataTable` já aplica `className="group"` e `data-expanded="true/false"` em cada `TableRow`, portanto o seletor funciona automaticamente.
+
+### Skeleton loading
+
+- Usar `<Skeleton>` (shadcn/ui) enquanto os dados carregam — nunca `<Spinner>` isolado na tabela.
+- Para navegação por linha (ex: ir para detalhes do associado), usar `navigatingId` state para mostrar skeletons inline nas células enquanto o `router.push()` está em voo.
+
+```tsx
+const [navigatingId, setNavigatingId] = React.useState<number | null>(null);
+
+// Na coluna:
+cell: (row) =>
+  navigatingId === row.id ? (
+    <Skeleton className="h-4 w-40" />
+  ) : (
+    <p>{row.nome}</p>
+  ),
+```
+
+### Ações por linha
+
+- Botões de ação primária (criar, confirmar, dar baixa): `variant="success"`
+- Botões secundários (ver, abrir): `variant="outline"`
+- Sempre chamar `e.stopPropagation()` em onClick de botões dentro de linhas expansíveis
+
+### Sub-tabela expandida
+
+Quando a linha expandida contém uma tabela interna (ex: parcelas), usar `<table>` nativa com estas classes:
+
+```tsx
+<div className="overflow-hidden rounded-xl border border-border/60">
+  <table className="w-full text-sm">
+    <thead>
+      <tr className="border-b border-border/60 bg-muted/20">
+        <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Coluna
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr className="border-b border-border/40 last:border-0 hover:bg-white/3">
+        <td className="px-4 py-3">...</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+```
+
 ## Convenções
 
 - Componentes: PascalCase, export default, um por arquivo
@@ -156,7 +248,11 @@ ADMIN: Todos os itens. AGENTE: Meus Contratos, Esteira, Renovações, Pagamentos
 - Formatação: Intl.NumberFormat('pt-BR', {style:'currency', currency:'BRL'})
 - Datas: date-fns com locale pt-BR para display, ISO para API
 - NUNCA localStorage para tokens
-- Imports de API: sempre dos hooks gerados pelo Kubb em gen/hooks/
+- Endpoints cobertos pelo schema: preferir tipos, query params e hooks do Kubb em `src/gen/models`, `src/gen/hooks` e `src/gen/zod`
+- `apiFetch` em `src/lib/api/client.ts` continua válido para fluxos já existentes, uploads com progresso e integrações ainda não migradas para hooks gerados
+- Clientes/hooks gerados pelo Kubb usam o proxy local `src/app/api/v1/[...path]/route.ts`; `apiFetch` usa `src/app/api/backend/[...path]/route.ts`
+- Dashboard executivo admin: rota `/dashboard` exclusiva de `ADMIN`, protegida em navegação e com `RoleGuard`
+- Para dashboards e analytics, usar apenas os componentes shadcn charts de `src/components/ui/chart.tsx` e os primitives do Recharts que já sustentam esse wrapper
 
 ## Comandos
 

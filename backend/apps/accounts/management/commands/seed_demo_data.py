@@ -17,7 +17,12 @@ from apps.associados.services import AssociadoService
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.models import EsteiraItem, Pendencia, Transicao
 from apps.esteira.services import EsteiraService
-from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, ImportacaoLog
+from apps.importacao.models import (
+    ArquivoRetorno,
+    ArquivoRetornoItem,
+    ImportacaoLog,
+    PagamentoMensalidade,
+)
 from apps.refinanciamento.models import Comprovante, Refinanciamento
 from apps.refinanciamento.services import RefinanciamentoService
 from apps.relatorios.models import RelatorioGerado
@@ -61,6 +66,7 @@ class Command(BaseCommand):
             role_code: User.objects.get(email=spec.email)
             for role_code, spec in user_specs.items()
         }
+        self._seed_users = users
 
         self._cleanup_existing_seed()
 
@@ -434,6 +440,7 @@ class Command(BaseCommand):
             parcela.data_pagamento = data_pagamento
             parcela.observacao = observacao
             parcela.save(update_fields=["status", "data_pagamento", "observacao", "updated_at"])
+        self._sincronizar_pagamentos_refinanciamento(contrato)
 
     def _marcar_todas_parcelas_pagas(self, contrato: Contrato, data_pagamento: date):
         parcelas = list(
@@ -444,6 +451,39 @@ class Command(BaseCommand):
             parcela.data_pagamento = data_pagamento - timedelta(days=max(2 - indice, 0) * 30)
             parcela.observacao = "Baixa seed demo."
             parcela.save(update_fields=["status", "data_pagamento", "observacao", "updated_at"])
+        self._sincronizar_pagamentos_refinanciamento(contrato)
+
+    def _sincronizar_pagamentos_refinanciamento(self, contrato: Contrato):
+        parcelas = list(
+            contrato.ciclos.order_by("numero").first().parcelas.order_by("numero")
+        )
+        referencias_pagas = {
+            parcela.referencia_mes
+            for parcela in parcelas
+            if parcela.status == Parcela.Status.DESCONTADO
+        }
+        PagamentoMensalidade.objects.filter(
+            associado=contrato.associado,
+        ).exclude(referencia_month__in=referencias_pagas).delete()
+
+        for parcela in parcelas:
+            if parcela.status != Parcela.Status.DESCONTADO:
+                continue
+            PagamentoMensalidade.objects.update_or_create(
+                associado=contrato.associado,
+                referencia_month=parcela.referencia_mes,
+                defaults={
+                    "created_by": self._seed_users["TESOUREIRO"],
+                    "import_uuid": f"{SEED_IMPORT_PREFIX}{contrato.id}-{parcela.referencia_mes.isoformat()}",
+                    "status_code": "1",
+                    "matricula": contrato.associado.matricula_orgao or contrato.associado.matricula,
+                    "orgao_pagto": contrato.associado.orgao_publico,
+                    "nome_relatorio": contrato.associado.nome_completo,
+                    "cpf_cnpj": contrato.associado.cpf_cnpj,
+                    "valor": contrato.valor_mensalidade,
+                    "source_file_path": f"seed/{contrato.codigo}-{parcela.referencia_mes.isoformat()}.txt",
+                },
+            )
 
     def _seed_confirmacoes(self, cenarios: dict[str, dict[str, object]], tesoureiro: User, competencia: date):
         contrato_ativo = cenarios["ativo"]["contrato"]

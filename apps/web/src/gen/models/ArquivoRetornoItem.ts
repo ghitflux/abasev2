@@ -99,9 +99,21 @@ export type ArquivoRetornoItem = {
    */
   gerou_novo_ciclo?: boolean;
   /**
+   * @type integer
+   */
+  readonly associado_id: number;
+  /**
    * @type string
    */
   readonly associado_nome: string;
+  /**
+   * @type string
+   */
+  readonly associado_matricula: string;
+  /**
+   * @type string
+   */
+  readonly agente_responsavel: string;
   /**
    * @type string
    */

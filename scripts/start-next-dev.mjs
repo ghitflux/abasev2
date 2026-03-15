@@ -6,7 +6,12 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
 const webDir = path.join(repoRoot, "apps", "web");
+const nextDevDir = path.join(webDir, ".next", "dev");
 const lockPath = path.join(webDir, ".next", "dev", "lock");
+const nextCliCandidates = [
+  path.join(webDir, "node_modules", "next", "dist", "bin", "next"),
+  path.join(webDir, "node_modules", "next", "dist", "bin", "next.js"),
+];
 
 function stopExistingNextDev() {
   if (process.platform !== "win32") {
@@ -43,8 +48,22 @@ function removeLockIfPresent() {
   }
 }
 
+function resetDevArtifacts() {
+  if (!existsSync(nextDevDir)) {
+    return;
+  }
+
+  try {
+    rmSync(nextDevDir, { recursive: true, force: true });
+  } catch (error) {
+    console.error("Falha ao limpar apps/web/.next/dev antes de iniciar o Next.");
+    throw error;
+  }
+}
+
 stopExistingNextDev();
 removeLockIfPresent();
+resetDevArtifacts();
 
 const forwardedArgs = process.argv.slice(2);
 const hasPortArg = forwardedArgs.some(
@@ -54,13 +73,22 @@ const hasPortArg = forwardedArgs.some(
     arg.startsWith("--port=") ||
     (index > 0 && (forwardedArgs[index - 1] === "--port" || forwardedArgs[index - 1] === "-p"))
 );
-const defaultArgs = hasPortArg ? [] : ["--port", process.env.ABASE_WEB_PORT ?? "8000"];
+const defaultArgs = hasPortArg ? [] : ["--port", process.env.ABASE_WEB_PORT ?? "3000"];
+const nextCliPath = nextCliCandidates.find((candidate) => existsSync(candidate));
 
-const child = spawn("pnpm", ["exec", "next", "dev", "--turbopack", ...forwardedArgs, ...defaultArgs], {
-  cwd: webDir,
-  stdio: "inherit",
-  shell: true,
-});
+if (!nextCliPath) {
+  console.error("Nao foi possivel localizar o CLI do Next em apps/web/node_modules.");
+  process.exit(1);
+}
+
+const child = spawn(
+  process.execPath,
+  [nextCliPath, "dev", "--turbopack", ...forwardedArgs, ...defaultArgs],
+  {
+    cwd: webDir,
+    stdio: "inherit",
+  }
+);
 
 child.on("exit", (code) => {
   process.exit(code ?? 0);

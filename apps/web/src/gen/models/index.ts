@@ -7,6 +7,10 @@ export type { AnaliseMargem } from "./AnaliseMargem.ts";
 export type { AnalisePagamento } from "./AnalisePagamento.ts";
 export type { AnalisePagamentoData } from "./AnalisePagamentoData.ts";
 export type { ArquivoRetornoDetail } from "./ArquivoRetornoDetail.ts";
+export type { ArquivoRetornoFinanceiroGrupo } from "./ArquivoRetornoFinanceiroGrupo.ts";
+export type { ArquivoRetornoFinanceiroItem } from "./ArquivoRetornoFinanceiroItem.ts";
+export type { ArquivoRetornoFinanceiroPayload } from "./ArquivoRetornoFinanceiroPayload.ts";
+export type { ArquivoRetornoFinanceiroResumo } from "./ArquivoRetornoFinanceiroResumo.ts";
 export type { ArquivoRetornoItem } from "./ArquivoRetornoItem.ts";
 export type { ArquivoRetornoList } from "./ArquivoRetornoList.ts";
 export type { ArquivoRetornoUpload } from "./ArquivoRetornoUpload.ts";
@@ -27,13 +31,23 @@ export type {
   ComprovanteResumoTipoEnumEnumKey,
 } from "./ComprovanteResumoTipoEnum.ts";
 export type { ConfirmacaoList } from "./ConfirmacaoList.ts";
-export type { ContatoHistorico } from "./ContatoHistorico.ts";
 export type { ContatoHistoricoWrite } from "./ContatoHistoricoWrite.ts";
 export type { ContratoAgente } from "./ContratoAgente.ts";
 export type { ContratoList } from "./ContratoList.ts";
 export type { ContratoResumo } from "./ContratoResumo.ts";
-export type { DadosBancarios } from "./DadosBancarios.ts";
 export type { DadosBancariosWrite } from "./DadosBancariosWrite.ts";
+export type { DashboardAgentRanking } from "./DashboardAgentRanking.ts";
+export type { DashboardAgentes } from "./DashboardAgentes.ts";
+export type { DashboardDetailRow } from "./DashboardDetailRow.ts";
+export type { DashboardMetricCard } from "./DashboardMetricCard.ts";
+export type { DashboardNovosAssociados } from "./DashboardNovosAssociados.ts";
+export type { DashboardPiePoint } from "./DashboardPiePoint.ts";
+export type { DashboardProjectionPoint } from "./DashboardProjectionPoint.ts";
+export type { DashboardRadialPoint } from "./DashboardRadialPoint.ts";
+export type { DashboardResumoGeral } from "./DashboardResumoGeral.ts";
+export type { DashboardTesouraria } from "./DashboardTesouraria.ts";
+export type { DashboardTrendPoint } from "./DashboardTrendPoint.ts";
+export type { DashboardValuePoint } from "./DashboardValuePoint.ts";
 export type { Documento } from "./Documento.ts";
 export type {
   DocumentoStatusEnum,
@@ -43,7 +57,6 @@ export type {
   DocumentoTipoEnum,
   DocumentoTipoEnumEnumKey,
 } from "./DocumentoTipoEnum.ts";
-export type { Endereco } from "./Endereco.ts";
 export type { EnderecoWrite } from "./EnderecoWrite.ts";
 export type {
   EstadoCivilEnum,
@@ -52,6 +65,7 @@ export type {
 export type { EsteiraDetail } from "./EsteiraDetail.ts";
 export type { EsteiraItemResumo } from "./EsteiraItemResumo.ts";
 export type { EsteiraList } from "./EsteiraList.ts";
+export type { FormatEnum, FormatEnumEnumKey } from "./FormatEnum.ts";
 export type { FormatoEnum, FormatoEnumEnumKey } from "./FormatoEnum.ts";
 export type { Login } from "./Login.ts";
 export type { Logout } from "./Logout.ts";
@@ -63,6 +77,7 @@ export type { PaginatedArquivoRetornoListList } from "./PaginatedArquivoRetornoL
 export type { PaginatedAssociadoListList } from "./PaginatedAssociadoListList.ts";
 export type { PaginatedConfirmacaoListList } from "./PaginatedConfirmacaoListList.ts";
 export type { PaginatedContratoListList } from "./PaginatedContratoListList.ts";
+export type { PaginatedDashboardDetailRowList } from "./PaginatedDashboardDetailRowList.ts";
 export type { PaginatedEsteiraListList } from "./PaginatedEsteiraListList.ts";
 export type { PaginatedRefinanciamentoListList } from "./PaginatedRefinanciamentoListList.ts";
 export type { PaginatedRenovacaoCicloItemList } from "./PaginatedRenovacaoCicloItemList.ts";
@@ -81,6 +96,7 @@ export type {
   ParcelaStatusEnum,
   ParcelaStatusEnumEnumKey,
 } from "./ParcelaStatusEnum.ts";
+export type { PasswordResetRequest } from "./PasswordResetRequest.ts";
 export type { PasswordResetResult } from "./PasswordResetResult.ts";
 export type { PatchedAdminUserAccessUpdate } from "./PatchedAdminUserAccessUpdate.ts";
 export type { PatchedAnaliseDadosUpdate } from "./PatchedAnaliseDadosUpdate.ts";
@@ -121,11 +137,11 @@ export type {
   StatusDescontoEnumEnumKey,
 } from "./StatusDescontoEnum.ts";
 export type { TesourariaContratoList } from "./TesourariaContratoList.ts";
-export type { TipoContaEnum, TipoContaEnumEnumKey } from "./TipoContaEnum.ts";
 export type {
   TipoDocumentoEnum,
   TipoDocumentoEnumEnumKey,
 } from "./TipoDocumentoEnum.ts";
+export type { ToneEnum, ToneEnumEnumKey } from "./ToneEnum.ts";
 export type { Transicao } from "./Transicao.ts";
 export type { TransicaoResumo } from "./TransicaoResumo.ts";
 export type { User } from "./User.ts";
@@ -282,6 +298,7 @@ export type {
 export type {
   V1ConfiguracoesUsuariosResetarSenhaCreate200,
   V1ConfiguracoesUsuariosResetarSenhaCreateMutation,
+  V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequest,
   V1ConfiguracoesUsuariosResetarSenhaCreateMutationResponse,
   V1ConfiguracoesUsuariosResetarSenhaCreatePathParams,
 } from "./V1ConfiguracoesUsuariosResetarSenhaCreate.ts";
@@ -332,6 +349,36 @@ export type {
   V1CoordenacaoRefinanciamentoRetrieveQuery,
   V1CoordenacaoRefinanciamentoRetrieveQueryResponse,
 } from "./V1CoordenacaoRefinanciamentoRetrieve.ts";
+export type {
+  V1DashboardAdminAgentesRetrieve200,
+  V1DashboardAdminAgentesRetrieveQuery,
+  V1DashboardAdminAgentesRetrieveQueryParams,
+  V1DashboardAdminAgentesRetrieveQueryResponse,
+} from "./V1DashboardAdminAgentesRetrieve.ts";
+export type {
+  V1DashboardAdminDetalhesList200,
+  V1DashboardAdminDetalhesListQuery,
+  V1DashboardAdminDetalhesListQueryParams,
+  V1DashboardAdminDetalhesListQueryResponse,
+} from "./V1DashboardAdminDetalhesList.ts";
+export type {
+  V1DashboardAdminNovosAssociadosRetrieve200,
+  V1DashboardAdminNovosAssociadosRetrieveQuery,
+  V1DashboardAdminNovosAssociadosRetrieveQueryParams,
+  V1DashboardAdminNovosAssociadosRetrieveQueryResponse,
+} from "./V1DashboardAdminNovosAssociadosRetrieve.ts";
+export type {
+  V1DashboardAdminResumoGeralRetrieve200,
+  V1DashboardAdminResumoGeralRetrieveQuery,
+  V1DashboardAdminResumoGeralRetrieveQueryParams,
+  V1DashboardAdminResumoGeralRetrieveQueryResponse,
+} from "./V1DashboardAdminResumoGeralRetrieve.ts";
+export type {
+  V1DashboardAdminTesourariaRetrieve200,
+  V1DashboardAdminTesourariaRetrieveQuery,
+  V1DashboardAdminTesourariaRetrieveQueryParams,
+  V1DashboardAdminTesourariaRetrieveQueryResponse,
+} from "./V1DashboardAdminTesourariaRetrieve.ts";
 export type {
   V1EsteiraAprovarCreate200,
   V1EsteiraAprovarCreateMutation,
@@ -404,6 +451,12 @@ export type {
   V1ImportacaoArquivoRetornoEncerramentosListQueryParams,
   V1ImportacaoArquivoRetornoEncerramentosListQueryResponse,
 } from "./V1ImportacaoArquivoRetornoEncerramentosList.ts";
+export type {
+  V1ImportacaoArquivoRetornoFinanceiroRetrieve200,
+  V1ImportacaoArquivoRetornoFinanceiroRetrievePathParams,
+  V1ImportacaoArquivoRetornoFinanceiroRetrieveQuery,
+  V1ImportacaoArquivoRetornoFinanceiroRetrieveQueryResponse,
+} from "./V1ImportacaoArquivoRetornoFinanceiroRetrieve.ts";
 export type {
   V1ImportacaoArquivoRetornoList200,
   V1ImportacaoArquivoRetornoListQuery,
@@ -639,6 +692,7 @@ export { comprovanteResumoTipoEnumEnum } from "./ComprovanteResumoTipoEnum.ts";
 export { documentoStatusEnumEnum } from "./DocumentoStatusEnum.ts";
 export { documentoTipoEnumEnum } from "./DocumentoTipoEnum.ts";
 export { estadoCivilEnumEnum } from "./EstadoCivilEnum.ts";
+export { formatEnumEnum } from "./FormatEnum.ts";
 export { formatoEnumEnum } from "./FormatoEnum.ts";
 export { papelEnumEnum } from "./PapelEnum.ts";
 export { paraSituacaoEnumEnum } from "./ParaSituacaoEnum.ts";
@@ -653,6 +707,6 @@ export { status200EnumEnum } from "./Status200Enum.ts";
 export { status3BcEnumEnum } from "./Status3BcEnum.ts";
 export { status427EnumEnum } from "./Status427Enum.ts";
 export { statusDescontoEnumEnum } from "./StatusDescontoEnum.ts";
-export { tipoContaEnumEnum } from "./TipoContaEnum.ts";
 export { tipoDocumentoEnumEnum } from "./TipoDocumentoEnum.ts";
+export { toneEnumEnum } from "./ToneEnum.ts";
 export { V1AssociadosListQueryParamsStatusEnum } from "./V1AssociadosList.ts";

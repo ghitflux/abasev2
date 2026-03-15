@@ -1,5 +1,5 @@
-import RouteLoadingScreen from "@/components/shared/route-loading-screen";
+import DashboardRouteLoading from "@/components/shared/dashboard-route-loading";
 
 export default function DashboardLoading() {
-  return <RouteLoadingScreen variant="dashboard" label="Carregando modulo..." />;
+  return <DashboardRouteLoading />;
 }

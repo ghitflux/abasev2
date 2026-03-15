@@ -5,11 +5,8 @@
 
 import * as z from "zod";
 import { blankEnumSchema } from "./blankEnumSchema.ts";
-import { contatoHistoricoSchema } from "./contatoHistoricoSchema.ts";
 import { contratoResumoSchema } from "./contratoResumoSchema.ts";
-import { dadosBancariosSchema } from "./dadosBancariosSchema.ts";
 import { documentoSchema } from "./documentoSchema.ts";
-import { enderecoSchema } from "./enderecoSchema.ts";
 import { estadoCivilEnumSchema } from "./estadoCivilEnumSchema.ts";
 import { esteiraItemResumoSchema } from "./esteiraItemResumoSchema.ts";
 import { simpleUserSchema } from "./simpleUserSchema.ts";
@@ -49,15 +46,9 @@ export const associadoDetailSchema = z.object({
   get agente() {
     return simpleUserSchema;
   },
-  get endereco() {
-    return enderecoSchema;
-  },
-  get dados_bancarios() {
-    return dadosBancariosSchema;
-  },
-  get contato() {
-    return contatoHistoricoSchema;
-  },
+  endereco: z.string(),
+  dados_bancarios: z.string(),
+  contato: z.string(),
   get contratos() {
     return z.array(contratoResumoSchema);
   },

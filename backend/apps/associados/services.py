@@ -5,14 +5,16 @@ from datetime import date
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Q
 from django.utils import timezone
 
+from apps.contratos.competencia import create_cycle_with_parcelas
+from apps.contratos.cycle_normalization import dedupe_cycles_for_display
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.models import EsteiraItem, Transicao
 
 from .factories import AssociadoFactory
-from .models import Associado, ContatoHistorico, DadosBancarios, Documento, Endereco
+from .models import Associado, Documento
 from .strategies import CadastroValidationStrategy
 
 
@@ -93,10 +95,23 @@ class AssociadoService:
             "data_nascimento": dados.get("data_nascimento"),
             "profissao": dados.get("profissao", ""),
             "estado_civil": dados.get("estado_civil", ""),
+            "cep": endereco_data.get("cep", ""),
+            "logradouro": endereco_data.get("logradouro", ""),
+            "numero": endereco_data.get("numero", ""),
+            "complemento": endereco_data.get("complemento", ""),
+            "bairro": endereco_data.get("bairro", ""),
+            "cidade": endereco_data.get("cidade", ""),
+            "uf": endereco_data.get("uf", ""),
             "email": contato_data.get("email", ""),
             "telefone": contato_data.get("celular", ""),
             "orgao_publico": contato_data.get("orgao_publico", ""),
             "matricula_orgao": contato_data.get("matricula_servidor", ""),
+            "situacao_servidor": contato_data.get("situacao_servidor", ""),
+            "banco": dados_bancarios_data.get("banco", ""),
+            "agencia": dados_bancarios_data.get("agencia", ""),
+            "conta": dados_bancarios_data.get("conta", ""),
+            "tipo_conta": dados_bancarios_data.get("tipo_conta", ""),
+            "chave_pix": dados_bancarios_data.get("chave_pix", ""),
             "cargo": dados.get("cargo", "") or dados.get("profissao", ""),
             "observacao": dados.get("observacao", ""),
         }
@@ -106,19 +121,6 @@ class AssociadoService:
         else:
             associado = AssociadoFactory.criar_pessoa_fisica(associado_data, agente)
 
-        Endereco.objects.create(associado=associado, **endereco_data)
-        DadosBancarios.objects.create(associado=associado, **dados_bancarios_data)
-        ContatoHistorico.objects.create(
-            associado=associado,
-            celular=contato_data.get("celular", ""),
-            email=contato_data.get("email", ""),
-            orgao_publico=contato_data.get("orgao_publico", ""),
-            situacao_servidor=contato_data.get("situacao_servidor", ""),
-            matricula_servidor=contato_data.get("matricula_servidor", ""),
-            nome_contato=associado.nome_completo,
-            telefone_contato=contato_data.get("celular", ""),
-        )
-
         data_aprovacao, data_primeira_mensalidade, mes_averbacao = (
             calculate_contract_dates(contrato_data.get("data_aprovacao"))
         )
@@ -126,7 +128,6 @@ class AssociadoService:
 
         prazo_meses = int(contrato_data.get("prazo_meses") or 3)
         valor_mensalidade = Decimal(str(contrato_data.get("mensalidade") or 0))
-        ciclo_fim = add_months(primeira_referencia, max(prazo_meses - 1, 0))
 
         contrato = Contrato.objects.create(
             associado=associado,
@@ -148,29 +149,17 @@ class AssociadoService:
             status=Contrato.Status.EM_ANALISE,
         )
 
-        ciclo = Ciclo.objects.create(
+        create_cycle_with_parcelas(
             contrato=contrato,
             numero=1,
-            data_inicio=primeira_referencia,
-            data_fim=ciclo_fim,
-            status=Ciclo.Status.FUTURO,
+            competencia_inicial=primeira_referencia,
+            parcelas_total=prazo_meses,
+            ciclo_status=Ciclo.Status.FUTURO,
+            parcela_status=Parcela.Status.EM_ABERTO,
+            data_vencimento_fn=day_of_month,
+            valor_mensalidade=valor_mensalidade,
             valor_total=(valor_mensalidade * prazo_meses).quantize(Decimal("0.01")),
         )
-
-        parcelas = []
-        for indice in range(prazo_meses):
-            referencia = add_months(primeira_referencia, indice)
-            parcelas.append(
-                Parcela(
-                    ciclo=ciclo,
-                    numero=indice + 1,
-                    referencia_mes=referencia,
-                    valor=valor_mensalidade,
-                    data_vencimento=day_of_month(referencia),
-                    status=Parcela.Status.EM_ABERTO,
-                )
-            )
-        Parcela.objects.bulk_create(parcelas)
 
         esteira_item = EsteiraItem.objects.create(
             associado=associado,
@@ -200,26 +189,48 @@ class AssociadoService:
 
     @staticmethod
     def buscar_com_contagens(queryset):
-        return queryset.annotate(
-            ciclos_abertos=Count(
-                "contratos__ciclos",
-                filter=Q(
-                    contratos__ciclos__status__in=[
-                        Ciclo.Status.FUTURO,
-                        Ciclo.Status.ABERTO,
-                        Ciclo.Status.APTO_A_RENOVAR,
-                    ]
-                ),
-                distinct=True,
-            ),
-            ciclos_fechados=Count(
-                "contratos__ciclos",
-                filter=Q(
-                    contratos__ciclos__status__in=[
-                        Ciclo.Status.CICLO_RENOVADO,
-                        Ciclo.Status.FECHADO,
-                    ]
-                ),
-                distinct=True,
-            ),
+        return queryset
+
+    @staticmethod
+    def contar_ciclos_logicos(associado: Associado) -> dict[str, int]:
+        contratos_cache = getattr(associado, "_prefetched_objects_cache", {}).get(
+            "contratos"
         )
+        if contratos_cache is None:
+            contratos = (
+                associado.contratos.exclude(status=Contrato.Status.CANCELADO)
+                .prefetch_related("ciclos__parcelas")
+            )
+        else:
+            contratos = [
+                contrato
+                for contrato in contratos_cache
+                if contrato.status != Contrato.Status.CANCELADO
+            ]
+
+        cycles = []
+        for contrato in contratos:
+            prefetched = getattr(contrato, "_prefetched_objects_cache", {})
+            contrato_cycles = prefetched.get("ciclos")
+            if contrato_cycles is None:
+                contrato_cycles = list(contrato.ciclos.all())
+            cycles.extend(list(contrato_cycles))
+        logical_cycles = dedupe_cycles_for_display(list(cycles))
+        return {
+            "ciclos_abertos": sum(
+                1
+                for cycle in logical_cycles
+                if cycle.status
+                in [
+                    Ciclo.Status.FUTURO,
+                    Ciclo.Status.ABERTO,
+                    Ciclo.Status.APTO_A_RENOVAR,
+                ]
+            ),
+            "ciclos_fechados": sum(
+                1
+                for cycle in logical_cycles
+                if cycle.status
+                in [Ciclo.Status.CICLO_RENOVADO, Ciclo.Status.FECHADO]
+            ),
+        }

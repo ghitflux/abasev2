@@ -5,6 +5,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
 
 from apps.associados.views import AssociadoViewSet
+from apps.accounts.views import AdminUserViewSet
 from apps.contratos.views import ContratoViewSet
 from apps.contratos.views import RenovacaoCicloViewSet
 from apps.esteira.analise_views import AnaliseViewSet
@@ -16,9 +17,18 @@ from apps.refinanciamento.views import (
     RefinanciamentoViewSet,
     TesourariaRefinanciamentoViewSet,
 )
+from apps.associados.mobile_views import (
+    AppAntecipacaoView,
+    AppDocumentosView,
+    AppMensalidadesView,
+    AppMeView,
+    AppPendenciasView,
+)
+from apps.relatorios.dashboard_views import AdminDashboardViewSet
 from apps.relatorios.views import RelatorioViewSet
 from apps.tesouraria.views import (
     AgentePagamentoViewSet,
+    BaixaManualViewSet,
     ConfirmacaoViewSet,
     TesourariaContratoViewSet,
 )
@@ -61,7 +71,18 @@ router.register(
     basename="tesouraria-refinanciamento",
 )
 router.register(r"agente/pagamentos", AgentePagamentoViewSet, basename="agente-pagamento")
+router.register(
+    r"tesouraria/baixa-manual",
+    BaixaManualViewSet,
+    basename="tesouraria-baixa-manual",
+)
 router.register(r"relatorios", RelatorioViewSet, basename="relatorio")
+router.register(r"dashboard/admin", AdminDashboardViewSet, basename="admin-dashboard")
+router.register(
+    r"configuracoes/usuarios",
+    AdminUserViewSet,
+    basename="configuracoes-usuarios",
+)
 
 urlpatterns = [
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
@@ -72,6 +93,12 @@ urlpatterns = [
     ),
     path("api/v1/auth/", include("apps.accounts.urls")),
     path("api/v1/", include(router.urls)),
+    # Mobile self-service endpoints
+    path("api/v1/app/me/", AppMeView.as_view(), name="app-me"),
+    path("api/v1/app/mensalidades/", AppMensalidadesView.as_view(), name="app-mensalidades"),
+    path("api/v1/app/antecipacao/", AppAntecipacaoView.as_view(), name="app-antecipacao"),
+    path("api/v1/app/pendencias/", AppPendenciasView.as_view(), name="app-pendencias"),
+    path("api/v1/app/documentos/", AppDocumentosView.as_view(), name="app-documentos"),
 ]
 
 if settings.DEBUG:

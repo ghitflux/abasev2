@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 
 from core.models import BaseModel
@@ -47,11 +49,64 @@ class Associado(BaseModel):
     estado_civil = models.CharField(
         max_length=20, choices=EstadoCivil.choices, blank=True
     )
+    cep = models.CharField(max_length=12, blank=True)
+    logradouro = models.CharField(max_length=255, blank=True)
+    numero = models.CharField(max_length=60, blank=True)
+    complemento = models.CharField(max_length=120, blank=True)
+    bairro = models.CharField(max_length=120, blank=True)
+    cidade = models.CharField(max_length=120, blank=True)
+    uf = models.CharField(max_length=2, blank=True)
     orgao_publico = models.CharField(max_length=160, blank=True)
     matricula_orgao = models.CharField(max_length=60, blank=True)
+    situacao_servidor = models.CharField(max_length=80, blank=True)
+    banco = models.CharField(max_length=100, blank=True)
+    agencia = models.CharField(max_length=20, blank=True)
+    conta = models.CharField(max_length=30, blank=True)
+    tipo_conta = models.CharField(max_length=20, blank=True)
+    chave_pix = models.CharField(max_length=120, blank=True)
     cargo = models.CharField(max_length=120, blank=True)
+    contrato_mensalidade = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
+    contrato_prazo_meses = models.PositiveSmallIntegerField(null=True, blank=True)
+    contrato_taxa_antecipacao = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True
+    )
+    contrato_margem_disponivel = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
+    contrato_data_aprovacao = models.DateField(null=True, blank=True)
+    contrato_data_envio_primeira = models.DateField(null=True, blank=True)
+    contrato_valor_antecipacao = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
+    contrato_status_contrato = models.CharField(max_length=60, blank=True)
+    contrato_mes_averbacao = models.DateField(null=True, blank=True)
+    contrato_codigo_contrato = models.CharField(max_length=80, blank=True)
+    contrato_doacao_associado = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
+    calc_valor_bruto = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
+    calc_liquido_cc = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
+    calc_prazo_antecipacao = models.PositiveSmallIntegerField(null=True, blank=True)
+    calc_mensalidade_associativa = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True
+    )
+    anticipations_json = models.JSONField(null=True, blank=True)
+    documents_json = models.JSONField(null=True, blank=True)
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.CADASTRADO
+    )
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="associado",
     )
     agente_responsavel = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -62,6 +117,7 @@ class Associado(BaseModel):
     )
     agente_filial = models.CharField(max_length=160, blank=True)
     auxilio_taxa = models.DecimalField(max_digits=5, decimal_places=2, default=10)
+    auxilio_data_envio = models.DateField(null=True, blank=True)
     auxilio_status = models.CharField(max_length=80, blank=True)
     observacao = models.TextField(blank=True)
 
@@ -77,11 +133,256 @@ class Associado(BaseModel):
 
     @property
     def contato(self):
-        return getattr(self, "contato_historico", None)
+        return self.build_contato_payload()
 
     @property
     def esteira(self):
         return getattr(self, "esteira_item", None)
+
+    def _safe_related(self, attr: str):
+        try:
+            return getattr(self, attr)
+        except ObjectDoesNotExist:
+            return None
+
+    @staticmethod
+    def _has_snapshot_data(values: list[Any]) -> bool:
+        return any(value not in (None, "", [], {}) for value in values)
+
+    def build_endereco_payload(self) -> dict[str, Any] | None:
+        if self._has_snapshot_data(
+            [
+                self.cep,
+                self.logradouro,
+                self.numero,
+                self.complemento,
+                self.bairro,
+                self.cidade,
+                self.uf,
+            ]
+        ):
+            return {
+                "id": None,
+                "cep": self.cep,
+                "endereco": self.logradouro,
+                "numero": self.numero,
+                "complemento": self.complemento,
+                "bairro": self.bairro,
+                "cidade": self.cidade,
+                "uf": self.uf,
+                "created_at": self.created_at,
+                "updated_at": self.updated_at,
+            }
+
+        endereco = self._safe_related("endereco")
+        if not endereco:
+            return None
+        return {
+            "id": endereco.id,
+            "cep": endereco.cep,
+            "endereco": endereco.logradouro,
+            "numero": endereco.numero,
+            "complemento": endereco.complemento,
+            "bairro": endereco.bairro,
+            "cidade": endereco.cidade,
+            "uf": endereco.uf,
+            "created_at": endereco.created_at,
+            "updated_at": endereco.updated_at,
+        }
+
+    def build_dados_bancarios_payload(self) -> dict[str, Any] | None:
+        if self._has_snapshot_data(
+            [self.banco, self.agencia, self.conta, self.tipo_conta, self.chave_pix]
+        ):
+            return {
+                "id": None,
+                "associado": self.id,
+                "banco": self.banco,
+                "agencia": self.agencia,
+                "conta": self.conta,
+                "tipo_conta": self.tipo_conta,
+                "chave_pix": self.chave_pix,
+                "created_at": self.created_at,
+                "updated_at": self.updated_at,
+            }
+
+        dados_bancarios = self._safe_related("dados_bancarios")
+        if not dados_bancarios:
+            return None
+        return {
+            "id": dados_bancarios.id,
+            "associado": self.id,
+            "banco": dados_bancarios.banco,
+            "agencia": dados_bancarios.agencia,
+            "conta": dados_bancarios.conta,
+            "tipo_conta": dados_bancarios.tipo_conta,
+            "chave_pix": dados_bancarios.chave_pix,
+            "created_at": dados_bancarios.created_at,
+            "updated_at": dados_bancarios.updated_at,
+        }
+
+    def build_contato_payload(self) -> dict[str, Any] | None:
+        if self._has_snapshot_data(
+            [
+                self.telefone,
+                self.email,
+                self.orgao_publico,
+                self.situacao_servidor,
+                self.matricula_orgao,
+            ]
+        ):
+            return {
+                "id": None,
+                "associado": self.id,
+                "celular": self.telefone,
+                "email": self.email,
+                "orgao_publico": self.orgao_publico,
+                "situacao_servidor": self.situacao_servidor,
+                "matricula_servidor": self.matricula_orgao,
+                "nome_contato": self.nome_completo,
+                "parentesco": "",
+                "telefone_contato": self.telefone,
+                "ultima_interacao_em": None,
+                "observacao": self.observacao,
+                "created_at": self.created_at,
+                "updated_at": self.updated_at,
+            }
+
+        contato = self._safe_related("contato_historico")
+        if not contato:
+            return None
+        return {
+            "id": contato.id,
+            "associado": self.id,
+            "celular": contato.celular,
+            "email": contato.email,
+            "orgao_publico": contato.orgao_publico,
+            "situacao_servidor": contato.situacao_servidor,
+            "matricula_servidor": contato.matricula_servidor,
+            "nome_contato": contato.nome_contato,
+            "parentesco": contato.parentesco,
+            "telefone_contato": contato.telefone_contato,
+            "ultima_interacao_em": contato.ultima_interacao_em,
+            "observacao": contato.observacao,
+            "created_at": contato.created_at,
+            "updated_at": contato.updated_at,
+        }
+
+    def sync_endereco_snapshot(self, endereco, save: bool = True):
+        self.cep = endereco.cep or ""
+        self.logradouro = endereco.logradouro or ""
+        self.numero = endereco.numero or ""
+        self.complemento = endereco.complemento or ""
+        self.bairro = endereco.bairro or ""
+        self.cidade = endereco.cidade or ""
+        self.uf = endereco.uf or ""
+        if save:
+            self.save(
+                update_fields=[
+                    "cep",
+                    "logradouro",
+                    "numero",
+                    "complemento",
+                    "bairro",
+                    "cidade",
+                    "uf",
+                    "updated_at",
+                ]
+            )
+
+    def sync_dados_bancarios_snapshot(self, dados_bancarios, save: bool = True):
+        self.banco = dados_bancarios.banco or ""
+        self.agencia = dados_bancarios.agencia or ""
+        self.conta = dados_bancarios.conta or ""
+        self.tipo_conta = dados_bancarios.tipo_conta or ""
+        self.chave_pix = dados_bancarios.chave_pix or ""
+        if save:
+            self.save(
+                update_fields=[
+                    "banco",
+                    "agencia",
+                    "conta",
+                    "tipo_conta",
+                    "chave_pix",
+                    "updated_at",
+                ]
+            )
+
+    def sync_contato_snapshot(self, contato, save: bool = True):
+        self.telefone = contato.celular or ""
+        self.email = contato.email or ""
+        self.orgao_publico = contato.orgao_publico or ""
+        self.situacao_servidor = contato.situacao_servidor or ""
+        self.matricula_orgao = contato.matricula_servidor or ""
+        if save:
+            self.save(
+                update_fields=[
+                    "telefone",
+                    "email",
+                    "orgao_publico",
+                    "situacao_servidor",
+                    "matricula_orgao",
+                    "updated_at",
+                ]
+            )
+
+    def sync_contrato_snapshot(self, contrato, save: bool = True):
+        self.contrato_mensalidade = contrato.valor_mensalidade
+        self.contrato_prazo_meses = contrato.prazo_meses
+        self.contrato_taxa_antecipacao = contrato.taxa_antecipacao
+        self.contrato_margem_disponivel = contrato.margem_disponivel
+        self.contrato_data_aprovacao = contrato.data_aprovacao
+        self.contrato_data_envio_primeira = contrato.data_primeira_mensalidade
+        self.contrato_valor_antecipacao = contrato.valor_total_antecipacao
+        self.contrato_status_contrato = contrato.status
+        self.contrato_mes_averbacao = contrato.mes_averbacao
+        self.contrato_codigo_contrato = contrato.codigo
+        self.contrato_doacao_associado = contrato.doacao_associado
+        self.calc_valor_bruto = contrato.valor_bruto
+        self.calc_liquido_cc = contrato.valor_liquido
+        self.calc_prazo_antecipacao = contrato.prazo_meses
+        self.calc_mensalidade_associativa = contrato.valor_mensalidade
+        if save:
+            self.save(
+                update_fields=[
+                    "contrato_mensalidade",
+                    "contrato_prazo_meses",
+                    "contrato_taxa_antecipacao",
+                    "contrato_margem_disponivel",
+                    "contrato_data_aprovacao",
+                    "contrato_data_envio_primeira",
+                    "contrato_valor_antecipacao",
+                    "contrato_status_contrato",
+                    "contrato_mes_averbacao",
+                    "contrato_codigo_contrato",
+                    "contrato_doacao_associado",
+                    "calc_valor_bruto",
+                    "calc_liquido_cc",
+                    "calc_prazo_antecipacao",
+                    "calc_mensalidade_associativa",
+                    "updated_at",
+                ]
+            )
+
+    def sync_documents_snapshot(self, save: bool = True):
+        documents = []
+        for documento in self.documentos.all():
+            arquivo = documento.arquivo
+            documents.append(
+                {
+                    "tipo": documento.tipo,
+                    "status": documento.status,
+                    "observacao": documento.observacao,
+                    "relative_path": getattr(arquivo, "name", ""),
+                    "arquivo": getattr(arquivo, "name", ""),
+                    "uploaded_at": documento.created_at.isoformat()
+                    if documento.created_at
+                    else None,
+                }
+            )
+        self.documents_json = documents
+        if save:
+            self.save(update_fields=["documents_json", "updated_at"])
 
     def save(self, *args, **kwargs):
         self.cpf_cnpj = only_digits(self.cpf_cnpj)
@@ -113,6 +414,10 @@ class Endereco(BaseModel):
     def __str__(self) -> str:
         return f"{self.logradouro}, {self.numero or 's/n'}"
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.associado.sync_endereco_snapshot(self)
+
 
 class DadosBancarios(BaseModel):
     class TipoConta(models.TextChoices):
@@ -134,6 +439,10 @@ class DadosBancarios(BaseModel):
     def __str__(self) -> str:
         return f"{self.banco} - {self.agencia}/{self.conta}"
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.associado.sync_dados_bancarios_snapshot(self)
+
 
 class ContatoHistorico(BaseModel):
     associado = models.OneToOneField(
@@ -152,6 +461,10 @@ class ContatoHistorico(BaseModel):
 
     def __str__(self) -> str:
         return self.nome_contato or self.associado.nome_completo
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.associado.sync_contato_snapshot(self)
 
 
 class Documento(BaseModel):
@@ -190,3 +503,7 @@ class Documento(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.associado.nome_completo} - {self.tipo}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        self.associado.sync_documents_snapshot()

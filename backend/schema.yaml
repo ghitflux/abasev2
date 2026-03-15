@@ -1063,6 +1063,187 @@ paths:
               schema:
                 $ref: '#/components/schemas/RefinanciamentoDetail'
           description: ''
+  /api/v1/dashboard/admin/agentes/:
+    get:
+      operationId: v1_dashboard_admin_agentes_retrieve
+      parameters:
+      - in: query
+        name: agent_id
+        schema:
+          type: integer
+      - in: query
+        name: date_end
+        schema:
+          type: string
+      - in: query
+        name: date_start
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardAgentes'
+          description: ''
+  /api/v1/dashboard/admin/detalhes/:
+    get:
+      operationId: v1_dashboard_admin_detalhes_list
+      parameters:
+      - in: query
+        name: agent_id
+        schema:
+          type: integer
+      - in: query
+        name: competencia
+        schema:
+          type: string
+      - in: query
+        name: date_end
+        schema:
+          type: string
+      - in: query
+        name: date_start
+        schema:
+          type: string
+      - in: query
+        name: metric
+        schema:
+          type: string
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Which field to use when ordering the results.
+        schema:
+          type: string
+      - in: query
+        name: page
+        schema:
+          type: integer
+      - in: query
+        name: page_size
+        schema:
+          type: string
+      - name: search
+        required: false
+        in: query
+        description: A search term.
+        schema:
+          type: string
+      - in: query
+        name: section
+        schema:
+          type: string
+        required: true
+      - in: query
+        name: status
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDashboardDetailRowList'
+          description: ''
+  /api/v1/dashboard/admin/novos-associados/:
+    get:
+      operationId: v1_dashboard_admin_novos_associados_retrieve
+      parameters:
+      - in: query
+        name: agent_id
+        schema:
+          type: integer
+      - in: query
+        name: date_end
+        schema:
+          type: string
+      - in: query
+        name: date_start
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardNovosAssociados'
+          description: ''
+  /api/v1/dashboard/admin/resumo-geral/:
+    get:
+      operationId: v1_dashboard_admin_resumo_geral_retrieve
+      parameters:
+      - in: query
+        name: agent_id
+        schema:
+          type: integer
+      - in: query
+        name: competencia
+        schema:
+          type: string
+      - in: query
+        name: date_end
+        schema:
+          type: string
+      - in: query
+        name: date_start
+        schema:
+          type: string
+      - in: query
+        name: status
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardResumoGeral'
+          description: ''
+  /api/v1/dashboard/admin/tesouraria/:
+    get:
+      operationId: v1_dashboard_admin_tesouraria_retrieve
+      parameters:
+      - in: query
+        name: agent_id
+        schema:
+          type: integer
+      - in: query
+        name: competencia
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardTesouraria'
+          description: ''
   /api/v1/esteira/:
     get:
       operationId: v1_esteira_list
@@ -1477,6 +1658,27 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaginatedArquivoRetornoItemList'
+          description: ''
+  /api/v1/importacao/arquivo-retorno/{id}/financeiro/:
+    get:
+      operationId: v1_importacao_arquivo_retorno_financeiro_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this arquivo retorno.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArquivoRetornoFinanceiroPayload'
           description: ''
   /api/v1/importacao/arquivo-retorno/{id}/nao-descontados/:
     get:
@@ -2856,6 +3058,10 @@ components:
           type: object
           additionalProperties: {}
           readOnly: true
+        financeiro:
+          type: object
+          additionalProperties: {}
+          readOnly: true
         uploaded_by_nome:
           type: string
           readOnly: true
@@ -2875,11 +3081,167 @@ components:
       - competencia
       - competencia_display
       - created_at
+      - financeiro
       - formato
       - id
       - resumo
       - sistema_origem
       - uploaded_by_nome
+    ArquivoRetornoFinanceiroGrupo:
+      type: object
+      properties:
+        esperado:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        recebido:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        ok:
+          type: integer
+        total:
+          type: integer
+        faltando:
+          type: integer
+        pendente:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        percentual:
+          type: number
+          format: double
+      required:
+      - esperado
+      - faltando
+      - ok
+      - pendente
+      - percentual
+      - recebido
+      - total
+    ArquivoRetornoFinanceiroItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        associado_id:
+          type: integer
+          nullable: true
+        associado_nome:
+          type: string
+        agente_responsavel:
+          type: string
+        matricula:
+          type: string
+        cpf_cnpj:
+          type: string
+        valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        esperado:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        recebido:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        status_code:
+          type: string
+        status_label:
+          type: string
+        ok:
+          type: boolean
+        situacao_code:
+          type: string
+        situacao_label:
+          type: string
+        orgao_pagto:
+          type: string
+        relatorio:
+          type: string
+        manual_status:
+          type: string
+          nullable: true
+        manual_valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
+        manual_forma_pagamento:
+          type: string
+          nullable: true
+        manual_paid_at:
+          type: string
+          format: date-time
+          nullable: true
+        manual_comprovante_path:
+          type: string
+          nullable: true
+        categoria:
+          type: string
+      required:
+      - associado_nome
+      - categoria
+      - cpf_cnpj
+      - esperado
+      - id
+      - ok
+      - recebido
+      - situacao_code
+      - situacao_label
+      - valor
+    ArquivoRetornoFinanceiroPayload:
+      type: object
+      properties:
+        resumo:
+          $ref: '#/components/schemas/ArquivoRetornoFinanceiroResumo'
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/ArquivoRetornoFinanceiroItem'
+      required:
+      - resumo
+      - rows
+    ArquivoRetornoFinanceiroResumo:
+      type: object
+      properties:
+        esperado:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        recebido:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        ok:
+          type: integer
+        total:
+          type: integer
+        faltando:
+          type: integer
+        pendente:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        percentual:
+          type: number
+          format: double
+        mensalidades:
+          $ref: '#/components/schemas/ArquivoRetornoFinanceiroGrupo'
+        valores_30_50:
+          $ref: '#/components/schemas/ArquivoRetornoFinanceiroGrupo'
+      required:
+      - esperado
+      - faltando
+      - mensalidades
+      - ok
+      - pendente
+      - percentual
+      - recebido
+      - total
+      - valores_30_50
     ArquivoRetornoItem:
       type: object
       properties:
@@ -3011,6 +3373,10 @@ components:
           type: object
           additionalProperties: {}
           readOnly: true
+        financeiro:
+          type: object
+          additionalProperties: {}
+          readOnly: true
         uploaded_by_nome:
           type: string
           readOnly: true
@@ -3027,6 +3393,7 @@ components:
       - competencia
       - competencia_display
       - created_at
+      - financeiro
       - formato
       - id
       - resumo
@@ -3235,16 +3602,13 @@ components:
           - $ref: '#/components/schemas/SimpleUser'
           readOnly: true
         endereco:
-          allOf:
-          - $ref: '#/components/schemas/Endereco'
+          type: string
           readOnly: true
         dados_bancarios:
-          allOf:
-          - $ref: '#/components/schemas/DadosBancarios'
+          type: string
           readOnly: true
         contato:
-          allOf:
-          - $ref: '#/components/schemas/ContatoHistorico'
+          type: string
           readOnly: true
         contratos:
           type: array
@@ -3398,6 +3762,15 @@ components:
         id:
           type: integer
           readOnly: true
+        contrato_id:
+          type: integer
+          readOnly: true
+        contrato_codigo:
+          type: string
+          readOnly: true
+        contrato_status:
+          type: string
+          readOnly: true
         numero:
           type: integer
           maximum: 65535
@@ -3420,6 +3793,9 @@ components:
             $ref: '#/components/schemas/Parcela'
           readOnly: true
       required:
+      - contrato_codigo
+      - contrato_id
+      - contrato_status
       - data_fim
       - data_inicio
       - id
@@ -3515,81 +3891,19 @@ components:
       - link_chamada
       - nome
       - status_visual
-    ContatoHistorico:
-      type: object
-      properties:
-        id:
-          type: integer
-          readOnly: true
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-        deleted_at:
-          type: string
-          format: date-time
-          nullable: true
-        celular:
-          type: string
-          maxLength: 20
-        email:
-          type: string
-          format: email
-          maxLength: 254
-        orgao_publico:
-          type: string
-          maxLength: 150
-        situacao_servidor:
-          type: string
-          maxLength: 80
-        matricula_servidor:
-          type: string
-          maxLength: 50
-        nome_contato:
-          type: string
-          maxLength: 255
-        parentesco:
-          type: string
-          maxLength: 100
-        telefone_contato:
-          type: string
-          maxLength: 20
-        ultima_interacao_em:
-          type: string
-          format: date-time
-          nullable: true
-        observacao:
-          type: string
-        associado:
-          type: integer
-      required:
-      - associado
-      - created_at
-      - id
-      - updated_at
     ContatoHistoricoWrite:
       type: object
       properties:
         celular:
           type: string
-          maxLength: 20
         email:
           type: string
-          format: email
-          maxLength: 254
         orgao_publico:
           type: string
-          maxLength: 150
         situacao_servidor:
           type: string
-          maxLength: 80
         matricula_servidor:
           type: string
-          maxLength: 50
     ContratoAgente:
       type: object
       properties:
@@ -3738,69 +4052,328 @@ components:
       required:
       - ciclos
       - id
-    DadosBancarios:
-      type: object
-      properties:
-        id:
-          type: integer
-          readOnly: true
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-        deleted_at:
-          type: string
-          format: date-time
-          nullable: true
-        banco:
-          type: string
-          maxLength: 100
-        agencia:
-          type: string
-          maxLength: 20
-        conta:
-          type: string
-          maxLength: 30
-        tipo_conta:
-          $ref: '#/components/schemas/TipoContaEnum'
-        chave_pix:
-          type: string
-          maxLength: 120
-        associado:
-          type: integer
-      required:
-      - agencia
-      - associado
-      - banco
-      - conta
-      - created_at
-      - id
-      - updated_at
     DadosBancariosWrite:
       type: object
       properties:
         banco:
           type: string
-          maxLength: 100
         agencia:
           type: string
-          maxLength: 20
         conta:
           type: string
-          maxLength: 30
         tipo_conta:
-          $ref: '#/components/schemas/TipoContaEnum'
+          type: string
         chave_pix:
           type: string
-          maxLength: 120
+    DashboardAgentRanking:
+      type: object
+      properties:
+        agent_id:
+          type: integer
+        agent_name:
+          type: string
+        efetivados:
+          type: integer
+        cadastros:
+          type: integer
+        em_processo:
+          type: integer
+        renovados:
+          type: integer
+        inadimplentes:
+          type: integer
+        participacao:
+          type: number
+          format: double
+        detail_metric:
+          type: string
       required:
-      - agencia
-      - banco
-      - conta
+      - agent_id
+      - agent_name
+      - cadastros
+      - detail_metric
+      - efetivados
+      - em_processo
+      - inadimplentes
+      - participacao
+      - renovados
+    DashboardAgentes:
+      type: object
+      properties:
+        date_start:
+          type: string
+          format: date
+        date_end:
+          type: string
+          format: date
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardMetricCard'
+        ranking:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardAgentRanking'
+      required:
+      - cards
+      - date_end
+      - date_start
+      - ranking
+    DashboardDetailRow:
+      type: object
+      properties:
+        id:
+          type: string
+        associado_id:
+          type: integer
+          nullable: true
+        associado_nome:
+          type: string
+        cpf_cnpj:
+          type: string
+        matricula:
+          type: string
+        status:
+          type: string
+        agente_nome:
+          type: string
+        contrato_codigo:
+          type: string
+        etapa:
+          type: string
+        competencia:
+          type: string
+        valor:
+          type: string
+        origem:
+          type: string
+        data_referencia:
+          type: string
+        observacao:
+          type: string
+      required:
+      - agente_nome
+      - associado_nome
+      - competencia
+      - contrato_codigo
+      - cpf_cnpj
+      - data_referencia
+      - etapa
+      - id
+      - matricula
+      - observacao
+      - origem
+      - status
+      - valor
+    DashboardMetricCard:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        value:
+          type: string
+        numeric_value:
+          type: number
+          format: double
+        format:
+          $ref: '#/components/schemas/FormatEnum'
+        tone:
+          $ref: '#/components/schemas/ToneEnum'
+        description:
+          type: string
+        detail_metric:
+          type: string
+      required:
+      - description
+      - detail_metric
+      - format
+      - key
+      - label
+      - numeric_value
+      - tone
+      - value
+    DashboardNovosAssociados:
+      type: object
+      properties:
+        date_start:
+          type: string
+          format: date
+        date_end:
+          type: string
+          format: date
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardMetricCard'
+        trend_area:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardTrendPoint'
+        status_pie:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardPiePoint'
+      required:
+      - cards
+      - date_end
+      - date_start
+      - status_pie
+      - trend_area
+    DashboardPiePoint:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        value:
+          type: integer
+        detail_metric:
+          type: string
+      required:
+      - detail_metric
+      - key
+      - label
+      - value
+    DashboardProjectionPoint:
+      type: object
+      properties:
+        bucket:
+          type: string
+        label:
+          type: string
+        recebido:
+          type: number
+          format: double
+        projetado:
+          type: number
+          format: double
+        recebido_metric:
+          type: string
+        projetado_metric:
+          type: string
+      required:
+      - bucket
+      - label
+      - projetado
+      - projetado_metric
+      - recebido
+      - recebido_metric
+    DashboardRadialPoint:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        value:
+          type: number
+          format: double
+        detail_metric:
+          type: string
+      required:
+      - detail_metric
+      - key
+      - label
+      - value
+    DashboardResumoGeral:
+      type: object
+      properties:
+        competencia:
+          type: string
+        kpis:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardMetricCard'
+        flow_bars:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardValuePoint'
+        status_pie:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardPiePoint'
+        trend_lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardTrendPoint'
+      required:
+      - competencia
+      - flow_bars
+      - kpis
+      - status_pie
+      - trend_lines
+    DashboardTesouraria:
+      type: object
+      properties:
+        competencia:
+          type: string
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardMetricCard'
+        projection_area:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardProjectionPoint'
+        movement_bars:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardValuePoint'
+        composition_radial:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardRadialPoint'
+      required:
+      - cards
+      - competencia
+      - composition_radial
+      - movement_bars
+      - projection_area
+    DashboardTrendPoint:
+      type: object
+      properties:
+        bucket:
+          type: string
+        label:
+          type: string
+        cadastros:
+          type: integer
+        efetivados:
+          type: integer
+        renovacoes:
+          type: integer
+        cadastros_metric:
+          type: string
+        efetivados_metric:
+          type: string
+        renovacoes_metric:
+          type: string
+      required:
+      - bucket
+      - cadastros
+      - cadastros_metric
+      - efetivados
+      - efetivados_metric
+      - label
+    DashboardValuePoint:
+      type: object
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        value:
+          type: integer
+        detail_metric:
+          type: string
+      required:
+      - detail_metric
+      - key
+      - label
+      - value
     Documento:
       type: object
       properties:
@@ -3871,77 +4444,26 @@ components:
         * `termo_adesao` - Termo de adesão
         * `termo_antecipacao` - Termo de antecipação
         * `outro` - Outro
-    Endereco:
-      type: object
-      properties:
-        id:
-          type: integer
-          readOnly: true
-        cep:
-          type: string
-          maxLength: 12
-        endereco:
-          type: string
-        numero:
-          type: string
-          maxLength: 60
-        complemento:
-          type: string
-          maxLength: 120
-        bairro:
-          type: string
-          maxLength: 120
-        cidade:
-          type: string
-          maxLength: 120
-        uf:
-          type: string
-          maxLength: 2
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
-        updated_at:
-          type: string
-          format: date-time
-          readOnly: true
-      required:
-      - bairro
-      - cep
-      - cidade
-      - created_at
-      - endereco
-      - id
-      - uf
-      - updated_at
     EnderecoWrite:
       type: object
       properties:
         cep:
           type: string
-          maxLength: 12
         endereco:
           type: string
         numero:
           type: string
         complemento:
           type: string
-          maxLength: 120
+          default: ''
         bairro:
           type: string
-          maxLength: 120
         cidade:
           type: string
-          maxLength: 120
         uf:
           type: string
-          maxLength: 2
       required:
-      - bairro
-      - cep
-      - cidade
       - endereco
-      - uf
     EstadoCivilEnum:
       enum:
       - solteiro
@@ -4157,6 +4679,14 @@ components:
       - status_documentacao
       - termos_web
       - valor_disponivel
+    FormatEnum:
+      enum:
+      - integer
+      - currency
+      type: string
+      description: |-
+        * `integer` - integer
+        * `currency` - currency
     FormatoEnum:
       enum:
       - txt
@@ -4367,6 +4897,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ContratoList'
+    PaginatedDashboardDetailRowList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardDetailRow'
     PaginatedEsteiraListList:
       type: object
       required:
@@ -5048,6 +5601,8 @@ components:
           type: string
         status_visual:
           type: string
+        status_explicacao:
+          type: string
         matricula:
           type: string
         agente_responsavel:
@@ -5056,6 +5611,12 @@ components:
           type: integer
         parcelas_total:
           type: integer
+        contrato_referencia_renovacao_id:
+          type: integer
+        contrato_referencia_renovacao_codigo:
+          type: string
+        possui_multiplos_contratos:
+          type: boolean
         valor_mensalidade:
           type: string
           format: decimal
@@ -5088,6 +5649,8 @@ components:
       - competencia
       - contrato_codigo
       - contrato_id
+      - contrato_referencia_renovacao_codigo
+      - contrato_referencia_renovacao_id
       - cpf_cnpj
       - data_pagamento
       - gerou_encerramento
@@ -5099,10 +5662,12 @@ components:
       - orgao_publico
       - parcelas_pagas
       - parcelas_total
+      - possui_multiplos_contratos
       - resultado_importacao
       - status_ciclo
       - status_codigo_etipi
       - status_descricao_etipi
+      - status_explicacao
       - status_parcela
       - status_visual
       - valor_mensalidade
@@ -5304,8 +5869,7 @@ components:
           type: string
           readOnly: true
         dados_bancarios:
-          allOf:
-          - $ref: '#/components/schemas/DadosBancarios'
+          type: string
           readOnly: true
         observacao_tesouraria:
           type: string
@@ -5333,16 +5897,6 @@ components:
       - observacao_tesouraria
       - situacao_esteira
       - status
-    TipoContaEnum:
-      enum:
-      - corrente
-      - poupanca
-      - salario
-      type: string
-      description: |-
-        * `corrente` - Corrente
-        * `poupanca` - Poupança
-        * `salario` - Salário
     TipoDocumentoEnum:
       enum:
       - CPF
@@ -5351,6 +5905,18 @@ components:
       description: |-
         * `CPF` - CPF
         * `CNPJ` - CNPJ
+    ToneEnum:
+      enum:
+      - neutral
+      - positive
+      - warning
+      - danger
+      type: string
+      description: |-
+        * `neutral` - neutral
+        * `positive` - positive
+        * `warning` - warning
+        * `danger` - danger
     Transicao:
       type: object
       properties:

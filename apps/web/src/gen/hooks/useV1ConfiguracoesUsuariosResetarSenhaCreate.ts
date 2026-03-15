@@ -4,6 +4,7 @@
  */
 
 import type {
+  V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequest,
   V1ConfiguracoesUsuariosResetarSenhaCreateMutationResponse,
   V1ConfiguracoesUsuariosResetarSenhaCreatePathParams,
 } from "../models/V1ConfiguracoesUsuariosResetarSenhaCreate.ts";
@@ -29,17 +30,24 @@ export type V1ConfiguracoesUsuariosResetarSenhaCreateMutationKey = ReturnType<
 
 export function v1ConfiguracoesUsuariosResetarSenhaCreateMutationOptions<
   TContext = unknown,
->(config: Partial<RequestConfig> & { client?: Client } = {}) {
+>(
+  config: Partial<
+    RequestConfig<V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequest>
+  > & { client?: Client } = {},
+) {
   const mutationKey = v1ConfiguracoesUsuariosResetarSenhaCreateMutationKey();
   return mutationOptions<
     V1ConfiguracoesUsuariosResetarSenhaCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    { id: V1ConfiguracoesUsuariosResetarSenhaCreatePathParams["id"] },
+    {
+      id: V1ConfiguracoesUsuariosResetarSenhaCreatePathParams["id"];
+      data: V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequest;
+    },
     TContext
   >({
     mutationKey,
-    mutationFn: async ({ id }) => {
-      return v1ConfiguracoesUsuariosResetarSenhaCreate(id, config);
+    mutationFn: async ({ id, data }) => {
+      return v1ConfiguracoesUsuariosResetarSenhaCreate(id, data, config);
     },
   });
 }
@@ -52,10 +60,15 @@ export function useV1ConfiguracoesUsuariosResetarSenhaCreate<TContext>(
     mutation?: UseMutationOptions<
       V1ConfiguracoesUsuariosResetarSenhaCreateMutationResponse,
       ResponseErrorConfig<Error>,
-      { id: V1ConfiguracoesUsuariosResetarSenhaCreatePathParams["id"] },
+      {
+        id: V1ConfiguracoesUsuariosResetarSenhaCreatePathParams["id"];
+        data: V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequest;
+      },
       TContext
     > & { client?: QueryClient };
-    client?: Partial<RequestConfig> & { client?: Client };
+    client?: Partial<
+      RequestConfig<V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequest>
+    > & { client?: Client };
   } = {},
 ) {
   const { mutation = {}, client: config = {} } = options ?? {};
@@ -69,14 +82,20 @@ export function useV1ConfiguracoesUsuariosResetarSenhaCreate<TContext>(
   ) as UseMutationOptions<
     V1ConfiguracoesUsuariosResetarSenhaCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    { id: V1ConfiguracoesUsuariosResetarSenhaCreatePathParams["id"] },
+    {
+      id: V1ConfiguracoesUsuariosResetarSenhaCreatePathParams["id"];
+      data: V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequest;
+    },
     TContext
   >;
 
   return useMutation<
     V1ConfiguracoesUsuariosResetarSenhaCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    { id: V1ConfiguracoesUsuariosResetarSenhaCreatePathParams["id"] },
+    {
+      id: V1ConfiguracoesUsuariosResetarSenhaCreatePathParams["id"];
+      data: V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequest;
+    },
     TContext
   >(
     {
@@ -88,7 +107,10 @@ export function useV1ConfiguracoesUsuariosResetarSenhaCreate<TContext>(
   ) as UseMutationResult<
     V1ConfiguracoesUsuariosResetarSenhaCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    { id: V1ConfiguracoesUsuariosResetarSenhaCreatePathParams["id"] },
+    {
+      id: V1ConfiguracoesUsuariosResetarSenhaCreatePathParams["id"];
+      data: V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequest;
+    },
     TContext
   >;
 }

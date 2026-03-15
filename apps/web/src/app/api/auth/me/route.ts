@@ -4,10 +4,10 @@ import { NextResponse } from "next/server";
 import { getCurrentUser, refreshWithBackend } from "@/lib/auth/backend";
 import { AUTH_COOKIES } from "@/lib/auth/constants";
 import {
-  accessCookieOptions,
-  refreshCookieOptions,
+  getAccessCookieOptions,
+  getRefreshCookieOptions,
+  getUserCookieOptions,
   serializeUser,
-  userCookieOptions,
 } from "@/lib/auth/session";
 
 function clearSessionCookies(response: NextResponse) {
@@ -17,7 +17,7 @@ function clearSessionCookies(response: NextResponse) {
   return response;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const cookieStore = await cookies();
     const accessToken = cookieStore.get(AUTH_COOKIES.accessToken)?.value;
@@ -59,12 +59,24 @@ export async function GET() {
 
     const response = NextResponse.json({ user });
     if (shouldPersistSession || accessToken !== nextAccessToken) {
-      response.cookies.set(AUTH_COOKIES.accessToken, nextAccessToken, accessCookieOptions);
+      response.cookies.set(
+        AUTH_COOKIES.accessToken,
+        nextAccessToken,
+        getAccessCookieOptions(request),
+      );
     }
     if (nextRefreshToken && (shouldPersistSession || refreshToken !== nextRefreshToken)) {
-      response.cookies.set(AUTH_COOKIES.refreshToken, nextRefreshToken, refreshCookieOptions);
+      response.cookies.set(
+        AUTH_COOKIES.refreshToken,
+        nextRefreshToken,
+        getRefreshCookieOptions(request),
+      );
     }
-    response.cookies.set(AUTH_COOKIES.user, serializeUser(user), userCookieOptions);
+    response.cookies.set(
+      AUTH_COOKIES.user,
+      serializeUser(user),
+      getUserCookieOptions(request),
+    );
     return response;
   } catch {
     return clearSessionCookies(

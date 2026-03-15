@@ -5,6 +5,7 @@
 
 import fetch from "@kubb/plugin-client/clients/axios";
 import type {
+  V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequest,
   V1ConfiguracoesUsuariosResetarSenhaCreateMutationResponse,
   V1ConfiguracoesUsuariosResetarSenhaCreatePathParams,
 } from "../models/V1ConfiguracoesUsuariosResetarSenhaCreate.ts";
@@ -29,17 +30,23 @@ function getV1ConfiguracoesUsuariosResetarSenhaCreateUrl(
  */
 export async function v1ConfiguracoesUsuariosResetarSenhaCreate(
   id: V1ConfiguracoesUsuariosResetarSenhaCreatePathParams["id"],
-  config: Partial<RequestConfig> & { client?: Client } = {},
+  data: V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequest,
+  config: Partial<
+    RequestConfig<V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequest>
+  > & { client?: Client } = {},
 ) {
   const { client: request = fetch, ...requestConfig } = config;
+
+  const requestData = data;
 
   const res = await request<
     V1ConfiguracoesUsuariosResetarSenhaCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    unknown
+    V1ConfiguracoesUsuariosResetarSenhaCreateMutationRequest
   >({
     method: "POST",
     url: getV1ConfiguracoesUsuariosResetarSenhaCreateUrl(id).url.toString(),
+    data: requestData,
     ...requestConfig,
   });
   return res.data;

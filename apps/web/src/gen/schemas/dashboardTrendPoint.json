@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "bucket": { "type": "string" },
+    "label": { "type": "string" },
+    "cadastros": { "type": "integer" },
+    "efetivados": { "type": "integer" },
+    "renovacoes": { "type": "integer" },
+    "cadastros_metric": { "type": "string" },
+    "efetivados_metric": { "type": "string" },
+    "renovacoes_metric": { "type": "string" }
+  },
+  "required": [
+    "bucket",
+    "cadastros",
+    "cadastros_metric",
+    "efetivados",
+    "efetivados_metric",
+    "label"
+  ],
+  "x-readme-ref-name": "DashboardTrendPoint"
+}

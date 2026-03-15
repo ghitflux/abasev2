@@ -39,6 +39,9 @@ export const arquivoRetornoItemSchema = z.object({
   observacao: z.optional(z.string()),
   gerou_encerramento: z.optional(z.boolean()),
   gerou_novo_ciclo: z.optional(z.boolean()),
+  associado_id: z.int(),
   associado_nome: z.string(),
+  associado_matricula: z.string(),
+  agente_responsavel: z.string(),
   contrato_codigo: z.string(),
 });

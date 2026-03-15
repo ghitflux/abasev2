@@ -8,10 +8,17 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from apps.contratos.competencia import create_cycle_with_parcelas
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.models import Transicao
+from apps.importacao.models import PagamentoMensalidade
 
-from .models import Comprovante, Refinanciamento
+from .models import Comprovante, Item, Refinanciamento
+from .payment_rules import (
+    REFINANCIAMENTO_MENSALIDADES_NECESSARIAS,
+    get_free_paid_pagamentos,
+    has_active_refinanciamento,
+)
 from .strategies import StandardEligibilityStrategy
 
 
@@ -52,11 +59,28 @@ class RefinanciamentoService:
                     "bloqueado_por",
                     "efetivado_por",
                 )
-                .prefetch_related("ciclo_destino__parcelas", "comprovantes")
+                .prefetch_related(
+                    "ciclo_destino__parcelas",
+                    "comprovantes",
+                    "itens__pagamento_mensalidade",
+                )
                 .get(pk=refinanciamento_id)
             )
         except Refinanciamento.DoesNotExist as exc:
             raise ValidationError("Refinanciamento não encontrado.") from exc
+
+    @staticmethod
+    def _serialize_pagamento_seed(
+        pagamento: PagamentoMensalidade,
+    ) -> dict[str, object]:
+        return {
+            "pagamento_mensalidade_id": pagamento.id,
+            "referencia_month": pagamento.referencia_month.isoformat(),
+            "status_code": pagamento.status_code,
+            "valor": str(pagamento.valor or Decimal("0.00")),
+            "import_uuid": pagamento.import_uuid,
+            "source_file_path": pagamento.source_file_path,
+        }
 
     @staticmethod
     def _registrar_auditoria(contrato: Contrato, user, acao: str, observacao: str):
@@ -84,40 +108,43 @@ class RefinanciamentoService:
     @transaction.atomic
     def solicitar(contrato_id: int, user) -> Refinanciamento:
         contrato = RefinanciamentoService._get_contrato(contrato_id)
-        elegibilidade = RefinanciamentoService.strategy.evaluate(contrato)
-        if not elegibilidade["elegivel"]:
-            raise ValidationError(elegibilidade["motivo"])
+        if has_active_refinanciamento(contrato):
+            raise ValidationError("CPF já possui refinanciamento ativo ou pendente.")
 
         ultimo_ciclo = contrato.ciclos.order_by("-numero").first()
         if not ultimo_ciclo:
             raise ValidationError("Contrato sem ciclo base para refinanciamento.")
 
-        proxima_competencia = add_months(ultimo_ciclo.data_fim.replace(day=1), 1)
-        ciclo_destino = Ciclo.objects.create(
+        pagamentos_base = get_free_paid_pagamentos(
+            contrato,
+            limit=REFINANCIAMENTO_MENSALIDADES_NECESSARIAS,
+            for_update=True,
+        )
+        if len(pagamentos_base) < REFINANCIAMENTO_MENSALIDADES_NECESSARIAS:
+            raise ValidationError(
+                f"Apenas {len(pagamentos_base)}/3 pagamentos elegíveis foram identificados."
+            )
+
+        referencias_base = [
+            pagamento.referencia_month.replace(day=1) for pagamento in pagamentos_base
+        ]
+        referencias_base.sort()
+        cycle_key = "|".join(
+            referencia.strftime("%Y-%m") for referencia in referencias_base
+        )
+        proxima_competencia = add_months(referencias_base[-1], 1)
+        ciclo_destino, _parcelas = create_cycle_with_parcelas(
             contrato=contrato,
             numero=ultimo_ciclo.numero + 1,
-            data_inicio=proxima_competencia,
-            data_fim=add_months(proxima_competencia, 2),
-            status=Ciclo.Status.FUTURO,
+            competencia_inicial=proxima_competencia,
+            parcelas_total=3,
+            ciclo_status=Ciclo.Status.FUTURO,
+            parcela_status=Parcela.Status.FUTURO,
+            valor_mensalidade=contrato.valor_mensalidade,
             valor_total=(contrato.valor_mensalidade * Decimal("3")).quantize(
                 Decimal("0.01")
             ),
         )
-
-        parcelas = []
-        for indice in range(3):
-            referencia = add_months(proxima_competencia, indice)
-            parcelas.append(
-                Parcela(
-                    ciclo=ciclo_destino,
-                    numero=indice + 1,
-                    referencia_mes=referencia,
-                    valor=contrato.valor_mensalidade,
-                    data_vencimento=referencia,
-                    status=Parcela.Status.FUTURO,
-                )
-            )
-        Parcela.objects.bulk_create(parcelas)
 
         valor_refinanciamento = (
             contrato.valor_liquido
@@ -126,6 +153,12 @@ class RefinanciamentoService:
         )
         repasse_agente = (valor_refinanciamento * Decimal("0.10")).quantize(
             Decimal("0.01")
+        )
+        agente = contrato.agente or contrato.associado.agente_responsavel
+        solicitacao_origem = (
+            "Solicitação criada pelo admin."
+            if user.has_role("ADMIN")
+            else "Solicitação criada pelo agente."
         )
 
         refinanciamento = Refinanciamento.objects.create(
@@ -138,8 +171,40 @@ class RefinanciamentoService:
             ciclo_destino=ciclo_destino,
             valor_refinanciamento=valor_refinanciamento,
             repasse_agente=repasse_agente,
-            observacao="Solicitação criada pelo agente.",
+            observacao=solicitacao_origem,
+            mode="admin_auto" if user.has_role("ADMIN") else "auto",
+            cycle_key=cycle_key,
+            ref1=referencias_base[0],
+            ref2=referencias_base[1],
+            ref3=referencias_base[2],
+            cpf_cnpj_snapshot=contrato.associado.cpf_cnpj,
+            nome_snapshot=contrato.associado.nome_completo,
+            agente_snapshot=agente.full_name if agente else "",
+            contrato_codigo_origem=contrato.codigo,
+            contrato_codigo_novo=contrato.codigo,
+            parcelas_ok=REFINANCIAMENTO_MENSALIDADES_NECESSARIAS,
+            parcelas_json=[
+                RefinanciamentoService._serialize_pagamento_seed(pagamento)
+                for pagamento in pagamentos_base
+            ],
         )
+        Item.objects.bulk_create(
+            [
+                Item(
+                    refinanciamento=refinanciamento,
+                    pagamento_mensalidade=pagamento,
+                    referencia_month=pagamento.referencia_month,
+                    status_code=pagamento.status_code,
+                    valor=pagamento.valor,
+                    import_uuid=pagamento.import_uuid,
+                    source_file_path=pagamento.source_file_path,
+                )
+                for pagamento in pagamentos_base
+            ]
+        )
+        PagamentoMensalidade.objects.filter(
+            id__in=[pagamento.id for pagamento in pagamentos_base]
+        ).update(agente_refi_solicitado=True)
 
         ultimo_ciclo.status = Ciclo.Status.APTO_A_RENOVAR
         ultimo_ciclo.save(update_fields=["status", "updated_at"])
@@ -148,7 +213,7 @@ class RefinanciamentoService:
             contrato,
             user,
             "solicitar_refinanciamento",
-            "Solicitação de refinanciamento enviada para coordenação.",
+            f"Solicitação de refinanciamento enviada para coordenação com base em {cycle_key}.",
         )
         return refinanciamento
 
@@ -213,6 +278,7 @@ class RefinanciamentoService:
             refinanciamento.ciclo_destino.save(update_fields=["status", "updated_at"])
             refinanciamento.ciclo_destino.parcelas.update(
                 status=Parcela.Status.CANCELADO,
+                competencia_lock=None,
                 observacao=f"Refinanciamento bloqueado: {motivo}",
             )
 
@@ -245,6 +311,7 @@ class RefinanciamentoService:
                 status=Parcela.Status.DESCONTADO
             ).update(
                 status=Parcela.Status.CANCELADO,
+                competencia_lock=None,
                 observacao="Refinanciamento revertido.",
             )
 

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { refreshWithBackend } from "@/lib/auth/backend";
 import { AUTH_COOKIES } from "@/lib/auth/constants";
-import { accessCookieOptions, refreshCookieOptions } from "@/lib/auth/session";
+import { getAccessCookieOptions, getRefreshCookieOptions } from "@/lib/auth/session";
 import { API_BASE_URL } from "@/lib/env";
 
 type ProxyBody = FormData | string | ArrayBuffer | undefined;
@@ -122,13 +122,13 @@ export async function proxyRequestForPath(request: Request, path: string[]) {
     nextResponse.cookies.set(
       AUTH_COOKIES.accessToken,
       authState.accessToken,
-      accessCookieOptions,
+      getAccessCookieOptions(request),
     );
     if (authState.refreshToken) {
       nextResponse.cookies.set(
         AUTH_COOKIES.refreshToken,
         authState.refreshToken,
-        refreshCookieOptions,
+        getRefreshCookieOptions(request),
       );
     }
   }

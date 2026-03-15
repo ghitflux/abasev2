@@ -1,11 +1,11 @@
 {
   "type": "object",
   "properties": {
-    "celular": { "type": "string", "maxLength": 20 },
-    "email": { "type": "string", "format": "email", "maxLength": 254 },
-    "orgao_publico": { "type": "string", "maxLength": 150 },
-    "situacao_servidor": { "type": "string", "maxLength": 80 },
-    "matricula_servidor": { "type": "string", "maxLength": 50 }
+    "celular": { "type": "string" },
+    "email": { "type": "string" },
+    "orgao_publico": { "type": "string" },
+    "situacao_servidor": { "type": "string" },
+    "matricula_servidor": { "type": "string" }
   },
   "x-readme-ref-name": "ContatoHistoricoWrite"
 }

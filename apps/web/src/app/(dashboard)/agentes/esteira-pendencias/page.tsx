@@ -21,6 +21,7 @@ import DataTable, {
   type DataTableColumn,
 } from "@/components/shared/data-table";
 import EmptyState from "@/components/shared/empty-state";
+import { DialogFormSkeleton } from "@/components/shared/page-skeletons";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -30,7 +31,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
 
 export default function EsteiraPendenciasPage() {
   const queryClient = useQueryClient();
@@ -191,18 +191,15 @@ export default function EsteiraPendenciasPage() {
         </Button>
       </section>
 
-      {pendenciasQuery.isLoading ? (
-        <div className="flex items-center gap-3 rounded-3xl border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-          <Spinner />
-          Carregando pendências...
-        </div>
-      ) : rows.length ? (
+      {rows.length || pendenciasQuery.isLoading ? (
         <DataTable
           data={rows}
           columns={columns}
           currentPage={page}
           totalPages={totalPages}
           onPageChange={setPage}
+          loading={pendenciasQuery.isLoading}
+          skeletonRows={5}
         />
       ) : (
         <EmptyState
@@ -252,10 +249,7 @@ export default function EsteiraPendenciasPage() {
               ) : null}
 
               {associadoQuery.isLoading ? (
-                <div className="flex items-center gap-3 rounded-3xl border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-                  <Spinner />
-                  Carregando cadastro para correção...
-                </div>
+                <DialogFormSkeleton />
               ) : associadoQuery.isError ? (
                 <div className="rounded-3xl border border-destructive/30 bg-destructive/5 px-6 py-5 text-sm text-destructive">
                   Não foi possível carregar o cadastro do associado para

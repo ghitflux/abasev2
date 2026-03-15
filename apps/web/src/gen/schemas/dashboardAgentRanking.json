@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "properties": {
+    "agent_id": { "type": "integer" },
+    "agent_name": { "type": "string" },
+    "efetivados": { "type": "integer" },
+    "cadastros": { "type": "integer" },
+    "em_processo": { "type": "integer" },
+    "renovados": { "type": "integer" },
+    "inadimplentes": { "type": "integer" },
+    "participacao": { "type": "number", "format": "double" },
+    "detail_metric": { "type": "string" }
+  },
+  "required": [
+    "agent_id",
+    "agent_name",
+    "cadastros",
+    "detail_metric",
+    "efetivados",
+    "em_processo",
+    "inadimplentes",
+    "participacao",
+    "renovados"
+  ],
+  "x-readme-ref-name": "DashboardAgentRanking"
+}

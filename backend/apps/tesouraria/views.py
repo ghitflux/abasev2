@@ -11,6 +11,7 @@ from rest_framework.viewsets import GenericViewSet
 
 from apps.accounts.permissions import (
     IsAgenteOrTesoureiroOrAdmin,
+    IsCoordenadorOrTesoureiroOrAdmin,
     IsTesoureiroOrAdmin,
 )
 from apps.associados.serializers import DadosBancariosSerializer
@@ -22,13 +23,15 @@ from core.pagination import StandardResultsSetPagination
 
 from .serializers import (
     AgentePagamentoContratoSerializer,
+    BaixaManualItemSerializer,
     ConfirmacaoLinkSerializer,
     ConfirmacaoListSerializer,
     CongelarContratoSerializer,
+    DarBaixaManualSerializer,
     EfetivarContratoSerializer,
     TesourariaContratoListSerializer,
 )
-from .services import ConfirmacaoService, TesourariaService, parse_competencia
+from .services import BaixaManualService, ConfirmacaoService, TesourariaService, parse_competencia
 
 
 def parse_month_filter(value: str | None):
@@ -207,7 +210,7 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
         )
         return context
 
-    def list(self, request, *args, **kwargs):
+    def list(self, request, *args, **kwargs):  # noqa: A003
         queryset = self.filter_queryset(self.get_queryset())
         competencia = parse_month_filter(request.query_params.get("mes"))
 
@@ -247,3 +250,44 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
             response.data["resumo"] = resumo
             return response
         return Response({"results": serializer.data, "resumo": resumo})
+
+
+class BaixaManualViewSet(mixins.ListModelMixin, GenericViewSet):
+    serializer_class = BaixaManualItemSerializer
+    permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrTesoureiroOrAdmin]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        competencia = parse_month_filter(self.request.query_params.get("competencia"))
+        return BaixaManualService.listar_parcelas_pendentes(
+            search=self.request.query_params.get("search"),
+            status_filter=self.request.query_params.get("status"),
+            competencia=competencia,
+        )
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        kpis = BaixaManualService.kpis()
+        page = self.paginate_queryset(queryset)
+        serializer = self.get_serializer(page if page is not None else queryset, many=True)
+        if page is not None:
+            response = self.get_paginated_response(serializer.data)
+            response.data["kpis"] = kpis
+            return response
+        return Response({"results": serializer.data, "kpis": kpis})
+
+    @action(detail=True, methods=["post"], url_path="dar-baixa", parser_classes=[MultiPartParser])
+    def dar_baixa(self, request, pk=None):
+        payload = DarBaixaManualSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        baixa = BaixaManualService.dar_baixa(
+            int(pk),
+            payload.validated_data["comprovante"],
+            payload.validated_data["valor_pago"],
+            payload.validated_data.get("observacao", ""),
+            request.user,
+        )
+        return Response(
+            {"id": baixa.id, "message": "Baixa manual registrada com sucesso."},
+            status=201,
+        )

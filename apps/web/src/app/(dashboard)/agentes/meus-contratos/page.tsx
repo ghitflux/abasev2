@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BellRingIcon,
   BriefcaseBusiness,
@@ -12,6 +12,7 @@ import {
   TriangleAlertIcon,
   WalletIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import type {
   Ciclo,
@@ -37,6 +38,7 @@ import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, {
   type DataTableColumn,
 } from "@/components/shared/data-table";
+import { InlinePanelSkeleton, MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,7 +60,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const CONTRATO_STATUS_LABELS: Record<string, string> = {
@@ -110,12 +111,7 @@ function ContratoCiclosPanel({ associadoId }: { associadoId: number }) {
   });
 
   if (ciclosQuery.isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Spinner />
-        Carregando ciclos...
-      </div>
-    );
+    return <InlinePanelSkeleton rows={2} className="pt-2" />;
   }
 
   const ciclos = ciclosQuery.data ?? [];
@@ -130,18 +126,29 @@ function ContratoCiclosPanel({ associadoId }: { associadoId: number }) {
       <TabsList variant="line">
         {ciclos.map((ciclo) => (
           <TabsTrigger key={ciclo.id} value={String(ciclo.id)}>
-            Ciclo {ciclo.numero}
+            <div className="flex flex-col items-start">
+              <span>Ciclo {ciclo.numero}</span>
+              <span className="text-[10px] font-mono text-muted-foreground">
+                {ciclo.contrato_codigo}
+              </span>
+            </div>
           </TabsTrigger>
         ))}
       </TabsList>
       {ciclos.map((ciclo) => (
         <TabsContent key={ciclo.id} value={String(ciclo.id)} className="pt-4">
           <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Referências de {formatMonthYear(ciclo.data_inicio)} até{" "}
-              {formatMonthYear(ciclo.data_fim)}
-            </p>
-            <StatusBadge status={ciclo.status} />
+            <div>
+              <p className="text-sm font-medium text-foreground">{ciclo.contrato_codigo}</p>
+              <p className="text-sm text-muted-foreground">
+                Referências de {formatMonthYear(ciclo.data_inicio)} até{" "}
+                {formatMonthYear(ciclo.data_fim)}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <StatusBadge status={ciclo.contrato_status} label={ciclo.contrato_status} />
+              <StatusBadge status={ciclo.status} />
+            </div>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             {ciclo.parcelas.map((parcela) => (
@@ -166,6 +173,7 @@ function ContratoCiclosPanel({ associadoId }: { associadoId: number }) {
 }
 
 export default function MeusContratosPage() {
+  const queryClient = useQueryClient();
   const { hasRole } = usePermissions();
   const isAdmin = hasRole("ADMIN");
   const [associadoFilter, setAssociadoFilter] = React.useState("");
@@ -296,6 +304,29 @@ export default function MeusContratosPage() {
     }
   }, [page, totalPages]);
 
+  const solicitarRefinanciamentoMutation = useMutation({
+    mutationFn: async ({ contratoId }: { contratoId: number }) =>
+      apiFetch(`refinanciamentos/${contratoId}/solicitar`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      toast.success("Refinanciamento solicitado com sucesso.");
+      void queryClient.invalidateQueries({ queryKey: ["contratos-lista"] });
+      void queryClient.invalidateQueries({ queryKey: ["contratos-resumo"] });
+      void queryClient.invalidateQueries({ queryKey: ["coordenacao-refinanciamento"] });
+      void queryClient.invalidateQueries({ queryKey: ["agente-refinanciados"] });
+      void queryClient.invalidateQueries({ queryKey: ["coordenacao-refinanciados"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao solicitar refinanciamento.",
+      );
+    },
+  });
+
   const columns = React.useMemo<DataTableColumn<ContratoListItem>[]>(
     () => [
       {
@@ -320,11 +351,12 @@ export default function MeusContratosPage() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2 pl-7">
-              <CopySnippet label="CPF" value={row.associado.cpf_cnpj} mono />
+              <CopySnippet label="CPF" value={row.associado.cpf_cnpj} mono inline />
               <CopySnippet
-                label="Matrícula"
+                label="Matrícula do Servidor"
                 value={row.associado.matricula_orgao || row.associado.matricula}
                 mono
+                inline
               />
             </div>
           </div>
@@ -396,7 +428,7 @@ export default function MeusContratosPage() {
       },
       {
         id: "mensalidades",
-        header: "Mensalidades do ciclo atual",
+        header: "Pagamentos livres para refinanciamento",
         headerClassName: "w-[16%] whitespace-normal leading-5",
         cellClassName: "whitespace-normal",
         cell: (row) => (
@@ -446,9 +478,26 @@ export default function MeusContratosPage() {
         cellClassName: "whitespace-normal",
         cell: (row) => (
           <div
-            className="flex items-center gap-2"
+            className="flex flex-wrap items-center gap-2"
             onClick={(event) => event.stopPropagation()}
           >
+            {row.pode_solicitar_refinanciamento ? (
+              <Button
+                size="sm"
+                onClick={() =>
+                  solicitarRefinanciamentoMutation.mutate({ contratoId: row.id })
+                }
+                disabled={
+                  solicitarRefinanciamentoMutation.isPending &&
+                  solicitarRefinanciamentoMutation.variables?.contratoId === row.id
+                }
+              >
+                {solicitarRefinanciamentoMutation.isPending &&
+                solicitarRefinanciamentoMutation.variables?.contratoId === row.id
+                  ? "Solicitando..."
+                  : "Solicitar refinanciamento"}
+              </Button>
+            ) : null}
             <Button variant="outline" size="icon-sm" asChild>
               <Link href={`/associados/${row.associado.id}`}>
                 <EyeIcon className="size-4" />
@@ -458,40 +507,46 @@ export default function MeusContratosPage() {
         ),
       },
     ],
-    [isAdmin],
+    [isAdmin, solicitarRefinanciamentoMutation],
   );
 
   return (
     <div className="min-w-0 space-y-6">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatsCard
-          title="Contratos cadastrados"
-          value={String(resumoQuery.data?.total ?? 0)}
-          delta={`${resumoQuery.data?.pendentes ?? 0} pendentes no recorte atual`}
-          tone="neutral"
-          icon={BriefcaseBusiness}
-        />
-        <StatsCard
-          title="Contratos ativos"
-          value={String(resumoQuery.data?.ativos ?? 0)}
-          delta="Liberados para acompanhamento mensal"
-          tone="positive"
-          icon={WalletIcon}
-        />
-        <StatsCard
-          title="Contratos pendentes"
-          value={String(resumoQuery.data?.pendentes ?? 0)}
-          delta="Aguardando análise ou tesouraria"
-          tone="warning"
-          icon={BellRingIcon}
-        />
-        <StatsCard
-          title="Contratos inadimplentes"
-          value={String(resumoQuery.data?.inadimplentes ?? 0)}
-          delta="Associados com pendência de desconto"
-          tone="warning"
-          icon={TriangleAlertIcon}
-        />
+        {resumoQuery.isLoading && !resumoQuery.data ? (
+          Array.from({ length: 4 }).map((_, index) => <MetricCardSkeleton key={index} />)
+        ) : (
+          <>
+            <StatsCard
+              title="Contratos cadastrados"
+              value={String(resumoQuery.data?.total ?? 0)}
+              delta={`${resumoQuery.data?.pendentes ?? 0} pendentes no recorte atual`}
+              tone="neutral"
+              icon={BriefcaseBusiness}
+            />
+            <StatsCard
+              title="Contratos ativos"
+              value={String(resumoQuery.data?.ativos ?? 0)}
+              delta="Liberados para acompanhamento mensal"
+              tone="positive"
+              icon={WalletIcon}
+            />
+            <StatsCard
+              title="Contratos pendentes"
+              value={String(resumoQuery.data?.pendentes ?? 0)}
+              delta="Aguardando análise ou tesouraria"
+              tone="warning"
+              icon={BellRingIcon}
+            />
+            <StatsCard
+              title="Contratos inadimplentes"
+              value={String(resumoQuery.data?.inadimplentes ?? 0)}
+              delta="Associados com pendência de desconto"
+              tone="warning"
+              icon={TriangleAlertIcon}
+            />
+          </>
+        )}
       </section>
 
       <section className="min-w-0 space-y-4">
@@ -663,7 +718,7 @@ export default function MeusContratosPage() {
                     </FilterField>
                   </div>
 
-                  <FilterField label="Mensalidades do ciclo atual">
+                  <FilterField label="Pagamentos livres para refinanciamento">
                     <Select
                       value={mensalidadesFilter}
                       onValueChange={(value) => {
@@ -710,24 +765,19 @@ export default function MeusContratosPage() {
         </p>
       </section>
 
-      {contratosQuery.isLoading ? (
-        <div className="flex items-center gap-3 rounded-3xl border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-          <Spinner />
-          Carregando contratos...
-        </div>
-      ) : (
-        <DataTable
-          data={rows}
-          columns={columns}
-          renderExpanded={(row) => (
-            <ContratoCiclosPanel associadoId={row.associado.id} />
-          )}
-          currentPage={page}
-          totalPages={totalPages}
-          onPageChange={setPage}
-          emptyMessage="Nenhum contrato encontrado para os filtros informados."
-        />
-      )}
+      <DataTable
+        data={rows}
+        columns={columns}
+        renderExpanded={(row) => (
+          <ContratoCiclosPanel associadoId={row.associado.id} />
+        )}
+        currentPage={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        emptyMessage="Nenhum contrato encontrado para os filtros informados."
+        loading={contratosQuery.isLoading}
+        skeletonRows={6}
+      />
     </div>
   );
 }

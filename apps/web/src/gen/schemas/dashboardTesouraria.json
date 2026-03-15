@@ -1,0 +1,102 @@
+{
+  "type": "object",
+  "properties": {
+    "competencia": { "type": "string" },
+    "cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "value": { "type": "string" },
+          "numeric_value": { "type": "number", "format": "double" },
+          "format": {
+            "enum": ["integer", "currency"],
+            "type": "string",
+            "description": "* `integer` - integer\n* `currency` - currency",
+            "x-readme-ref-name": "FormatEnum"
+          },
+          "tone": {
+            "enum": ["neutral", "positive", "warning", "danger"],
+            "type": "string",
+            "description": "* `neutral` - neutral\n* `positive` - positive\n* `warning` - warning\n* `danger` - danger",
+            "x-readme-ref-name": "ToneEnum"
+          },
+          "description": { "type": "string" },
+          "detail_metric": { "type": "string" }
+        },
+        "required": [
+          "description",
+          "detail_metric",
+          "format",
+          "key",
+          "label",
+          "numeric_value",
+          "tone",
+          "value"
+        ],
+        "x-readme-ref-name": "DashboardMetricCard"
+      }
+    },
+    "projection_area": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "bucket": { "type": "string" },
+          "label": { "type": "string" },
+          "recebido": { "type": "number", "format": "double" },
+          "projetado": { "type": "number", "format": "double" },
+          "recebido_metric": { "type": "string" },
+          "projetado_metric": { "type": "string" }
+        },
+        "required": [
+          "bucket",
+          "label",
+          "projetado",
+          "projetado_metric",
+          "recebido",
+          "recebido_metric"
+        ],
+        "x-readme-ref-name": "DashboardProjectionPoint"
+      }
+    },
+    "movement_bars": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "value": { "type": "integer" },
+          "detail_metric": { "type": "string" }
+        },
+        "required": ["detail_metric", "key", "label", "value"],
+        "x-readme-ref-name": "DashboardValuePoint"
+      }
+    },
+    "composition_radial": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "value": { "type": "number", "format": "double" },
+          "detail_metric": { "type": "string" }
+        },
+        "required": ["detail_metric", "key", "label", "value"],
+        "x-readme-ref-name": "DashboardRadialPoint"
+      }
+    }
+  },
+  "required": [
+    "cards",
+    "competencia",
+    "composition_radial",
+    "movement_bars",
+    "projection_area"
+  ],
+  "x-readme-ref-name": "DashboardTesouraria"
+}

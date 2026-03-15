@@ -7,8 +7,22 @@ from config.runtime import enforce_mysql_only
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
+
+def config_bool(name: str, default: bool = False) -> bool:
+    value = config(name, default=None)
+    if value is None:
+        return default
+
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "t", "yes", "y", "on", "debug", "development"}:
+        return True
+    if normalized in {"0", "false", "f", "no", "n", "off", "release", "prod", "production"}:
+        return False
+
+    raise ValueError(f"Invalid truth value for {name}: {value}")
+
 SECRET_KEY = config("SECRET_KEY", default="change-me")
-DEBUG = config("DEBUG", default=False, cast=bool)
+DEBUG = config_bool("DEBUG", default=False)
 ALLOWED_HOSTS = config(
     "ALLOWED_HOSTS",
     default="localhost,127.0.0.1,backend",

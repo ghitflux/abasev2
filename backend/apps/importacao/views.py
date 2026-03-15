@@ -15,8 +15,10 @@ from apps.accounts.permissions import IsTesoureiroOrAdmin
 from core.pagination import StandardResultsSetPagination
 
 from .models import ArquivoRetorno, ArquivoRetornoItem
+from .financeiro import build_financeiro_payload
 from .serializers import (
     ArquivoRetornoDetailSerializer,
+    ArquivoRetornoFinanceiroPayloadSerializer,
     ArquivoRetornoItemSerializer,
     ArquivoRetornoListSerializer,
     ArquivoRetornoUploadSerializer,
@@ -182,12 +184,21 @@ class ArquivoRetornoViewSet(
         queryset = self._filtrar_itens(pk, gerou_novo_ciclo=True)
         return self._paginate_items(queryset)
 
+    @extend_schema(responses=ArquivoRetornoFinanceiroPayloadSerializer)
+    @action(detail=True, methods=["get"])
+    def financeiro(self, request, pk=None):
+        arquivo = self.get_object()
+        payload = build_financeiro_payload(competencia=arquivo.competencia)
+        return Response(ArquivoRetornoFinanceiroPayloadSerializer(payload).data)
+
     def _filtrar_itens(self, pk: str, *, resultado: str | None = None, gerou_encerramento: bool | None = None, gerou_novo_ciclo: bool | None = None):
         queryset = ArquivoRetornoItem.objects.filter(arquivo_retorno_id=pk).select_related(
             "associado",
+            "associado__agente_responsavel",
             "parcela",
             "parcela__ciclo",
             "parcela__ciclo__contrato",
+            "parcela__ciclo__contrato__agente",
         )
         if resultado:
             queryset = queryset.filter(resultado_processamento=resultado)

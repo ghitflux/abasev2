@@ -7,7 +7,7 @@ export type PasswordResetResult = {
   /**
    * @type string
    */
-  temporary_password: string;
+  detail: string;
   /**
    * @type boolean
    */

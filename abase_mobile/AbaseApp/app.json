@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "Abase",
+    "slug": "abase-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1B4F9C"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.abase.app"
+    },
+    "android": {
+      "package": "com.abase.app",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#1B4F9C",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-image-picker",
+      "expo-document-picker"
+    ],
+    "extra": {
+      "apiUrl": "https://www.abasepiaui.com/api/v1",
+      "eas": {
+        "projectId": "YOUR_EAS_PROJECT_ID"
+      }
+    }
+  }
+}

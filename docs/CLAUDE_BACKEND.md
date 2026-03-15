@@ -31,10 +31,26 @@ backend/
 │   ├── refinanciamento/  # Refinanciamento, Comprovante
 │   ├── tesouraria/    # Confirmacao, Averbacao
 │   ├── importacao/    # ← CRUCIAL: ArquivoRetorno, ArquivoRetornoItem, ImportacaoLog
-│   └── relatorios/    # PDF/Excel exports
+│   └── relatorios/    # PDF/Excel exports + analytics/admin dashboard
 ├── core/              # BaseModel, Singleton, pagination, exceptions
 └── manage.py
 ```
+
+## Dashboard Admin Analytics
+
+O dashboard executivo admin-only vive em `apps/relatorios/` e expõe agregações sob `/api/v1/dashboard/admin/`:
+
+- `resumo-geral/`
+- `tesouraria/`
+- `novos-associados/`
+- `agentes/`
+- `detalhes/`
+
+Padrão esperado:
+- permissão explícita admin-only
+- agregação em `dashboard_service.py`
+- serializers dedicados em `dashboard_serializers.py`
+- schema explícito com `@extend_schema` para manter o OpenAPI estável para o Kubb no frontend
 
 ## Design Patterns Obrigatórios
 
@@ -155,6 +171,7 @@ class MotorReconciliacao:
 - Filtros via django-filter
 - Paginação via core.pagination.StandardResultsSetPagination
 - URLs com prefixo /api/v1/ e DefaultRouter
+- Endpoints novos consumidos pelo frontend gerado devem ter serializer/schema explícitos para o `spectacular` não degradar o contrato
 
 ## Regras de Negócio Críticas
 

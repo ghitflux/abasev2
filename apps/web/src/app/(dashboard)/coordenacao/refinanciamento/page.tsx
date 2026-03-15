@@ -9,8 +9,8 @@ import { toast } from "sonner";
 import type { PaginatedResponse, RefinanciamentoItem } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { formatMonthYear } from "@/lib/formatters";
-import { maskCPFCNPJ } from "@/lib/masks";
 import StatusBadge from "@/components/custom/status-badge";
+import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 
 type DialogState =
@@ -99,11 +98,11 @@ export default function CoordenacaoRefinanciamentoPage() {
       {
         id: "cpf",
         header: "CPF/CNPJ",
-        cell: (row) => maskCPFCNPJ(row.cpf_cnpj),
+        cell: (row) => <CopySnippet label="CPF" value={row.cpf_cnpj} mono inline />,
       },
       {
-        id: "jan",
-        header: "JAN/FEV/MAR",
+        id: "referencias",
+        header: "Referências",
         cell: (row) => (
           <div className="space-y-1">
             {row.referencias.map((referencia) => (
@@ -203,21 +202,16 @@ export default function CoordenacaoRefinanciamentoPage() {
         <Button onClick={() => setPage(1)}>Aplicar</Button>
       </section>
 
-      {refinanciamentoQuery.isLoading ? (
-        <div className="flex items-center gap-3 rounded-[1.75rem] border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-          <Spinner />
-          Carregando refinanciamentos pendentes...
-        </div>
-      ) : (
-        <DataTable
-          data={rows}
-          columns={columns}
-          currentPage={page}
-          totalPages={Math.max(1, Math.ceil(totalCount / 20))}
-          onPageChange={setPage}
-          emptyMessage="Nenhuma solicitação pendente para coordenação."
-        />
-      )}
+      <DataTable
+        data={rows}
+        columns={columns}
+        currentPage={page}
+        totalPages={Math.max(1, Math.ceil(totalCount / 20))}
+        onPageChange={setPage}
+        emptyMessage="Nenhuma solicitação pendente para coordenação."
+        loading={refinanciamentoQuery.isLoading}
+        skeletonRows={6}
+      />
 
       <Dialog open={!!dialogState} onOpenChange={(open) => !open && setDialogState(null)}>
         <DialogContent>

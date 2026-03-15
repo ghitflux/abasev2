@@ -1,5 +1,7 @@
 "use client";
 
+import axios from "axios";
+
 type QueryValue =
   | string
   | number
@@ -13,6 +15,11 @@ type ApiFetchOptions = {
   query?: Record<string, QueryValue>;
   body?: unknown;
   formData?: FormData;
+  onUploadProgress?: (progress: {
+    loaded: number;
+    total: number | null;
+    percent: number;
+  }) => void;
 };
 
 function buildQuery(query?: Record<string, QueryValue>) {
@@ -69,14 +76,42 @@ function extractApiErrorMessage(payload: unknown) {
 }
 
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}) {
-  const { method = "GET", query, body, formData } = options;
+  const { method = "GET", query, body, formData, onUploadProgress } = options;
+  const url = `/api/backend/${path.replace(/^\/+/, "")}${buildQuery(query)}`;
   const headers = new Headers();
 
   if (!formData) {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`/api/backend/${path.replace(/^\/+/, "")}${buildQuery(query)}`, {
+  if (onUploadProgress) {
+    const response = await axios.request<T>({
+      url,
+      method,
+      data: formData ?? body,
+      withCredentials: true,
+      headers: Object.fromEntries(headers.entries()),
+      onUploadProgress: (event) => {
+        const total = typeof event.total === "number" ? event.total : null;
+        const percent = total ? Math.min(100, Math.round((event.loaded / total) * 100)) : 0;
+        onUploadProgress({
+          loaded: event.loaded,
+          total,
+          percent,
+        });
+      },
+      validateStatus: () => true,
+    });
+
+    if (response.status < 200 || response.status >= 300) {
+      const detail = extractApiErrorMessage(response.data) ?? "Falha ao processar a requisição.";
+      throw new Error(detail);
+    }
+
+    return response.data;
+  }
+
+  const response = await fetch(url, {
     method,
     headers,
     body: formData ?? (body === undefined ? undefined : JSON.stringify(body)),

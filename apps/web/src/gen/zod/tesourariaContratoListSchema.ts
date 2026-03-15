@@ -4,7 +4,6 @@
  */
 
 import * as z from "zod";
-import { dadosBancariosSchema } from "./dadosBancariosSchema.ts";
 import { simpleUserSchema } from "./simpleUserSchema.ts";
 
 export const tesourariaContratoListSchema = z.object({
@@ -22,9 +21,7 @@ export const tesourariaContratoListSchema = z.object({
   agente_nome: z.string(),
   margem_disponivel: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
   comprovantes: z.string(),
-  get dados_bancarios() {
-    return dadosBancariosSchema;
-  },
+  dados_bancarios: z.string(),
   observacao_tesouraria: z.string(),
   etapa_atual: z.string(),
   situacao_esteira: z.string(),

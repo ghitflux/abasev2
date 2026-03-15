@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import re
-from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -15,6 +14,7 @@ from django.utils import timezone
 from django.utils.text import get_valid_filename
 from rest_framework.exceptions import ValidationError
 
+from .legacy import LegacyPagamentoSnapshot, list_legacy_pagamento_snapshots
 from .matching import find_associado
 from .models import ArquivoRetorno, ArquivoRetornoItem, ImportacaoLog, PagamentoMensalidade
 from .parsers import ETIPITxtRetornoParser, normalize_lines
@@ -26,6 +26,40 @@ logger = logging.getLogger(__name__)
 
 def competencia_to_date(value: str):
     return datetime.strptime(value, "%m/%Y").date().replace(day=1)
+
+
+def _apply_legacy_snapshot_to_pagamento(
+    pagamento: PagamentoMensalidade,
+    snapshot: LegacyPagamentoSnapshot | None,
+) -> list[str]:
+    if not snapshot:
+        return []
+
+    updated_fields: list[str] = []
+
+    if not pagamento.manual_status and snapshot.manual_status:
+        pagamento.manual_status = snapshot.manual_status
+        updated_fields.append("manual_status")
+    if pagamento.esperado_manual is None and snapshot.esperado_manual is not None:
+        pagamento.esperado_manual = snapshot.esperado_manual
+        updated_fields.append("esperado_manual")
+    if pagamento.recebido_manual is None and snapshot.recebido_manual is not None:
+        pagamento.recebido_manual = snapshot.recebido_manual
+        updated_fields.append("recebido_manual")
+    if pagamento.manual_paid_at is None and snapshot.manual_paid_at is not None:
+        pagamento.manual_paid_at = snapshot.manual_paid_at
+        updated_fields.append("manual_paid_at")
+    if not pagamento.manual_forma_pagamento and snapshot.manual_forma_pagamento:
+        pagamento.manual_forma_pagamento = snapshot.manual_forma_pagamento
+        updated_fields.append("manual_forma_pagamento")
+    if not pagamento.manual_comprovante_path and snapshot.manual_comprovante_path:
+        pagamento.manual_comprovante_path = snapshot.manual_comprovante_path
+        updated_fields.append("manual_comprovante_path")
+    if not pagamento.agente_refi_solicitado and snapshot.agente_refi_solicitado:
+        pagamento.agente_refi_solicitado = snapshot.agente_refi_solicitado
+        updated_fields.append("agente_refi_solicitado")
+
+    return updated_fields
 
 
 class ArquivoRetornoService:
@@ -120,10 +154,10 @@ class ArquivoRetornoService:
             import_uuid = str(uuid4())
 
             parsed = self.parser.parse(self._arquivo_path(arquivo_retorno))
-            self._persistir_itens(arquivo_retorno, parsed.items)
-            duplicate_cpfs = self._detect_duplicate_cpfs(parsed.items)
+            items, duplicate_cpfs = self._deduplicar_itens_por_cpf(parsed.items)
+            self._persistir_itens(arquivo_retorno, items)
             if duplicate_cpfs:
-                self._marcar_cpfs_duplicados(arquivo_retorno, duplicate_cpfs)
+                self._registrar_cpfs_duplicados_consolidados(arquivo_retorno, duplicate_cpfs)
 
             for warning in parsed.warnings:
                 ImportacaoLog.objects.create(
@@ -144,20 +178,21 @@ class ArquivoRetornoService:
             )
             resumo["cpfs_duplicados_arquivo"] = len(duplicate_cpfs)
             resumo["linhas_duplicadas_ignoradas"] = sum(
-                len(group) for group in duplicate_cpfs.values()
+                len(group["ignoradas"]) for group in duplicate_cpfs.values()
             )
 
             # Upsert PagamentoMensalidade (equivalente ao baixaUpload do PHP)
             resumo_pm = self._upsert_pagamentos_mensalidade(
                 arquivo_retorno=arquivo_retorno,
-                items=parsed.items,
+                items=items,
                 import_uuid=import_uuid,
                 user=arquivo_retorno.uploaded_by,
-                ignored_cpfs=set(duplicate_cpfs),
             )
+            resumo_pm["pm_cpfs_duplicados_arquivo"] = len(duplicate_cpfs)
+            resumo_pm["pm_linhas_duplicadas_ignoradas"] = resumo["linhas_duplicadas_ignoradas"]
             resumo.update(resumo_pm)
 
-            arquivo_retorno.total_registros = len(parsed.items)
+            arquivo_retorno.total_registros = len(items)
             arquivo_retorno.processados = arquivo_retorno.itens.filter(processado=True).count()
             arquivo_retorno.nao_encontrados = resumo["nao_encontrado"]
             arquivo_retorno.erros = resumo["erro"] + len(parsed.warnings)
@@ -182,7 +217,7 @@ class ArquivoRetornoService:
                 mensagem=(
                     f"Importação concluída: {resumo_pm['pm_criados']} lançamentos, "
                     f"{resumo_pm['pm_duplicados']} duplicados ignorados, "
-                    f"{resumo_pm['pm_cpfs_duplicados_arquivo']} CPFs duplicados no arquivo isolados, "
+                    f"{resumo_pm['pm_cpfs_duplicados_arquivo']} CPFs duplicados no arquivo consolidados, "
                     f"{resumo_pm['pm_vinculados']} vinculados a associados, "
                     f"{resumo_pm['pm_nao_encontrados']} não encontrados."
                 ),
@@ -215,7 +250,6 @@ class ArquivoRetornoService:
         items: list[dict],
         import_uuid: str,
         user,
-        ignored_cpfs: set[str] | None = None,
     ) -> dict:
         """Cria ou atualiza registros de PagamentoMensalidade com lógica de upsert.
         Equivalente ao baixaUpload do PHP AdminController.
@@ -234,8 +268,6 @@ class ArquivoRetornoService:
         vinculados = 0
         nao_encontrados_list: list[dict] = []
         erros_list: list[dict] = []
-        ignored_cpfs = ignored_cpfs or set()
-        ignored_lines = 0
 
         # referencia_month vem da competencia do arquivo (MM/YYYY → YYYY-MM-01)
         competencia = arquivo_retorno.resultado_resumo.get("competencia", "")
@@ -245,13 +277,11 @@ class ArquivoRetornoService:
             ref_date = arquivo_retorno.competencia
 
         source_path = arquivo_retorno.arquivo_url
+        legacy_snapshots = list_legacy_pagamento_snapshots(competencia=ref_date)
 
         for i, item in enumerate(items):
             cpf = re.sub(r"\D", "", item.get("cpf_cnpj", ""))
             if not cpf:
-                continue
-            if cpf in ignored_cpfs:
-                ignored_lines += 1
                 continue
 
             valor = item.get("valor_descontado", item.get("valor"))
@@ -285,14 +315,23 @@ class ArquivoRetornoService:
                 if existing:
                     # Duplicado: backfill do vínculo se não tiver
                     duplicados += 1
+                    update_fields: list[str] = []
                     if not existing.associado_id and assoc:
                         existing.associado = assoc
-                        existing.save(update_fields=["associado", "updated_at"])
+                        update_fields.append("associado")
                         vinculados += 1
+                    update_fields.extend(
+                        _apply_legacy_snapshot_to_pagamento(
+                            existing,
+                            legacy_snapshots.get(cpf),
+                        )
+                    )
+                    if update_fields:
+                        existing.save(update_fields=[*sorted(set(update_fields)), "updated_at"])
                     continue
 
                 # Novo lançamento
-                PagamentoMensalidade.objects.create(
+                pagamento = PagamentoMensalidade(
                     created_by=user,
                     import_uuid=import_uuid,
                     referencia_month=ref_date,
@@ -305,6 +344,11 @@ class ArquivoRetornoService:
                     source_file_path=source_path,
                     associado=assoc,
                 )
+                _apply_legacy_snapshot_to_pagamento(
+                    pagamento,
+                    legacy_snapshots.get(cpf),
+                )
+                pagamento.save()
                 criados += 1
                 if assoc:
                     vinculados += 1
@@ -326,8 +370,8 @@ class ArquivoRetornoService:
             "pm_vinculados": vinculados,
             "pm_nao_encontrados": len(nao_encontrados_list),
             "pm_erros": len(erros_list),
-            "pm_cpfs_duplicados_arquivo": len(ignored_cpfs),
-            "pm_linhas_duplicadas_ignoradas": ignored_lines,
+            "pm_cpfs_duplicados_arquivo": 0,
+            "pm_linhas_duplicadas_ignoradas": 0,
         }
         logger.info(
             "[RETORNO] upsert PagamentoMensalidade concluído: %s",
@@ -335,46 +379,53 @@ class ArquivoRetornoService:
         )
         return resumo_pagamentos
 
-    def _detect_duplicate_cpfs(self, items: list[dict]) -> dict[str, list[dict]]:
-        contagem = Counter(
-            re.sub(r"\D", "", str(item.get("cpf_cnpj", "")))
-            for item in items
-            if item.get("cpf_cnpj")
-        )
-        duplicados = {
-            cpf: []
-            for cpf, total in contagem.items()
-            if cpf and total > 1
-        }
-        if not duplicados:
-            return {}
+    def _deduplicar_itens_por_cpf(
+        self, items: list[dict]
+    ) -> tuple[list[dict], dict[str, dict[str, list[dict] | dict]]]:
+        itens_unicos: list[dict] = []
+        itens_por_cpf: dict[str, dict] = {}
+        duplicados: dict[str, dict[str, list[dict] | dict]] = {}
+
         for item in items:
             cpf = re.sub(r"\D", "", str(item.get("cpf_cnpj", "")))
-            if cpf in duplicados:
-                duplicados[cpf].append(item)
-        return duplicados
+            if not cpf:
+                itens_unicos.append(item)
+                continue
 
-    def _marcar_cpfs_duplicados(
-        self, arquivo_retorno: ArquivoRetorno, duplicate_cpfs: dict[str, list[dict]]
-    ) -> None:
-        observacao = (
-            "CPF duplicado no mesmo arquivo retorno. "
-            "As linhas foram isoladas da baixa automática para revisão manual."
-        )
-        for cpf, itens in duplicate_cpfs.items():
-            linhas = [item.get("linha_numero") for item in itens]
-            arquivo_retorno.itens.filter(cpf_cnpj=cpf).update(
-                processado=True,
-                resultado_processamento=ArquivoRetornoItem.ResultadoProcessamento.PENDENCIA_MANUAL,
-                observacao=observacao,
-                associado=None,
-                parcela=None,
+            if cpf not in itens_por_cpf:
+                itens_por_cpf[cpf] = item
+                itens_unicos.append(item)
+                continue
+
+            bucket = duplicados.setdefault(
+                cpf,
+                {
+                    "mantida": itens_por_cpf[cpf],
+                    "ignoradas": [],
+                },
             )
+            bucket["ignoradas"].append(item)
+
+        return itens_unicos, duplicados
+
+    def _registrar_cpfs_duplicados_consolidados(
+        self,
+        arquivo_retorno: ArquivoRetorno,
+        duplicate_cpfs: dict[str, dict[str, list[dict] | dict]],
+    ) -> None:
+        for cpf, payload in duplicate_cpfs.items():
+            mantida = payload["mantida"]
+            ignoradas = payload["ignoradas"]
+            linhas_ignoradas = [item.get("linha_numero") for item in ignoradas]
             ImportacaoLog.objects.create(
                 arquivo_retorno=arquivo_retorno,
                 tipo=ImportacaoLog.Tipo.VALIDACAO,
-                mensagem="CPF duplicado isolado da conciliação automática.",
-                dados={"cpf_cnpj": cpf, "linhas": linhas},
+                mensagem="CPF duplicado consolidado no padrão legado.",
+                dados={
+                    "cpf_cnpj": cpf,
+                    "linha_mantida": mantida.get("linha_numero"),
+                    "linhas_ignoradas": linhas_ignoradas,
+                },
             )
 
     def _persistir_itens(self, arquivo_retorno: ArquivoRetorno, items: list[dict]) -> None:

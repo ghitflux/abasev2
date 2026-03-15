@@ -55,6 +55,7 @@ import StatusBadge from "@/components/custom/status-badge";
 import DashboardDetailDialog from "@/components/shared/dashboard-detail-dialog";
 import type { DataTableColumn } from "@/components/shared/data-table";
 import ExportButton from "@/components/shared/export-button";
+import { AnalyticsSectionSkeleton } from "@/components/shared/page-skeletons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -88,7 +89,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Spinner } from "@/components/ui/spinner";
 import { exportRows, type TableExportColumn } from "@/lib/table-export";
 
 const STATUS_OPTIONS = [
@@ -603,9 +603,9 @@ function SectionCard({
 
 function LoadingSection({ label }: { label: string }) {
   return (
-    <div className="flex min-h-[16rem] items-center justify-center gap-3 rounded-[1.75rem] border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-      <Spinner />
-      Carregando {label}...
+    <div className="space-y-3">
+      <p className="text-sm text-muted-foreground">Carregando {label}...</p>
+      <AnalyticsSectionSkeleton />
     </div>
   );
 }

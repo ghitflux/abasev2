@@ -449,7 +449,7 @@ class AnaliseService:
         associado.nome_completo = nome.upper()
         associado.save(update_fields=["nome_completo", "updated_at"])
 
-        contato = getattr(associado, "contato_historico", None)
+        contato = associado._safe_related("contato_historico")
         if contato and contato.nome_contato:
             contato.nome_contato = associado.nome_completo
             contato.save(update_fields=["nome_contato", "updated_at"])

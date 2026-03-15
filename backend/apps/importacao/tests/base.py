@@ -129,3 +129,6 @@ class ImportacaoBaseTestCase(TestCase):
             competencia=date(2025, 5, 1),
             uploaded_by=self.tesoureiro,
         )
+
+    def release_cycle_competencia_locks(self, cycle: Ciclo) -> None:
+        Parcela.all_objects.filter(ciclo=cycle).update(competencia_lock=None)

@@ -1,0 +1,6 @@
+{
+  "enum": ["neutral", "positive", "warning", "danger"],
+  "type": "string",
+  "description": "* `neutral` - neutral\n* `positive` - positive\n* `warning` - warning\n* `danger` - danger",
+  "x-readme-ref-name": "ToneEnum"
+}

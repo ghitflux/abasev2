@@ -15,10 +15,14 @@ from rest_framework.viewsets import GenericViewSet, ReadOnlyModelViewSet
 from apps.associados.models import Associado
 from apps.accounts.permissions import IsTesoureiroOrAdmin
 from apps.esteira.models import EsteiraItem
+from apps.refinanciamento.payment_rules import (
+    REFINANCIAMENTO_MENSALIDADES_NECESSARIAS,
+    paid_pagamento_filter,
+)
 from core.pagination import StandardResultsSetPagination
 
 from .renovacao import RenovacaoCicloService, parse_competencia_query
-from .models import Contrato, Parcela
+from .models import Contrato
 from .serializers import (
     ContratoListSerializer,
     ContratoResumoCardsSerializer,
@@ -125,11 +129,17 @@ class ContratoViewSet(ReadOnlyModelViewSet):
             .prefetch_related(
                 Prefetch("ciclos__parcelas"),
                 Prefetch("associado__refinanciamentos"),
+                Prefetch("associado__pagamentos_mensalidades__refi_itens"),
             )
             .annotate(
-                parcelas_pagas=Count(
-                    "ciclos__parcelas",
-                    filter=Q(ciclos__parcelas__status=Parcela.Status.DESCONTADO),
+                pagamentos_refi_livres=Count(
+                    "associado__pagamentos_mensalidades",
+                    filter=paid_pagamento_filter(
+                        prefix="associado__pagamentos_mensalidades__"
+                    )
+                    & Q(
+                        associado__pagamentos_mensalidades__refi_itens__isnull=True
+                    ),
                     distinct=True,
                 ),
                 agente_nome=Concat(
@@ -193,7 +203,13 @@ class ContratoViewSet(ReadOnlyModelViewSet):
 
         mensalidades = self.request.query_params.get("mensalidades")
         if mensalidades and mensalidades.isdigit():
-            queryset = queryset.filter(parcelas_pagas=int(mensalidades))
+            mensalidades_count = int(mensalidades)
+            if mensalidades_count >= REFINANCIAMENTO_MENSALIDADES_NECESSARIAS:
+                queryset = queryset.filter(
+                    pagamentos_refi_livres__gte=REFINANCIAMENTO_MENSALIDADES_NECESSARIAS
+                )
+            else:
+                queryset = queryset.filter(pagamentos_refi_livres=mensalidades_count)
 
         return queryset
 

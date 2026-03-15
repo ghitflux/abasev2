@@ -7,7 +7,13 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-from core.models import BaseModel
+from core.models import AllObjectsManager, BaseModel, SoftDeleteManager, SoftDeleteQuerySet
+
+
+def build_competencia_lock(associado_id: int | None, referencia_mes) -> str | None:
+    if not associado_id or not referencia_mes:
+        return None
+    return f"{associado_id}:{referencia_mes.strftime('%Y-%m')}"
 
 
 class Contrato(BaseModel):
@@ -95,6 +101,8 @@ class Contrato(BaseModel):
                 valor_mensalidade * self.prazo_meses
             ).quantize(Decimal("0.01"))
         super().save(*args, **kwargs)
+        if self.associado_id:
+            self.associado.sync_contrato_snapshot(self)
 
 
 class Ciclo(BaseModel):
@@ -124,6 +132,32 @@ class Ciclo(BaseModel):
         return f"{self.contrato.codigo} - ciclo {self.numero}"
 
 
+class ParcelaQuerySet(SoftDeleteQuerySet):
+    def bulk_create(self, objs, **kwargs):
+        competencia_groups: set[tuple[int, object]] = set()
+        for obj in objs:
+            obj.sync_competencia_fields()
+            if obj.associado_id and obj.referencia_mes:
+                competencia_groups.add((obj.associado_id, obj.referencia_mes))
+        created = super().bulk_create(objs, **kwargs)
+        for associado_id, referencia_mes in competencia_groups:
+            self.model.sync_group_locks(
+                associado_id=associado_id,
+                referencia_mes=referencia_mes,
+            )
+        return created
+
+
+class ParcelaManager(SoftDeleteManager):
+    def get_queryset(self):
+        return ParcelaQuerySet(self.model, using=self._db).alive()
+
+
+class ParcelaAllObjectsManager(AllObjectsManager):
+    def get_queryset(self):
+        return ParcelaQuerySet(self.model, using=self._db)
+
+
 class Parcela(BaseModel):
     class Status(models.TextChoices):
         FUTURO = "futuro", "Futuro"
@@ -133,8 +167,19 @@ class Parcela(BaseModel):
         CANCELADO = "cancelado", "Cancelado"
 
     ciclo = models.ForeignKey(Ciclo, on_delete=models.CASCADE, related_name="parcelas")
+    associado = models.ForeignKey(
+        "associados.Associado",
+        on_delete=models.PROTECT,
+        related_name="parcelas",
+    )
     numero = models.PositiveSmallIntegerField()
     referencia_mes = models.DateField()
+    competencia_lock = models.CharField(
+        max_length=32,
+        null=True,
+        blank=True,
+        unique=True,
+    )
     valor = models.DecimalField(max_digits=10, decimal_places=2)
     data_vencimento = models.DateField()
     status = models.CharField(
@@ -143,9 +188,92 @@ class Parcela(BaseModel):
     data_pagamento = models.DateField(null=True, blank=True)
     observacao = models.TextField(blank=True)
 
+    objects = ParcelaManager()
+    all_objects = ParcelaAllObjectsManager()
+
     class Meta:
         unique_together = ("ciclo", "numero")
         ordering = ["ciclo_id", "numero"]
+        indexes = [
+            models.Index(fields=["associado", "referencia_mes"]),
+        ]
 
     def __str__(self) -> str:
         return f"{self.ciclo} - parcela {self.numero}"
+
+    @classmethod
+    def sync_group_locks(cls, *, associado_id: int | None, referencia_mes) -> None:
+        if not associado_id or not referencia_mes:
+            return
+        queryset = cls.all_objects.filter(
+            associado_id=associado_id,
+            referencia_mes=referencia_mes,
+            deleted_at__isnull=True,
+        ).exclude(status=cls.Status.CANCELADO)
+        active_ids = list(queryset.values_list("id", flat=True))
+        if not active_ids:
+            return
+        if len(active_ids) == 1:
+            cls.all_objects.filter(pk=active_ids[0]).update(
+                competencia_lock=build_competencia_lock(associado_id, referencia_mes)
+            )
+            return
+        cls.all_objects.filter(pk__in=active_ids).update(competencia_lock=None)
+
+    def sync_competencia_fields(self):
+        if not self.associado_id and self.ciclo_id:
+            ciclo = getattr(self, "ciclo", None)
+            if ciclo and getattr(ciclo, "contrato_id", None):
+                self.associado_id = ciclo.contrato.associado_id
+            else:
+                self.associado_id = (
+                    Ciclo.objects.select_related("contrato")
+                    .only("contrato__associado_id")
+                    .get(pk=self.ciclo_id)
+                    .contrato.associado_id
+                )
+
+        if self.deleted_at is not None or self.status == self.Status.CANCELADO:
+            self.competencia_lock = None
+        else:
+            siblings = type(self).all_objects.filter(
+                associado_id=self.associado_id,
+                referencia_mes=self.referencia_mes,
+                deleted_at__isnull=True,
+            ).exclude(status=self.Status.CANCELADO)
+            if self.pk:
+                siblings = siblings.exclude(pk=self.pk)
+            self.competencia_lock = (
+                None
+                if siblings.exists()
+                else build_competencia_lock(
+                    self.associado_id,
+                    self.referencia_mes,
+                )
+            )
+
+    def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+        previous_group = None
+        if self.pk:
+            previous_group = (
+                type(self)
+                .all_objects.filter(pk=self.pk)
+                .values_list("associado_id", "referencia_mes")
+                .first()
+            )
+        self.sync_competencia_fields()
+        if update_fields is not None:
+            merged_fields = set(update_fields)
+            merged_fields.update({"associado", "competencia_lock"})
+            kwargs["update_fields"] = list(merged_fields)
+        super().save(*args, **kwargs)
+        type(self).sync_group_locks(
+            associado_id=self.associado_id,
+            referencia_mes=self.referencia_mes,
+        )
+        if previous_group and previous_group != (self.associado_id, self.referencia_mes):
+            type(self).sync_group_locks(
+                associado_id=previous_group[0],
+                referencia_mes=previous_group[1],
+            )

@@ -1,0 +1,58 @@
+{
+  "type": "object",
+  "required": ["count", "results"],
+  "properties": {
+    "count": { "type": "integer", "example": 123 },
+    "next": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=4"
+    },
+    "previous": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=2"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "associado_id": { "type": "integer", "nullable": true },
+          "associado_nome": { "type": "string" },
+          "cpf_cnpj": { "type": "string" },
+          "matricula": { "type": "string" },
+          "status": { "type": "string" },
+          "agente_nome": { "type": "string" },
+          "contrato_codigo": { "type": "string" },
+          "etapa": { "type": "string" },
+          "competencia": { "type": "string" },
+          "valor": { "type": "string" },
+          "origem": { "type": "string" },
+          "data_referencia": { "type": "string" },
+          "observacao": { "type": "string" }
+        },
+        "required": [
+          "agente_nome",
+          "associado_nome",
+          "competencia",
+          "contrato_codigo",
+          "cpf_cnpj",
+          "data_referencia",
+          "etapa",
+          "id",
+          "matricula",
+          "observacao",
+          "origem",
+          "status",
+          "valor"
+        ],
+        "x-readme-ref-name": "DashboardDetailRow"
+      }
+    }
+  },
+  "x-readme-ref-name": "PaginatedDashboardDetailRowList"
+}

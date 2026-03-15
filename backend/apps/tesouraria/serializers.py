@@ -10,6 +10,7 @@ from apps.associados.serializers import DadosBancariosSerializer, SimpleUserSeri
 from apps.contratos.models import Contrato, Parcela
 from apps.importacao.models import PagamentoMensalidade
 from apps.refinanciamento.serializers import ComprovanteResumoSerializer
+from apps.tesouraria.models import BaixaManual
 
 
 def _build_absolute_url(request, path: str) -> str:
@@ -51,21 +52,20 @@ class TesourariaContratoListSerializer(serializers.Serializer):
     associado_id = serializers.IntegerField(source="associado.id", read_only=True)
     nome = serializers.CharField(source="associado.nome_completo", read_only=True)
     cpf_cnpj = serializers.CharField(source="associado.cpf_cnpj", read_only=True)
-    chave_pix = serializers.CharField(
-        source="associado.dados_bancarios.chave_pix", read_only=True
-    )
+    chave_pix = serializers.SerializerMethodField()
     codigo = serializers.CharField(read_only=True)
     data_assinatura = serializers.DateField(source="data_contrato", read_only=True)
     status = serializers.SerializerMethodField()
     agente = SimpleUserSerializer(read_only=True)
     agente_nome = serializers.CharField(source="agente.full_name", read_only=True)
+    comissao_agente = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True
+    )
     margem_disponivel = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True
     )
     comprovantes = serializers.SerializerMethodField()
-    dados_bancarios = DadosBancariosSerializer(
-        source="associado.dados_bancarios", read_only=True
-    )
+    dados_bancarios = serializers.SerializerMethodField()
     observacao_tesouraria = serializers.CharField(
         source="associado.esteira_item.observacao", read_only=True
     )
@@ -89,6 +89,16 @@ class TesourariaContratoListSerializer(serializers.Serializer):
     def get_comprovantes(self, obj):
         comprovantes = obj.comprovantes.filter(refinanciamento__isnull=True)
         return ComprovanteResumoSerializer(comprovantes, many=True).data
+
+    def get_chave_pix(self, obj) -> str:
+        payload = obj.associado.build_dados_bancarios_payload() or {}
+        return payload.get("chave_pix", "")
+
+    def get_dados_bancarios(self, obj):
+        payload = obj.associado.build_dados_bancarios_payload()
+        if not payload:
+            return None
+        return DadosBancariosSerializer(payload).data
 
 
 class EfetivarContratoSerializer(serializers.Serializer):
@@ -187,6 +197,22 @@ class AgentePagamentoParcelaSerializer(serializers.Serializer):
                         pagamento_mensalidade.manual_paid_at
                         or pagamento_mensalidade.created_at
                     ),
+                }
+            )
+
+        baixa_manual: BaixaManual | None = getattr(obj, "baixa_manual", None)
+        if baixa_manual and baixa_manual.comprovante:
+            comprovantes.append(
+                {
+                    "id": f"baixa-manual-{baixa_manual.id}",
+                    "nome": baixa_manual.nome_comprovante or "Comprovante baixa manual",
+                    "url": _build_filefield_url(request, baixa_manual.comprovante),
+                    "origem": "baixa_manual",
+                    "papel": "",
+                    "tipo": "baixa_manual",
+                    "status": "baixa_efetuada",
+                    "competencia": obj.referencia_mes,
+                    "created_at": baixa_manual.created_at,
                 }
             )
 
@@ -327,3 +353,51 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
                 if parcela.status == Parcela.Status.DESCONTADO
             ]
         )
+
+
+class BaixaManualItemSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    associado_id = serializers.SerializerMethodField()
+    nome = serializers.SerializerMethodField()
+    cpf_cnpj = serializers.SerializerMethodField()
+    matricula = serializers.SerializerMethodField()
+    agente_nome = serializers.SerializerMethodField()
+    contrato_id = serializers.SerializerMethodField()
+    contrato_codigo = serializers.SerializerMethodField()
+    referencia_mes = serializers.DateField(read_only=True)
+    valor = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    status = serializers.CharField(read_only=True)
+    data_vencimento = serializers.DateField(read_only=True)
+    observacao = serializers.CharField(read_only=True)
+
+    def _contrato(self, obj):
+        return obj.ciclo.contrato
+
+    def get_associado_id(self, obj) -> int:
+        return self._contrato(obj).associado.id
+
+    def get_nome(self, obj) -> str:
+        return self._contrato(obj).associado.nome_completo
+
+    def get_cpf_cnpj(self, obj) -> str:
+        return self._contrato(obj).associado.cpf_cnpj
+
+    def get_matricula(self, obj) -> str:
+        assoc = self._contrato(obj).associado
+        return assoc.matricula_orgao or assoc.matricula
+
+    def get_agente_nome(self, obj) -> str:
+        agente = self._contrato(obj).agente
+        return agente.full_name if agente else ""
+
+    def get_contrato_id(self, obj) -> int:
+        return self._contrato(obj).id
+
+    def get_contrato_codigo(self, obj) -> str:
+        return self._contrato(obj).codigo
+
+
+class DarBaixaManualSerializer(serializers.Serializer):
+    comprovante = serializers.FileField(required=True)
+    valor_pago = serializers.DecimalField(max_digits=10, decimal_places=2, required=True)
+    observacao = serializers.CharField(required=False, allow_blank=True, default="")

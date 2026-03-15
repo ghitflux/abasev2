@@ -57,6 +57,18 @@ export type RenovacaoCicloItem = {
    */
   status_visual: string;
   /**
+   * @type string
+   */
+  status_explicacao: string;
+  /**
+   * @type string
+   */
+  matricula: string;
+  /**
+   * @type string
+   */
+  agente_responsavel: string;
+  /**
    * @type integer
    */
   parcelas_pagas: number;
@@ -64,6 +76,18 @@ export type RenovacaoCicloItem = {
    * @type integer
    */
   parcelas_total: number;
+  /**
+   * @type integer
+   */
+  contrato_referencia_renovacao_id: number;
+  /**
+   * @type string
+   */
+  contrato_referencia_renovacao_codigo: string;
+  /**
+   * @type boolean
+   */
+  possui_multiplos_contratos: boolean;
   /**
    * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
    * @type string, decimal
@@ -90,6 +114,10 @@ export type RenovacaoCicloItem = {
    * @type string
    */
   status_codigo_etipi: string;
+  /**
+   * @type string
+   */
+  status_descricao_etipi: string;
   /**
    * @type boolean
    */

@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db.models import Sum
 from django.test import override_settings
 
 from .base import ImportacaoBaseTestCase
-from ..models import ArquivoRetorno, ArquivoRetornoItem, ImportacaoLog
+from ..legacy import LegacyPagamentoSnapshot
+from ..models import ArquivoRetorno, ArquivoRetornoItem, ImportacaoLog, PagamentoMensalidade
 from ..services import ArquivoRetornoService
 
 
@@ -88,6 +92,9 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
         self.assertEqual(payload["resumo"]["nao_descontado"], 1)
         self.assertEqual(payload["resumo"]["pendencias_manuais"], 0)
         self.assertEqual(payload["resumo"]["nao_encontrado"], 1)
+        self.assertEqual(payload["financeiro"]["total"], 4)
+        self.assertEqual(payload["financeiro"]["ok"], 2)
+        self.assertEqual(payload["financeiro"]["recebido"], "60.00")
 
         response = self.tes_client.get(
             f"/api/v1/importacao/arquivo-retorno/{payload['id']}/descontados/",
@@ -98,6 +105,9 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
         self.assertEqual(detail_payload["count"], 2)
         self.assertEqual(len(detail_payload["results"]), 2)
         self.assertEqual(detail_payload["results"][0]["status_codigo"], "1")
+        self.assertEqual(detail_payload["results"][0]["agente_responsavel"], "Tes ABASE")
+        self.assertIsNotNone(detail_payload["results"][0]["associado_id"])
+        self.assertTrue(detail_payload["results"][0]["associado_matricula"])
 
     def test_list_filtra_por_competencia_e_periodo(self):
         arquivo_jan = self.create_arquivo_retorno(nome="retorno_janeiro.txt")
@@ -233,7 +243,7 @@ STATUS MATRICULA NOME                           CARGO                          F
             ).exists()
         )
 
-    def test_processar_isola_cpf_duplicado_no_mesmo_arquivo(self):
+    def test_processar_consolida_cpf_duplicado_no_padrao_legado(self):
         self.create_associado_com_contrato(
             cpf="12345678901",
             nome="SERVIDOR DUPLICADO",
@@ -313,23 +323,123 @@ STATUS MATRICULA NOME                           CARGO                          F
 
         arquivo = ArquivoRetorno.objects.get(pk=response.json()["id"])
         self.assertEqual(arquivo.resultado_resumo["cpfs_duplicados_arquivo"], 1)
-        self.assertEqual(arquivo.resultado_resumo["linhas_duplicadas_ignoradas"], 2)
-        self.assertEqual(arquivo.resultado_resumo["pendencias_manuais"], 2)
-        self.assertEqual(arquivo.resultado_resumo["baixa_efetuada"], 1)
-        self.assertEqual(arquivo.resultado_resumo["pm_criados"], 1)
+        self.assertEqual(arquivo.resultado_resumo["linhas_duplicadas_ignoradas"], 1)
+        self.assertEqual(arquivo.resultado_resumo["pendencias_manuais"], 0)
+        self.assertEqual(arquivo.resultado_resumo["baixa_efetuada"], 2)
+        self.assertEqual(arquivo.resultado_resumo["pm_criados"], 2)
 
         itens_duplicados = arquivo.itens.filter(cpf_cnpj="12345678901").order_by("linha_numero")
-        self.assertEqual(itens_duplicados.count(), 2)
-        self.assertTrue(
-            all(
-                item.resultado_processamento == ArquivoRetornoItem.ResultadoProcessamento.PENDENCIA_MANUAL
-                for item in itens_duplicados
-            )
+        self.assertEqual(itens_duplicados.count(), 1)
+        self.assertEqual(
+            itens_duplicados.first().resultado_processamento,
+            ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA,
         )
         self.assertEqual(
             arquivo.logs.filter(
                 tipo=ImportacaoLog.Tipo.VALIDACAO,
-                mensagem="CPF duplicado isolado da conciliação automática.",
+                mensagem="CPF duplicado consolidado no padrão legado.",
             ).count(),
             1,
         )
+
+    def test_upload_outubro_replica_totais_do_legado(self):
+        response = self.tes_client.post(
+            "/api/v1/importacao/arquivo-retorno/upload/",
+            {
+                "arquivo": SimpleUploadedFile(
+                    "Relatorio_D2102-10-2025_inicio.txt",
+                    self.fixture_bytes("retorno_etipi_102025.txt"),
+                    content_type="text/plain",
+                )
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+
+        arquivo = ArquivoRetorno.objects.get(pk=response.json()["id"])
+        self.assertEqual(arquivo.total_registros, 238)
+        self.assertEqual(arquivo.resultado_resumo["cpfs_duplicados_arquivo"], 1)
+        self.assertEqual(arquivo.resultado_resumo["linhas_duplicadas_ignoradas"], 1)
+
+        pagamentos = PagamentoMensalidade.objects.filter(referencia_month=date(2025, 10, 1))
+        self.assertEqual(pagamentos.count(), 238)
+        self.assertEqual(
+            pagamentos.aggregate(total=Sum("valor"))["total"],
+            Decimal("47364.38"),
+        )
+        self.assertEqual(pagamentos.filter(status_code__in=["1", "4"]).count(), 217)
+        self.assertEqual(
+            pagamentos.filter(status_code__in=["1", "4"]).aggregate(total=Sum("valor"))["total"],
+            Decimal("45491.38"),
+        )
+
+        alceanira = pagamentos.filter(cpf_cnpj="67556906353")
+        self.assertEqual(alceanira.count(), 1)
+        self.assertEqual(alceanira.first().valor, Decimal("1.00"))
+
+        financeiro = self.tes_client.get(
+            f"/api/v1/importacao/arquivo-retorno/{arquivo.id}/financeiro/"
+        )
+        self.assertEqual(financeiro.status_code, 200, financeiro.json())
+        payload = financeiro.json()
+        self.assertEqual(payload["resumo"]["total"], 238)
+        self.assertEqual(payload["resumo"]["esperado"], "47364.38")
+        self.assertEqual(payload["resumo"]["ok"], 217)
+        self.assertEqual(payload["resumo"]["recebido"], "45491.38")
+        self.assertEqual(len(payload["rows"]), 238)
+
+    def test_upload_aplica_snapshot_manual_do_legado_na_tabela_atual_e_no_resumo(self):
+        self.create_associado_com_contrato(
+            cpf="23993596315",
+            nome="Maria de Jesus Santana Costa",
+        )
+        self.create_associado_com_contrato(
+            cpf="21819424391",
+            nome="Francisco Crisostomo Batista",
+        )
+        self.create_associado_com_contrato(
+            cpf="48204773315",
+            nome="Maria de Jesus Araujo Goncalves",
+        )
+
+        with patch(
+            "apps.importacao.services.list_legacy_pagamento_snapshots",
+            return_value={
+                "21819424391": LegacyPagamentoSnapshot(
+                    manual_status="pago",
+                    esperado_manual=Decimal("30.00"),
+                    recebido_manual=Decimal("30.00"),
+                    manual_forma_pagamento="PIX",
+                    agente_refi_solicitado=True,
+                )
+            },
+        ):
+            response = self.tes_client.post(
+                "/api/v1/importacao/arquivo-retorno/upload/",
+                {
+                    "arquivo": SimpleUploadedFile(
+                        "retorno_etipi_052025.txt",
+                        self.fixture_bytes(),
+                        content_type="text/plain",
+                    )
+                },
+                format="multipart",
+            )
+            self.assertEqual(response.status_code, 201, response.json())
+
+            pagamento = PagamentoMensalidade.objects.get(
+                cpf_cnpj="21819424391",
+                referencia_month=date(2025, 5, 1),
+            )
+            self.assertEqual(pagamento.manual_status, PagamentoMensalidade.ManualStatus.PAGO)
+            self.assertEqual(pagamento.recebido_manual, Decimal("30.00"))
+            self.assertEqual(pagamento.manual_forma_pagamento, "PIX")
+            self.assertTrue(pagamento.agente_refi_solicitado)
+
+            financeiro = self.tes_client.get(
+                f"/api/v1/importacao/arquivo-retorno/{response.json()['id']}/financeiro/"
+            )
+            self.assertEqual(financeiro.status_code, 200, financeiro.json())
+            payload = financeiro.json()
+            self.assertEqual(payload["resumo"]["ok"], 3)
+            self.assertEqual(payload["resumo"]["recebido"], "90.00")

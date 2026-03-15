@@ -12,6 +12,18 @@ export type CicloDetail = {
    */
   readonly id: number;
   /**
+   * @type integer
+   */
+  readonly contrato_id: number;
+  /**
+   * @type string
+   */
+  readonly contrato_codigo: string;
+  /**
+   * @type string
+   */
+  readonly contrato_status: string;
+  /**
    * @minLength 0
    * @maxLength 65535
    * @type integer | undefined

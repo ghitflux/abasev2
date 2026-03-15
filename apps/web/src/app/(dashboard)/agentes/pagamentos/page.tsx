@@ -16,6 +16,7 @@ import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import StatusBadge from "@/components/custom/status-badge";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import { SummaryCardSkeleton } from "@/components/shared/page-skeletons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +28,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
 
 const EMPTY_RESUMO: PagamentoAgenteResumo = {
   total: 0,
@@ -160,18 +160,24 @@ export default function MeusPagamentosPage() {
   return (
     <div className="space-y-6">
       <section className="grid gap-4 md:grid-cols-4">
-        <ResumoCard label="Contratos" value={resumo.total} />
-        <ResumoCard label="Efetivados" value={resumo.efetivados} colorClass="text-emerald-400" />
-        <ResumoCard label="Com anexos" value={resumo.com_anexos} />
-        <Card className="rounded-[1.75rem] border-border/60 bg-card/70">
-          <CardContent className="space-y-1 p-6">
-            <p className="text-sm text-muted-foreground">Parcelas pagas</p>
-            <p className="text-2xl font-semibold">
-              {resolveCount(resumo.parcelas_pagas).toLocaleString("pt-BR")}/
-              {resolveCount(resumo.parcelas_total).toLocaleString("pt-BR")}
-            </p>
-          </CardContent>
-        </Card>
+        {query.isLoading && !query.data ? (
+          Array.from({ length: 4 }).map((_, index) => <SummaryCardSkeleton key={index} />)
+        ) : (
+          <>
+            <ResumoCard label="Contratos" value={resumo.total} />
+            <ResumoCard label="Efetivados" value={resumo.efetivados} colorClass="text-emerald-400" />
+            <ResumoCard label="Com anexos" value={resumo.com_anexos} />
+            <Card className="rounded-[1.75rem] border-border/60 bg-card/70">
+              <CardContent className="space-y-1 p-6">
+                <p className="text-sm text-muted-foreground">Parcelas pagas</p>
+                <p className="text-2xl font-semibold">
+                  {resolveCount(resumo.parcelas_pagas).toLocaleString("pt-BR")}/
+                  {resolveCount(resumo.parcelas_total).toLocaleString("pt-BR")}
+                </p>
+              </CardContent>
+            </Card>
+          </>
+        )}
       </section>
 
       <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 xl:grid-cols-[minmax(0,1fr)_180px_160px_160px_auto_auto]">
@@ -241,12 +247,7 @@ export default function MeusPagamentosPage() {
         </Button>
       </section>
 
-      {query.isLoading ? (
-        <div className="flex items-center gap-3 rounded-[1.75rem] border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-          <Spinner />
-          Carregando pagamentos...
-        </div>
-      ) : query.isError ? (
+      {query.isError ? (
         <div className="rounded-[1.75rem] border border-destructive/40 bg-destructive/10 px-6 py-5 text-sm text-destructive">
           {query.error instanceof Error
             ? query.error.message
@@ -261,6 +262,8 @@ export default function MeusPagamentosPage() {
           totalPages={totalPages}
           onPageChange={setPage}
           emptyMessage="Nenhum contrato encontrado para os filtros informados."
+          loading={query.isLoading}
+          skeletonRows={6}
         />
       )}
     </div>

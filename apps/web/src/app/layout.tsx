@@ -1,18 +1,31 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, Sora } from "next/font/google";
+import localFont from "next/font/local";
 
 import { AppProviders } from "@/providers/app-providers";
 import "./globals.css";
 
-const sora = Sora({
+const inter = localFont({
+  src: "../assets/fonts/InterVariable.woff2",
   variable: "--font-sans",
-  subsets: ["latin"],
+  display: "swap",
+  weight: "100 900",
 });
 
-const plexMono = IBM_Plex_Mono({
+const plexMono = localFont({
+  src: [
+    {
+      path: "../assets/fonts/IBMPlexMono-Regular.ttf",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "../assets/fonts/IBMPlexMono-Medium.ttf",
+      weight: "500",
+      style: "normal",
+    },
+  ],
   variable: "--font-mono",
-  subsets: ["latin"],
-  weight: ["400", "500"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -27,7 +40,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="pt-BR" className="dark" suppressHydrationWarning>
-      <body className={`${sora.variable} ${plexMono.variable} min-h-screen bg-background font-sans text-foreground antialiased`}>
+      <body className={`${inter.variable} ${plexMono.variable} min-h-screen bg-background font-sans text-foreground antialiased`}>
         <AppProviders>{children}</AppProviders>
       </body>
     </html>

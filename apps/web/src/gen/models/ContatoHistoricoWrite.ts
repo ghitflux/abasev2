@@ -5,27 +5,22 @@
 
 export type ContatoHistoricoWrite = {
   /**
-   * @maxLength 20
    * @type string | undefined
    */
   celular?: string;
   /**
-   * @maxLength 254
-   * @type string | undefined, email
+   * @type string | undefined
    */
   email?: string;
   /**
-   * @maxLength 150
    * @type string | undefined
    */
   orgao_publico?: string;
   /**
-   * @maxLength 80
    * @type string | undefined
    */
   situacao_servidor?: string;
   /**
-   * @maxLength 50
    * @type string | undefined
    */
   matricula_servidor?: string;

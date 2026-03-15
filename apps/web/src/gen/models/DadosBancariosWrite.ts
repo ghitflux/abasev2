@@ -3,31 +3,24 @@
  * Do not edit manually.
  */
 
-import type { TipoContaEnum } from "./TipoContaEnum.ts";
-
 export type DadosBancariosWrite = {
   /**
-   * @maxLength 100
-   * @type string
-   */
-  banco: string;
-  /**
-   * @maxLength 20
-   * @type string
-   */
-  agencia: string;
-  /**
-   * @maxLength 30
-   * @type string
-   */
-  conta: string;
-  /**
-   * @description * `corrente` - Corrente\n* `poupanca` - Poupança\n* `salario` - Salário
    * @type string | undefined
    */
-  tipo_conta?: TipoContaEnum;
+  banco?: string;
   /**
-   * @maxLength 120
+   * @type string | undefined
+   */
+  agencia?: string;
+  /**
+   * @type string | undefined
+   */
+  conta?: string;
+  /**
+   * @type string | undefined
+   */
+  tipo_conta?: string;
+  /**
    * @type string | undefined
    */
   chave_pix?: string;

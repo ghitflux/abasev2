@@ -71,6 +71,9 @@
         "type": "object",
         "properties": {
           "id": { "type": "integer", "readOnly": true },
+          "contrato_id": { "type": "integer", "readOnly": true },
+          "contrato_codigo": { "type": "string", "readOnly": true },
+          "contrato_status": { "type": "string", "readOnly": true },
           "numero": { "type": "integer", "maximum": 65535, "minimum": 0 },
           "data_inicio": { "type": "string", "format": "date" },
           "data_fim": { "type": "string", "format": "date" },
@@ -136,7 +139,15 @@
             "readOnly": true
           }
         },
-        "required": ["data_fim", "data_inicio", "id", "parcelas"],
+        "required": [
+          "contrato_codigo",
+          "contrato_id",
+          "contrato_status",
+          "data_fim",
+          "data_inicio",
+          "id",
+          "parcelas"
+        ],
         "x-readme-ref-name": "CicloDetail"
       },
       "readOnly": true

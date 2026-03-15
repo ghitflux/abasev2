@@ -33,6 +33,8 @@ from __future__ import annotations
 
 import re
 import sys
+import unicodedata
+from collections import defaultdict
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -43,6 +45,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.accounts.backends import LEGACY_ROLE_CODE_MAP, ROLE_METADATA
 from apps.accounts.hashers import encode_legacy_bcrypt_hash, is_legacy_bcrypt_hash
 
 
@@ -112,9 +115,24 @@ def _json(value: str | None) -> Any:
     if not value or value == "NULL":
         return None
     import json
-    raw = value.strip("'").replace("\\'", "'").replace("\\\\", "\\")
+    raw = value.strip("'")
+    candidates = [
+        raw,
+        raw.replace("\\'", "'").replace("\\\\", "\\"),
+        raw.replace("\\'", "'")
+        .replace('\\"', '"')
+        .replace("\\/", "/")
+        .replace("\\\\", "\\"),
+    ]
+
+    for candidate in candidates:
+        try:
+            return json.loads(candidate)
+        except Exception:
+            continue
+
     try:
-        return json.loads(raw)
+        return json.loads(bytes(raw, "utf-8").decode("unicode_escape"))
     except Exception:
         return None
 
@@ -142,13 +160,43 @@ def extract_table_data(sql_text: str, table_name: str) -> list[dict]:
         # Parse column names (strip backticks)
         cols = [c.strip().strip("`") for c in cols_raw.split(",")]
 
-        # Parse value tuples — split on ),\n( boundaries
-        # Each row: (val1, val2, ...)
-        row_pattern = re.compile(r"\(([^()]*(?:\([^()]*\)[^()]*)*)\)")
-        for row_match in row_pattern.finditer(values_raw):
-            raw_vals = _split_values(row_match.group(1))
+        for row_raw in _split_row_tuples(values_raw):
+            raw_vals = _split_values(row_raw)
             if len(raw_vals) == len(cols):
                 rows.append(dict(zip(cols, raw_vals)))
+    return rows
+
+
+def _split_row_tuples(values_str: str) -> list[str]:
+    rows = []
+    current = ""
+    depth = 0
+    in_quote = False
+    previous = ""
+
+    for c in values_str:
+        if c == "'" and previous != "\\":
+            in_quote = not in_quote
+
+        if not in_quote and c == "(":
+            depth += 1
+            if depth == 1:
+                previous = c
+                continue
+
+        if not in_quote and c == ")":
+            depth -= 1
+            if depth == 0:
+                rows.append(current)
+                current = ""
+                previous = c
+                continue
+
+        if depth >= 1:
+            current += c
+
+        previous = c
+
     return rows
 
 
@@ -211,9 +259,37 @@ ALL_TABLES = [
     "refinanciamento_solicitacoes",
 ]
 
+_LOOKUP_MISSING = object()
+
 
 class Command(BaseCommand):
     help = "Import legacy MySQL data from abase.sql dump"
+
+    def _ensure_runtime_state(self):
+        if not hasattr(self, "_user_map"):
+            self._user_map: dict[int, int] = {}
+        if not hasattr(self, "_role_map"):
+            self._role_map: dict[int, int] = {}
+        if not hasattr(self, "_cad_map"):
+            self._cad_map: dict[int, int] = {}
+        if not hasattr(self, "_refi_map"):
+            self._refi_map: dict[int, int] = {}
+        if not hasattr(self, "_pag_map"):
+            self._pag_map: dict[int, int] = {}
+        if not hasattr(self, "_tes_pag_map"):
+            self._tes_pag_map: dict[int, int] = {}
+        if not hasattr(self, "_doc_issue_map"):
+            self._doc_issue_map: dict[int, int] = {}
+        if not hasattr(self, "_esteira_map"):
+            self._esteira_map: dict[int, int] = {}
+        if not hasattr(self, "_legacy_user_rows"):
+            self._legacy_user_rows: dict[int, dict[str, str]] = {}
+        if not hasattr(self, "_agent_lookup"):
+            self._agent_lookup: dict[str, int | None] = {}
+        if not hasattr(self, "_agent_first_token_lookup"):
+            self._agent_first_token_lookup: dict[str, int | None] = {}
+        if not hasattr(self, "_agent_lookup_built"):
+            self._agent_lookup_built = False
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -235,6 +311,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        self._ensure_runtime_state()
         sql_path = Path(options["file"])
         if not sql_path.exists():
             raise CommandError(f"File not found: {sql_path}")
@@ -258,6 +335,10 @@ class Command(BaseCommand):
         self._tes_pag_map: dict[int, int] = {}    # legacy tesouraria_pagamento.id → Pagamento.pk
         self._doc_issue_map: dict[int, int] = {}  # legacy agente_doc_issue.id → DocIssue.pk
         self._esteira_map: dict[int, int] = {}    # legacy cad_id → EsteiraItem.pk (from assumptions)
+        self._legacy_user_rows: dict[int, dict[str, str]] = {}
+        self._agent_lookup: dict[str, int | None] = {}
+        self._agent_first_token_lookup: dict[str, int | None] = {}
+        self._agent_lookup_built = False
 
         dispatch = {
             "roles": self._import_roles,
@@ -299,25 +380,50 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
 
     def _import_roles(self, rows):
+        self._ensure_runtime_state()
         from apps.accounts.models import Role
         created = 0
         for r in rows:
             name = _str(r.get("name"))
-            codigo = re.sub(r"[^a-z0-9_]", "_", name.lower())[:30]
-            obj, new = Role.objects.get_or_create(
+            legacy_role_id = _int(r.get("id"))
+            codigo = _map_legacy_role_code(name)
+            if legacy_role_id is None or not codigo:
+                continue
+
+            metadata = ROLE_METADATA.get(codigo, {"nome": name[:100], "descricao": ""})
+            obj, new = Role.all_objects.get_or_create(
                 codigo=codigo,
-                defaults={"nome": name[:100]},
+                defaults={
+                    "nome": metadata["nome"],
+                    "descricao": metadata["descricao"],
+                    "deleted_at": None,
+                },
             )
-            self._role_map[int(r["id"])] = obj.pk
+            update_fields: list[str] = []
+            if obj.nome != metadata["nome"]:
+                obj.nome = metadata["nome"]
+                update_fields.append("nome")
+            if obj.descricao != metadata["descricao"]:
+                obj.descricao = metadata["descricao"]
+                update_fields.append("descricao")
+            if obj.deleted_at is not None:
+                obj.deleted_at = None
+                update_fields.append("deleted_at")
+            if update_fields:
+                obj.save(update_fields=[*update_fields, "updated_at"])
+
+            self._role_map[legacy_role_id] = obj.pk
             if new:
                 created += 1
         self.stdout.write(f"    roles: {created} created")
 
     def _import_users(self, rows):
+        self._ensure_runtime_state()
         from apps.accounts.models import User
         created = 0
         updated = 0
         for r in rows:
+            legacy_user_id = _int(r.get("id"))
             name = _str(r.get("name"))
             parts = name.split(" ", 1)
             first = parts[0][:150]
@@ -385,25 +491,50 @@ class Command(BaseCommand):
                 obj.save(update_fields=[*fields_to_update, "updated_at"])
                 if not new:
                     updated += 1
-            self._user_map[int(r["id"])] = obj.pk
+            if legacy_user_id is not None:
+                self._user_map[legacy_user_id] = obj.pk
+                self._legacy_user_rows[legacy_user_id] = {"name": name, "email": email}
             if new:
                 created += 1
+
+        self._agent_lookup_built = False
         self.stdout.write(f"    users: {created} created, {updated} updated")
 
     def _import_role_user(self, rows):
+        self._ensure_runtime_state()
         from apps.accounts.models import User, Role, UserRole
         created = 0
+        assignments: dict[int, set[int]] = defaultdict(set)
         for r in rows:
             user_pk = self._user_map.get(_int(r.get("user_id")))
             role_pk = self._role_map.get(_int(r.get("role_id")))
             if not user_pk or not role_pk:
                 continue
-            _, new = UserRole.objects.get_or_create(
-                user_id=user_pk,
-                role_id=role_pk,
+            assignments[user_pk].add(role_pk)
+
+        for user_pk, role_pks in assignments.items():
+            user = User.all_objects.get(pk=user_pk)
+            current_role_pks = set(
+                UserRole.objects.filter(user_id=user_pk).values_list("role_id", flat=True)
             )
-            if new:
-                created += 1
+            roles = list(Role.objects.filter(pk__in=role_pks).order_by("id"))
+            if current_role_pks != role_pks:
+                user.roles.set(roles)
+                created += max(len(role_pks - current_role_pks), 0)
+
+            role_codes = {role.codigo for role in roles}
+            is_admin = "ADMIN" in role_codes
+            update_fields: list[str] = []
+            if user.is_staff != is_admin:
+                user.is_staff = is_admin
+                update_fields.append("is_staff")
+            if user.is_superuser != is_admin:
+                user.is_superuser = is_admin
+                update_fields.append("is_superuser")
+            if update_fields:
+                user.save(update_fields=[*update_fields, "updated_at"])
+
+        self._agent_lookup_built = False
         self.stdout.write(f"    role_user: {created} created")
 
     def _import_agente_margens(self, rows):
@@ -426,14 +557,13 @@ class Command(BaseCommand):
         self.stdout.write(f"    agente_margens: {created} created")
 
     def _import_agente_cadastros(self, rows):
+        self._ensure_runtime_state()
         from apps.associados.models import Associado, Endereco, DadosBancarios, ContatoHistorico
         from apps.contratos.models import Contrato
-        from apps.accounts.models import User
 
         created = 0
         errors = 0
-        # Build agente name→pk cache once
-        agente_cache: dict[str, int | None] = {}
+        self._build_agent_lookup()
 
         for r in rows:
             try:
@@ -441,16 +571,11 @@ class Command(BaseCommand):
                     cpf_cnpj = re.sub(r"\D", "", _str(r.get("cpf_cnpj")))
                     full_name = _str(r.get("full_name"))
 
-                    # Resolve agente FK by name snapshot (best effort)
-                    agente_key = _str(r.get("agente_responsavel"))
-                    if agente_key not in agente_cache:
-                        agente_cache[agente_key] = None
-                        if agente_key:
-                            first = agente_key.split()[0]
-                            user = User.objects.filter(first_name__icontains=first).first()
-                            if user:
-                                agente_cache[agente_key] = user.pk
-                    agente_pk = agente_cache[agente_key]
+                    # Resolve agente FK using imported users and legacy aliases.
+                    agente_pk = self._resolve_agent_user_id(
+                        _str(r.get("agente_responsavel")),
+                        _str(r.get("agente_filial")),
+                    )
 
                     assoc, new = Associado.objects.get_or_create(
                         cpf_cnpj=cpf_cnpj,
@@ -514,35 +639,105 @@ class Command(BaseCommand):
                                 "matricula_servidor": _str(r.get("matricula_servidor_publico"))[:50],
                             },
                         )
-                        # Contrato
-                        codigo = _str(r.get("contrato_codigo_contrato"))
-                        if codigo:
-                            status_raw = _str(r.get("contrato_status_contrato"))
-                            Contrato.objects.get_or_create(
-                                codigo=codigo,
-                                defaults={
-                                    "associado": assoc,
-                                    "agente_id": agente_pk,
-                                    "valor_bruto": _dec(r.get("calc_valor_bruto")) or Decimal("0"),
-                                    "valor_liquido": _dec(r.get("calc_liquido_cc")) or Decimal("0"),
-                                    "valor_mensalidade": _dec(r.get("contrato_mensalidade")) or Decimal("0"),
-                                    "prazo_meses": _int(r.get("contrato_prazo_meses")) or 3,
-                                    "taxa_antecipacao": _dec(r.get("contrato_taxa_antecipacao")) or Decimal("0"),
-                                    "margem_disponivel": _dec(r.get("contrato_margem_disponivel")) or Decimal("0"),
-                                    "valor_total_antecipacao": _dec(r.get("contrato_valor_antecipacao")) or Decimal("0"),
-                                    "doacao_associado": _dec(r.get("contrato_doacao_associado")) or Decimal("0"),
-                                    "status": _map_contrato_status(status_raw),
-                                    "data_aprovacao": _date(r.get("contrato_data_aprovacao")),
-                                    "data_primeira_mensalidade": _date(r.get("contrato_data_envio_primeira")),
-                                    "mes_averbacao": _date(r.get("contrato_mes_averbacao")),
-                                    "auxilio_liberado_em": _date(r.get("auxilio_data_envio")),
-                                },
-                            )
+
+                    codigo = _str(r.get("contrato_codigo_contrato"))
+                    if codigo:
+                        status_raw = _str(r.get("contrato_status_contrato"))
+                        Contrato.objects.get_or_create(
+                            codigo=codigo,
+                            defaults={
+                                "associado": assoc,
+                                "agente_id": agente_pk,
+                                "valor_bruto": _dec(r.get("calc_valor_bruto")) or Decimal("0"),
+                                "valor_liquido": _dec(r.get("calc_liquido_cc")) or Decimal("0"),
+                                "valor_mensalidade": _dec(r.get("contrato_mensalidade")) or Decimal("0"),
+                                "prazo_meses": _int(r.get("contrato_prazo_meses")) or 3,
+                                "taxa_antecipacao": _dec(r.get("contrato_taxa_antecipacao")) or Decimal("0"),
+                                "margem_disponivel": _dec(r.get("contrato_margem_disponivel")) or Decimal("0"),
+                                "valor_total_antecipacao": _dec(r.get("contrato_valor_antecipacao")) or Decimal("0"),
+                                "doacao_associado": _dec(r.get("contrato_doacao_associado")) or Decimal("0"),
+                                "status": _map_contrato_status(status_raw),
+                                "data_aprovacao": _date(r.get("contrato_data_aprovacao")),
+                                "data_primeira_mensalidade": _date(r.get("contrato_data_envio_primeira")),
+                                "mes_averbacao": _date(r.get("contrato_mes_averbacao")),
+                                "auxilio_liberado_em": _date(r.get("auxilio_data_envio")),
+                            },
+                        )
             except Exception as exc:
                 errors += 1
                 self.stderr.write(f"    skip cad id={r.get('id')}: {exc}")
 
         self.stdout.write(f"    agente_cadastros: {created} created, {errors} errors")
+
+    def _build_agent_lookup(self):
+        from apps.accounts.models import User
+
+        if self._agent_lookup_built:
+            return
+
+        self._agent_lookup = {}
+        self._agent_first_token_lookup = {}
+        candidates = User.objects.filter(
+            roles__codigo__in=("AGENTE", "ADMIN")
+        ).distinct()
+
+        for user in candidates:
+            self._register_agent_aliases(user.pk, user.full_name, user.email)
+
+        for legacy_user_id, legacy_row in self._legacy_user_rows.items():
+            user_pk = self._user_map.get(legacy_user_id)
+            if not user_pk:
+                continue
+            self._register_agent_aliases(
+                user_pk,
+                legacy_row.get("name", ""),
+                legacy_row.get("email", ""),
+            )
+
+        self._agent_lookup_built = True
+
+    def _register_agent_aliases(self, user_pk: int, *values: str):
+        for value in values:
+            for alias in _lookup_aliases(value):
+                self._register_lookup_alias(self._agent_lookup, alias, user_pk)
+
+            first_token = _first_lookup_token(value)
+            if first_token:
+                self._register_lookup_alias(
+                    self._agent_first_token_lookup,
+                    first_token,
+                    user_pk,
+                )
+
+    def _register_lookup_alias(
+        self,
+        lookup: dict[str, int | None],
+        alias: str,
+        user_pk: int,
+    ):
+        existing = lookup.get(alias, _LOOKUP_MISSING)
+        if existing is _LOOKUP_MISSING:
+            lookup[alias] = user_pk
+            return
+        if existing != user_pk:
+            lookup[alias] = None
+
+    def _resolve_agent_user_id(self, *snapshots: str) -> int | None:
+        for snapshot in snapshots:
+            for alias in _lookup_aliases(snapshot):
+                user_pk = self._agent_lookup.get(alias, _LOOKUP_MISSING)
+                if user_pk not in (_LOOKUP_MISSING, None):
+                    return user_pk
+
+        for snapshot in snapshots:
+            first_token = _first_lookup_token(snapshot)
+            if not first_token:
+                continue
+            user_pk = self._agent_first_token_lookup.get(first_token, _LOOKUP_MISSING)
+            if user_pk not in (_LOOKUP_MISSING, None):
+                return user_pk
+
+        return None
 
     def _import_cad_assumptions(self, rows):
         from apps.esteira.models import EsteiraItem
@@ -1030,6 +1225,46 @@ class Command(BaseCommand):
 # ---------------------------------------------------------------------------
 # Value mappers
 # ---------------------------------------------------------------------------
+
+def _normalize_lookup_value(raw: str) -> str:
+    normalized = unicodedata.normalize("NFKD", raw or "")
+    ascii_only = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    collapsed = re.sub(r"\s+", " ", ascii_only).strip().casefold()
+    return collapsed
+
+
+def _lookup_aliases(raw: str) -> list[str]:
+    normalized = _normalize_lookup_value(raw)
+    if not normalized:
+        return []
+
+    aliases = [normalized]
+    compact = re.sub(r"[^a-z0-9]+", "", normalized)
+    if compact and compact != normalized:
+        aliases.append(compact)
+
+    if "@" in normalized:
+        local_part = normalized.split("@", 1)[0].strip()
+        if local_part and local_part not in aliases:
+            aliases.append(local_part)
+        compact_local = re.sub(r"[^a-z0-9]+", "", local_part)
+        if compact_local and compact_local not in aliases:
+            aliases.append(compact_local)
+
+    return aliases
+
+
+def _first_lookup_token(raw: str) -> str:
+    normalized = _normalize_lookup_value(raw)
+    if not normalized:
+        return ""
+    return normalized.split(" ", 1)[0]
+
+
+def _map_legacy_role_code(raw: str) -> str | None:
+    normalized = _normalize_lookup_value(raw)
+    return LEGACY_ROLE_CODE_MAP.get(normalized)
+
 
 def _map_estado_civil(raw: str) -> str:
     mapping = {

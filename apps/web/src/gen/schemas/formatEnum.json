@@ -1,0 +1,6 @@
+{
+  "enum": ["integer", "currency"],
+  "type": "string",
+  "description": "* `integer` - integer\n* `currency` - currency",
+  "x-readme-ref-name": "FormatEnum"
+}

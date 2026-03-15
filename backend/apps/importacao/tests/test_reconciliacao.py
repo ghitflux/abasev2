@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal
 
 from apps.associados.models import Associado
-from apps.contratos.models import Ciclo, Parcela
+from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.refinanciamento.models import Refinanciamento
 
 from .base import ImportacaoBaseTestCase
-from ..models import ArquivoRetornoItem
+from ..models import ArquivoRetornoItem, ImportacaoLog
 from ..reconciliacao import MotorReconciliacao
 
 
@@ -47,6 +49,93 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
         self.assertEqual(ciclo.status, Ciclo.Status.CICLO_RENOVADO)
         self.assertEqual(contrato.ciclos.count(), 2)
         self.assertEqual(contrato.ciclos.get(numero=2).status, Ciclo.Status.ABERTO)
+
+    def test_status_1_abre_novo_ciclo_mesmo_quando_proxima_janela_ja_esta_ocupada(self):
+        associado, contrato, ciclo = self.create_associado_com_contrato(
+            cpf="23993596316",
+            nome="Maria Competencia Ocupada",
+        )
+        contrato_conflitante = Contrato.objects.create(
+            associado=associado,
+            agente=self.tesoureiro,
+            valor_bruto=Decimal("90.00"),
+            valor_liquido=Decimal("90.00"),
+            valor_mensalidade=Decimal("30.00"),
+            prazo_meses=3,
+            status=Contrato.Status.ATIVO,
+            data_primeira_mensalidade=date(2025, 6, 1),
+            data_aprovacao=date(2025, 5, 25),
+        )
+        ciclo_conflitante = Ciclo.objects.create(
+            contrato=contrato_conflitante,
+            numero=1,
+            data_inicio=date(2025, 6, 1),
+            data_fim=date(2025, 8, 1),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("90.00"),
+        )
+        Parcela.objects.bulk_create(
+            [
+                Parcela(
+                    ciclo=ciclo_conflitante,
+                    numero=1,
+                    referencia_mes=date(2025, 6, 1),
+                    valor=Decimal("30.00"),
+                    data_vencimento=date(2025, 6, 1),
+                    status=Parcela.Status.EM_ABERTO,
+                ),
+                Parcela(
+                    ciclo=ciclo_conflitante,
+                    numero=2,
+                    referencia_mes=date(2025, 7, 1),
+                    valor=Decimal("30.00"),
+                    data_vencimento=date(2025, 7, 1),
+                    status=Parcela.Status.EM_ABERTO,
+                ),
+                Parcela(
+                    ciclo=ciclo_conflitante,
+                    numero=3,
+                    referencia_mes=date(2025, 8, 1),
+                    valor=Decimal("30.00"),
+                    data_vencimento=date(2025, 8, 1),
+                    status=Parcela.Status.EM_ABERTO,
+                ),
+            ]
+        )
+
+        arquivo = self.create_arquivo_retorno(nome="retorno_sem_novo_ciclo.txt")
+        item = ArquivoRetornoItem.objects.create(
+            arquivo_retorno=arquivo,
+            linha_numero=11,
+            cpf_cnpj=associado.cpf_cnpj,
+            matricula_servidor="MAT-CONFLITO",
+            nome_servidor="MARIA COMPETENCIA OCUPADA",
+            cargo="-",
+            competencia="05/2025",
+            valor_descontado=Decimal("30.00"),
+            status_codigo="1",
+            status_desconto=ArquivoRetornoItem.StatusDesconto.EFETIVADO,
+            status_descricao="Lançado e Efetivado",
+            orgao_codigo="002",
+            orgao_pagto_codigo="002",
+            orgao_pagto_nome="Órgão Teste",
+        )
+
+        outcome = MotorReconciliacao(arquivo).reconciliar_item(item)
+
+        item.refresh_from_db()
+        ciclo.refresh_from_db()
+        self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA)
+        self.assertTrue(outcome["gerou_encerramento"])
+        self.assertTrue(outcome["gerou_novo_ciclo"])
+        self.assertEqual(ciclo.status, Ciclo.Status.CICLO_RENOVADO)
+        self.assertEqual(contrato.ciclos.count(), 2)
+        self.assertFalse(
+            ImportacaoLog.objects.filter(
+                arquivo_retorno=arquivo,
+                mensagem="Conflito de competência impediu a abertura do próximo ciclo.",
+            ).exists()
+        )
 
     def test_status_rejeitado_marca_inadimplencia(self):
         associado, _, ciclo = self.create_associado_com_contrato(
@@ -252,3 +341,180 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
         self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA)
         self.assertIsNotNone(item.associado_id)
         self.assertEqual(ciclo.parcelas.get(numero=3).status, Parcela.Status.DESCONTADO)
+
+    def test_busca_parcela_prioriza_contrato_ativo_mais_recente_na_competencia(self):
+        associado, contrato_antigo, ciclo_antigo = self.create_associado_com_contrato(
+            cpf="33322211100",
+            nome="Servidor Dois Contratos",
+            matricula_orgao="RET-5001",
+        )
+        self.release_cycle_competencia_locks(ciclo_antigo)
+        contrato_antigo.data_aprovacao = date(2025, 2, 20)
+        contrato_antigo.save(update_fields=["data_aprovacao", "updated_at"])
+
+        contrato_recente = Contrato.objects.create(
+            associado=associado,
+            agente=self.tesoureiro,
+            valor_bruto=Decimal("90.00"),
+            valor_liquido=Decimal("90.00"),
+            valor_mensalidade=Decimal("30.00"),
+            prazo_meses=3,
+            status=Contrato.Status.ATIVO,
+            data_primeira_mensalidade=date(2025, 3, 1),
+            data_aprovacao=date(2025, 4, 25),
+        )
+        ciclo_recente = Ciclo.objects.create(
+            contrato=contrato_recente,
+            numero=1,
+            data_inicio=date(2025, 3, 1),
+            data_fim=date(2025, 5, 1),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("90.00"),
+        )
+        Parcela.objects.bulk_create(
+            [
+                Parcela(
+                    ciclo=ciclo_recente,
+                    numero=1,
+                    referencia_mes=date(2025, 3, 1),
+                    valor=Decimal("30.00"),
+                    data_vencimento=date(2025, 3, 1),
+                    status=Parcela.Status.DESCONTADO,
+                    data_pagamento=date(2025, 3, 15),
+                ),
+                Parcela(
+                    ciclo=ciclo_recente,
+                    numero=2,
+                    referencia_mes=date(2025, 4, 1),
+                    valor=Decimal("30.00"),
+                    data_vencimento=date(2025, 4, 1),
+                    status=Parcela.Status.DESCONTADO,
+                    data_pagamento=date(2025, 4, 15),
+                ),
+                Parcela(
+                    ciclo=ciclo_recente,
+                    numero=3,
+                    referencia_mes=date(2025, 5, 1),
+                    valor=Decimal("30.00"),
+                    data_vencimento=date(2025, 5, 1),
+                    status=Parcela.Status.EM_ABERTO,
+                ),
+            ]
+        )
+
+        arquivo = self.create_arquivo_retorno(nome="retorno_contratos_duplicados.txt")
+        item = ArquivoRetornoItem.objects.create(
+            arquivo_retorno=arquivo,
+            linha_numero=9,
+            cpf_cnpj="33322211100",
+            matricula_servidor="RET-5001",
+            nome_servidor="SERVIDOR DOIS CONTRATOS",
+            cargo="-",
+            competencia="05/2025",
+            valor_descontado=Decimal("30.00"),
+            status_codigo="1",
+            status_desconto=ArquivoRetornoItem.StatusDesconto.EFETIVADO,
+            status_descricao="Lançado e Efetivado",
+            orgao_codigo="002",
+            orgao_pagto_codigo="002",
+            orgao_pagto_nome="Órgão Teste",
+        )
+
+        outcome = MotorReconciliacao(arquivo).reconciliar_item(item)
+
+        item.refresh_from_db()
+        self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA)
+        self.assertEqual(item.parcela.ciclo.contrato_id, contrato_recente.id)
+        self.assertEqual(
+            ciclo_antigo.parcelas.get(numero=3).status,
+            Parcela.Status.DESCONTADO,
+        )
+        self.assertEqual(
+            ciclo_recente.parcelas.get(numero=3).status,
+            Parcela.Status.DESCONTADO,
+        )
+
+    def test_nao_abre_ciclo_futuro_de_refinanciamento_pendente(self):
+        associado, contrato, ciclo_atual = self.create_associado_com_contrato(
+            cpf="44455566677",
+            nome="Servidor Refinanciado",
+        )
+        ciclo_futuro = Ciclo.objects.create(
+            contrato=contrato,
+            numero=2,
+            data_inicio=date(2025, 6, 1),
+            data_fim=date(2025, 8, 1),
+            status=Ciclo.Status.FUTURO,
+            valor_total=Decimal("90.00"),
+        )
+        Parcela.objects.bulk_create(
+            [
+                Parcela(
+                    ciclo=ciclo_futuro,
+                    numero=1,
+                    referencia_mes=date(2025, 6, 1),
+                    valor=Decimal("30.00"),
+                    data_vencimento=date(2025, 6, 1),
+                    status=Parcela.Status.FUTURO,
+                ),
+                Parcela(
+                    ciclo=ciclo_futuro,
+                    numero=2,
+                    referencia_mes=date(2025, 7, 1),
+                    valor=Decimal("30.00"),
+                    data_vencimento=date(2025, 7, 1),
+                    status=Parcela.Status.FUTURO,
+                ),
+                Parcela(
+                    ciclo=ciclo_futuro,
+                    numero=3,
+                    referencia_mes=date(2025, 8, 1),
+                    valor=Decimal("30.00"),
+                    data_vencimento=date(2025, 8, 1),
+                    status=Parcela.Status.FUTURO,
+                ),
+            ]
+        )
+        Refinanciamento.objects.create(
+            associado=associado,
+            contrato_origem=contrato,
+            solicitado_por=self.tesoureiro,
+            competencia_solicitada=date(2025, 6, 1),
+            status=Refinanciamento.Status.PENDENTE_APTO,
+            ciclo_origem=ciclo_atual,
+            ciclo_destino=ciclo_futuro,
+            valor_refinanciamento=Decimal("90.00"),
+            repasse_agente=Decimal("9.00"),
+        )
+
+        arquivo = self.create_arquivo_retorno(nome="retorno_refinanciamento_pendente.txt")
+        item = ArquivoRetornoItem.objects.create(
+            arquivo_retorno=arquivo,
+            linha_numero=10,
+            cpf_cnpj="44455566677",
+            matricula_servidor="MAT-REFI",
+            nome_servidor="SERVIDOR REFINANCIADO",
+            cargo="-",
+            competencia="05/2025",
+            valor_descontado=Decimal("30.00"),
+            status_codigo="1",
+            status_desconto=ArquivoRetornoItem.StatusDesconto.EFETIVADO,
+            status_descricao="Lançado e Efetivado",
+            orgao_codigo="002",
+            orgao_pagto_codigo="002",
+            orgao_pagto_nome="Órgão Teste",
+        )
+
+        outcome = MotorReconciliacao(arquivo).reconciliar_item(item)
+
+        item.refresh_from_db()
+        ciclo_atual.refresh_from_db()
+        ciclo_futuro.refresh_from_db()
+        self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA)
+        self.assertTrue(item.gerou_encerramento)
+        self.assertFalse(item.gerou_novo_ciclo)
+        self.assertEqual(ciclo_atual.status, Ciclo.Status.CICLO_RENOVADO)
+        self.assertEqual(ciclo_futuro.status, Ciclo.Status.FUTURO)
+        self.assertFalse(
+            ciclo_futuro.parcelas.exclude(status=Parcela.Status.FUTURO).exists()
+        )

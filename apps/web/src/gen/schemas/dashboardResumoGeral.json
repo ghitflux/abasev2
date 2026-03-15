@@ -1,0 +1,98 @@
+{
+  "type": "object",
+  "properties": {
+    "competencia": { "type": "string" },
+    "kpis": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "value": { "type": "string" },
+          "numeric_value": { "type": "number", "format": "double" },
+          "format": {
+            "enum": ["integer", "currency"],
+            "type": "string",
+            "description": "* `integer` - integer\n* `currency` - currency",
+            "x-readme-ref-name": "FormatEnum"
+          },
+          "tone": {
+            "enum": ["neutral", "positive", "warning", "danger"],
+            "type": "string",
+            "description": "* `neutral` - neutral\n* `positive` - positive\n* `warning` - warning\n* `danger` - danger",
+            "x-readme-ref-name": "ToneEnum"
+          },
+          "description": { "type": "string" },
+          "detail_metric": { "type": "string" }
+        },
+        "required": [
+          "description",
+          "detail_metric",
+          "format",
+          "key",
+          "label",
+          "numeric_value",
+          "tone",
+          "value"
+        ],
+        "x-readme-ref-name": "DashboardMetricCard"
+      }
+    },
+    "flow_bars": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "value": { "type": "integer" },
+          "detail_metric": { "type": "string" }
+        },
+        "required": ["detail_metric", "key", "label", "value"],
+        "x-readme-ref-name": "DashboardValuePoint"
+      }
+    },
+    "status_pie": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "value": { "type": "integer" },
+          "detail_metric": { "type": "string" }
+        },
+        "required": ["detail_metric", "key", "label", "value"],
+        "x-readme-ref-name": "DashboardPiePoint"
+      }
+    },
+    "trend_lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "bucket": { "type": "string" },
+          "label": { "type": "string" },
+          "cadastros": { "type": "integer" },
+          "efetivados": { "type": "integer" },
+          "renovacoes": { "type": "integer" },
+          "cadastros_metric": { "type": "string" },
+          "efetivados_metric": { "type": "string" },
+          "renovacoes_metric": { "type": "string" }
+        },
+        "required": [
+          "bucket",
+          "cadastros",
+          "cadastros_metric",
+          "efetivados",
+          "efetivados_metric",
+          "label"
+        ],
+        "x-readme-ref-name": "DashboardTrendPoint"
+      }
+    }
+  },
+  "required": ["competencia", "flow_bars", "kpis", "status_pie", "trend_lines"],
+  "x-readme-ref-name": "DashboardResumoGeral"
+}

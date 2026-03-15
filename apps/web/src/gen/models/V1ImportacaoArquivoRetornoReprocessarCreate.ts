@@ -23,6 +23,7 @@ export type V1ImportacaoArquivoRetornoReprocessarCreateMutationRequest = Omit<
   | "sistema_origem"
   | "competencia_display"
   | "resumo"
+  | "financeiro"
   | "uploaded_by_nome"
   | "created_at"
 >;

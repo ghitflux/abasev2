@@ -30,6 +30,7 @@ export const arquivoRetornoListSchema = z.object({
       .optional();
   },
   resumo: z.object({}).catchall(z.any()),
+  financeiro: z.object({}).catchall(z.any()),
   uploaded_by_nome: z.string(),
   created_at: z.iso.datetime(),
   processado_em: z.iso.datetime().nullish(),

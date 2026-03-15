@@ -31,7 +31,7 @@ class AssociadoFilter(django_filters.FilterSet):
         help_text="Filtrar por ID do agente responsável",
     )
     orgao_publico = django_filters.CharFilter(
-        field_name="contato_historico__orgao_publico",
+        field_name="orgao_publico",
         lookup_expr="icontains",
         help_text="Filtrar por órgão público",
     )

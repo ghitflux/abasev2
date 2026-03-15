@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 from datetime import date, datetime
+from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Prefetch, Q
+from django.db.models import Count, Prefetch, Q, Sum
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.associados.models import Associado
-from apps.contratos.models import Ciclo, Contrato
+from apps.contratos.competencia import propagate_competencia_status
+from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.models import EsteiraItem, Transicao
 from apps.refinanciamento.models import Comprovante
 
-from .models import Confirmacao
+from .models import BaixaManual, Confirmacao
 
 
 def parse_competencia(value: str | None) -> date:
@@ -58,16 +60,40 @@ class TesourariaService:
             queryset = queryset.filter(
                 associado__esteira_item__etapa_atual=EsteiraItem.Etapa.TESOURARIA
             )
+        elif pagamento == "concluido":
+            queryset = queryset.filter(
+                associado__esteira_item__etapa_atual=EsteiraItem.Etapa.CONCLUIDO
+            ).exclude(status=Contrato.Status.CANCELADO)
+        elif pagamento == "cancelado":
+            queryset = queryset.filter(status=Contrato.Status.CANCELADO)
         elif pagamento == "processado":
             queryset = queryset.exclude(
                 associado__esteira_item__etapa_atual=EsteiraItem.Etapa.TESOURARIA
             )
 
-        if competencia and pagamento != "pendente":
-            queryset = queryset.filter(
-                ciclos__data_inicio__year=competencia.year,
-                ciclos__data_inicio__month=competencia.month,
-            )
+        if competencia:
+            if pagamento == "concluido":
+                queryset = queryset.filter(
+                    auxilio_liberado_em__year=competencia.year,
+                    auxilio_liberado_em__month=competencia.month,
+                )
+            elif pagamento == "cancelado":
+                queryset = queryset.filter(
+                    updated_at__year=competencia.year,
+                    updated_at__month=competencia.month,
+                )
+            elif pagamento == "processado":
+                queryset = queryset.filter(
+                    Q(
+                        auxilio_liberado_em__year=competencia.year,
+                        auxilio_liberado_em__month=competencia.month,
+                    )
+                    | Q(
+                        status=Contrato.Status.CANCELADO,
+                        updated_at__year=competencia.year,
+                        updated_at__month=competencia.month,
+                    )
+                )
 
         if data_inicio:
             queryset = queryset.filter(data_contrato__gte=data_inicio)
@@ -195,7 +221,7 @@ class TesourariaService:
     @staticmethod
     def obter_dados_bancarios(contrato_id):
         contrato = TesourariaService._get_contrato(int(contrato_id))
-        return getattr(contrato.associado, "dados_bancarios", None)
+        return contrato.associado.build_dados_bancarios_payload()
 
 
 class ConfirmacaoService:
@@ -300,3 +326,109 @@ class ConfirmacaoService:
         )
         averbacao.confirmar(user)
         return ConfirmacaoService.obter(ligacao.id)
+
+
+class BaixaManualService:
+    @staticmethod
+    def listar_parcelas_pendentes(
+        search: str | None = None,
+        status_filter: str | None = None,
+        competencia: date | None = None,
+    ):
+        hoje = timezone.localdate()
+        mes_atual = hoje.replace(day=1)
+
+        queryset = (
+            Parcela.objects.select_related(
+                "ciclo__contrato__associado",
+                "ciclo__contrato__agente",
+            )
+            .filter(
+                status__in=[Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO],
+                referencia_mes__lt=mes_atual,
+            )
+            .order_by("-referencia_mes", "ciclo__contrato__associado__nome_completo")
+        )
+
+        if competencia:
+            queryset = queryset.filter(
+                referencia_mes__year=competencia.year,
+                referencia_mes__month=competencia.month,
+            )
+
+        if status_filter in {"em_aberto", "nao_descontado"}:
+            queryset = queryset.filter(status=status_filter)
+
+        if search:
+            queryset = queryset.filter(
+                Q(ciclo__contrato__associado__nome_completo__icontains=search)
+                | Q(ciclo__contrato__associado__cpf_cnpj__icontains=search)
+                | Q(ciclo__contrato__associado__matricula__icontains=search)
+                | Q(ciclo__contrato__codigo__icontains=search)
+            )
+
+        return queryset
+
+    @staticmethod
+    def kpis() -> dict:
+        hoje = timezone.localdate()
+        mes_atual = hoje.replace(day=1)
+
+        base = Parcela.objects.filter(
+            status__in=[Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO],
+            referencia_mes__lt=mes_atual,
+        )
+        totals = base.aggregate(
+            total=Count("id"),
+            em_aberto=Count("id", filter=Q(status=Parcela.Status.EM_ABERTO)),
+            nao_descontado=Count("id", filter=Q(status=Parcela.Status.NAO_DESCONTADO)),
+            valor_total=Sum("valor"),
+        )
+
+        baixas_mes = BaixaManual.objects.filter(
+            created_at__year=hoje.year,
+            created_at__month=hoje.month,
+        ).count()
+
+        return {
+            "total_pendentes": totals["total"] or 0,
+            "em_aberto": totals["em_aberto"] or 0,
+            "nao_descontado": totals["nao_descontado"] or 0,
+            "valor_total_pendente": str(totals["valor_total"] or Decimal("0")),
+            "baixas_realizadas_mes": baixas_mes,
+        }
+
+    @staticmethod
+    @transaction.atomic
+    def dar_baixa(parcela_id: int, comprovante, valor_pago, observacao: str, user):
+        try:
+            parcela = Parcela.objects.select_related(
+                "ciclo__contrato__associado",
+            ).get(pk=parcela_id)
+        except Parcela.DoesNotExist as exc:
+            raise ValidationError("Parcela não encontrada.") from exc
+
+        if parcela.status not in {Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO}:
+            raise ValidationError(
+                "Apenas parcelas em aberto ou não descontadas podem receber baixa manual."
+            )
+
+        if BaixaManual.objects.filter(parcela=parcela).exists():
+            raise ValidationError("Esta parcela já possui uma baixa manual registrada.")
+
+        parcela.status = Parcela.Status.DESCONTADO
+        parcela.data_pagamento = timezone.localdate()
+        if observacao:
+            parcela.observacao = observacao
+        parcela.save(update_fields=["status", "data_pagamento", "observacao", "updated_at"])
+        propagate_competencia_status(parcela)
+
+        return BaixaManual.objects.create(
+            parcela=parcela,
+            realizado_por=user,
+            comprovante=comprovante,
+            nome_comprovante=getattr(comprovante, "name", ""),
+            observacao=observacao or "",
+            valor_pago=valor_pago,
+            data_baixa=timezone.localdate(),
+        )

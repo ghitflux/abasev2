@@ -6,9 +6,9 @@
 import * as z from "zod";
 
 export const contatoHistoricoWriteSchema = z.object({
-  celular: z.optional(z.string().max(20)),
-  email: z.optional(z.email().max(254)),
-  orgao_publico: z.optional(z.string().max(150)),
-  situacao_servidor: z.optional(z.string().max(80)),
-  matricula_servidor: z.optional(z.string().max(50)),
+  celular: z.optional(z.string()),
+  email: z.optional(z.string()),
+  orgao_publico: z.optional(z.string()),
+  situacao_servidor: z.optional(z.string()),
+  matricula_servidor: z.optional(z.string()),
 });

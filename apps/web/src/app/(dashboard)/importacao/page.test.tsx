@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import ImportacaoPage from "./page";
@@ -76,6 +76,23 @@ const latestImport = {
     nao_descontados: 1,
     encerramentos: 1,
     novos_ciclos: 1,
+  },
+  financeiro: {
+    ok: 2,
+    total: 4,
+    faltando: 2,
+    esperado: "90.00",
+    recebido: "60.00",
+    pendente: "30.00",
+    percentual: 66.7,
+    mensalidades: {
+      recebido: "30.00",
+      esperado: "60.00",
+    },
+    valores_30_50: {
+      recebido: "30.00",
+      esperado: "30.00",
+    },
   },
   uploaded_by_nome: "Tes ABASE",
   created_at: "2026-03-11T08:00:00Z",
@@ -159,8 +176,9 @@ describe("ImportacaoPage", () => {
     expect(screen.getByText("Histórico de importações")).toBeInTheDocument();
     expect(screen.getByText("retorno_etipi_052025.txt")).toBeInTheDocument();
     expect(screen.getByText("Competência detectada: 05/2025")).toBeInTheDocument();
-    expect(screen.getByText("Associados Descontados")).toBeInTheDocument();
-    expect(screen.getByText("Previsão de Encerramento")).toBeInTheDocument();
+    expect(screen.getByText("Quitados")).toBeInTheDocument();
+    expect(screen.getByText("Mensalidades Recebidas")).toBeInTheDocument();
+    expect(screen.getByText("Valores 30/50 Recebidos")).toBeInTheDocument();
   });
 
   it("entra em polling visual após upload", async () => {
@@ -174,5 +192,56 @@ describe("ImportacaoPage", () => {
     await user.upload(input, file);
 
     expect(await screen.findByText("Processando arquivo retorno...")).toBeInTheDocument();
+  });
+
+  it("mostra progresso visual durante o upload do arquivo", async () => {
+    const user = userEvent.setup();
+    let resolveUpload: ((value: typeof latestImport) => void) | undefined;
+
+    useV1ImportacaoArquivoRetornoUltimaRetrieve.mockReturnValue({
+      data: { ...latestImport, status: "concluido" },
+    });
+    useV1ImportacaoArquivoRetornoList.mockReturnValue({
+      data: {
+        ...historyPayload,
+        results: [{ ...latestImport, status: "concluido" }],
+      },
+    });
+
+    mockedApiFetch.mockImplementation((path, options) => {
+      if (path === "importacao/arquivo-retorno/upload") {
+        options?.onUploadProgress?.({ loaded: 10, total: 20, percent: 50 });
+        return new Promise((resolve) => {
+          resolveUpload = resolve as (value: typeof latestImport) => void;
+        });
+      }
+
+      if (path === `importacao/arquivo-retorno/${latestImport.id}/reprocessar`) {
+        return Promise.resolve({
+          ...latestImport,
+          status: "processando",
+        });
+      }
+
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    const { container } = renderPage();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["conteudo"], "retorno_etipi_052025.txt", {
+      type: "text/plain",
+    });
+
+    await user.upload(input, file);
+
+    expect(await screen.findByText("50%")).toBeInTheDocument();
+    expect(screen.getByText(/Enviando retorno_etipi_052025.txt/i)).toBeInTheDocument();
+
+    await act(async () => {
+      resolveUpload?.({
+        ...latestImport,
+        status: "processando",
+      });
+    });
   });
 });

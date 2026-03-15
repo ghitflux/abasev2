@@ -39,7 +39,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 
 const comprovanteAccept = {
@@ -48,7 +47,10 @@ const comprovanteAccept = {
   "image/jpeg": [".jpg", ".jpeg"],
 };
 
+const PAGE_SIZE = 5;
+
 type DraftMap = Record<number, { associado?: File; agente?: File }>;
+type TesourariaPagamentoFilter = "pendente" | "concluido" | "cancelado" | "processado";
 
 function toIsoDate(value?: Date) {
   if (!value) return undefined;
@@ -68,7 +70,7 @@ function useTesourariaQuery({
   search: string;
   dataInicio?: Date;
   dataFim?: Date;
-  pagamento: "pendente" | "processado";
+  pagamento: TesourariaPagamentoFilter;
 }) {
   return useQuery({
     queryKey: [
@@ -84,7 +86,7 @@ function useTesourariaQuery({
       apiFetch<PaginatedResponse<TesourariaContratoItem>>("tesouraria/contratos", {
         query: {
           page,
-          page_size: 5,
+          page_size: PAGE_SIZE,
           competencia: format(competencia, "yyyy-MM"),
           pagamento,
           search: search || undefined,
@@ -102,7 +104,8 @@ export default function TesourariaPage() {
   const [dataInicio, setDataInicio] = React.useState<Date>();
   const [dataFim, setDataFim] = React.useState<Date>();
   const [pagePending, setPagePending] = React.useState(1);
-  const [pageProcessed, setPageProcessed] = React.useState(1);
+  const [pagePaid, setPagePaid] = React.useState(1);
+  const [pageCanceled, setPageCanceled] = React.useState(1);
   const [showOnlyPending, setShowOnlyPending] = React.useState(false);
   const [drafts, setDrafts] = React.useState<DraftMap>({});
   const [freezeTarget, setFreezeTarget] = React.useState<TesourariaContratoItem | null>(null);
@@ -117,13 +120,21 @@ export default function TesourariaPage() {
     dataFim,
     pagamento: "pendente",
   });
-  const processedQuery = useTesourariaQuery({
-    page: pageProcessed,
+  const paidQuery = useTesourariaQuery({
+    page: pagePaid,
     competencia,
     search,
     dataInicio,
     dataFim,
-    pagamento: "processado",
+    pagamento: "concluido",
+  });
+  const canceledQuery = useTesourariaQuery({
+    page: pageCanceled,
+    competencia,
+    search,
+    dataInicio,
+    dataFim,
+    pagamento: "cancelado",
   });
 
   const efetivarMutation = useMutation({
@@ -183,14 +194,23 @@ export default function TesourariaPage() {
         cell: (row) => (
           <div>
             <p className="font-medium">{row.nome}</p>
-            <p className="text-xs text-muted-foreground">{row.agente_nome}</p>
+            <p className="text-xs text-muted-foreground">
+              {maskCPFCNPJ(row.cpf_cnpj)}
+            </p>
           </div>
         ),
       },
       {
-        id: "cpf",
-        header: "CPF/CNPJ",
-        cell: (row) => maskCPFCNPJ(row.cpf_cnpj),
+        id: "agente",
+        header: "Agente / Comissão",
+        cell: (row) => (
+          <div>
+            <p className="font-medium">{row.agente_nome || "Sem agente"}</p>
+            <p className="text-xs text-muted-foreground">
+              Comissão: {formatCurrency(row.comissao_agente)}
+            </p>
+          </div>
+        ),
       },
       {
         id: "comprovante",
@@ -200,6 +220,8 @@ export default function TesourariaPage() {
           const agente = row.comprovantes.find((item) => item.papel === "agente");
           const draft = drafts[row.id] ?? {};
           const canUpload = row.status === "pendente" || row.status === "congelado";
+          const isEfetivando =
+            efetivarMutation.isPending && efetivarMutation.variables?.contratoId === row.id;
 
           return (
             <div className="grid min-w-72 gap-3">
@@ -208,7 +230,8 @@ export default function TesourariaPage() {
                 existingUrl={associados?.arquivo}
                 existingName={associados?.nome_original}
                 draftFile={draft.associado}
-                disabled={!canUpload}
+                disabled={!canUpload || isEfetivando}
+                isProcessing={isEfetivando}
                 onSelect={(file) =>
                   setDrafts((current) => ({
                     ...current,
@@ -227,7 +250,8 @@ export default function TesourariaPage() {
                 existingUrl={agente?.arquivo}
                 existingName={agente?.nome_original}
                 draftFile={draft.agente}
-                disabled={!canUpload}
+                disabled={!canUpload || isEfetivando}
+                isProcessing={isEfetivando}
                 onSelect={(file) =>
                   setDrafts((current) => ({
                     ...current,
@@ -267,36 +291,35 @@ export default function TesourariaPage() {
       {
         id: "acao",
         header: "Ação",
-        cell: (row) => (
-          <div className="flex min-w-52 flex-wrap gap-2">
-            <Button asChild size="sm" variant="outline">
-              <Link href={`/associados/${row.associado_id}`}>
-                <EyeIcon className="size-4" />
-                Ver cadastro
-              </Link>
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="border-amber-500/40 text-amber-200"
-              onClick={() => setFreezeTarget(row)}
-              disabled={row.status === "concluido"}
-            >
-              <LockIcon className="size-4" />
-              Congelar
-            </Button>
-          </div>
-        ),
+        cell: (row) => {
+          const canFreeze = row.status === "pendente" || row.status === "congelado";
+
+          return (
+            <div className="flex min-w-52 flex-wrap gap-2">
+              <Button asChild size="sm" variant="outline">
+                <Link href={`/associados/${row.associado_id}`}>
+                  <EyeIcon className="size-4" />
+                  Ver cadastro
+                </Link>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-amber-500/40 text-amber-200"
+                onClick={() => setFreezeTarget(row)}
+                disabled={!canFreeze}
+              >
+                <LockIcon className="size-4" />
+                Congelar
+              </Button>
+            </div>
+          );
+        },
       },
       {
         id: "pix",
         header: "Chave PIX",
         cell: (row) => row.chave_pix || "—",
-      },
-      {
-        id: "codigo",
-        header: "Cód. Contrato",
-        cell: (row) => <span className="font-mono text-xs">{row.codigo}</span>,
       },
       {
         id: "data",
@@ -329,12 +352,20 @@ export default function TesourariaPage() {
 
   const handleRefresh = () => {
     setPagePending(1);
-    setPageProcessed(1);
+    setPagePaid(1);
+    setPageCanceled(1);
     void queryClient.invalidateQueries({ queryKey: ["tesouraria-contratos"] });
   };
 
+  const buildRangeLabel = (page: number, rowCount: number, total: number) => {
+    if (!rowCount) return "0";
+    const start = (page - 1) * PAGE_SIZE + 1;
+    return `${start}-${start + rowCount - 1} de ${total}`;
+  };
+
   const pendingRows = pendingQuery.data?.results ?? [];
-  const processedRows = processedQuery.data?.results ?? [];
+  const paidRows = paidQuery.data?.results ?? [];
+  const canceledRows = canceledQuery.data?.results ?? [];
 
   return (
     <div className="space-y-6">
@@ -356,7 +387,8 @@ export default function TesourariaPage() {
                 onChange={(value) => {
                   setCompetencia(value);
                   setPagePending(1);
-                  setPageProcessed(1);
+                  setPagePaid(1);
+                  setPageCanceled(1);
                 }}
                 className="w-full rounded-2xl bg-card/60 sm:w-56"
               />
@@ -411,51 +443,71 @@ export default function TesourariaPage() {
             <h2 className="text-xl font-semibold">Aguardando efetivação PIX</h2>
           </div>
           <p className="text-sm text-muted-foreground">
-            Mostrando {pendingRows.length ? `${(pagePending - 1) * 5 + 1}-${(pagePending - 1) * 5 + pendingRows.length}` : "0"} de{" "}
-            {pendingQuery.data?.count ?? 0}
+            Mostrando {buildRangeLabel(pagePending, pendingRows.length, pendingQuery.data?.count ?? 0)}
           </p>
         </header>
-        {pendingQuery.isLoading ? (
-          <LoadingCard label="Carregando contratos pendentes..." />
-        ) : (
-          <DataTable
-            data={pendingRows}
-            columns={columns}
-            currentPage={pagePending}
-            totalPages={Math.max(1, Math.ceil((pendingQuery.data?.count ?? 0) / 5))}
-            onPageChange={setPagePending}
-            emptyMessage="Nenhum contrato pendente para os filtros informados."
-          />
-        )}
+        <DataTable
+          data={pendingRows}
+          columns={columns}
+          currentPage={pagePending}
+          totalPages={Math.max(1, Math.ceil((pendingQuery.data?.count ?? 0) / PAGE_SIZE))}
+          onPageChange={setPagePending}
+          emptyMessage="Nenhum contrato pendente para os filtros informados."
+          loading={pendingQuery.isLoading}
+          skeletonRows={PAGE_SIZE}
+        />
       </section>
 
       {!showOnlyPending ? (
-        <section className="space-y-4">
-          <header className="flex items-center justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-amber-300">
-                Pagos / Cancelados
+        <>
+          <section className="space-y-4">
+            <header className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.28em] text-emerald-300">
+                  Pagos
+                </p>
+                <h2 className="text-xl font-semibold">Contratos efetivados</h2>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Mostrando {buildRangeLabel(pagePaid, paidRows.length, paidQuery.data?.count ?? 0)}
               </p>
-              <h2 className="text-xl font-semibold">Histórico processado pela tesouraria</h2>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Mostrando {processedRows.length ? `${(pageProcessed - 1) * 5 + 1}-${(pageProcessed - 1) * 5 + processedRows.length}` : "0"} de{" "}
-              {processedQuery.data?.count ?? 0}
-            </p>
-          </header>
-          {processedQuery.isLoading ? (
-            <LoadingCard label="Carregando histórico de pagamentos..." />
-          ) : (
+            </header>
             <DataTable
-              data={processedRows}
+              data={paidRows}
               columns={columns}
-              currentPage={pageProcessed}
-              totalPages={Math.max(1, Math.ceil((processedQuery.data?.count ?? 0) / 5))}
-              onPageChange={setPageProcessed}
-              emptyMessage="Nenhum contrato processado para os filtros informados."
+              currentPage={pagePaid}
+              totalPages={Math.max(1, Math.ceil((paidQuery.data?.count ?? 0) / PAGE_SIZE))}
+              onPageChange={setPagePaid}
+              emptyMessage="Nenhum contrato pago para os filtros informados."
+              loading={paidQuery.isLoading}
+              skeletonRows={PAGE_SIZE}
             />
-          )}
-        </section>
+          </section>
+
+          <section className="space-y-4">
+            <header className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.28em] text-rose-300">
+                  Cancelados
+                </p>
+                <h2 className="text-xl font-semibold">Contratos cancelados</h2>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Mostrando {buildRangeLabel(pageCanceled, canceledRows.length, canceledQuery.data?.count ?? 0)}
+              </p>
+            </header>
+            <DataTable
+              data={canceledRows}
+              columns={columns}
+              currentPage={pageCanceled}
+              totalPages={Math.max(1, Math.ceil((canceledQuery.data?.count ?? 0) / PAGE_SIZE))}
+              onPageChange={setPageCanceled}
+              emptyMessage="Nenhum contrato cancelado para os filtros informados."
+              loading={canceledQuery.isLoading}
+              skeletonRows={PAGE_SIZE}
+            />
+          </section>
+        </>
       ) : null}
 
       <Dialog open={!!freezeTarget} onOpenChange={(open) => !open && setFreezeTarget(null)}>
@@ -522,6 +574,7 @@ function ComprovanteSlot({
   existingName,
   draftFile,
   disabled,
+  isProcessing,
   onSelect,
   onClear,
 }: {
@@ -530,6 +583,7 @@ function ComprovanteSlot({
   existingName?: string;
   draftFile?: File;
   disabled?: boolean;
+  isProcessing?: boolean;
   onSelect: (file: File) => void;
   onClear: () => void;
 }) {
@@ -566,21 +620,13 @@ function ComprovanteSlot({
           accept={comprovanteAccept}
           maxSize={5 * 1024 * 1024}
           onUpload={onSelect}
-          isProcessing={disabled}
+          disabled={disabled}
+          isProcessing={isProcessing}
           className="rounded-2xl px-3 py-5"
           emptyTitle={`Enviar comprovante do ${label.toLowerCase()}`}
           emptyDescription="PDF, JPG ou PNG até 5 MB"
         />
       )}
-    </div>
-  );
-}
-
-function LoadingCard({ label }: { label: string }) {
-  return (
-    <div className="flex items-center gap-3 rounded-[1.75rem] border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-      <Spinner />
-      {label}
     </div>
   );
 }

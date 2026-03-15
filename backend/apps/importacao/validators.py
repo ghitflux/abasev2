@@ -11,7 +11,7 @@ from .parsers import ETIPITxtRetornoParser, fold_text
 
 
 class ArquivoRetornoValidator:
-    STATUS_CODES = set(ETIPITxtRetornoParser.STATUS_MAP)
+    STATUS_CODES = set(ETIPITxtRetornoParser.STATUS_CATEGORY_MAP)
 
     @staticmethod
     def validar_formato(arquivo_nome: str) -> str:

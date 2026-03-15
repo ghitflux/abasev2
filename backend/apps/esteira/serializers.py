@@ -178,9 +178,8 @@ class EsteiraListSerializer(serializers.ModelSerializer):
         return bool(contrato and contrato.termos_web)
 
     def get_orgao_publico(self, obj: EsteiraItem):
-        return obj.associado.orgao_publico or getattr(
-            obj.associado.contato_historico, "orgao_publico", ""
-        )
+        contato = obj.associado.build_contato_payload() or {}
+        return obj.associado.orgao_publico or contato.get("orgao_publico", "")
 
     def get_documentos_count(self, obj: EsteiraItem):
         return obj.associado.documentos.count()

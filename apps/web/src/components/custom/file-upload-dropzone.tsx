@@ -10,6 +10,7 @@ type FileUploadDropzoneProps = {
   maxSize?: number;
   onUpload?: (file: File) => void;
   isProcessing?: boolean;
+  disabled?: boolean;
   className?: string;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -21,6 +22,7 @@ export default function FileUploadDropzone({
   maxSize = 10 * 1024 * 1024,
   onUpload,
   isProcessing,
+  disabled,
   className,
   emptyTitle = "Arraste um arquivo ou clique para selecionar",
   emptyDescription,
@@ -30,7 +32,7 @@ export default function FileUploadDropzone({
     accept,
     maxSize,
     multiple: false,
-    disabled: isProcessing,
+    disabled: disabled || isProcessing,
     onDropAccepted: (files) => {
       const [file] = files;
       if (file) onUpload?.(file);
@@ -47,6 +49,7 @@ export default function FileUploadDropzone({
         "flex cursor-pointer flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-border/70 bg-card/60 px-6 py-10 text-center transition hover:border-primary/70 hover:bg-card",
         isDragActive && "border-primary bg-primary/5",
         isProcessing && "cursor-wait opacity-70",
+        disabled && !isProcessing && "cursor-not-allowed opacity-60 hover:border-border/70 hover:bg-card/60",
         className,
       )}
     >

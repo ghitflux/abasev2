@@ -4,18 +4,11 @@
  */
 
 import * as z from "zod";
-import { tipoContaEnumSchema } from "./tipoContaEnumSchema.ts";
 
 export const dadosBancariosWriteSchema = z.object({
-  banco: z.string().max(100),
-  agencia: z.string().max(20),
-  conta: z.string().max(30),
-  get tipo_conta() {
-    return tipoContaEnumSchema
-      .describe(
-        "* `corrente` - Corrente\n* `poupanca` - Poupança\n* `salario` - Salário",
-      )
-      .optional();
-  },
-  chave_pix: z.optional(z.string().max(120)),
+  banco: z.optional(z.string()),
+  agencia: z.optional(z.string()),
+  conta: z.optional(z.string()),
+  tipo_conta: z.optional(z.string()),
+  chave_pix: z.optional(z.string()),
 });

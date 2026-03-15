@@ -6,7 +6,7 @@ from django.test import override_settings
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
-from apps.associados.models import Associado, Documento
+from apps.associados.models import Associado, DadosBancarios, Documento, Endereco, ContatoHistorico
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
@@ -101,7 +101,8 @@ class AssociadoPermissionsTestCase(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
         self.associado.refresh_from_db()
         self.assertEqual(self.associado.nome_completo, "Associado Corrigido")
-        self.assertEqual(self.associado.contato_historico.email, "corrigido@teste.local")
+        self.assertEqual(self.associado.email, "corrigido@teste.local")
+        self.assertEqual(response.json()["contato"]["email"], "corrigido@teste.local")
 
     def test_agente_nao_pode_atualizar_associado_de_outro_agente(self):
         response = self.agent_client.patch(
@@ -158,6 +159,14 @@ class AssociadoPermissionsTestCase(TestCase):
         self.assertEqual(response.status_code, 201, response.json())
         criado = Associado.objects.get(cpf_cnpj="22345678901")
         self.assertEqual(criado.agente_responsavel, self.agente)
+        self.assertEqual(criado.cep, "64000000")
+        self.assertEqual(criado.logradouro, "Rua Teste")
+        self.assertEqual(criado.banco, "Banco do Brasil")
+        self.assertEqual(criado.agencia, "1234")
+        self.assertEqual(criado.situacao_servidor, "ativo")
+        self.assertFalse(Endereco.objects.filter(associado=criado).exists())
+        self.assertFalse(DadosBancarios.objects.filter(associado=criado).exists())
+        self.assertFalse(ContatoHistorico.objects.filter(associado=criado).exists())
 
     def test_agente_pode_validar_documento_duplicado(self):
         response = self.agent_client.get(

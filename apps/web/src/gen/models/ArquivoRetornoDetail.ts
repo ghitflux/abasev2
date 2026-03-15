@@ -69,6 +69,12 @@ export type ArquivoRetornoDetail = {
     [key: string]: any;
   };
   /**
+   * @type object
+   */
+  readonly financeiro: {
+    [key: string]: any;
+  };
+  /**
    * @type string
    */
   readonly uploaded_by_nome: string;

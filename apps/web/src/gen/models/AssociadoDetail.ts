@@ -4,11 +4,8 @@
  */
 
 import type { BlankEnum } from "./BlankEnum.ts";
-import type { ContatoHistorico } from "./ContatoHistorico.ts";
 import type { ContratoResumo } from "./ContratoResumo.ts";
-import type { DadosBancarios } from "./DadosBancarios.ts";
 import type { Documento } from "./Documento.ts";
-import type { Endereco } from "./Endereco.ts";
 import type { EstadoCivilEnum } from "./EstadoCivilEnum.ts";
 import type { EsteiraItemResumo } from "./EsteiraItemResumo.ts";
 import type { SimpleUser } from "./SimpleUser.ts";
@@ -95,9 +92,18 @@ export type AssociadoDetail = {
    */
   observacao?: string;
   readonly agente: SimpleUser;
-  readonly endereco: Endereco;
-  readonly dados_bancarios: DadosBancarios;
-  readonly contato: ContatoHistorico;
+  /**
+   * @type string
+   */
+  readonly endereco: string;
+  /**
+   * @type string
+   */
+  readonly dados_bancarios: string;
+  /**
+   * @type string
+   */
+  readonly contato: string;
   /**
    * @type array
    */

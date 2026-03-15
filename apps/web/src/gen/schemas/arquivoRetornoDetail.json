@@ -47,6 +47,11 @@
       "additionalProperties": {},
       "readOnly": true
     },
+    "financeiro": {
+      "type": "object",
+      "additionalProperties": {},
+      "readOnly": true
+    },
     "uploaded_by_nome": { "type": "string", "readOnly": true },
     "created_at": { "type": "string", "format": "date-time", "readOnly": true },
     "processado_em": {
@@ -62,6 +67,7 @@
     "competencia",
     "competencia_display",
     "created_at",
+    "financeiro",
     "formato",
     "id",
     "resumo",

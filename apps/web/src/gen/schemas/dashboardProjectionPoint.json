@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "properties": {
+    "bucket": { "type": "string" },
+    "label": { "type": "string" },
+    "recebido": { "type": "number", "format": "double" },
+    "projetado": { "type": "number", "format": "double" },
+    "recebido_metric": { "type": "string" },
+    "projetado_metric": { "type": "string" }
+  },
+  "required": [
+    "bucket",
+    "label",
+    "projetado",
+    "projetado_metric",
+    "recebido",
+    "recebido_metric"
+  ],
+  "x-readme-ref-name": "DashboardProjectionPoint"
+}

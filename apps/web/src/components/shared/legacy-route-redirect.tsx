@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { getLegacyRouteTarget } from "@/lib/navigation";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useRouteTransition } from "@/providers/route-transition-provider";
-import { Spinner } from "@/components/ui/spinner";
+import { Skeleton } from "@/components/ui/skeleton";
 
 type LegacyRouteRedirectProps = {
   legacyPath: "/pagamentos" | "/renovacoes";
@@ -26,9 +26,14 @@ export default function LegacyRouteRedirect({ legacyPath }: LegacyRouteRedirectP
   }, [legacyPath, role, router, startRouteTransition, status]);
 
   return (
-    <div className="flex min-h-[40vh] items-center justify-center gap-3 rounded-[1.75rem] border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-      <Spinner />
-      Redirecionando para o modulo operacional correto...
+    <div className="mx-auto flex min-h-[40vh] max-w-3xl items-center justify-center">
+      <div className="w-full rounded-[1.75rem] border border-border/60 bg-card/70 p-6 shadow-xl shadow-black/15">
+        <div className="space-y-3">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-4 w-full max-w-xl" />
+          <Skeleton className="h-11 w-full rounded-2xl" />
+        </div>
+      </div>
     </div>
   );
 }

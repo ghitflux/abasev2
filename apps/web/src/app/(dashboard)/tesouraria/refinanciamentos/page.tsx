@@ -9,10 +9,10 @@ import { toast } from "sonner";
 import type { PaginatedResponse, RefinanciamentoItem } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { formatCurrency, formatDateTime, formatMonthYear } from "@/lib/formatters";
-import { maskCPFCNPJ } from "@/lib/masks";
 import DatePicker from "@/components/custom/date-picker";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import StatusBadge from "@/components/custom/status-badge";
+import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
 
 const comprovanteAccept = {
   "application/pdf": [".pdf"],
@@ -162,7 +161,7 @@ export default function TesourariaRefinanciamentosPage() {
             <p className="text-xs text-muted-foreground">
               Solicitado em: {formatDateTime(row.created_at)}
             </p>
-            <p className="text-xs text-muted-foreground">{maskCPFCNPJ(row.cpf_cnpj)}</p>
+            <CopySnippet label="CPF" value={row.cpf_cnpj} mono inline />
           </div>
         ),
       },
@@ -276,21 +275,16 @@ export default function TesourariaRefinanciamentosPage() {
         <Button onClick={() => setPage(1)}>Aplicar</Button>
       </section>
 
-      {refinanciamentosQuery.isLoading ? (
-        <div className="flex items-center gap-3 rounded-[1.75rem] border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-          <Spinner />
-          Carregando refinanciamentos...
-        </div>
-      ) : (
-        <DataTable
-          data={rows}
-          columns={columns}
-          currentPage={page}
-          totalPages={Math.max(1, Math.ceil(totalCount / 15))}
-          onPageChange={setPage}
-          emptyMessage="Nenhum refinanciamento disponível para tesouraria."
-        />
-      )}
+      <DataTable
+        data={rows}
+        columns={columns}
+        currentPage={page}
+        totalPages={Math.max(1, Math.ceil(totalCount / 15))}
+        onPageChange={setPage}
+        emptyMessage="Nenhum refinanciamento disponível para tesouraria."
+        loading={refinanciamentosQuery.isLoading}
+        skeletonRows={6}
+      />
 
       <Dialog open={!!itemsTarget} onOpenChange={(open) => !open && setItemsTarget(null)}>
         <DialogContent>

@@ -6,11 +6,11 @@
 import * as z from "zod";
 
 export const enderecoWriteSchema = z.object({
-  cep: z.string().max(12),
+  cep: z.optional(z.string()),
   endereco: z.string(),
   numero: z.optional(z.string()),
-  complemento: z.optional(z.string().max(120)),
-  bairro: z.string().max(120),
-  cidade: z.string().max(120),
-  uf: z.string().max(2),
+  complemento: z.optional(z.string().default("")),
+  bairro: z.optional(z.string()),
+  cidade: z.optional(z.string()),
+  uf: z.optional(z.string()),
 });

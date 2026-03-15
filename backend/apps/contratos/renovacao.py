@@ -7,6 +7,7 @@ from django.db.models import Prefetch, Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from apps.importacao.financeiro import build_financeiro_resumo
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem
 
 from .models import Ciclo, Contrato, Parcela
@@ -31,31 +32,133 @@ def parse_competencia_query(value: str | None):
 
 class RenovacaoCicloService:
     @staticmethod
-    def _status_visual(parcela: Parcela, ciclo: Ciclo, proximo_ciclo: Ciclo | None) -> str:
-        parcelas_pagas = ciclo.parcelas.filter(status=Parcela.Status.DESCONTADO).count()
-        parcelas_total = ciclo.parcelas.count()
+    def _parcelas_minimas_para_renovar(parcelas_total: int) -> int:
+        if parcelas_total <= 1:
+            return parcelas_total
+        return max(parcelas_total - 1, 1)
+
+    @staticmethod
+    def _resolve_parcelas(ciclo: Ciclo) -> list[Parcela]:
+        cached = getattr(ciclo, "parcelas_prefetched", None)
+        if cached is not None:
+            return list(cached)
+        return list(ciclo.parcelas.all())
+
+    @staticmethod
+    def _resolve_ciclos(contrato: Contrato) -> list[Ciclo]:
+        cached = getattr(contrato, "ciclos_prefetched", None)
+        if cached is not None:
+            return list(cached)
+        return list(contrato.ciclos.all())
+
+    @staticmethod
+    def _resolve_associado_contratos(contrato: Contrato) -> list[Contrato]:
+        associado = contrato.associado
+        cached = getattr(associado, "contratos_contexto_prefetched", None)
+        if cached is not None:
+            return list(cached)
+        return list(associado.contratos.exclude(status=Contrato.Status.CANCELADO))
+
+    @staticmethod
+    def _resolve_agente_responsavel(contrato: Contrato) -> str:
+        associado = contrato.associado
+        agente = associado.agente_responsavel or contrato.agente
+        return agente.full_name if agente else "Sem agente vinculado"
+
+    @staticmethod
+    def _resolve_matricula(parcela: Parcela, import_item: ArquivoRetornoItem | None) -> str:
+        associado = parcela.ciclo.contrato.associado
+        return (
+            associado.matricula_orgao
+            or associado.matricula
+            or (import_item.matricula_servidor if import_item else "")
+            or parcela.ciclo.contrato.codigo
+        )
+
+    @staticmethod
+    def _status_visual(
+        parcela: Parcela,
+        ciclo: Ciclo,
+        proximo_ciclo: Ciclo | None,
+        parcelas_ciclo: list[Parcela],
+    ) -> str:
+        parcelas_pagas = sum(
+            1 for ciclo_parcela in parcelas_ciclo if ciclo_parcela.status == Parcela.Status.DESCONTADO
+        )
+        parcelas_total = len(parcelas_ciclo)
+        parcelas_minimas_para_renovar = RenovacaoCicloService._parcelas_minimas_para_renovar(
+            parcelas_total
+        )
 
         if parcela.status == Parcela.Status.NAO_DESCONTADO:
             return "inadimplente"
-        if proximo_ciclo and proximo_ciclo.status == Ciclo.Status.ABERTO:
-            return "ciclo_iniciado"
         if ciclo.status == Ciclo.Status.CICLO_RENOVADO:
             return "ciclo_renovado"
-        if parcelas_pagas >= parcelas_total and parcelas_total > 0:
+        if proximo_ciclo and proximo_ciclo.status == Ciclo.Status.ABERTO:
+            return "ciclo_iniciado"
+        if parcelas_total > 0 and parcelas_pagas >= parcelas_minimas_para_renovar:
             return "apto_a_renovar"
         if parcela.status in [Parcela.Status.EM_ABERTO, Parcela.Status.FUTURO]:
             return "em_aberto"
         return parcela.status
 
     @staticmethod
+    def _build_status_explicacao(
+        *,
+        contrato: Contrato,
+        status_visual: str,
+        parcelas_pagas: int,
+        parcelas_total: int,
+        contratos_associado: list[Contrato],
+    ) -> str:
+        if status_visual != "apto_a_renovar":
+            return ""
+
+        explicacao = (
+            f"Apto a renovar porque o contrato {contrato.codigo} atingiu "
+            f"{parcelas_pagas}/{parcelas_total} parcelas baixadas."
+        )
+        outros_contratos = [
+            item
+            for item in contratos_associado
+            if item.id != contrato.id and item.status != Contrato.Status.CANCELADO
+        ]
+        if outros_contratos:
+            explicacao += (
+                " O associado possui outros contratos; este indicador considera apenas "
+                f"o contrato de referência {contrato.codigo}."
+            )
+        return explicacao
+
+    @staticmethod
     def _build_row(parcela: Parcela, competencia, import_item: ArquivoRetornoItem | None) -> dict[str, object]:
         ciclo = parcela.ciclo
         contrato = ciclo.contrato
         associado = contrato.associado
-        proximo_ciclo = contrato.ciclos.filter(numero=ciclo.numero + 1).first()
-        parcelas_pagas = ciclo.parcelas.filter(status=Parcela.Status.DESCONTADO).count()
-        parcelas_total = ciclo.parcelas.count()
-        status_visual = RenovacaoCicloService._status_visual(parcela, ciclo, proximo_ciclo)
+        parcelas_ciclo = RenovacaoCicloService._resolve_parcelas(ciclo)
+        contrato_ciclos = RenovacaoCicloService._resolve_ciclos(contrato)
+        contratos_associado = RenovacaoCicloService._resolve_associado_contratos(contrato)
+        proximo_ciclo = next(
+            (candidate for candidate in contrato_ciclos if candidate.numero == ciclo.numero + 1),
+            None,
+        )
+        parcelas_pagas = sum(
+            1 for ciclo_parcela in parcelas_ciclo if ciclo_parcela.status == Parcela.Status.DESCONTADO
+        )
+        parcelas_total = len(parcelas_ciclo)
+        status_visual = RenovacaoCicloService._status_visual(
+            parcela,
+            ciclo,
+            proximo_ciclo,
+            parcelas_ciclo,
+        )
+        status_explicacao = RenovacaoCicloService._build_status_explicacao(
+            contrato=contrato,
+            status_visual=status_visual,
+            parcelas_pagas=parcelas_pagas,
+            parcelas_total=parcelas_total,
+            contratos_associado=contratos_associado,
+        )
 
         return {
             "id": parcela.id,
@@ -71,8 +174,21 @@ class RenovacaoCicloService:
             "status_ciclo": ciclo.status,
             "status_parcela": parcela.status,
             "status_visual": status_visual,
+            "status_explicacao": status_explicacao,
+            "matricula": RenovacaoCicloService._resolve_matricula(parcela, import_item),
+            "agente_responsavel": RenovacaoCicloService._resolve_agente_responsavel(contrato),
             "parcelas_pagas": parcelas_pagas,
             "parcelas_total": parcelas_total,
+            "contrato_referencia_renovacao_id": contrato.id,
+            "contrato_referencia_renovacao_codigo": contrato.codigo,
+            "possui_multiplos_contratos": len(
+                [
+                    item
+                    for item in contratos_associado
+                    if item.status != Contrato.Status.CANCELADO
+                ]
+            )
+            > 1,
             "valor_mensalidade": contrato.valor_mensalidade,
             "valor_parcela": parcela.valor,
             "data_pagamento": parcela.data_pagamento,
@@ -81,6 +197,7 @@ class RenovacaoCicloService:
                 import_item.resultado_processamento if import_item else "sem_importacao"
             ),
             "status_codigo_etipi": import_item.status_codigo if import_item else "",
+            "status_descricao_etipi": import_item.status_descricao if import_item else "",
             "gerou_encerramento": bool(import_item and import_item.gerou_encerramento),
             "gerou_novo_ciclo": bool(import_item and import_item.gerou_novo_ciclo),
         }
@@ -111,11 +228,37 @@ class RenovacaoCicloService:
             Parcela.objects.select_related(
                 "ciclo",
                 "ciclo__contrato",
+                "ciclo__contrato__agente",
                 "ciclo__contrato__associado",
+                "ciclo__contrato__associado__agente_responsavel",
             )
             .prefetch_related(
-                "ciclo__parcelas",
-                "ciclo__contrato__ciclos__parcelas",
+                Prefetch(
+                    "ciclo__parcelas",
+                    queryset=Parcela.objects.order_by("numero"),
+                    to_attr="parcelas_prefetched",
+                ),
+                Prefetch(
+                    "ciclo__contrato__ciclos",
+                    queryset=Ciclo.objects.order_by("numero").prefetch_related(
+                        Prefetch(
+                            "parcelas",
+                            queryset=Parcela.objects.order_by("numero"),
+                            to_attr="parcelas_prefetched",
+                        )
+                    ),
+                    to_attr="ciclos_prefetched",
+                ),
+                Prefetch(
+                    "ciclo__contrato__associado__contratos",
+                    queryset=Contrato.objects.exclude(status=Contrato.Status.CANCELADO).only(
+                        "id",
+                        "codigo",
+                        "status",
+                        "associado_id",
+                    ),
+                    to_attr="contratos_contexto_prefetched",
+                ),
                 item_prefetch,
             )
             .filter(
@@ -169,8 +312,16 @@ class RenovacaoCicloService:
             "percentual_arrecadado": 0.0,
         }
         for row in rows:
-            if row["status_visual"] in resumo:
-                resumo[row["status_visual"]] += 1
+            if row["status_visual"] == "ciclo_renovado" or row["gerou_encerramento"]:
+                resumo["ciclo_renovado"] += 1
+            if row["status_visual"] == "apto_a_renovar":
+                resumo["apto_a_renovar"] += 1
+            if row["status_visual"] == "em_aberto":
+                resumo["em_aberto"] += 1
+            if row["status_visual"] == "ciclo_iniciado" or row["gerou_novo_ciclo"]:
+                resumo["ciclo_iniciado"] += 1
+            if row["status_visual"] == "inadimplente":
+                resumo["inadimplente"] += 1
             valor_parcela = Decimal(str(row.get("valor_parcela") or 0))
             resumo["esperado_total"] += valor_parcela
             if row["resultado_importacao"] == ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA or row[
@@ -181,6 +332,14 @@ class RenovacaoCicloService:
             resumo["percentual_arrecadado"] = float(
                 (resumo["arrecadado_total"] / resumo["esperado_total"]) * Decimal("100")
             )
+
+        if not (search or "").strip() and not (status or "").strip():
+            financeiro = build_financeiro_resumo(competencia=competencia)
+            if financeiro.get("total"):
+                resumo["total_associados"] = int(financeiro["total"])
+                resumo["esperado_total"] = Decimal(str(financeiro["esperado"]))
+                resumo["arrecadado_total"] = Decimal(str(financeiro["recebido"]))
+                resumo["percentual_arrecadado"] = float(financeiro.get("percentual") or 0.0)
         return resumo
 
     @staticmethod

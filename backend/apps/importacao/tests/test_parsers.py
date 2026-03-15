@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tempfile
+from decimal import Decimal
 
 from .base import ImportacaoBaseTestCase
 from ..parsers import ETIPITxtRetornoParser
@@ -199,3 +200,54 @@ STATUS MATRICULA NOME                           CARGO                          F
         self.assertEqual(len(parsed.items), 1)
         self.assertEqual(len(parsed.warnings), 1)
         self.assertIn("Valor inválido", parsed.warnings[0]["erro"])
+
+    def test_parse_prioriza_legenda_do_rodape_para_descricao_do_status(self):
+        parser = ETIPITxtRetornoParser()
+        conteudo = """
+Entidade: 2102-ABASE                                                 Referência: 05/2025   Data da Geração: 23/05/2025
+STATUS MATRICULA NOME                           CARGO                          FIN. ORGAO LANC.  TOTAL PAGO  VALOR        ORGAO PAGTO CPF
+====== ========= ============================== ============================== ==== ============ ===== ===== ============ =========== ===========
+{linha}
+       Órgão Pagamento:  002-SECRETARIA DE TESTE          -  1 Lançamento(s)  -  Total R$ 30.00
+
+Legenda do Status
+---------------------------------------------------------------------------------
+ 4 - Descrição personalizada vinda da legenda
+""".strip().format(
+            linha=build_detail_line(
+                "4",
+                "RET-4001",
+                "SERVIDOR STATUS CUSTOM",
+                "CARGO TESTE",
+                "6580",
+                "002",
+                "001",
+                "30.00",
+                "30.00",
+                "002",
+                "12345678901",
+            )
+        )
+
+        with tempfile.NamedTemporaryFile(suffix=".txt") as temp_file:
+            temp_file.write(conteudo.encode("latin-1"))
+            temp_file.flush()
+
+            parsed = parser.parse(temp_file.name)
+
+        self.assertEqual(len(parsed.items), 1)
+        self.assertEqual(parsed.items[0]["status_codigo"], "4")
+        self.assertEqual(parsed.items[0]["status_descricao"], "Descrição personalizada vinda da legenda")
+
+    def test_parse_relatorio_outubro_replica_valores_legado(self):
+        parser = ETIPITxtRetornoParser()
+        parsed = parser.parse(str(self.fixture_path("retorno_etipi_102025.txt")))
+
+        self.assertEqual(len(parsed.items), 239)
+        self.assertEqual(
+            sum((item["valor_descontado"] for item in parsed.items), Decimal("0")),
+            Decimal("47365.38"),
+        )
+        duplicados = [item for item in parsed.items if item["cpf_cnpj"] == "67556906353"]
+        self.assertEqual(len(duplicados), 2)
+        self.assertTrue(all(item["valor_descontado"] == Decimal("1.00") for item in duplicados))

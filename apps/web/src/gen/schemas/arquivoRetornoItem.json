@@ -46,10 +46,16 @@
     "observacao": { "type": "string" },
     "gerou_encerramento": { "type": "boolean" },
     "gerou_novo_ciclo": { "type": "boolean" },
+    "associado_id": { "type": "integer", "readOnly": true },
     "associado_nome": { "type": "string", "readOnly": true },
+    "associado_matricula": { "type": "string", "readOnly": true },
+    "agente_responsavel": { "type": "string", "readOnly": true },
     "contrato_codigo": { "type": "string", "readOnly": true }
   },
   "required": [
+    "agente_responsavel",
+    "associado_id",
+    "associado_matricula",
     "associado_nome",
     "competencia",
     "contrato_codigo",

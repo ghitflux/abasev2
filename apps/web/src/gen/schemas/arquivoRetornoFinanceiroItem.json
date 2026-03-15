@@ -1,0 +1,61 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer" },
+    "associado_id": { "type": "integer", "nullable": true },
+    "associado_nome": { "type": "string" },
+    "agente_responsavel": { "type": "string" },
+    "matricula": { "type": "string" },
+    "cpf_cnpj": { "type": "string" },
+    "valor": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+    },
+    "esperado": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+    },
+    "recebido": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+    },
+    "status_code": { "type": "string" },
+    "status_label": { "type": "string" },
+    "ok": { "type": "boolean" },
+    "situacao_code": { "type": "string" },
+    "situacao_label": { "type": "string" },
+    "orgao_pagto": { "type": "string" },
+    "relatorio": { "type": "string" },
+    "manual_status": { "type": "string", "nullable": true },
+    "manual_valor": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+      "nullable": true
+    },
+    "manual_forma_pagamento": { "type": "string", "nullable": true },
+    "manual_paid_at": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+    },
+    "manual_comprovante_path": { "type": "string", "nullable": true },
+    "categoria": { "type": "string" }
+  },
+  "required": [
+    "associado_nome",
+    "categoria",
+    "cpf_cnpj",
+    "esperado",
+    "id",
+    "ok",
+    "recebido",
+    "situacao_code",
+    "situacao_label",
+    "valor"
+  ],
+  "x-readme-ref-name": "ArquivoRetornoFinanceiroItem"
+}

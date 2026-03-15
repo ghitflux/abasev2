@@ -13,6 +13,7 @@ import {
 import { maskCPFCNPJ } from "@/lib/masks";
 import StatusBadge from "@/components/custom/status-badge";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import { SummaryCardSkeleton } from "@/components/shared/page-skeletons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,7 +25,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
 
 export default function AgenteRefinanciadosPage() {
   const [search, setSearch] = React.useState("");
@@ -138,10 +138,16 @@ export default function AgenteRefinanciadosPage() {
   return (
     <div className="space-y-6">
       <section className="grid gap-4 md:grid-cols-4">
-        <ResumoCard label="Total" value={resumo.total} />
-        <ResumoCard label="Concluídos" value={resumo.concluidos} />
-        <ResumoCard label="Falharam" value={resumo.falharam} />
-        <ResumoCard label="Revertidos" value={resumo.revertidos} />
+        {refinanciamentosQuery.isLoading && !refinanciamentosQuery.data ? (
+          Array.from({ length: 4 }).map((_, index) => <SummaryCardSkeleton key={index} />)
+        ) : (
+          <>
+            <ResumoCard label="Total" value={resumo.total} />
+            <ResumoCard label="Concluídos" value={resumo.concluidos} />
+            <ResumoCard label="Falharam" value={resumo.falharam} />
+            <ResumoCard label="Revertidos" value={resumo.revertidos} />
+          </>
+        )}
       </section>
 
       <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 xl:grid-cols-[minmax(0,1fr)_180px_minmax(0,1fr)_160px_auto_auto]">
@@ -195,21 +201,16 @@ export default function AgenteRefinanciadosPage() {
         </Button>
       </section>
 
-      {refinanciamentosQuery.isLoading ? (
-        <div className="flex items-center gap-3 rounded-[1.75rem] border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-          <Spinner />
-          Carregando refinanciados...
-        </div>
-      ) : (
-        <DataTable
-          data={rows}
-          columns={columns}
-          currentPage={page}
-          totalPages={Math.max(1, Math.ceil((refinanciamentosQuery.data?.count ?? 0) / Number(pageSize)))}
-          onPageChange={setPage}
-          emptyMessage="Nenhum refinanciamento encontrado."
-        />
-      )}
+      <DataTable
+        data={rows}
+        columns={columns}
+        currentPage={page}
+        totalPages={Math.max(1, Math.ceil((refinanciamentosQuery.data?.count ?? 0) / Number(pageSize)))}
+        onPageChange={setPage}
+        emptyMessage="Nenhum refinanciamento encontrado."
+        loading={refinanciamentosQuery.isLoading}
+        skeletonRows={6}
+      />
     </div>
   );
 }

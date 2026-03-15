@@ -9,6 +9,9 @@ import { parcelaSchema } from "./parcelaSchema.ts";
 
 export const cicloDetailSchema = z.object({
   id: z.int(),
+  contrato_id: z.int(),
+  contrato_codigo: z.string(),
+  contrato_status: z.string(),
   numero: z.optional(z.int().min(0).max(65535)),
   data_inicio: z.iso.date(),
   data_fim: z.iso.date(),

@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "key": { "type": "string" },
+    "label": { "type": "string" },
+    "value": { "type": "integer" },
+    "detail_metric": { "type": "string" }
+  },
+  "required": ["detail_metric", "key", "label", "value"],
+  "x-readme-ref-name": "DashboardValuePoint"
+}

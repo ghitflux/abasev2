@@ -43,6 +43,11 @@ import DateTimePicker from "@/components/custom/date-time-picker";
 import StatusBadge from "@/components/custom/status-badge";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import EmptyState from "@/components/shared/empty-state";
+import {
+  InlinePanelSkeleton,
+  MetricCardSkeleton,
+  WorklistRouteSkeleton,
+} from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -63,7 +68,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 
 const FILA_SECTIONS: Array<{
@@ -676,12 +680,7 @@ export default function AnalisePage() {
   );
 
   if (status !== "authenticated") {
-    return (
-      <div className="flex min-h-[40vh] items-center justify-center gap-3 rounded-[1.75rem] border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-        <Spinner />
-        Carregando módulo de análise...
-      </div>
-    );
+    return <WorklistRouteSkeleton />;
   }
 
   if (!isAnalistaEnabled) {
@@ -757,34 +756,40 @@ export default function AnalisePage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatsCard
-          title="Ativos"
-          value={String(summaryQuery.data?.filas.ativos ?? 0)}
-          delta={`${summaryQuery.data?.filas.incompleta ?? 0} com pendência aberta`}
-          tone="warning"
-          icon={ShieldCheckIcon}
-        />
-        <StatsCard
-          title="Recebidos"
-          value={String(summaryQuery.data?.filas.recebidos ?? 0)}
-          delta={`${summaryQuery.data?.filas.reenvio ?? 0} em reenvio`}
-          tone="positive"
-          icon={FileTextIcon}
-        />
-        <StatsCard
-          title="Ajustes no período"
-          value={String(summaryQuery.data?.ajustes.count ?? 0)}
-          delta={formatCurrency(summaryQuery.data?.ajustes.total_pago)}
-          tone="neutral"
-          icon={WalletIcon}
-        />
-        <StatsCard
-          title="Margem da competência"
-          value={String(summaryQuery.data?.margem.count ?? 0)}
-          delta={formatCurrency(summaryQuery.data?.margem.soma_antecipacao)}
-          tone="neutral"
-          icon={BarChart3Icon}
-        />
+        {summaryQuery.isLoading && !summaryQuery.data ? (
+          Array.from({ length: 4 }).map((_, index) => <MetricCardSkeleton key={index} />)
+        ) : (
+          <>
+            <StatsCard
+              title="Ativos"
+              value={String(summaryQuery.data?.filas.ativos ?? 0)}
+              delta={`${summaryQuery.data?.filas.incompleta ?? 0} com pendência aberta`}
+              tone="warning"
+              icon={ShieldCheckIcon}
+            />
+            <StatsCard
+              title="Recebidos"
+              value={String(summaryQuery.data?.filas.recebidos ?? 0)}
+              delta={`${summaryQuery.data?.filas.reenvio ?? 0} em reenvio`}
+              tone="positive"
+              icon={FileTextIcon}
+            />
+            <StatsCard
+              title="Ajustes no período"
+              value={String(summaryQuery.data?.ajustes.count ?? 0)}
+              delta={formatCurrency(summaryQuery.data?.ajustes.total_pago)}
+              tone="neutral"
+              icon={WalletIcon}
+            />
+            <StatsCard
+              title="Margem da competência"
+              value={String(summaryQuery.data?.margem.count ?? 0)}
+              delta={formatCurrency(summaryQuery.data?.margem.soma_antecipacao)}
+              tone="neutral"
+              icon={BarChart3Icon}
+            />
+          </>
+        )}
       </section>
 
       <section className="space-y-6">
@@ -807,26 +812,21 @@ export default function AnalisePage() {
                 </div>
               </CardHeader>
               <CardContent>
-                {query.isLoading ? (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Spinner />
-                    Carregando seção {section.title.toLowerCase()}...
-                  </div>
-                ) : (
-                  <DataTable
-                    data={query.data?.results ?? []}
-                    columns={filaColumns}
-                    currentPage={filaPages[section.key]}
-                    totalPages={getTotalPages(query.data?.count, pageSize)}
-                    onPageChange={(page) =>
-                      setFilaPages((current) => ({
-                        ...current,
-                        [section.key]: page,
-                      }))
-                    }
-                    emptyMessage={section.emptyMessage}
-                  />
-                )}
+                <DataTable
+                  data={query.data?.results ?? []}
+                  columns={filaColumns}
+                  currentPage={filaPages[section.key]}
+                  totalPages={getTotalPages(query.data?.count, pageSize)}
+                  onPageChange={(page) =>
+                    setFilaPages((current) => ({
+                      ...current,
+                      [section.key]: page,
+                    }))
+                  }
+                  emptyMessage={section.emptyMessage}
+                  loading={query.isLoading}
+                  skeletonRows={5}
+                />
               </CardContent>
             </Card>
           );
@@ -847,21 +847,16 @@ export default function AnalisePage() {
             </div>
           </CardHeader>
           <CardContent>
-            {ajustesQuery.isLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Spinner />
-                Carregando ajustes de pagamentos...
-              </div>
-            ) : (
-              <DataTable
-                data={ajustesQuery.data?.results ?? []}
-                columns={ajustesColumns}
-                currentPage={ajustesPage}
-                totalPages={getTotalPages(ajustesQuery.data?.count, pageSize)}
-                onPageChange={setAjustesPage}
-                emptyMessage="Nenhum ajuste encontrado para a competência selecionada."
-              />
-            )}
+            <DataTable
+              data={ajustesQuery.data?.results ?? []}
+              columns={ajustesColumns}
+              currentPage={ajustesPage}
+              totalPages={getTotalPages(ajustesQuery.data?.count, pageSize)}
+              onPageChange={setAjustesPage}
+              emptyMessage="Nenhum ajuste encontrado para a competência selecionada."
+              loading={ajustesQuery.isLoading}
+              skeletonRows={5}
+            />
           </CardContent>
         </Card>
 
@@ -881,21 +876,16 @@ export default function AnalisePage() {
             </div>
           </CardHeader>
           <CardContent>
-            {margemQuery.isLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Spinner />
-                Carregando cálculo de margem...
-              </div>
-            ) : (
-              <DataTable
-                data={margemQuery.data?.results ?? []}
-                columns={margemColumns}
-                currentPage={margemPage}
-                totalPages={getTotalPages(margemQuery.data?.count, pageSize)}
-                onPageChange={setMargemPage}
-                emptyMessage="Nenhum contrato encontrado para a competência informada."
-              />
-            )}
+            <DataTable
+              data={margemQuery.data?.results ?? []}
+              columns={margemColumns}
+              currentPage={margemPage}
+              totalPages={getTotalPages(margemQuery.data?.count, pageSize)}
+              onPageChange={setMargemPage}
+              emptyMessage="Nenhum contrato encontrado para a competência informada."
+              loading={margemQuery.isLoading}
+              skeletonRows={5}
+            />
           </CardContent>
         </Card>
 
@@ -912,21 +902,16 @@ export default function AnalisePage() {
             </div>
           </CardHeader>
           <CardContent>
-            {dadosQuery.isLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Spinner />
-                Carregando base de ajuste de dados...
-              </div>
-            ) : (
-              <DataTable
-                data={dadosQuery.data?.results ?? []}
-                columns={dadosColumns}
-                currentPage={dadosPage}
-                totalPages={getTotalPages(dadosQuery.data?.count, pageSize)}
-                onPageChange={setDadosPage}
-                emptyMessage="Nenhum cadastro encontrado para ajuste de dados."
-              />
-            )}
+            <DataTable
+              data={dadosQuery.data?.results ?? []}
+              columns={dadosColumns}
+              currentPage={dadosPage}
+              totalPages={getTotalPages(dadosQuery.data?.count, pageSize)}
+              onPageChange={setDadosPage}
+              emptyMessage="Nenhum cadastro encontrado para ajuste de dados."
+              loading={dadosQuery.isLoading}
+              skeletonRows={5}
+            />
           </CardContent>
         </Card>
       </section>
@@ -977,10 +962,7 @@ export default function AnalisePage() {
 
           {dialogState?.mode === "documentos" ? (
             detalheQuery.isLoading ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Spinner />
-                Carregando documentos...
-              </div>
+              <InlinePanelSkeleton rows={2} />
             ) : (
               <div className="space-y-4">
                 <div className="grid gap-3 md:grid-cols-2">

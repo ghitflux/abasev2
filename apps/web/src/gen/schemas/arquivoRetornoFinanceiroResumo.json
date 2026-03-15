@@ -1,0 +1,104 @@
+{
+  "type": "object",
+  "properties": {
+    "esperado": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+    },
+    "recebido": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+    },
+    "ok": { "type": "integer" },
+    "total": { "type": "integer" },
+    "faltando": { "type": "integer" },
+    "pendente": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+    },
+    "percentual": { "type": "number", "format": "double" },
+    "mensalidades": {
+      "type": "object",
+      "properties": {
+        "esperado": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+        },
+        "recebido": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+        },
+        "ok": { "type": "integer" },
+        "total": { "type": "integer" },
+        "faltando": { "type": "integer" },
+        "pendente": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+        },
+        "percentual": { "type": "number", "format": "double" }
+      },
+      "required": [
+        "esperado",
+        "faltando",
+        "ok",
+        "pendente",
+        "percentual",
+        "recebido",
+        "total"
+      ],
+      "x-readme-ref-name": "ArquivoRetornoFinanceiroGrupo"
+    },
+    "valores_30_50": {
+      "type": "object",
+      "properties": {
+        "esperado": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+        },
+        "recebido": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+        },
+        "ok": { "type": "integer" },
+        "total": { "type": "integer" },
+        "faltando": { "type": "integer" },
+        "pendente": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+        },
+        "percentual": { "type": "number", "format": "double" }
+      },
+      "required": [
+        "esperado",
+        "faltando",
+        "ok",
+        "pendente",
+        "percentual",
+        "recebido",
+        "total"
+      ],
+      "x-readme-ref-name": "ArquivoRetornoFinanceiroGrupo"
+    }
+  },
+  "required": [
+    "esperado",
+    "faltando",
+    "mensalidades",
+    "ok",
+    "pendente",
+    "percentual",
+    "recebido",
+    "total",
+    "valores_30_50"
+  ],
+  "x-readme-ref-name": "ArquivoRetornoFinanceiroResumo"
+}

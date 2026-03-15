@@ -5,6 +5,7 @@ import { ChevronDownIcon, ChevronUpIcon, ChevronsLeftIcon, ChevronsRightIcon } f
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -51,7 +52,18 @@ type DataTableProps<T extends { id: number | string }> = {
   emptyMessage?: string;
   className?: string;
   tableClassName?: string;
+  loading?: boolean;
+  skeletonRows?: number;
 };
+
+const SKELETON_WIDTHS = [
+  "w-4/5",
+  "w-3/5",
+  "w-2/3",
+  "w-1/2",
+  "w-5/6",
+  "w-2/5",
+];
 
 function buildPageItems(currentPage: number, totalPages: number) {
   if (totalPages <= 7) {
@@ -94,6 +106,8 @@ export default function DataTable<T extends { id: number | string }>({
   emptyMessage = "Nenhum registro encontrado.",
   className,
   tableClassName,
+  loading = false,
+  skeletonRows = 6,
 }: DataTableProps<T>) {
   const [internalPage, setInternalPage] = React.useState(1);
   const [internalPageSize, setInternalPageSize] = React.useState(pageSize);
@@ -154,6 +168,10 @@ export default function DataTable<T extends { id: number | string }>({
   const pageItems = React.useMemo(
     () => buildPageItems(page, resolvedTotalPages),
     [page, resolvedTotalPages],
+  );
+  const skeletonItems = React.useMemo(
+    () => Array.from({ length: skeletonRows }),
+    [skeletonRows],
   );
 
   React.useEffect(() => {
@@ -224,11 +242,29 @@ export default function DataTable<T extends { id: number | string }>({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {currentRows.length ? (
+          {loading ? (
+            skeletonItems.map((_, rowIndex) => (
+              <TableRow key={`loading-${rowIndex}`} className="border-border/60">
+                {columns.map((column, columnIndex) => (
+                  <TableCell
+                    key={column.id}
+                    className={cn("px-5 py-4 align-top", column.cellClassName)}
+                  >
+                    <Skeleton
+                      className={cn(
+                        "h-4 rounded-full",
+                        SKELETON_WIDTHS[(rowIndex + columnIndex) % SKELETON_WIDTHS.length],
+                      )}
+                    />
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))
+          ) : currentRows.length ? (
             currentRows.map((row) => (
               <React.Fragment key={row.id}>
                 <TableRow
-                  className="group border-border/60 hover:bg-white/3"
+                  className={cn("group border-border/60 hover:bg-white/3", renderExpanded && "cursor-pointer")}
                   data-expanded={expandedRow === row.id ? "true" : "false"}
                   onClick={() => {
                     if (!renderExpanded) return;
@@ -268,10 +304,14 @@ export default function DataTable<T extends { id: number | string }>({
       </Table>
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 px-5 py-4">
         <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm text-muted-foreground">
-            Página {page} de {resolvedTotalPages}
-          </p>
-          {!isControlledPagination && normalizedPageSizeOptions.length > 0 ? (
+          {loading ? (
+            <Skeleton className="h-4 w-28" />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Página {page} de {resolvedTotalPages}
+            </p>
+          )}
+          {!loading && !isControlledPagination && normalizedPageSizeOptions.length > 0 ? (
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">{pageSizeLabel}</span>
               <Select
@@ -281,7 +321,7 @@ export default function DataTable<T extends { id: number | string }>({
                   setInternalPage(1);
                 }}
               >
-                <SelectTrigger className="h-9 w-[7.5rem] rounded-xl bg-background/70">
+                <SelectTrigger className="h-9 w-30 rounded-xl bg-background/70">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -296,6 +336,12 @@ export default function DataTable<T extends { id: number | string }>({
           ) : null}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          {loading ? (
+            Array.from({ length: 5 }).map((_, index) => (
+              <Skeleton key={index} className="size-9 rounded-xl" />
+            ))
+          ) : (
+            <>
           <Button variant="outline" size="icon-sm" disabled={page === 1} onClick={() => changePage(1)}>
             <ChevronsLeftIcon className="size-4" />
           </Button>
@@ -325,6 +371,8 @@ export default function DataTable<T extends { id: number | string }>({
           <Button variant="outline" size="icon-sm" disabled={page === resolvedTotalPages} onClick={() => changePage(resolvedTotalPages)}>
             <ChevronsRightIcon className="size-4" />
           </Button>
+            </>
+          )}
         </div>
       </div>
     </div>

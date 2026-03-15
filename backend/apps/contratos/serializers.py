@@ -3,7 +3,11 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from apps.associados.models import Associado
-from apps.refinanciamento.models import Refinanciamento
+from apps.refinanciamento.payment_rules import (
+    REFINANCIAMENTO_MENSALIDADES_NECESSARIAS,
+    get_prefetched_free_paid_pagamentos,
+    has_active_refinanciamento,
+)
 
 from .models import Ciclo, Contrato, Parcela
 
@@ -39,12 +43,18 @@ class ParcelaSerializer(serializers.ModelSerializer):
 
 
 class CicloDetailSerializer(serializers.ModelSerializer):
+    contrato_id = serializers.IntegerField(source="contrato.id", read_only=True)
+    contrato_codigo = serializers.CharField(source="contrato.codigo", read_only=True)
+    contrato_status = serializers.CharField(source="contrato.status", read_only=True)
     parcelas = ParcelaSerializer(many=True, read_only=True)
 
     class Meta:
         model = Ciclo
         fields = [
             "id",
+            "contrato_id",
+            "contrato_codigo",
+            "contrato_status",
             "numero",
             "data_inicio",
             "data_fim",
@@ -119,13 +129,6 @@ class ContratoListSerializer(serializers.ModelSerializer):
             "pode_solicitar_refinanciamento",
         ]
 
-    def _parcelas(self, obj: Contrato):
-        return [
-            parcela
-            for ciclo in obj.ciclos.all()
-            for parcela in ciclo.parcelas.all()
-        ]
-
     def get_status_resumido(self, obj: Contrato) -> str:
         return (
             "concluido"
@@ -156,28 +159,16 @@ class ContratoListSerializer(serializers.ModelSerializer):
         return "concluido" if obj.auxilio_liberado_em else "analise"
 
     def get_mensalidades(self, obj: Contrato) -> dict[str, object]:
-        parcelas = self._parcelas(obj)
-        pagas = len(
-            [
-                parcela
-                for parcela in parcelas
-                if parcela.status == Parcela.Status.DESCONTADO
-            ]
-        )
-        total = len(parcelas)
-        refinanciamento_ativo = obj.associado.refinanciamentos.exclude(
-            status__in=[
-                Refinanciamento.Status.BLOQUEADO,
-                Refinanciamento.Status.REJEITADO,
-                Refinanciamento.Status.REVERTIDO,
-            ]
-        ).exists()
-        apto = pagas >= 3 and not refinanciamento_ativo
+        pagamentos_livres = get_prefetched_free_paid_pagamentos(obj)
+        pagas = min(len(pagamentos_livres), REFINANCIAMENTO_MENSALIDADES_NECESSARIAS)
+        total = REFINANCIAMENTO_MENSALIDADES_NECESSARIAS
+        refinanciamento_ativo = has_active_refinanciamento(obj)
+        apto = len(pagamentos_livres) >= REFINANCIAMENTO_MENSALIDADES_NECESSARIAS and not refinanciamento_ativo
         return MensalidadesResumoSerializer(
             {
                 "pagas": pagas,
                 "total": total,
-                "descricao": f"Mensalidades efetivadas: {pagas}/{total}",
+                "descricao": f"Pagamentos livres para refinanciamento: {pagas}/{total}",
                 "apto_refinanciamento": apto,
                 "refinanciamento_ativo": refinanciamento_ativo,
             }
@@ -228,13 +219,20 @@ class RenovacaoCicloItemSerializer(serializers.Serializer):
     status_ciclo = serializers.CharField()
     status_parcela = serializers.CharField()
     status_visual = serializers.CharField()
+    status_explicacao = serializers.CharField(allow_blank=True)
+    matricula = serializers.CharField()
+    agente_responsavel = serializers.CharField()
     parcelas_pagas = serializers.IntegerField()
     parcelas_total = serializers.IntegerField()
+    contrato_referencia_renovacao_id = serializers.IntegerField()
+    contrato_referencia_renovacao_codigo = serializers.CharField()
+    possui_multiplos_contratos = serializers.BooleanField()
     valor_mensalidade = serializers.DecimalField(max_digits=10, decimal_places=2)
     valor_parcela = serializers.DecimalField(max_digits=10, decimal_places=2)
     data_pagamento = serializers.DateField(allow_null=True)
     orgao_pagto_nome = serializers.CharField(allow_blank=True)
     resultado_importacao = serializers.CharField()
     status_codigo_etipi = serializers.CharField(allow_blank=True)
+    status_descricao_etipi = serializers.CharField(allow_blank=True)
     gerou_encerramento = serializers.BooleanField()
     gerou_novo_ciclo = serializers.BooleanField()

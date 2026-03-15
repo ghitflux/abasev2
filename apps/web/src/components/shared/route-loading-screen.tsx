@@ -1,14 +1,25 @@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  AnalyticsRouteSkeleton,
+  DetailRouteSkeleton,
+  FormRouteSkeleton,
+  ListRouteSkeleton,
+  WorklistRouteSkeleton,
+} from "@/components/shared/page-skeletons";
+import { resolveDashboardRouteKind } from "@/lib/dashboard-routes";
 import { cn } from "@/lib/utils";
 
 type RouteLoadingVariant = "generic" | "dashboard" | "auth";
+type RouteLoadingScope = "fullscreen" | "content";
 
 type RouteLoadingScreenProps = {
   overlay?: boolean;
   variant?: RouteLoadingVariant;
   label?: string;
   className?: string;
+  scope?: RouteLoadingScope;
+  pathname?: string | null;
 };
 
 function LoadingBadge({ label }: { label: string }) {
@@ -20,98 +31,26 @@ function LoadingBadge({ label }: { label: string }) {
   );
 }
 
-function DashboardRouteSkeleton() {
-  return (
-    <div className="grid min-h-full gap-6 p-4 md:p-6 xl:grid-cols-[18rem_1fr]">
-      <aside className="hidden rounded-[2rem] border border-border/60 bg-card/72 p-4 shadow-xl shadow-black/15 xl:flex xl:flex-col xl:gap-4">
-        <div className="flex items-center gap-3">
-          <Skeleton className="size-11 rounded-2xl" />
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-3 w-32" />
-          </div>
-        </div>
-        <div className="mt-4 space-y-5">
-          {Array.from({ length: 3 }).map((_, sectionIndex) => (
-            <div key={sectionIndex} className="space-y-3">
-              <Skeleton className="h-3 w-20" />
-              <div className="space-y-2">
-                {Array.from({ length: 4 }).map((__, itemIndex) => (
-                  <Skeleton
-                    key={`${sectionIndex}-${itemIndex}`}
-                    className="h-11 w-full rounded-2xl"
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </aside>
+function DashboardRouteSkeleton({ pathname }: { pathname?: string | null }) {
+  const kind = resolveDashboardRouteKind(pathname);
 
-      <div className="space-y-6">
-        <div className="flex flex-col gap-4 rounded-[2rem] border border-border/60 bg-card/60 p-4 shadow-xl shadow-black/10 md:flex-row md:items-center md:justify-between md:p-5">
-          <Skeleton className="h-12 w-full rounded-2xl md:max-w-xl" />
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-12 w-28 rounded-2xl" />
-            <Skeleton className="h-12 w-44 rounded-2xl" />
-          </div>
-        </div>
+  if (kind === "analytics") {
+    return <AnalyticsRouteSkeleton />;
+  }
 
-        <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={index}
-              className="rounded-[1.75rem] border border-border/60 bg-card/70 p-5 shadow-xl shadow-black/10"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-3">
-                  <Skeleton className="h-3 w-24" />
-                  <Skeleton className="h-9 w-20" />
-                  <Skeleton className="h-4 w-40" />
-                </div>
-                <Skeleton className="size-11 rounded-2xl" />
-              </div>
-            </div>
-          ))}
-        </div>
+  if (kind === "worklist") {
+    return <WorklistRouteSkeleton />;
+  }
 
-        <div className="grid gap-6 2xl:grid-cols-[1.2fr_0.8fr]">
-          <div className="rounded-[2rem] border border-border/60 bg-card/72 p-5 shadow-xl shadow-black/10">
-            <div className="space-y-3">
-              <Skeleton className="h-5 w-52" />
-              <Skeleton className="h-4 w-80 max-w-full" />
-            </div>
-            <Skeleton className="mt-6 h-[18rem] w-full rounded-[1.75rem]" />
-          </div>
+  if (kind === "form") {
+    return <FormRouteSkeleton />;
+  }
 
-          <div className="rounded-[2rem] border border-border/60 bg-card/72 p-5 shadow-xl shadow-black/10">
-            <div className="space-y-3">
-              <Skeleton className="h-5 w-44" />
-              <Skeleton className="h-4 w-64 max-w-full" />
-            </div>
-            <div className="mt-6 space-y-4">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <Skeleton key={index} className="h-12 w-full rounded-2xl" />
-              ))}
-            </div>
-          </div>
-        </div>
+  if (kind === "detail") {
+    return <DetailRouteSkeleton />;
+  }
 
-        <div className="rounded-[2rem] border border-border/60 bg-card/72 p-5 shadow-xl shadow-black/10">
-          <div className="space-y-3">
-            <Skeleton className="h-5 w-48" />
-            <Skeleton className="h-4 w-72 max-w-full" />
-          </div>
-          <div className="mt-6 space-y-3">
-            <Skeleton className="h-10 w-full rounded-2xl" />
-            {Array.from({ length: 6 }).map((_, index) => (
-              <Skeleton key={index} className="h-14 w-full rounded-2xl" />
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+  return <ListRouteSkeleton />;
 }
 
 function AuthRouteSkeleton() {
@@ -199,15 +138,23 @@ export default function RouteLoadingScreen({
   variant = "generic",
   label = "Carregando modulo...",
   className,
+  scope = "fullscreen",
+  pathname,
 }: RouteLoadingScreenProps) {
+  const isContentScope = scope === "content";
+
   return (
     <div
       aria-busy="true"
       aria-live="polite"
       className={cn(
         overlay
-          ? "fixed inset-0 z-[120] overflow-hidden bg-background/88 backdrop-blur-md"
-          : "min-h-screen bg-background",
+          ? isContentScope
+            ? "absolute inset-0 z-40 overflow-auto bg-background/88 backdrop-blur-md"
+            : "fixed inset-0 z-[120] overflow-auto bg-background/88 backdrop-blur-md"
+          : isContentScope
+            ? "min-h-full"
+            : "min-h-screen bg-background",
         className,
       )}
     >
@@ -215,13 +162,20 @@ export default function RouteLoadingScreen({
         <LoadingBadge label={label} />
       </div>
 
-      {variant === "dashboard" ? (
-        <DashboardRouteSkeleton />
-      ) : variant === "auth" ? (
-        <AuthRouteSkeleton />
-      ) : (
-        <GenericRouteSkeleton />
-      )}
+      <div
+        className={cn(
+          "mx-auto w-full max-w-7xl px-4 py-16 md:px-6 md:py-20",
+          isContentScope && "max-w-none px-0 py-0 pt-12 md:pt-16",
+        )}
+      >
+        {variant === "dashboard" ? (
+          <DashboardRouteSkeleton pathname={pathname} />
+        ) : variant === "auth" ? (
+          <AuthRouteSkeleton />
+        ) : (
+          <GenericRouteSkeleton />
+        )}
+      </div>
     </div>
   );
 }

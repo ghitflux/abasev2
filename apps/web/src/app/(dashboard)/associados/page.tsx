@@ -23,13 +23,14 @@ import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import RoleGuard from "@/components/auth/role-guard";
 import DatePicker from "@/components/custom/date-picker";
 import StatusBadge from "@/components/custom/status-badge";
+import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import { InlinePanelSkeleton, MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type FiltersState = {
@@ -46,12 +47,7 @@ function AssociadoCiclosPanel({ associadoId }: { associadoId: number }) {
   });
 
   if (ciclosQuery.isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Spinner />
-        Carregando ciclos...
-      </div>
-    );
+    return <InlinePanelSkeleton rows={2} className="pt-2" />;
   }
 
   const ciclos = ciclosQuery.data ?? [];
@@ -64,17 +60,28 @@ function AssociadoCiclosPanel({ associadoId }: { associadoId: number }) {
       <TabsList variant="line">
         {ciclos.map((ciclo) => (
           <TabsTrigger key={ciclo.id} value={String(ciclo.id)}>
-            Ciclo {ciclo.numero}
+            <div className="flex flex-col items-start">
+              <span>Ciclo {ciclo.numero}</span>
+              <span className="text-[10px] font-mono text-muted-foreground">
+                {ciclo.contrato_codigo}
+              </span>
+            </div>
           </TabsTrigger>
         ))}
       </TabsList>
       {ciclos.map((ciclo) => (
         <TabsContent key={ciclo.id} value={String(ciclo.id)} className="pt-4">
           <div className="mb-4 flex items-center justify-between">
-            <p className="text-sm text-muted-foreground">
-              Referências de {formatMonthYear(ciclo.data_inicio)} até {formatMonthYear(ciclo.data_fim)}
-            </p>
-            <StatusBadge status={ciclo.status} />
+            <div>
+              <p className="text-sm font-medium text-foreground">{ciclo.contrato_codigo}</p>
+              <p className="text-sm text-muted-foreground">
+                Referências de {formatMonthYear(ciclo.data_inicio)} até {formatMonthYear(ciclo.data_fim)}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <StatusBadge status={ciclo.contrato_status} label={ciclo.contrato_status} />
+              <StatusBadge status={ciclo.status} />
+            </div>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             {ciclo.parcelas.map((parcela) => (
@@ -148,15 +155,15 @@ function AssociadosPageContent() {
       },
       {
         id: "matricula",
-        header: "Matrícula",
-        accessor: "matricula",
-        sortable: true,
-        cell: (row) => <span className="font-mono text-sm">{row.matricula}</span>,
+        header: "Matrícula do Servidor",
+        cell: (row) => (
+          <CopySnippet label="Matrícula do Servidor" value={row.matricula_orgao || row.matricula} mono inline />
+        ),
       },
       {
         id: "cpf_cnpj",
         header: "CPF/CNPJ",
-        accessor: "cpf_cnpj",
+        cell: (row) => <CopySnippet label="CPF" value={row.cpf_cnpj} mono inline />,
       },
       {
         id: "ciclos",
@@ -204,34 +211,40 @@ function AssociadosPageContent() {
   return (
     <div className="space-y-8">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatsCard
-          title="Total de Associados"
-          value={(metricas?.total.count ?? 0).toLocaleString("pt-BR")}
-          delta={formatMetricDelta(metricas?.total.variacao_percentual ?? 0)}
-          tone={(metricas?.total.variacao_percentual ?? 0) >= 0 ? "positive" : "warning"}
-          icon={Users2Icon}
-        />
-        <StatsCard
-          title="Associados Ativos"
-          value={(metricas?.ativos.count ?? 0).toLocaleString("pt-BR")}
-          delta={formatMetricDelta(metricas?.ativos.variacao_percentual ?? 0)}
-          tone={(metricas?.ativos.variacao_percentual ?? 0) >= 0 ? "positive" : "warning"}
-          icon={UserCheckIcon}
-        />
-        <StatsCard
-          title="Em Análise"
-          value={(metricas?.em_analise.count ?? 0).toLocaleString("pt-BR")}
-          delta={formatMetricDelta(metricas?.em_analise.variacao_percentual ?? 0)}
-          tone={(metricas?.em_analise.variacao_percentual ?? 0) >= 0 ? "positive" : "warning"}
-          icon={UserRoundSearchIcon}
-        />
-        <StatsCard
-          title="Inativos"
-          value={(metricas?.inativos.count ?? 0).toLocaleString("pt-BR")}
-          delta={formatMetricDelta(metricas?.inativos.variacao_percentual ?? 0)}
-          tone={(metricas?.inativos.variacao_percentual ?? 0) >= 0 ? "positive" : "warning"}
-          icon={UserXIcon}
-        />
+        {metricasQuery.isLoading && !metricas ? (
+          Array.from({ length: 4 }).map((_, index) => <MetricCardSkeleton key={index} />)
+        ) : (
+          <>
+            <StatsCard
+              title="Total de Associados"
+              value={(metricas?.total.count ?? 0).toLocaleString("pt-BR")}
+              delta={formatMetricDelta(metricas?.total.variacao_percentual ?? 0)}
+              tone={(metricas?.total.variacao_percentual ?? 0) >= 0 ? "positive" : "warning"}
+              icon={Users2Icon}
+            />
+            <StatsCard
+              title="Associados Ativos"
+              value={(metricas?.ativos.count ?? 0).toLocaleString("pt-BR")}
+              delta={formatMetricDelta(metricas?.ativos.variacao_percentual ?? 0)}
+              tone={(metricas?.ativos.variacao_percentual ?? 0) >= 0 ? "positive" : "warning"}
+              icon={UserCheckIcon}
+            />
+            <StatsCard
+              title="Em Análise"
+              value={(metricas?.em_analise.count ?? 0).toLocaleString("pt-BR")}
+              delta={formatMetricDelta(metricas?.em_analise.variacao_percentual ?? 0)}
+              tone={(metricas?.em_analise.variacao_percentual ?? 0) >= 0 ? "positive" : "warning"}
+              icon={UserRoundSearchIcon}
+            />
+            <StatsCard
+              title="Inativos"
+              value={(metricas?.inativos.count ?? 0).toLocaleString("pt-BR")}
+              delta={formatMetricDelta(metricas?.inativos.variacao_percentual ?? 0)}
+              tone={(metricas?.inativos.variacao_percentual ?? 0) >= 0 ? "positive" : "warning"}
+              icon={UserXIcon}
+            />
+          </>
+        )}
       </section>
 
       <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -327,22 +340,17 @@ function AssociadosPageContent() {
         </div>
       </section>
 
-      {associadosQuery.isLoading ? (
-        <div className="flex items-center gap-3 rounded-3xl border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-          <Spinner />
-          Carregando associados...
-        </div>
-      ) : (
-        <DataTable
-          data={associados}
-          columns={columns}
-          currentPage={page}
-          totalPages={totalPages}
-          onPageChange={setPage}
-          emptyMessage="Nenhum associado encontrado para os filtros informados."
-          renderExpanded={(row) => <AssociadoCiclosPanel associadoId={row.id} />}
-        />
-      )}
+      <DataTable
+        data={associados}
+        columns={columns}
+        currentPage={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        emptyMessage="Nenhum associado encontrado para os filtros informados."
+        renderExpanded={(row) => <AssociadoCiclosPanel associadoId={row.id} />}
+        loading={associadosQuery.isLoading}
+        skeletonRows={6}
+      />
     </div>
   );
 }

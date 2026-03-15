@@ -4,10 +4,12 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { startTransition } from "react";
-import { ChevronRightIcon, LogOutIcon, PanelLeftCloseIcon, ShieldIcon } from "lucide-react";
+import Image from "next/image";
+import { ChevronRightIcon, LogOutIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { getNavigationForRole } from "@/lib/navigation";
+import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useRouteTransition } from "@/providers/route-transition-provider";
 import { useAuthStore } from "@/store/auth-store";
@@ -34,6 +36,21 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
+function isPathActive(pathname: string, href?: string | null) {
+  if (!href) {
+    return false;
+  }
+
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function getAnimatedLabelClass(isActive: boolean) {
+  return cn(
+    "truncate transition-[opacity,transform] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-none",
+    isActive ? "translate-x-1 opacity-100" : "translate-x-0 opacity-80",
+  );
+}
+
 export default function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -50,13 +67,28 @@ export default function AppSidebar() {
     const initial: Record<string, boolean> = {};
     sections.forEach((section) => {
       section.items.forEach((item) => {
-        if (item.children?.some((child) => pathname.startsWith(child.href ?? ""))) {
+        if (item.children?.some((child) => isPathActive(pathname, child.href))) {
           initial[item.title] = true;
         }
       });
     });
     return initial;
   });
+
+  // Auto-open the relevant collapsible section when pathname changes
+  React.useEffect(() => {
+    const updates: Record<string, boolean> = {};
+    sections.forEach((section) => {
+      section.items.forEach((item) => {
+        if (item.children?.some((child) => isPathActive(pathname, child.href))) {
+          updates[item.title] = true;
+        }
+      });
+    });
+    if (Object.keys(updates).length > 0) {
+      setOpenItems((prev) => ({ ...prev, ...updates }));
+    }
+  }, [pathname, sections]);
 
   const handleLogout = () => {
     startTransition(async () => {
@@ -72,14 +104,30 @@ export default function AppSidebar() {
   return (
     <Sidebar collapsible="icon" variant="sidebar">
       {/* ─── Header ─────────────────────────────────────────────── */}
-      <SidebarHeader className="border-b border-sidebar-border p-4 group-data-[collapsible=icon]:px-2">
+      <SidebarHeader className="border-b border-sidebar-border py-[18px] px-4 group-data-[collapsible=icon]:px-2">
         <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
-          {/* Logo mark */}
+          {/* Logo mark — acts as expand toggle when collapsed */}
           <button
             onClick={isCollapsed ? toggleSidebar : undefined}
-            className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-primary/20 transition-all duration-200 hover:brightness-110 hover:shadow-primary/30 active:scale-95"
+            aria-label={isCollapsed ? "Expandir sidebar" : undefined}
+            className={
+              isCollapsed
+                ? "flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl text-sidebar-foreground/60 transition-all duration-200 hover:bg-sidebar-accent hover:text-sidebar-foreground active:scale-95"
+                : "flex h-10 min-w-10 w-auto shrink-0 cursor-default items-center justify-center rounded-xl px-0.5 transition-all duration-200"
+            }
           >
-            <ShieldIcon className="size-5" />
+            {isCollapsed ? (
+              <PanelLeftOpenIcon className="size-5" />
+            ) : (
+              <Image
+                src="/abase-icon.png"
+                alt="ABASE"
+                width={36}
+                height={36}
+                className="h-9 w-auto object-contain"
+                priority
+              />
+            )}
           </button>
 
           {/* Brand + user name (hidden when collapsed) */}
@@ -104,73 +152,105 @@ export default function AppSidebar() {
       </SidebarHeader>
 
       {/* ─── Navigation ─────────────────────────────────────────── */}
-      <SidebarContent className="px-3 py-4 group-data-[collapsible=icon]:px-2">
+      <SidebarContent className="px-3 py-4 group-data-[collapsible=icon]:px-2 [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
         {sections.map((section) => (
           <SidebarGroup key={section.title}>
             <SidebarGroupLabel>{section.title}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {section.items.map((item) =>
-                  item.children?.length ? (
-                    // ── Collapsible group item ──────────────────
-                    <Collapsible
-                      key={item.title}
-                      className="group/collapsible"
-                      open={openItems[item.title] ?? false}
-                      onOpenChange={(isOpen) =>
-                        setOpenItems((prev) => ({ ...prev, [item.title]: isOpen }))
-                      }
-                    >
-                      <SidebarMenuItem>
-                        <CollapsibleTrigger asChild>
-                          <SidebarMenuButton
-                            tooltip={item.title}
-                            className="transition-all duration-150 hover:translate-x-0.5 active:scale-[0.98]"
-                          >
-                            <item.icon className="shrink-0 transition-colors duration-150" />
-                            {!isCollapsed ? <span className="truncate">{item.title}</span> : null}
-                            {!isCollapsed ? (
-                              <ChevronRightIcon className="ml-auto size-4 shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                            ) : null}
-                          </SidebarMenuButton>
-                        </CollapsibleTrigger>
+                {section.items.map((item) => {
+                  if (item.children?.length) {
+                    const isItemActive = item.children.some((child) =>
+                      isPathActive(pathname, child.href),
+                    );
 
-                        <CollapsibleContent>
-                          <SidebarMenuSub>
-                            {item.children.map((child) => (
-                              <SidebarMenuSubItem key={child.href}>
-                                <SidebarMenuSubButton
-                                  asChild
-                                  isActive={pathname === child.href}
-                                  className="transition-all duration-150 hover:translate-x-0.5 active:scale-[0.98]"
+                    return (
+                      <Collapsible
+                        key={item.title}
+                        className="group/collapsible"
+                        open={openItems[item.title] ?? false}
+                        onOpenChange={(isOpen) =>
+                          setOpenItems((prev) => ({ ...prev, [item.title]: isOpen }))
+                        }
+                      >
+                        <SidebarMenuItem>
+                          <CollapsibleTrigger asChild>
+                            <SidebarMenuButton
+                              tooltip={item.title}
+                              isActive={isItemActive}
+                              className="transition-all duration-150 hover:translate-x-0.5 active:scale-[0.98]"
+                            >
+                              <item.icon className="shrink-0 transition-colors duration-150" />
+                              {!isCollapsed ? (
+                                <span
+                                  data-route-title={isItemActive ? "active" : "inactive"}
+                                  className={getAnimatedLabelClass(isItemActive)}
                                 >
-                                  <Link href={child.href ?? "#"}>
-                                    <span>{child.title}</span>
-                                  </Link>
-                                </SidebarMenuSubButton>
-                              </SidebarMenuSubItem>
-                            ))}
-                          </SidebarMenuSub>
-                        </CollapsibleContent>
-                      </SidebarMenuItem>
-                    </Collapsible>
-                  ) : (
-                    // ── Simple item ────────────────────────────
+                                  {item.title}
+                                </span>
+                              ) : null}
+                              {!isCollapsed ? (
+                                <ChevronRightIcon className="ml-auto size-4 shrink-0 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                              ) : null}
+                            </SidebarMenuButton>
+                          </CollapsibleTrigger>
+
+                          <CollapsibleContent>
+                            <SidebarMenuSub>
+                              {item.children.map((child) => {
+                                const isChildActive = isPathActive(pathname, child.href);
+
+                                return (
+                                  <SidebarMenuSubItem key={child.href}>
+                                    <SidebarMenuSubButton
+                                      asChild
+                                      isActive={isChildActive}
+                                      className="transition-all duration-150 hover:translate-x-0.5 active:scale-[0.98]"
+                                    >
+                                      <Link href={child.href ?? "#"}>
+                                        <span
+                                          data-route-subtitle={isChildActive ? "active" : "inactive"}
+                                          className={getAnimatedLabelClass(isChildActive)}
+                                        >
+                                          {child.title}
+                                        </span>
+                                      </Link>
+                                    </SidebarMenuSubButton>
+                                  </SidebarMenuSubItem>
+                                );
+                              })}
+                            </SidebarMenuSub>
+                          </CollapsibleContent>
+                        </SidebarMenuItem>
+                      </Collapsible>
+                    );
+                  }
+
+                  const isItemActive = isPathActive(pathname, item.href);
+
+                  return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton
                         asChild
                         tooltip={item.title}
-                        isActive={pathname === item.href}
+                        isActive={isItemActive}
                         className="transition-all duration-150 hover:translate-x-0.5 active:scale-[0.98]"
                       >
                         <Link href={item.href ?? "#"}>
                           <item.icon className="shrink-0" />
-                          {!isCollapsed ? <span className="truncate">{item.title}</span> : null}
+                          {!isCollapsed ? (
+                            <span
+                              data-route-title={isItemActive ? "active" : "inactive"}
+                              className={getAnimatedLabelClass(isItemActive)}
+                            >
+                              {item.title}
+                            </span>
+                          ) : null}
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
-                  ),
-                )}
+                  );
+                })}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

@@ -3,7 +3,6 @@
  * Do not edit manually.
  */
 
-import type { DadosBancarios } from "./DadosBancarios.ts";
 import type { SimpleUser } from "./SimpleUser.ts";
 
 export type TesourariaContratoList = {
@@ -53,7 +52,10 @@ export type TesourariaContratoList = {
    * @type string
    */
   readonly comprovantes: string;
-  readonly dados_bancarios: DadosBancarios;
+  /**
+   * @type string
+   */
+  readonly dados_bancarios: string;
   /**
    * @type string
    */

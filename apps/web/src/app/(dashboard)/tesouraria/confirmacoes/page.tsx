@@ -14,7 +14,6 @@ import StatusBadge from "@/components/custom/status-badge";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Spinner } from "@/components/ui/spinner";
 
 export default function ConfirmacoesPage() {
   const queryClient = useQueryClient();
@@ -208,21 +207,16 @@ export default function ConfirmacoesPage() {
         </Button>
       </section>
 
-      {confirmacoesQuery.isLoading ? (
-        <div className="flex items-center gap-3 rounded-[1.75rem] border border-border/60 bg-card/60 px-6 py-8 text-sm text-muted-foreground">
-          <Spinner />
-          Carregando confirmações...
-        </div>
-      ) : (
-        <DataTable
-          data={rows}
-          columns={columns}
-          currentPage={page}
-          totalPages={totalPages}
-          onPageChange={setPage}
-          emptyMessage="Nenhuma confirmação encontrada para a competência."
-        />
-      )}
+      <DataTable
+        data={rows}
+        columns={columns}
+        currentPage={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        emptyMessage="Nenhuma confirmação encontrada para a competência."
+        loading={confirmacoesQuery.isLoading}
+        skeletonRows={6}
+      />
     </div>
   );
 }

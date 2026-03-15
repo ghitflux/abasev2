@@ -4,9 +4,12 @@ import * as React from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
 import RouteLoadingScreen from "@/components/shared/route-loading-screen";
+import { isDashboardRoute, normalizePathname } from "@/lib/dashboard-routes";
 
 type RouteTransitionContextValue = {
   isRouteTransitioning: boolean;
+  isRouteLoadingVisible: boolean;
+  pendingHref: string | null;
   startRouteTransition: (href?: string | null) => void;
 };
 
@@ -47,6 +50,7 @@ export function RouteTransitionProvider({
   const searchParams = useSearchParams();
   const [isRouteTransitioning, setIsRouteTransitioning] = React.useState(false);
   const [showOverlay, setShowOverlay] = React.useState(false);
+  const [pendingHref, setPendingHref] = React.useState<string | null>(null);
   const showOverlayTimerRef = React.useRef<number | null>(null);
   const maxDurationTimerRef = React.useRef<number | null>(null);
   const lastRouteKeyRef = React.useRef<string | null>(null);
@@ -72,6 +76,7 @@ export function RouteTransitionProvider({
     clearTimers();
     setIsRouteTransitioning(false);
     setShowOverlay(false);
+    setPendingHref(null);
   }, [clearTimers]);
 
   const startRouteTransition = React.useCallback(
@@ -85,6 +90,9 @@ export function RouteTransitionProvider({
         if (!normalizedHref || normalizedHref === getCurrentRouteKey()) {
           return;
         }
+        setPendingHref(normalizedHref);
+      } else {
+        setPendingHref(null);
       }
 
       clearTimers();
@@ -168,22 +176,36 @@ export function RouteTransitionProvider({
     };
   }, [clearTimers]);
 
+  const transitionTargetPathname = normalizePathname(pendingHref ?? routeKey);
+  const currentIsDashboardRoute = isDashboardRoute(routeKey);
+  const targetIsDashboardRoute = isDashboardRoute(transitionTargetPathname);
+  const shouldUseScopedDashboardOverlay =
+    currentIsDashboardRoute && targetIsDashboardRoute;
+  const overlayVariant = targetIsDashboardRoute
+    ? "dashboard"
+    : transitionTargetPathname === "/login"
+      ? "auth"
+      : "generic";
+
   const value = React.useMemo(
     () => ({
       isRouteTransitioning,
+      isRouteLoadingVisible: showOverlay,
+      pendingHref,
       startRouteTransition,
     }),
-    [isRouteTransitioning, startRouteTransition],
+    [isRouteTransitioning, pendingHref, showOverlay, startRouteTransition],
   );
 
   return (
     <RouteTransitionContext.Provider value={value}>
       {children}
-      {showOverlay ? (
+      {showOverlay && !shouldUseScopedDashboardOverlay ? (
         <RouteLoadingScreen
           overlay
-          variant={pathname === "/login" ? "auth" : "dashboard"}
+          variant={overlayVariant}
           label="Carregando rota..."
+          pathname={transitionTargetPathname}
         />
       ) : null}
     </RouteTransitionContext.Provider>

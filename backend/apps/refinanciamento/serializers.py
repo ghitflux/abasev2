@@ -3,9 +3,9 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from apps.associados.serializers import SimpleUserSerializer
-from apps.contratos.models import Parcela
 
 from .models import Comprovante, Refinanciamento
+from .payment_rules import REFINANCIAMENTO_MENSALIDADES_NECESSARIAS
 
 
 class ComprovanteResumoSerializer(serializers.ModelSerializer):
@@ -83,45 +83,53 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
             "comprovantes",
         ]
 
-    def _parcelas_destino(self, obj: Refinanciamento):
-        if not obj.ciclo_destino:
-            return []
-        return list(obj.ciclo_destino.parcelas.all().order_by("numero"))
+    def _itens_refinanciamento(self, obj: Refinanciamento):
+        prefetched = getattr(obj, "_prefetched_objects_cache", {})
+        itens = list(prefetched.get("itens", []))
+        if itens:
+            return sorted(itens, key=lambda item: (item.referencia_month, item.id))
+        return list(obj.itens.all().order_by("referencia_month", "id"))
 
     def get_ciclo_key(self, obj: Refinanciamento) -> str:
+        if obj.cycle_key:
+            return obj.cycle_key
         referencias = [
-            parcela.referencia_mes.strftime("%Y-%m")
-            for parcela in self._parcelas_destino(obj)
+            item.referencia_month.strftime("%Y-%m")
+            for item in self._itens_refinanciamento(obj)
         ]
         return "|".join(referencias)
 
     def get_referencias(self, obj: Refinanciamento) -> list[str]:
+        itens = self._itens_refinanciamento(obj)
+        if itens:
+            return [item.referencia_month.isoformat() for item in itens]
         return [
-            parcela.referencia_mes.isoformat()
-            for parcela in self._parcelas_destino(obj)
+            referencia.isoformat()
+            for referencia in [obj.ref1, obj.ref2, obj.ref3]
+            if referencia is not None
         ]
 
     def get_itens(self, obj: Refinanciamento) -> list[dict[str, object]]:
         return [
             {
-                "id": parcela.id,
-                "numero": parcela.numero,
-                "referencia_mes": parcela.referencia_mes,
-                "valor": parcela.valor,
-                "status": parcela.status,
+                "id": item.id,
+                "numero": indice,
+                "pagamento_mensalidade_id": item.pagamento_mensalidade_id,
+                "referencia_mes": item.referencia_month,
+                "valor": item.valor,
+                "status": item.status_code or "1",
             }
-            for parcela in self._parcelas_destino(obj)
+            for indice, item in enumerate(self._itens_refinanciamento(obj), start=1)
         ]
 
     def get_mensalidades_pagas(self, obj: Refinanciamento) -> int:
-        if not obj.ciclo_origem:
-            return 0
-        return obj.ciclo_origem.parcelas.filter(status=Parcela.Status.DESCONTADO).count()
+        itens = self._itens_refinanciamento(obj)
+        if itens:
+            return min(len(itens), REFINANCIAMENTO_MENSALIDADES_NECESSARIAS)
+        return min(obj.parcelas_ok, REFINANCIAMENTO_MENSALIDADES_NECESSARIAS)
 
     def get_mensalidades_total(self, obj: Refinanciamento) -> int:
-        if not obj.ciclo_origem:
-            return 0
-        return obj.ciclo_origem.parcelas.count()
+        return REFINANCIAMENTO_MENSALIDADES_NECESSARIAS
 
     def get_refinanciamento_numero(self, obj: Refinanciamento) -> int:
         return (

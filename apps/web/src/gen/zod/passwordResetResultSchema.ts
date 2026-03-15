@@ -6,6 +6,6 @@
 import * as z from "zod";
 
 export const passwordResetResultSchema = z.object({
-  temporary_password: z.string(),
+  detail: z.string(),
   must_set_password: z.boolean(),
 });

@@ -5,10 +5,9 @@
 
 export type EnderecoWrite = {
   /**
-   * @maxLength 12
-   * @type string
+   * @type string | undefined
    */
-  cep: string;
+  cep?: string;
   /**
    * @type string
    */
@@ -18,23 +17,20 @@ export type EnderecoWrite = {
    */
   numero?: string;
   /**
-   * @maxLength 120
+   * @default ""
    * @type string | undefined
    */
   complemento?: string;
   /**
-   * @maxLength 120
-   * @type string
+   * @type string | undefined
    */
-  bairro: string;
+  bairro?: string;
   /**
-   * @maxLength 120
-   * @type string
+   * @type string | undefined
    */
-  cidade: string;
+  cidade?: string;
   /**
-   * @maxLength 2
-   * @type string
+   * @type string | undefined
    */
-  uf: string;
+  uf?: string;
 };

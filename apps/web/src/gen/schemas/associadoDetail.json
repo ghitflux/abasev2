@@ -65,135 +65,9 @@
       ],
       "readOnly": true
     },
-    "endereco": {
-      "allOf": [
-        {
-          "type": "object",
-          "properties": {
-            "id": { "type": "integer", "readOnly": true },
-            "cep": { "type": "string", "maxLength": 12 },
-            "endereco": { "type": "string" },
-            "numero": { "type": "string", "maxLength": 60 },
-            "complemento": { "type": "string", "maxLength": 120 },
-            "bairro": { "type": "string", "maxLength": 120 },
-            "cidade": { "type": "string", "maxLength": 120 },
-            "uf": { "type": "string", "maxLength": 2 },
-            "created_at": {
-              "type": "string",
-              "format": "date-time",
-              "readOnly": true
-            },
-            "updated_at": {
-              "type": "string",
-              "format": "date-time",
-              "readOnly": true
-            }
-          },
-          "required": [
-            "bairro",
-            "cep",
-            "cidade",
-            "created_at",
-            "endereco",
-            "id",
-            "uf",
-            "updated_at"
-          ],
-          "x-readme-ref-name": "Endereco"
-        }
-      ],
-      "readOnly": true
-    },
-    "dados_bancarios": {
-      "allOf": [
-        {
-          "type": "object",
-          "properties": {
-            "id": { "type": "integer", "readOnly": true },
-            "created_at": {
-              "type": "string",
-              "format": "date-time",
-              "readOnly": true
-            },
-            "updated_at": {
-              "type": "string",
-              "format": "date-time",
-              "readOnly": true
-            },
-            "deleted_at": {
-              "type": "string",
-              "format": "date-time",
-              "nullable": true
-            },
-            "banco": { "type": "string", "maxLength": 100 },
-            "agencia": { "type": "string", "maxLength": 20 },
-            "conta": { "type": "string", "maxLength": 30 },
-            "tipo_conta": {
-              "enum": ["corrente", "poupanca", "salario"],
-              "type": "string",
-              "description": "* `corrente` - Corrente\n* `poupanca` - Poupança\n* `salario` - Salário",
-              "x-readme-ref-name": "TipoContaEnum"
-            },
-            "chave_pix": { "type": "string", "maxLength": 120 },
-            "associado": { "type": "integer" }
-          },
-          "required": [
-            "agencia",
-            "associado",
-            "banco",
-            "conta",
-            "created_at",
-            "id",
-            "updated_at"
-          ],
-          "x-readme-ref-name": "DadosBancarios"
-        }
-      ],
-      "readOnly": true
-    },
-    "contato": {
-      "allOf": [
-        {
-          "type": "object",
-          "properties": {
-            "id": { "type": "integer", "readOnly": true },
-            "created_at": {
-              "type": "string",
-              "format": "date-time",
-              "readOnly": true
-            },
-            "updated_at": {
-              "type": "string",
-              "format": "date-time",
-              "readOnly": true
-            },
-            "deleted_at": {
-              "type": "string",
-              "format": "date-time",
-              "nullable": true
-            },
-            "celular": { "type": "string", "maxLength": 20 },
-            "email": { "type": "string", "format": "email", "maxLength": 254 },
-            "orgao_publico": { "type": "string", "maxLength": 150 },
-            "situacao_servidor": { "type": "string", "maxLength": 80 },
-            "matricula_servidor": { "type": "string", "maxLength": 50 },
-            "nome_contato": { "type": "string", "maxLength": 255 },
-            "parentesco": { "type": "string", "maxLength": 100 },
-            "telefone_contato": { "type": "string", "maxLength": 20 },
-            "ultima_interacao_em": {
-              "type": "string",
-              "format": "date-time",
-              "nullable": true
-            },
-            "observacao": { "type": "string" },
-            "associado": { "type": "integer" }
-          },
-          "required": ["associado", "created_at", "id", "updated_at"],
-          "x-readme-ref-name": "ContatoHistorico"
-        }
-      ],
-      "readOnly": true
-    },
+    "endereco": { "type": "string", "readOnly": true },
+    "dados_bancarios": { "type": "string", "readOnly": true },
+    "contato": { "type": "string", "readOnly": true },
     "contratos": {
       "type": "array",
       "items": {
@@ -283,6 +157,9 @@
               "type": "object",
               "properties": {
                 "id": { "type": "integer", "readOnly": true },
+                "contrato_id": { "type": "integer", "readOnly": true },
+                "contrato_codigo": { "type": "string", "readOnly": true },
+                "contrato_status": { "type": "string", "readOnly": true },
                 "numero": { "type": "integer", "maximum": 65535, "minimum": 0 },
                 "data_inicio": { "type": "string", "format": "date" },
                 "data_fim": { "type": "string", "format": "date" },
@@ -352,7 +229,15 @@
                   "readOnly": true
                 }
               },
-              "required": ["data_fim", "data_inicio", "id", "parcelas"],
+              "required": [
+                "contrato_codigo",
+                "contrato_id",
+                "contrato_status",
+                "data_fim",
+                "data_inicio",
+                "id",
+                "parcelas"
+              ],
               "x-readme-ref-name": "CicloDetail"
             },
             "readOnly": true

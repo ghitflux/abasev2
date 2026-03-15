@@ -1,3 +1,5 @@
+import type { Role } from "@abase/shared-types";
+
 export type PaginatedResponse<T> = {
   count: number;
   next: string | null;
@@ -12,6 +14,49 @@ export type PaginatedMetaResponse<T, M> = PaginatedResponse<T> & {
 export type SimpleUser = {
   id: number;
   full_name: string;
+};
+
+export type AvailableRole = {
+  codigo: Role;
+  nome: string;
+};
+
+export type SystemUserListItem = {
+  id: number;
+  email: string;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  primary_role: Role | null;
+  roles: Role[];
+  is_active: boolean;
+  must_set_password: boolean;
+  date_joined: string;
+  last_login: string | null;
+  is_current_user: boolean;
+};
+
+export type SystemUsersMeta = {
+  total: number;
+  ativos: number;
+  admins: number;
+  troca_senha_pendente: number;
+  available_roles: AvailableRole[];
+};
+
+export type SystemUserAccessUpdatePayload = {
+  roles: Role[];
+  is_active: boolean;
+};
+
+export type SystemUserPasswordResetPayload = {
+  password: string;
+  password_confirm: string;
+};
+
+export type SystemUserPasswordResetResult = {
+  detail: string;
+  must_set_password: boolean;
 };
 
 export type Metrica = {
@@ -39,6 +84,9 @@ export type Parcela = {
 
 export type Ciclo = {
   id: number;
+  contrato_id: number;
+  contrato_codigo: string;
+  contrato_status: string;
   numero: number;
   data_inicio: string;
   data_fim: string;
@@ -139,6 +187,7 @@ export type AssociadoListItem = {
   id: number;
   nome_completo: string;
   matricula: string;
+  matricula_orgao?: string;
   cpf_cnpj: string;
   status: string;
   agente?: SimpleUser | null;
@@ -391,6 +440,7 @@ export type TesourariaContratoItem = {
   status: string;
   agente?: SimpleUser | null;
   agente_nome: string;
+  comissao_agente: string;
   margem_disponivel: string;
   comprovantes: ComprovanteResumo[];
   dados_bancarios?: DadosBancarios | null;

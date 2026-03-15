@@ -1,0 +1,75 @@
+{
+  "type": "object",
+  "properties": {
+    "date_start": { "type": "string", "format": "date" },
+    "date_end": { "type": "string", "format": "date" },
+    "cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "value": { "type": "string" },
+          "numeric_value": { "type": "number", "format": "double" },
+          "format": {
+            "enum": ["integer", "currency"],
+            "type": "string",
+            "description": "* `integer` - integer\n* `currency` - currency",
+            "x-readme-ref-name": "FormatEnum"
+          },
+          "tone": {
+            "enum": ["neutral", "positive", "warning", "danger"],
+            "type": "string",
+            "description": "* `neutral` - neutral\n* `positive` - positive\n* `warning` - warning\n* `danger` - danger",
+            "x-readme-ref-name": "ToneEnum"
+          },
+          "description": { "type": "string" },
+          "detail_metric": { "type": "string" }
+        },
+        "required": [
+          "description",
+          "detail_metric",
+          "format",
+          "key",
+          "label",
+          "numeric_value",
+          "tone",
+          "value"
+        ],
+        "x-readme-ref-name": "DashboardMetricCard"
+      }
+    },
+    "ranking": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "agent_id": { "type": "integer" },
+          "agent_name": { "type": "string" },
+          "efetivados": { "type": "integer" },
+          "cadastros": { "type": "integer" },
+          "em_processo": { "type": "integer" },
+          "renovados": { "type": "integer" },
+          "inadimplentes": { "type": "integer" },
+          "participacao": { "type": "number", "format": "double" },
+          "detail_metric": { "type": "string" }
+        },
+        "required": [
+          "agent_id",
+          "agent_name",
+          "cadastros",
+          "detail_metric",
+          "efetivados",
+          "em_processo",
+          "inadimplentes",
+          "participacao",
+          "renovados"
+        ],
+        "x-readme-ref-name": "DashboardAgentRanking"
+      }
+    }
+  },
+  "required": ["cards", "date_end", "date_start", "ranking"],
+  "x-readme-ref-name": "DashboardAgentes"
+}

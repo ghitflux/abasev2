@@ -1,14 +1,14 @@
 {
   "type": "object",
   "properties": {
-    "cep": { "type": "string", "maxLength": 12 },
+    "cep": { "type": "string" },
     "endereco": { "type": "string" },
     "numero": { "type": "string" },
-    "complemento": { "type": "string", "maxLength": 120 },
-    "bairro": { "type": "string", "maxLength": 120 },
-    "cidade": { "type": "string", "maxLength": 120 },
-    "uf": { "type": "string", "maxLength": 2 }
+    "complemento": { "type": "string", "default": "" },
+    "bairro": { "type": "string" },
+    "cidade": { "type": "string" },
+    "uf": { "type": "string" }
   },
-  "required": ["bairro", "cep", "cidade", "endereco", "uf"],
+  "required": ["endereco"],
   "x-readme-ref-name": "EnderecoWrite"
 }

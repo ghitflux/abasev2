@@ -43,6 +43,18 @@ jest.mock("sonner", () => ({
 
 const mockedApiFetch = jest.mocked(apiFetch);
 
+beforeAll(() => {
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = () => false;
+  }
+  if (!Element.prototype.setPointerCapture) {
+    Element.prototype.setPointerCapture = () => undefined;
+  }
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = () => undefined;
+  }
+});
+
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -133,7 +145,7 @@ const cyclePayload = {
 };
 
 const importacaoPayload = {
-  count: 2,
+  count: 4,
   next: null,
   previous: null,
   results: [
@@ -216,6 +228,86 @@ const importacaoPayload = {
       uploaded_by_nome: "Tes ABASE",
       created_at: "2026-02-12T08:00:00Z",
       processado_em: "2026-02-12T08:10:00Z",
+    },
+    {
+      id: 13,
+      arquivo_nome: "retorno_dezembro_2025.txt",
+      formato: "txt",
+      sistema_origem: "ETIPI/iNETConsig",
+      competencia: "2025-12-01",
+      competencia_display: "12/2025",
+      total_registros: 506,
+      processados: 506,
+      nao_encontrados: 12,
+      erros: 0,
+      status: "concluido",
+      resumo: {
+        baixa_efetuada: 402,
+        nao_descontado: 104,
+        pendencias_manuais: 0,
+        nao_encontrado: 12,
+        ciclo_aberto: 4,
+      },
+      financeiro: {
+        ok: 402,
+        total: 506,
+        faltando: 104,
+        esperado: "119860.88",
+        recebido: "106102.44",
+        pendente: "13758.44",
+        percentual: 88.5,
+        mensalidades: {
+          recebido: "104612.44",
+          esperado: "118100.88",
+        },
+        valores_30_50: {
+          recebido: "1490.00",
+          esperado: "1760.00",
+        },
+      },
+      uploaded_by_nome: "Tes ABASE",
+      created_at: "2026-01-12T08:00:00Z",
+      processado_em: "2026-01-12T08:10:00Z",
+    },
+    {
+      id: 14,
+      arquivo_nome: "retorno_novembro_2025.txt",
+      formato: "txt",
+      sistema_origem: "ETIPI/iNETConsig",
+      competencia: "2025-11-01",
+      competencia_display: "11/2025",
+      total_registros: 480,
+      processados: 480,
+      nao_encontrados: 10,
+      erros: 0,
+      status: "concluido",
+      resumo: {
+        baixa_efetuada: 390,
+        nao_descontado: 90,
+        pendencias_manuais: 0,
+        nao_encontrado: 10,
+        ciclo_aberto: 5,
+      },
+      financeiro: {
+        ok: 390,
+        total: 480,
+        faltando: 90,
+        esperado: "115000.00",
+        recebido: "101000.00",
+        pendente: "14000.00",
+        percentual: 87.8,
+        mensalidades: {
+          recebido: "99700.00",
+          esperado: "113200.00",
+        },
+        valores_30_50: {
+          recebido: "1300.00",
+          esperado: "1800.00",
+        },
+      },
+      uploaded_by_nome: "Tes ABASE",
+      created_at: "2025-12-12T08:00:00Z",
+      processado_em: "2025-12-12T08:10:00Z",
     },
   ],
 };
@@ -336,7 +428,12 @@ describe("RenovacaoCiclosPage", () => {
     useV1RenovacaoCiclosVisaoMensalRetrieve.mockReturnValue({
       data: visaoMensalPayload,
     });
-    useV1ImportacaoArquivoRetornoList.mockReturnValue({ data: importacaoPayload });
+    useV1ImportacaoArquivoRetornoList.mockImplementation((params?: { page_size?: number }) => ({
+      data: {
+        ...importacaoPayload,
+        results: importacaoPayload.results.slice(0, params?.page_size ?? importacaoPayload.results.length),
+      },
+    }));
     useV1ImportacaoArquivoRetornoDescontadosList.mockReturnValue({
       data: retornoItemsPayload,
     });
@@ -352,7 +449,10 @@ describe("RenovacaoCiclosPage", () => {
           ? options.query.competencia
           : undefined;
         if (!competencia) {
-          return importacaoPayload;
+          return {
+            ...importacaoPayload,
+            results: importacaoPayload.results.slice(0, Number(options?.query?.page_size ?? importacaoPayload.results.length)),
+          };
         }
 
         const match = importacaoPayload.results.filter((item) =>
@@ -360,12 +460,24 @@ describe("RenovacaoCiclosPage", () => {
         );
 
         return {
-          results: match,
+          results: match.slice(0, Number(options?.query?.page_size ?? match.length)),
         };
       }
 
-      if (path === "importacao/arquivo-retorno/11/financeiro") {
-        return retornoFinanceiroPayload;
+      if (typeof path === "string" && /^importacao\/arquivo-retorno\/\d+\/financeiro$/.test(path)) {
+        const match = /^importacao\/arquivo-retorno\/(\d+)\/financeiro$/.exec(path);
+        const arquivoId = Number(match?.[1] ?? 0);
+        const arquivoFinanceiro =
+          importacaoPayload.results.find((item) => item.id === arquivoId)?.financeiro ??
+          retornoFinanceiroPayload.resumo;
+
+        return {
+          resumo: arquivoFinanceiro,
+          rows: retornoFinanceiroPayload.rows.map((row, index) => ({
+            ...row,
+            id: arquivoId * 100 + index,
+          })),
+        };
       }
 
       throw new Error(`Unexpected apiFetch path: ${path}`);
@@ -384,10 +496,11 @@ describe("RenovacaoCiclosPage", () => {
     expect(await screen.findByText("Carlos Mendes")).toBeInTheDocument();
     expect(await screen.findByText("retorno_fevereiro_2026.txt")).toBeInTheDocument();
     expect(await screen.findByText("retorno_janeiro_2026.txt")).toBeInTheDocument();
-    expect(screen.getByText("Quitados")).toBeInTheDocument();
-    expect(screen.getByText("Mensalidades")).toBeInTheDocument();
-    expect(screen.getByText("Valores 30/50")).toBeInTheDocument();
-    expect(screen.getByText("497/639")).toBeInTheDocument();
+    expect(await screen.findByText("retorno_dezembro_2025.txt")).toBeInTheDocument();
+    expect(screen.queryByText("retorno_novembro_2025.txt")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Quitados").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Mensalidades").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Valores 30/50").length).toBeGreaterThan(0);
   });
 
   it("faz parse local de YYYY-MM-DD sem deslocar fevereiro para janeiro", () => {
@@ -406,8 +519,28 @@ describe("RenovacaoCiclosPage", () => {
       expect(useV1ImportacaoArquivoRetornoList).toHaveBeenCalledWith(
         expect.objectContaining({
           competencia: undefined,
-          periodo: "mes",
-          page_size: 100,
+          periodo: undefined,
+          page_size: 3,
+        }),
+        expect.anything(),
+      ),
+    );
+  });
+
+  it("carrega mais arquivos retorno em blocos de tres", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText("retorno_dezembro_2025.txt")).toBeInTheDocument();
+    expect(screen.queryByText("retorno_novembro_2025.txt")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Ver mais arquivos/i }));
+
+    expect(await screen.findByText("retorno_novembro_2025.txt")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(useV1ImportacaoArquivoRetornoList).toHaveBeenCalledWith(
+        expect.objectContaining({
+          page_size: 6,
         }),
         expect.anything(),
       ),
@@ -418,7 +551,10 @@ describe("RenovacaoCiclosPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(screen.getByRole("button", { name: /Detalhamento do arquivo/i }));
+    const expandButtons = await screen.findAllByRole("button", {
+      name: /Detalhamento do arquivo/i,
+    });
+    await user.click(expandButtons[0] as HTMLElement);
 
     expect((await screen.findAllByText("Agente responsável")).length).toBeGreaterThan(0);
     expect((await screen.findAllByText("Esperado")).length).toBeGreaterThan(0);
@@ -475,9 +611,9 @@ describe("RenovacaoCiclosPage", () => {
     renderPage();
 
     const dialog = await openMonthDialog(user, "Fevereiro de 2026");
-    const searchTrigger = within(dialog).getByRole("combobox");
+    const [searchTrigger] = within(dialog).getAllByRole("combobox");
 
-    await user.click(searchTrigger);
+    await user.click(searchTrigger as HTMLElement);
     const matchingOptions = await screen.findAllByRole("option", { name: /MAT-20001/i });
     await user.click(matchingOptions[0]);
 
@@ -502,8 +638,60 @@ describe("RenovacaoCiclosPage", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Renovados em Fevereiro de 2026")).toBeInTheDocument();
     expect(within(dialog).getByText("Maria de Jesus Santana Costa")).toBeInTheDocument();
+    expect(within(dialog).getByText("Por página")).toBeInTheDocument();
+  });
+
+  it("abre o modal do detalhamento mensal ao clicar no KPI total", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: /^Total/i }));
+
+    const dialog = await screen.findByRole("dialog");
     expect(
-      within(dialog).getByRole("link", { name: /Ver detalhes do associado/i }),
+      within(dialog).getByText("Total de associados em Fevereiro de 2026"),
     ).toBeInTheDocument();
+    expect(within(dialog).getByText("Maria de Jesus Santana Costa")).toBeInTheDocument();
+    expect(within(dialog).getByText("João Carlos da Silva")).toBeInTheDocument();
+    expect(within(dialog).getByText("Por página")).toBeInTheDocument();
+  });
+
+  it("abre o modal do monitoramento de ciclos ao clicar no KPI correspondente", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: /Mês 1\/3 \(Início\)/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Mês 1/3 (Início) em Fevereiro de 2026")).toBeInTheDocument();
+    expect(within(dialog).getByText("João Carlos da Silva")).toBeInTheDocument();
+    expect(within(dialog).getByText("Por página")).toBeInTheDocument();
+  });
+
+  it("abre o modal do arquivo retorno ao clicar no KPI quitados", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const returnCardTitle = await screen.findByText("retorno_fevereiro_2026.txt");
+    const returnCard = returnCardTitle.closest('[data-slot="card"]');
+
+    expect(returnCard).not.toBeNull();
+
+    await user.click(
+      within(returnCard as HTMLElement).getByRole("button", { name: /Quitados/i }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Quitados no arquivo Fevereiro de 2026")).toBeInTheDocument();
+    expect(await within(dialog).findByText("Maria de Jesus Santana Costa")).toBeInTheDocument();
+    expect(within(dialog).getByText("Por página")).toBeInTheDocument();
+  });
+
+  it("exibe CPF, matrícula e seletor de paginação no detalhamento mensal", async () => {
+    renderPage();
+
+    expect(await screen.findByRole("columnheader", { name: "CPF" })).toBeInTheDocument();
+    expect(await screen.findByRole("columnheader", { name: "Matrícula" })).toBeInTheDocument();
+    expect(screen.getByText("Por página")).toBeInTheDocument();
   });
 });

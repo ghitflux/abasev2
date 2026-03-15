@@ -5,10 +5,16 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Case, IntegerField, Value, When
 from django.utils import timezone
 
 from apps.associados.models import Associado, only_digits
-from apps.contratos.models import Ciclo, Parcela
+from apps.contratos.competencia import (
+    create_cycle_with_parcelas,
+    propagate_competencia_status,
+    resolve_processing_competencia_parcela,
+)
+from apps.contratos.models import Ciclo, Contrato, Parcela
 
 from .matching import find_associado
 from .models import ArquivoRetorno, ArquivoRetornoItem, ImportacaoLog
@@ -122,7 +128,11 @@ class MotorReconciliacao:
             }
 
         competencia = parse_competencia(item.competencia)
-        parcela = self._buscar_parcela(associado, competencia)
+        parcela = resolve_processing_competencia_parcela(
+            associado_id=associado.id,
+            referencia_mes=competencia,
+            for_update=True,
+        )
         if not parcela:
             item.associado = associado
             item.parcela = None
@@ -180,17 +190,50 @@ class MotorReconciliacao:
             ciclo__contrato__associado=associado,
             referencia_mes=competencia,
         )
+        contrato_elegivel = queryset.filter(
+            ciclo__contrato__status__in=[Contrato.Status.ATIVO, Contrato.Status.ENCERRADO]
+        )
+        if contrato_elegivel.exists():
+            queryset = contrato_elegivel
 
-        for status in (
-            Parcela.Status.EM_ABERTO,
-            Parcela.Status.NAO_DESCONTADO,
-            Parcela.Status.FUTURO,
-            Parcela.Status.DESCONTADO,
-        ):
-            parcela = queryset.filter(status=status).order_by("ciclo__numero", "numero").first()
-            if parcela:
-                return parcela
-        return None
+        return (
+            queryset.annotate(
+                prioridade_status=Case(
+                    When(status=Parcela.Status.EM_ABERTO, then=Value(0)),
+                    When(status=Parcela.Status.NAO_DESCONTADO, then=Value(1)),
+                    When(status=Parcela.Status.FUTURO, then=Value(2)),
+                    When(status=Parcela.Status.DESCONTADO, then=Value(3)),
+                    default=Value(9),
+                    output_field=IntegerField(),
+                ),
+                prioridade_contrato=Case(
+                    When(ciclo__contrato__status=Contrato.Status.ATIVO, then=Value(0)),
+                    When(ciclo__contrato__status=Contrato.Status.ENCERRADO, then=Value(1)),
+                    default=Value(9),
+                    output_field=IntegerField(),
+                ),
+                prioridade_ciclo=Case(
+                    When(ciclo__status=Ciclo.Status.ABERTO, then=Value(0)),
+                    When(ciclo__status=Ciclo.Status.APTO_A_RENOVAR, then=Value(1)),
+                    When(ciclo__status=Ciclo.Status.FUTURO, then=Value(2)),
+                    When(ciclo__status=Ciclo.Status.CICLO_RENOVADO, then=Value(3)),
+                    When(ciclo__status=Ciclo.Status.FECHADO, then=Value(4)),
+                    default=Value(9),
+                    output_field=IntegerField(),
+                ),
+            )
+            .order_by(
+                "prioridade_status",
+                "prioridade_contrato",
+                "prioridade_ciclo",
+                "-ciclo__contrato__data_aprovacao",
+                "-ciclo__contrato__created_at",
+                "-ciclo__numero",
+                "numero",
+                "-id",
+            )
+            .first()
+        )
 
     def _processar_efetivado(
         self,
@@ -231,6 +274,7 @@ class MotorReconciliacao:
                 )
             parcela.observacao = self._append_note(parcela.observacao, nota)
             parcela.save(update_fields=["status", "data_pagamento", "observacao", "updated_at"])
+            propagate_competencia_status(parcela)
 
         item.resultado_processamento = ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA
         if permitir_diferenca:
@@ -257,6 +301,7 @@ class MotorReconciliacao:
             parcela.status = Parcela.Status.NAO_DESCONTADO
             parcela.observacao = self._append_note(parcela.observacao, item.status_descricao)
             parcela.save(update_fields=["status", "observacao", "updated_at"])
+            propagate_competencia_status(parcela)
 
         if associado.status != Associado.Status.INADIMPLENTE:
             associado.status = Associado.Status.INADIMPLENTE
@@ -278,6 +323,7 @@ class MotorReconciliacao:
         if parcela.status == Parcela.Status.FUTURO:
             parcela.status = Parcela.Status.EM_ABERTO
             parcela.save(update_fields=["status", "updated_at"])
+            propagate_competencia_status(parcela)
 
         item.resultado_processamento = ArquivoRetornoItem.ResultadoProcessamento.PENDENCIA_MANUAL
         item.observacao = item.status_descricao
@@ -327,9 +373,19 @@ class MotorReconciliacao:
             ciclo.save(update_fields=["status", "updated_at"])
             gerou_encerramento = True
 
-        proximo_ciclo = ciclo.contrato.ciclos.filter(numero=ciclo.numero + 1).first()
+        proximo_ciclo = (
+            ciclo.contrato.ciclos.select_related("refinanciamento_destino")
+            .filter(numero=ciclo.numero + 1)
+            .first()
+        )
         if proximo_ciclo:
-            if proximo_ciclo.status == Ciclo.Status.FUTURO:
+            refinanciamento_destino = getattr(proximo_ciclo, "refinanciamento_destino", None)
+            pode_abrir_ciclo_futuro = refinanciamento_destino is None or getattr(
+                refinanciamento_destino,
+                "status",
+                "",
+            ) in {"concluido", "efetivado", "aprovado"}
+            if proximo_ciclo.status == Ciclo.Status.FUTURO and pode_abrir_ciclo_futuro:
                 proximo_ciclo.status = Ciclo.Status.ABERTO
                 proximo_ciclo.save(update_fields=["status", "updated_at"])
                 proximo_ciclo.parcelas.filter(status=Parcela.Status.FUTURO).update(
@@ -338,30 +394,18 @@ class MotorReconciliacao:
                 gerou_novo_ciclo = True
         else:
             competencia_inicial = add_months(ciclo.data_fim.replace(day=1), 1)
-            proximo_ciclo = Ciclo.objects.create(
+            create_cycle_with_parcelas(
                 contrato=ciclo.contrato,
                 numero=ciclo.numero + 1,
-                data_inicio=competencia_inicial,
-                data_fim=add_months(competencia_inicial, 2),
-                status=Ciclo.Status.ABERTO,
+                competencia_inicial=competencia_inicial,
+                parcelas_total=3,
+                ciclo_status=Ciclo.Status.ABERTO,
+                parcela_status=Parcela.Status.EM_ABERTO,
+                valor_mensalidade=ciclo.contrato.valor_mensalidade,
                 valor_total=(ciclo.contrato.valor_mensalidade * Decimal("3")).quantize(
                     Decimal("0.01")
                 ),
             )
-            novas_parcelas = []
-            for numero in range(3):
-                referencia = add_months(competencia_inicial, numero)
-                novas_parcelas.append(
-                    Parcela(
-                        ciclo=proximo_ciclo,
-                        numero=numero + 1,
-                        referencia_mes=referencia,
-                        valor=ciclo.contrato.valor_mensalidade,
-                        data_vencimento=referencia,
-                        status=Parcela.Status.EM_ABERTO,
-                    )
-                )
-            Parcela.objects.bulk_create(novas_parcelas)
             gerou_novo_ciclo = True
 
         return {

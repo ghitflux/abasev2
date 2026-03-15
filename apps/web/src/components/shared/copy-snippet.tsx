@@ -53,7 +53,7 @@ export default function CopySnippet({
       )}
       <span
         className={cn(
-          inline ? "truncate" : "max-w-[12rem] truncate",
+          inline ? "truncate" : "max-w-48 truncate",
           mono && "font-mono",
         )}
       >

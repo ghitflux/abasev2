@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.contratos.models import Ciclo, Contrato
 
-from .models import Refinanciamento
+from .payment_rules import (
+    REFINANCIAMENTO_MENSALIDADES_NECESSARIAS,
+    get_free_paid_pagamentos,
+    has_active_refinanciamento,
+)
 
 
 class EligibilityStrategy(ABC):
@@ -28,21 +32,12 @@ class StandardEligibilityStrategy(EligibilityStrategy):
                 "tem_refinanciamento_ativo": False,
             }
 
-        parcelas_pagas = ciclo_atual.parcelas.filter(
-            status=Parcela.Status.DESCONTADO
-        ).count()
-        mensalidades_livres = 3 if parcelas_pagas >= 3 else 0
-        tem_refinanciamento_ativo = Refinanciamento.objects.filter(
-            contrato_origem__associado__cpf_cnpj=contrato.associado.cpf_cnpj,
-            status__in=[
-                Refinanciamento.Status.PENDENTE_APTO,
-                Refinanciamento.Status.CONCLUIDO,
-                Refinanciamento.Status.EFETIVADO,
-                Refinanciamento.Status.SOLICITADO,
-                Refinanciamento.Status.EM_ANALISE,
-                Refinanciamento.Status.APROVADO,
-            ],
-        ).exists()
+        pagamentos_livres = get_free_paid_pagamentos(contrato)
+        parcelas_pagas = min(
+            len(pagamentos_livres), REFINANCIAMENTO_MENSALIDADES_NECESSARIAS
+        )
+        mensalidades_livres = parcelas_pagas
+        tem_refinanciamento_ativo = has_active_refinanciamento(contrato)
 
         if tem_refinanciamento_ativo:
             return {
@@ -53,10 +48,10 @@ class StandardEligibilityStrategy(EligibilityStrategy):
                 "tem_refinanciamento_ativo": tem_refinanciamento_ativo,
             }
 
-        if parcelas_pagas < 3:
+        if len(pagamentos_livres) < REFINANCIAMENTO_MENSALIDADES_NECESSARIAS:
             return {
                 "elegivel": False,
-                "motivo": f"Apenas {parcelas_pagas}/3 parcelas foram descontadas.",
+                "motivo": f"Apenas {parcelas_pagas}/3 pagamentos elegíveis foram identificados.",
                 "parcelas_pagas": parcelas_pagas,
                 "mensalidades_livres": mensalidades_livres,
                 "tem_refinanciamento_ativo": tem_refinanciamento_ativo,

@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
-
 from rest_framework import serializers
 
 from apps.contratos.serializers import CicloDetailSerializer, ContratoResumoSerializer
 
-from .models import Associado, ContatoHistorico, DadosBancarios, Documento, Endereco
+from .models import Associado, Documento
 from .services import AssociadoService
 from .strategies import CadastroValidationStrategy, EdicaoValidationStrategy
 
@@ -16,62 +14,72 @@ class SimpleUserSerializer(serializers.Serializer):
     full_name = serializers.CharField(read_only=True)
 
 
-class EnderecoSerializer(serializers.ModelSerializer):
-    endereco = serializers.CharField(source="logradouro")
-
-    class Meta:
-        model = Endereco
-        fields = [
-            "id",
-            "cep",
-            "endereco",
-            "numero",
-            "complemento",
-            "bairro",
-            "cidade",
-            "uf",
-            "created_at",
-            "updated_at",
-        ]
+class EnderecoSerializer(serializers.Serializer):
+    id = serializers.IntegerField(allow_null=True, required=False)
+    cep = serializers.CharField(allow_blank=True, required=False)
+    endereco = serializers.CharField(allow_blank=True, required=False)
+    numero = serializers.CharField(allow_blank=True, required=False)
+    complemento = serializers.CharField(allow_blank=True, required=False)
+    bairro = serializers.CharField(allow_blank=True, required=False)
+    cidade = serializers.CharField(allow_blank=True, required=False)
+    uf = serializers.CharField(allow_blank=True, required=False)
+    created_at = serializers.DateTimeField(allow_null=True, required=False)
+    updated_at = serializers.DateTimeField(allow_null=True, required=False)
 
 
-class EnderecoWriteSerializer(serializers.ModelSerializer):
+class EnderecoWriteSerializer(serializers.Serializer):
+    cep = serializers.CharField(required=False, allow_blank=True)
     endereco = serializers.CharField(source="logradouro")
     numero = serializers.CharField(required=False, allow_blank=True)
-
-    class Meta:
-        model = Endereco
-        fields = ["cep", "endereco", "numero", "complemento", "bairro", "cidade", "uf"]
-
-
-class DadosBancariosSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DadosBancarios
-        fields = "__all__"
+    complemento = serializers.CharField(required=False, allow_blank=True, default="")
+    bairro = serializers.CharField(required=False, allow_blank=True)
+    cidade = serializers.CharField(required=False, allow_blank=True)
+    uf = serializers.CharField(required=False, allow_blank=True)
 
 
-class DadosBancariosWriteSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DadosBancarios
-        fields = ["banco", "agencia", "conta", "tipo_conta", "chave_pix"]
+class DadosBancariosSerializer(serializers.Serializer):
+    id = serializers.IntegerField(allow_null=True, required=False)
+    associado = serializers.IntegerField(allow_null=True, required=False)
+    banco = serializers.CharField(allow_blank=True, required=False)
+    agencia = serializers.CharField(allow_blank=True, required=False)
+    conta = serializers.CharField(allow_blank=True, required=False)
+    tipo_conta = serializers.CharField(allow_blank=True, required=False)
+    chave_pix = serializers.CharField(allow_blank=True, required=False)
+    created_at = serializers.DateTimeField(allow_null=True, required=False)
+    updated_at = serializers.DateTimeField(allow_null=True, required=False)
 
 
-class ContatoHistoricoSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ContatoHistorico
-        fields = "__all__"
+class DadosBancariosWriteSerializer(serializers.Serializer):
+    banco = serializers.CharField(required=False, allow_blank=True)
+    agencia = serializers.CharField(required=False, allow_blank=True)
+    conta = serializers.CharField(required=False, allow_blank=True)
+    tipo_conta = serializers.CharField(required=False, allow_blank=True)
+    chave_pix = serializers.CharField(required=False, allow_blank=True)
 
 
-class ContatoHistoricoWriteSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ContatoHistorico
-        fields = [
-            "celular",
-            "email",
-            "orgao_publico",
-            "situacao_servidor",
-            "matricula_servidor",
-        ]
+class ContatoHistoricoSerializer(serializers.Serializer):
+    id = serializers.IntegerField(allow_null=True, required=False)
+    associado = serializers.IntegerField(allow_null=True, required=False)
+    celular = serializers.CharField(allow_blank=True, required=False)
+    email = serializers.CharField(allow_blank=True, required=False)
+    orgao_publico = serializers.CharField(allow_blank=True, required=False)
+    situacao_servidor = serializers.CharField(allow_blank=True, required=False)
+    matricula_servidor = serializers.CharField(allow_blank=True, required=False)
+    nome_contato = serializers.CharField(allow_blank=True, required=False)
+    parentesco = serializers.CharField(allow_blank=True, required=False)
+    telefone_contato = serializers.CharField(allow_blank=True, required=False)
+    ultima_interacao_em = serializers.DateTimeField(allow_null=True, required=False)
+    observacao = serializers.CharField(allow_blank=True, required=False)
+    created_at = serializers.DateTimeField(allow_null=True, required=False)
+    updated_at = serializers.DateTimeField(allow_null=True, required=False)
+
+
+class ContatoHistoricoWriteSerializer(serializers.Serializer):
+    celular = serializers.CharField(required=False, allow_blank=True)
+    email = serializers.CharField(required=False, allow_blank=True)
+    orgao_publico = serializers.CharField(required=False, allow_blank=True)
+    situacao_servidor = serializers.CharField(required=False, allow_blank=True)
+    matricula_servidor = serializers.CharField(required=False, allow_blank=True)
 
 
 class DocumentoSerializer(serializers.ModelSerializer):
@@ -147,8 +155,8 @@ class EsteiraItemResumoSerializer(serializers.Serializer):
 
 class AssociadoListSerializer(serializers.ModelSerializer):
     agente = SimpleUserSerializer(source="agente_responsavel", read_only=True)
-    ciclos_abertos = serializers.IntegerField(read_only=True)
-    ciclos_fechados = serializers.IntegerField(read_only=True)
+    ciclos_abertos = serializers.SerializerMethodField()
+    ciclos_fechados = serializers.SerializerMethodField()
 
     class Meta:
         model = Associado
@@ -156,6 +164,7 @@ class AssociadoListSerializer(serializers.ModelSerializer):
             "id",
             "nome_completo",
             "matricula",
+            "matricula_orgao",
             "cpf_cnpj",
             "status",
             "agente",
@@ -163,12 +172,24 @@ class AssociadoListSerializer(serializers.ModelSerializer):
             "ciclos_fechados",
         ]
 
+    def _contagens_ciclos(self, obj: Associado) -> dict[str, int]:
+        cache = self.context.setdefault("_ciclos_cache", {})
+        if obj.id not in cache:
+            cache[obj.id] = AssociadoService.contar_ciclos_logicos(obj)
+        return cache[obj.id]
+
+    def get_ciclos_abertos(self, obj: Associado) -> int:
+        return self._contagens_ciclos(obj)["ciclos_abertos"]
+
+    def get_ciclos_fechados(self, obj: Associado) -> int:
+        return self._contagens_ciclos(obj)["ciclos_fechados"]
+
 
 class AssociadoDetailSerializer(serializers.ModelSerializer):
     agente = SimpleUserSerializer(source="agente_responsavel", read_only=True)
-    endereco = EnderecoSerializer(read_only=True)
-    dados_bancarios = DadosBancariosSerializer(read_only=True)
-    contato = ContatoHistoricoSerializer(source="contato_historico", read_only=True)
+    endereco = serializers.SerializerMethodField()
+    dados_bancarios = serializers.SerializerMethodField()
+    contato = serializers.SerializerMethodField()
     contratos = ContratoResumoSerializer(many=True, read_only=True)
     documentos = DocumentoSerializer(many=True, read_only=True)
     esteira = EsteiraItemResumoSerializer(source="esteira_item", read_only=True)
@@ -203,6 +224,24 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def get_endereco(self, obj: Associado):
+        payload = obj.build_endereco_payload()
+        if not payload:
+            return None
+        return EnderecoSerializer(payload).data
+
+    def get_dados_bancarios(self, obj: Associado):
+        payload = obj.build_dados_bancarios_payload()
+        if not payload:
+            return None
+        return DadosBancariosSerializer(payload).data
+
+    def get_contato(self, obj: Associado):
+        payload = obj.build_contato_payload()
+        if not payload:
+            return None
+        return ContatoHistoricoSerializer(payload).data
 
 
 class AssociadoCreateSerializer(serializers.ModelSerializer):
@@ -373,46 +412,42 @@ class AssociadoUpdateSerializer(serializers.ModelSerializer):
 
         for field, value in validated_data.items():
             setattr(instance, field, value)
-        instance.save()
-
         if endereco_data:
-            Endereco.objects.update_or_create(
-                associado=instance,
-                defaults=endereco_data,
+            instance.cep = endereco_data.get("cep", instance.cep)
+            instance.logradouro = endereco_data.get("logradouro", instance.logradouro)
+            instance.numero = endereco_data.get("numero", instance.numero)
+            instance.complemento = endereco_data.get(
+                "complemento", instance.complemento
             )
+            instance.bairro = endereco_data.get("bairro", instance.bairro)
+            instance.cidade = endereco_data.get("cidade", instance.cidade)
+            instance.uf = endereco_data.get("uf", instance.uf)
 
         if dados_bancarios_data:
-            DadosBancarios.objects.update_or_create(
-                associado=instance,
-                defaults=dados_bancarios_data,
+            instance.banco = dados_bancarios_data.get("banco", instance.banco)
+            instance.agencia = dados_bancarios_data.get("agencia", instance.agencia)
+            instance.conta = dados_bancarios_data.get("conta", instance.conta)
+            instance.tipo_conta = dados_bancarios_data.get(
+                "tipo_conta", instance.tipo_conta
+            )
+            instance.chave_pix = dados_bancarios_data.get(
+                "chave_pix", instance.chave_pix
             )
 
         if contato_data:
-            ContatoHistorico.objects.update_or_create(
-                associado=instance,
-                defaults={
-                    **contato_data,
-                    "nome_contato": instance.nome_completo,
-                    "telefone_contato": contato_data.get("celular", ""),
-                },
-            )
             instance.email = contato_data.get("email", instance.email)
             instance.telefone = contato_data.get("celular", instance.telefone)
             instance.orgao_publico = contato_data.get(
                 "orgao_publico", instance.orgao_publico
             )
+            instance.situacao_servidor = contato_data.get(
+                "situacao_servidor", instance.situacao_servidor
+            )
             instance.matricula_orgao = contato_data.get(
                 "matricula_servidor", instance.matricula_orgao
             )
-            instance.save(
-                update_fields=[
-                    "email",
-                    "telefone",
-                    "orgao_publico",
-                    "matricula_orgao",
-                    "updated_at",
-                ]
-            )
+
+        instance.save()
 
         if contrato_data:
             contrato = instance.contratos.order_by("-created_at").first()

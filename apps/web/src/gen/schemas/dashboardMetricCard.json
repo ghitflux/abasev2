@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "properties": {
+    "key": { "type": "string" },
+    "label": { "type": "string" },
+    "value": { "type": "string" },
+    "numeric_value": { "type": "number", "format": "double" },
+    "format": {
+      "enum": ["integer", "currency"],
+      "type": "string",
+      "description": "* `integer` - integer\n* `currency` - currency",
+      "x-readme-ref-name": "FormatEnum"
+    },
+    "tone": {
+      "enum": ["neutral", "positive", "warning", "danger"],
+      "type": "string",
+      "description": "* `neutral` - neutral\n* `positive` - positive\n* `warning` - warning\n* `danger` - danger",
+      "x-readme-ref-name": "ToneEnum"
+    },
+    "description": { "type": "string" },
+    "detail_metric": { "type": "string" }
+  },
+  "required": [
+    "description",
+    "detail_metric",
+    "format",
+    "key",
+    "label",
+    "numeric_value",
+    "tone",
+    "value"
+  ],
+  "x-readme-ref-name": "DashboardMetricCard"
+}
