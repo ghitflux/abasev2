@@ -9,7 +9,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.associados.models import Associado
-from apps.contratos.competencia import propagate_competencia_status
+from apps.contratos.competencia import ativar_ciclo_futuro, propagate_competencia_status
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.models import EsteiraItem, Transicao
 from apps.refinanciamento.models import Comprovante
@@ -344,7 +344,11 @@ class BaixaManualService:
                 "ciclo__contrato__agente",
             )
             .filter(
-                status__in=[Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO],
+                status__in=[
+                    Parcela.Status.EM_ABERTO,
+                    Parcela.Status.NAO_DESCONTADO,
+                    Parcela.Status.FUTURO,
+                ],
                 referencia_mes__lt=mes_atual,
             )
             .order_by("-referencia_mes", "ciclo__contrato__associado__nome_completo")
@@ -408,9 +412,13 @@ class BaixaManualService:
         except Parcela.DoesNotExist as exc:
             raise ValidationError("Parcela não encontrada.") from exc
 
-        if parcela.status not in {Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO}:
+        if parcela.status not in {
+            Parcela.Status.EM_ABERTO,
+            Parcela.Status.NAO_DESCONTADO,
+            Parcela.Status.FUTURO,
+        }:
             raise ValidationError(
-                "Apenas parcelas em aberto ou não descontadas podem receber baixa manual."
+                "Apenas parcelas em aberto, não descontadas ou em previsão podem receber baixa manual."
             )
 
         if BaixaManual.objects.filter(parcela=parcela).exists():
@@ -422,6 +430,7 @@ class BaixaManualService:
             parcela.observacao = observacao
         parcela.save(update_fields=["status", "data_pagamento", "observacao", "updated_at"])
         propagate_competencia_status(parcela)
+        ativar_ciclo_futuro(parcela.ciclo, parcela_ja_descontada=parcela)
 
         return BaixaManual.objects.create(
             parcela=parcela,

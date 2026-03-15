@@ -90,6 +90,10 @@ class RenovacaoCicloService:
             parcelas_total
         )
 
+        # Ciclo ainda não foi ativado — em previsão
+        if ciclo.status == Ciclo.Status.FUTURO:
+            return "em_previsao"
+
         if parcela.status == Parcela.Status.NAO_DESCONTADO:
             return "inadimplente"
         if ciclo.status == Ciclo.Status.CICLO_RENOVADO:
@@ -98,7 +102,7 @@ class RenovacaoCicloService:
             return "ciclo_iniciado"
         if parcelas_total > 0 and parcelas_pagas >= parcelas_minimas_para_renovar:
             return "apto_a_renovar"
-        if parcela.status in [Parcela.Status.EM_ABERTO, Parcela.Status.FUTURO]:
+        if parcela.status in [Parcela.Status.EM_ABERTO]:
             return "em_aberto"
         return parcela.status
 
@@ -307,6 +311,7 @@ class RenovacaoCicloService:
             "em_aberto": 0,
             "ciclo_iniciado": 0,
             "inadimplente": 0,
+            "em_previsao": 0,
             "esperado_total": Decimal("0.00"),
             "arrecadado_total": Decimal("0.00"),
             "percentual_arrecadado": 0.0,
@@ -322,12 +327,17 @@ class RenovacaoCicloService:
                 resumo["ciclo_iniciado"] += 1
             if row["status_visual"] == "inadimplente":
                 resumo["inadimplente"] += 1
-            valor_parcela = Decimal(str(row.get("valor_parcela") or 0))
-            resumo["esperado_total"] += valor_parcela
-            if row["resultado_importacao"] == ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA or row[
-                "status_parcela"
-            ] == Parcela.Status.DESCONTADO:
-                resumo["arrecadado_total"] += valor_parcela
+            if row["status_visual"] == "em_previsao":
+                resumo["em_previsao"] += 1
+
+            # Only count active cycles in financial totals (exclude em_previsao)
+            if row["status_visual"] != "em_previsao":
+                valor_parcela = Decimal(str(row.get("valor_parcela") or 0))
+                resumo["esperado_total"] += valor_parcela
+                if row["resultado_importacao"] == ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA or row[
+                    "status_parcela"
+                ] == Parcela.Status.DESCONTADO:
+                    resumo["arrecadado_total"] += valor_parcela
         if resumo["esperado_total"] > 0:
             resumo["percentual_arrecadado"] = float(
                 (resumo["arrecadado_total"] / resumo["esperado_total"]) * Decimal("100")

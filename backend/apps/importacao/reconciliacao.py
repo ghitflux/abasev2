@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from apps.associados.models import Associado, only_digits
 from apps.contratos.competencia import (
+    ativar_ciclo_futuro,
     create_cycle_with_parcelas,
     propagate_competencia_status,
     resolve_processing_competencia_parcela,
@@ -282,6 +283,7 @@ class MotorReconciliacao:
         else:
             item.observacao = "Parcela baixada automaticamente."
 
+        ativar_ciclo_futuro(parcela.ciclo, parcela_ja_descontada=parcela)
         post_result = self._pos_processar_ciclo(parcela.ciclo)
         item.gerou_encerramento = post_result["gerou_encerramento"]
         item.gerou_novo_ciclo = post_result["gerou_novo_ciclo"]
@@ -320,11 +322,6 @@ class MotorReconciliacao:
     def _processar_pendencia_manual(
         self, item: ArquivoRetornoItem, parcela: Parcela
     ) -> dict[str, object]:
-        if parcela.status == Parcela.Status.FUTURO:
-            parcela.status = Parcela.Status.EM_ABERTO
-            parcela.save(update_fields=["status", "updated_at"])
-            propagate_competencia_status(parcela)
-
         item.resultado_processamento = ArquivoRetornoItem.ResultadoProcessamento.PENDENCIA_MANUAL
         item.observacao = item.status_descricao
         ImportacaoLog.objects.create(
@@ -374,33 +371,17 @@ class MotorReconciliacao:
             gerou_encerramento = True
 
         proximo_ciclo = (
-            ciclo.contrato.ciclos.select_related("refinanciamento_destino")
-            .filter(numero=ciclo.numero + 1)
-            .first()
+            ciclo.contrato.ciclos.filter(numero=ciclo.numero + 1).first()
         )
-        if proximo_ciclo:
-            refinanciamento_destino = getattr(proximo_ciclo, "refinanciamento_destino", None)
-            pode_abrir_ciclo_futuro = refinanciamento_destino is None or getattr(
-                refinanciamento_destino,
-                "status",
-                "",
-            ) in {"concluido", "efetivado", "aprovado"}
-            if proximo_ciclo.status == Ciclo.Status.FUTURO and pode_abrir_ciclo_futuro:
-                proximo_ciclo.status = Ciclo.Status.ABERTO
-                proximo_ciclo.save(update_fields=["status", "updated_at"])
-                proximo_ciclo.parcelas.filter(status=Parcela.Status.FUTURO).update(
-                    status=Parcela.Status.EM_ABERTO
-                )
-                gerou_novo_ciclo = True
-        else:
+        if not proximo_ciclo:
             competencia_inicial = add_months(ciclo.data_fim.replace(day=1), 1)
             create_cycle_with_parcelas(
                 contrato=ciclo.contrato,
                 numero=ciclo.numero + 1,
                 competencia_inicial=competencia_inicial,
                 parcelas_total=3,
-                ciclo_status=Ciclo.Status.ABERTO,
-                parcela_status=Parcela.Status.EM_ABERTO,
+                ciclo_status=Ciclo.Status.FUTURO,
+                parcela_status=Parcela.Status.FUTURO,
                 valor_mensalidade=ciclo.contrato.valor_mensalidade,
                 valor_total=(ciclo.contrato.valor_mensalidade * Decimal("3")).quantize(
                     Decimal("0.01")

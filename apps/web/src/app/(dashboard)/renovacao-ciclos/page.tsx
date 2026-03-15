@@ -107,6 +107,7 @@ const STATUS_OPTIONS = [
   { value: "em_aberto", label: "Em aberto" },
   { value: "ciclo_iniciado", label: "Ciclo iniciado" },
   { value: "inadimplente", label: "Inadimplente" },
+  { value: "em_previsao", label: "Em previsão" },
 ] satisfies SelectOption[];
 
 const PARCELA_STATUS_OPTIONS = [
@@ -584,17 +585,23 @@ function decodeAutocompleteValue(value: string) {
 }
 
 function buildCycleParcelCards(row: RenovacaoCicloItem): CycleParcelCard[] {
+  const isFuturoCycle = row.status_ciclo === "futuro";
+
   return Array.from({ length: row.parcelas_total }, (_, index) => {
     const parcela = index + 1;
-    const isCurrent = parcela === Math.min(row.parcelas_total, Math.max(row.parcelas_pagas, 1));
+    const isCurrent =
+      !isFuturoCycle && parcela === Math.min(row.parcelas_total, Math.max(row.parcelas_pagas, 1));
     const status =
       parcela < row.parcelas_pagas || (row.parcelas_pagas === row.parcelas_total && parcela <= row.parcelas_pagas)
         ? "Pago"
-        : isCurrent
-          ? capitalize(resolveParcelaStatusLabel(row.status_parcela))
-          : "Pendente";
-    const reason =
-      status === "Pago"
+        : isFuturoCycle
+          ? "Em previsão"
+          : isCurrent
+            ? capitalize(resolveParcelaStatusLabel(row.status_parcela))
+            : "Pendente";
+    const reason = isFuturoCycle
+      ? "Parcela em previsão. O ciclo será ativado quando o primeiro pagamento for recebido."
+      : status === "Pago"
         ? "Parcela já baixada em competência anterior do ciclo."
         : isCurrent
           ? row.status_descricao_etipi
@@ -1278,7 +1285,10 @@ function CycleMembersTable({
               return (
                 <React.Fragment key={row.id}>
                   <TableRow
-                    className="cursor-pointer border-border/60 hover:bg-white/3"
+                    className={cn(
+                      "cursor-pointer border-border/60 hover:bg-white/3",
+                      row.status_visual === "em_previsao" && "opacity-55",
+                    )}
                     onClick={() => setExpandedRow((current) => (current === row.id ? null : Number(row.id)))}
                   >
                     <TableCell className="px-4 py-3">
@@ -2679,6 +2689,9 @@ export default function RenovacaoCiclosPage() {
       inadimplente: filteredDetailRows.filter((row) =>
         matchesMetricStatus(row, "inadimplente"),
       ),
+      em_previsao: filteredDetailRows.filter((row) =>
+        matchesMetricStatus(row, "em_previsao"),
+      ),
     }),
     [filteredDetailRows],
   );
@@ -2689,6 +2702,7 @@ export default function RenovacaoCiclosPage() {
       aptoRenovar: detailMetricRows.apto_a_renovar.length,
       emAberto: detailMetricRows.em_aberto.length,
       inadimplente: detailMetricRows.inadimplente.length,
+      emPrevisao: detailMetricRows.em_previsao.length,
     }),
     [detailMetricRows],
   );
@@ -3462,6 +3476,18 @@ export default function RenovacaoCiclosPage() {
                     `Inadimplentes em ${selectedCompetenciaLabel}`,
                     "Associados com inadimplência consolidada na competência base.",
                     "Nenhum associado inadimplente encontrado para a competência selecionada.",
+                  )
+                }
+              />
+              <MetricTile
+                label="Em previsão"
+                value={detailMetricCounts.emPrevisao}
+                onClick={() =>
+                  openDetailMetricDialog(
+                    "em_previsao",
+                    `Em previsão em ${selectedCompetenciaLabel}`,
+                    "Ciclos futuros que ainda não foram ativados pela primeira parcela paga.",
+                    "Nenhum ciclo em previsão encontrado para a competência selecionada.",
                   )
                 }
               />

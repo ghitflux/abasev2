@@ -32,6 +32,7 @@ const STATUS_STYLES: Record<string, string> = {
   aguardando: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
   em_andamento: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
   futuro: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
+  em_previsao: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
   reenvio_pendente: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
   tesouraria: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
   inadimplente: "bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30",

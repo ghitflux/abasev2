@@ -633,6 +633,27 @@ def create_cycle_with_parcelas(
     return ciclo, list(ciclo.parcelas.order_by("numero"))
 
 
+def ativar_ciclo_futuro(ciclo: Ciclo, parcela_ja_descontada: Parcela | None = None) -> bool:
+    """
+    Ativa um ciclo FUTURO na primeira parcela paga.
+    - Sets ciclo.status = ABERTO
+    - Sets all FUTURO parcelas (exceto a já DESCONTADA) to EM_ABERTO
+    - Returns True se ativou, False se já estava ativo.
+    """
+    if ciclo.status != Ciclo.Status.FUTURO:
+        return False
+
+    ciclo.status = Ciclo.Status.ABERTO
+    ciclo.save(update_fields=["status", "updated_at"])
+
+    qs = ciclo.parcelas.filter(status=Parcela.Status.FUTURO)
+    if parcela_ja_descontada:
+        qs = qs.exclude(pk=parcela_ja_descontada.pk)
+
+    qs.update(status=Parcela.Status.EM_ABERTO)
+    return True
+
+
 def flatten_conflict_groups(groups: Sequence[dict[str, object]]) -> list[dict[str, object]]:
     rows = []
     for group in groups:
