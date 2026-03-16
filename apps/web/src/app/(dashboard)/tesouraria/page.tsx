@@ -16,6 +16,7 @@ import { toast } from "sonner";
 
 import type { PaginatedResponse, TesourariaContratoItem } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
+import { buildBackendFileUrl } from "@/lib/backend-files";
 import {
   formatCurrency,
   formatDate,
@@ -227,7 +228,7 @@ export default function TesourariaPage() {
             <div className="grid min-w-72 gap-3">
               <ComprovanteSlot
                 label="Associado"
-                existingUrl={associados?.arquivo}
+                existingUrl={associados?.arquivo_disponivel_localmente ? associados.arquivo : undefined}
                 existingName={associados?.nome_original}
                 draftFile={draft.associado}
                 disabled={!canUpload || isEfetivando}
@@ -247,7 +248,7 @@ export default function TesourariaPage() {
               />
               <ComprovanteSlot
                 label="Agente"
-                existingUrl={agente?.arquivo}
+                existingUrl={agente?.arquivo_disponivel_localmente ? agente.arquivo : undefined}
                 existingName={agente?.nome_original}
                 draftFile={draft.agente}
                 disabled={!canUpload || isEfetivando}
@@ -601,7 +602,7 @@ function ComprovanteSlot({
       </div>
       {existingUrl ? (
         <a
-          href={existingUrl}
+          href={buildBackendFileUrl(existingUrl)}
           target="_blank"
           rel="noreferrer"
           className="text-sm text-primary underline-offset-4 hover:underline"

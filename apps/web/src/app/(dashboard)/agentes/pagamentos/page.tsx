@@ -9,8 +9,9 @@ import type {
   PagamentoAgenteResumo,
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
+import { buildBackendFileUrl } from "@/lib/backend-files";
 import { parseMonthValue } from "@/lib/date-value";
-import { formatCurrency, formatDate, formatMonthYear } from "@/lib/formatters";
+import { formatCurrency, formatDate, formatDateTime, formatMonthYear } from "@/lib/formatters";
 import { maskCPFCNPJ } from "@/lib/masks";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
@@ -48,6 +49,46 @@ const STATUS_OPTIONS = [
   { value: "encerrado", label: "Encerrado" },
   { value: "cancelado", label: "Cancelado" },
 ];
+
+function ComprovanteChip({
+  comprovante,
+}: {
+  comprovante: {
+    id: string;
+    nome: string;
+    url: string;
+    arquivo_referencia: string;
+    arquivo_disponivel_localmente: boolean;
+    tipo_referencia: string;
+    origem: string;
+    papel: string;
+  };
+}) {
+  const label =
+    resolvePapelLabel(comprovante.papel) ||
+    resolveComprovanteLabel(comprovante.nome, comprovante.origem);
+  const description = comprovante.arquivo_referencia || comprovante.nome;
+
+  if (comprovante.arquivo_disponivel_localmente && comprovante.url) {
+    return (
+      <Button size="sm" variant="outline" asChild>
+        <a href={buildBackendFileUrl(comprovante.url)} target="_blank" rel="noreferrer">
+          {label}
+        </a>
+      </Button>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 px-3 py-2">
+      <p className="text-sm font-medium">{label}</p>
+      <p className="mt-1 max-w-[22rem] truncate text-xs text-muted-foreground">{description}</p>
+      <p className="mt-1 text-[11px] text-amber-200">
+        {resolveReferenceLabel(comprovante.tipo_referencia)}
+      </p>
+    </div>
+  );
+}
 
 export default function MeusPagamentosPage() {
   const [search, setSearch] = React.useState("");
@@ -111,14 +152,40 @@ export default function MeusPagamentosPage() {
       {
         id: "status",
         header: "Status",
-        cell: (row) => <StatusBadge status={row.status_contrato} />,
+        cell: (row) => (
+          <StatusBadge
+            status={row.status_visual_slug}
+            label={row.status_visual_label}
+          />
+        ),
       },
       {
-        id: "financeiro",
-        header: "Mensalidade",
+        id: "pagamento_inicial",
+        header: "Pagamento inicial",
+        cell: (row) => (
+          <div className="space-y-2">
+            <StatusBadge
+              status={row.pagamento_inicial_status}
+              label={row.pagamento_inicial_status_label}
+            />
+            <p className="text-xs text-muted-foreground">
+              {row.pagamento_inicial_paid_at
+                ? formatDateTime(row.pagamento_inicial_paid_at)
+                : "Aguardando tesouraria"}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "valor_pago",
+        header: "Valor pago",
         cell: (row) => (
           <div className="space-y-1">
-            <p className="font-medium">{formatCurrency(row.valor_mensalidade)}</p>
+            <p className="font-medium">
+              {row.pagamento_inicial_valor
+                ? formatCurrency(row.pagamento_inicial_valor)
+                : "—"}
+            </p>
             <p className="text-xs text-emerald-400">
               Comissão {formatCurrency(row.comissao_agente)}
             </p>
@@ -143,7 +210,7 @@ export default function MeusPagamentosPage() {
         cell: (row) => (
           <div className="space-y-1">
             <Badge className="rounded-full bg-sky-500/15 text-sky-200">
-              {row.comprovantes_efetivacao.length} anexo(s)
+              {row.pagamento_inicial_evidencias.length} evidência(s)
             </Badge>
             <p className="text-xs text-muted-foreground">
               {row.auxilio_liberado_em
@@ -282,24 +349,40 @@ function PagamentoExpandido({ row }: { row: PagamentoAgenteItem }) {
         />
       </section>
 
+      <section className="grid gap-4 md:grid-cols-3">
+        <InfoCard label="Pagamento inicial" value={row.pagamento_inicial_status_label} />
+        <InfoCard
+          label="Valor pago"
+          value={
+            row.pagamento_inicial_valor
+              ? formatCurrency(row.pagamento_inicial_valor)
+              : "Não informado"
+          }
+        />
+        <InfoCard
+          label="Recebido em"
+          value={
+            row.pagamento_inicial_paid_at
+              ? formatDateTime(row.pagamento_inicial_paid_at)
+              : "Aguardando tesouraria"
+          }
+        />
+      </section>
+
       <Card className="rounded-[1.5rem] border-border/60 bg-background/50">
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Comprovantes da efetivação do contrato</CardTitle>
+          <CardTitle className="text-base">Pagamento inicial da efetivação</CardTitle>
         </CardHeader>
         <CardContent>
-          {row.comprovantes_efetivacao.length ? (
+          {row.pagamento_inicial_evidencias.length ? (
             <div className="flex flex-wrap gap-2">
-              {row.comprovantes_efetivacao.map((comprovante) => (
-                <Button key={comprovante.id} size="sm" variant="outline" asChild>
-                  <a href={comprovante.url} target="_blank" rel="noreferrer">
-                    {comprovante.papel || comprovante.nome}
-                  </a>
-                </Button>
+              {row.pagamento_inicial_evidencias.map((comprovante) => (
+                <ComprovanteChip key={comprovante.id} comprovante={comprovante} />
               ))}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Nenhum comprovante de efetivação anexado pela tesouraria.
+              Nenhuma evidência de pagamento inicial disponível.
             </p>
           )}
         </CardContent>
@@ -312,7 +395,10 @@ function PagamentoExpandido({ row }: { row: PagamentoAgenteItem }) {
               <CardHeader className="pb-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <CardTitle className="text-base">Ciclo {ciclo.numero}</CardTitle>
-                  <StatusBadge status={ciclo.status} />
+                  <StatusBadge
+                    status={ciclo.status_visual_slug}
+                    label={ciclo.status_visual_label}
+                  />
                 </div>
                 <p className="text-sm text-muted-foreground">
                   {formatMonthYear(ciclo.data_inicio)} até {formatMonthYear(ciclo.data_fim)}
@@ -340,11 +426,7 @@ function PagamentoExpandido({ row }: { row: PagamentoAgenteItem }) {
                       <div className="mt-3 flex flex-wrap gap-2">
                         {parcela.comprovantes.length ? (
                           parcela.comprovantes.map((comprovante) => (
-                            <Button key={comprovante.id} size="sm" variant="outline" asChild>
-                              <a href={comprovante.url} target="_blank" rel="noreferrer">
-                                {resolveComprovanteLabel(comprovante.nome, comprovante.origem)}
-                              </a>
-                            </Button>
+                            <ComprovanteChip key={comprovante.id} comprovante={comprovante} />
                           ))
                         ) : (
                           <span className="text-sm text-muted-foreground">
@@ -378,10 +460,42 @@ function resolveComprovanteLabel(nome: string, origem: string) {
   if (origem === "arquivo_retorno") {
     return "Arquivo retorno";
   }
+  if (origem === "relatorio_competencia") {
+    return "Relatório mensal";
+  }
   if (origem === "manual") {
     return nome || "Comprovante manual";
   }
+  if (origem === "baixa_manual") {
+    return "Baixa manual";
+  }
   return nome || "Abrir comprovante";
+}
+
+function resolvePapelLabel(papel: string) {
+  if (papel === "associado") {
+    return "Comprovante associada";
+  }
+  if (papel === "agente") {
+    return "Comprovante agente";
+  }
+  return "";
+}
+
+function resolveReferenceLabel(tipoReferencia: string) {
+  if (tipoReferencia === "relatorio_competencia") {
+    return "Relatório mensal da competência";
+  }
+  if (tipoReferencia === "placeholder_recebido") {
+    return "Pagamento recebido e aguardando acervo";
+  }
+  if (tipoReferencia === "legado_sem_arquivo") {
+    return "Referência de arquivo legado";
+  }
+  if (tipoReferencia === "sem_arquivo") {
+    return "Sem arquivo individual";
+  }
+  return "Referência de arquivo";
 }
 
 function InfoCard({ label, value }: { label: string; value: string }) {

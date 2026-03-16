@@ -8,7 +8,7 @@ import { Building2Icon, CreditCardIcon, FileTextIcon, MapPinIcon, UserIcon, Work
 import type { AssociadoDetail } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
-import { formatCurrency, formatDate, formatMonthYear } from "@/lib/formatters";
+import { formatCurrency, formatDate, formatDateTime, formatMonthYear } from "@/lib/formatters";
 import { usePermissions } from "@/hooks/use-permissions";
 import RoleGuard from "@/components/auth/role-guard";
 import { DetailRouteSkeleton } from "@/components/shared/page-skeletons";
@@ -20,6 +20,131 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 type AssociadoPageProps = {
   params: Promise<{ id: string }>;
 };
+
+function CycleDocumentLink({
+  label,
+  arquivo,
+}: {
+  label: string;
+  arquivo: {
+    arquivo: string;
+    arquivo_referencia: string;
+    arquivo_disponivel_localmente: boolean;
+    nome_original: string;
+  };
+}) {
+  const title = arquivo.nome_original || arquivo.arquivo_referencia || label;
+  if (arquivo.arquivo_disponivel_localmente) {
+    return (
+      <a
+        href={buildBackendFileUrl(arquivo.arquivo)}
+        target="_blank"
+        rel="noreferrer"
+        className="rounded-2xl border border-border/60 bg-background/60 p-3 transition hover:border-primary/50"
+      >
+        <p className="text-sm font-medium">{label}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{title}</p>
+      </a>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 p-3">
+      <p className="text-sm font-medium">{label}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{title}</p>
+      <p className="mt-1 text-[11px] text-amber-200">Referência de arquivo legado</p>
+    </div>
+  );
+}
+
+function InitialPaymentEvidenceCard({
+  arquivo,
+}: {
+  arquivo: {
+    nome: string;
+    url: string;
+    arquivo_referencia: string;
+    arquivo_disponivel_localmente: boolean;
+    tipo_referencia: string;
+  };
+}) {
+  const title = arquivo.arquivo_referencia || arquivo.nome;
+  if (arquivo.arquivo_disponivel_localmente && arquivo.url) {
+    return (
+      <a
+        href={buildBackendFileUrl(arquivo.url)}
+        target="_blank"
+        rel="noreferrer"
+        className="rounded-2xl border border-border/60 bg-background/60 p-3 transition hover:border-primary/50"
+      >
+        <p className="text-sm font-medium">{arquivo.nome}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{title}</p>
+      </a>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 p-3">
+      <p className="text-sm font-medium">{arquivo.nome}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{title}</p>
+      <p className="mt-1 text-[11px] text-amber-200">
+        {arquivo.tipo_referencia === "placeholder_recebido"
+          ? "Pagamento recebido e aguardando acervo"
+          : "Referência de arquivo legado"}
+      </p>
+    </div>
+  );
+}
+
+function AssociadoDocumentCard({
+  documento,
+}: {
+  documento: {
+    id: number;
+    tipo: string;
+    arquivo: string;
+    arquivo_referencia: string;
+    arquivo_disponivel_localmente: boolean;
+    tipo_referencia: string;
+    nome_original?: string;
+    status: string;
+  };
+}) {
+  const title =
+    documento.nome_original || documento.arquivo_referencia || "Documento";
+
+  if (documento.arquivo_disponivel_localmente) {
+    return (
+      <a
+        href={buildBackendFileUrl(documento.arquivo)}
+        target="_blank"
+        rel="noreferrer"
+        className="rounded-2xl border border-border/60 bg-background/60 p-4 transition hover:border-primary/50"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <p className="font-medium capitalize">{documento.tipo.replaceAll("_", " ")}</p>
+          <StatusBadge status={documento.status} />
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">{title}</p>
+      </a>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-medium capitalize">{documento.tipo.replaceAll("_", " ")}</p>
+        <StatusBadge status={documento.status} />
+      </div>
+      <p className="mt-2 text-sm text-muted-foreground">{title}</p>
+      <p className="mt-1 text-[11px] text-amber-200">
+        {documento.tipo_referencia === "local"
+          ? "Arquivo local"
+          : "Referência de arquivo legado"}
+      </p>
+    </div>
+  );
+}
 
 function AssociadoPageContent({ params }: AssociadoPageProps) {
   const { id } = React.use(params);
@@ -51,7 +176,10 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
             <span>{associado.matricula}</span>
             <span>{associado.cpf_cnpj}</span>
-            <StatusBadge status={associado.status} />
+            <StatusBadge
+              status={associado.status_visual_slug}
+              label={associado.status_visual_label}
+            />
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -174,7 +302,10 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
                           {formatCurrency(contrato.valor_mensalidade)}
                         </p>
                       </div>
-                      <StatusBadge status={contrato.status} />
+                      <StatusBadge
+                        status={contrato.status_visual_slug}
+                        label={contrato.status_visual_label}
+                      />
                     </div>
                   </AccordionTrigger>
                   <AccordionContent className="space-y-4 px-6">
@@ -190,17 +321,103 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
                       <DetailItem label="Data de aprovação" value={formatDate(contrato.data_aprovacao)} />
                       <DetailItem label="Primeira mensalidade" value={formatDate(contrato.data_primeira_mensalidade)} />
                       <DetailItem label="Mês de averbação" value={formatMonthYear(contrato.mes_averbacao)} />
+                      <DetailItem
+                        label="1º ciclo ativado em"
+                        value={formatDate(contrato.data_primeiro_ciclo_ativado)}
+                      />
+                      <DetailItem
+                        label="Origem da ativação"
+                        value={
+                          contrato.primeiro_ciclo_ativacao_inferida
+                            ? `${contrato.origem_data_primeiro_ciclo} (inferida)`
+                            : contrato.origem_data_primeiro_ciclo
+                        }
+                      />
                     </div>
+                    <Card className="rounded-[1.5rem] border-border/60 bg-card/60">
+                      <CardHeader>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <CardTitle className="text-base">Pagamento da efetivação</CardTitle>
+                          <StatusBadge
+                            status={contrato.pagamento_inicial_status}
+                            label={contrato.pagamento_inicial_status_label}
+                          />
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <DetailItem
+                            label="Valor pago"
+                            value={
+                              contrato.pagamento_inicial_valor
+                                ? formatCurrency(contrato.pagamento_inicial_valor)
+                                : "Não informado"
+                            }
+                          />
+                          <DetailItem
+                            label="Recebido em"
+                            value={
+                              contrato.pagamento_inicial_paid_at
+                                ? formatDateTime(contrato.pagamento_inicial_paid_at)
+                                : "Aguardando tesouraria"
+                            }
+                          />
+                          <DetailItem
+                            label="Evidências"
+                            value={String(contrato.pagamento_inicial_evidencias.length)}
+                          />
+                        </div>
+                        {contrato.pagamento_inicial_evidencias.length ? (
+                          <div className="grid gap-3 md:grid-cols-2">
+                            {contrato.pagamento_inicial_evidencias.map((arquivo) => (
+                              <InitialPaymentEvidenceCard key={arquivo.id} arquivo={arquivo} />
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Nenhuma evidência de pagamento inicial disponível.
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
                     <div className="grid gap-4 xl:grid-cols-3">
                       {contrato.ciclos.map((ciclo) => (
                         <Card key={ciclo.id} className="rounded-[1.5rem] border-border/60 bg-card/60">
                           <CardHeader>
                             <div className="flex items-center justify-between">
                               <CardTitle className="text-base">Ciclo {ciclo.numero}</CardTitle>
-                              <StatusBadge status={ciclo.status} />
+                              <StatusBadge
+                                status={ciclo.status_visual_slug}
+                                label={ciclo.status_visual_label}
+                              />
                             </div>
                           </CardHeader>
                           <CardContent className="space-y-3">
+                            <div className="rounded-2xl border border-border/60 bg-background/60 p-4 text-sm">
+                              <p className="font-medium">
+                                Ativado em {formatDate(ciclo.data_ativacao_ciclo)}
+                              </p>
+                              <p className="mt-2 text-muted-foreground">
+                                Origem:{" "}
+                                {ciclo.ativacao_inferida
+                                  ? `${ciclo.origem_data_ativacao} (inferida)`
+                                  : ciclo.origem_data_ativacao}
+                              </p>
+                              <p className="text-muted-foreground">
+                                Solicitação da renovação:{" "}
+                                {formatDate(ciclo.data_solicitacao_renovacao)}
+                              </p>
+                              {ciclo.data_renovacao ? (
+                                <p className="text-muted-foreground">
+                                  Renovado em {formatDateTime(ciclo.data_renovacao)}
+                                </p>
+                              ) : null}
+                              {ciclo.origem_renovacao ? (
+                                <p className="text-muted-foreground">
+                                  Origem da renovação: {ciclo.origem_renovacao}
+                                </p>
+                              ) : null}
+                            </div>
                             {ciclo.parcelas.map((parcela) => (
                               <div key={parcela.id} className="rounded-2xl border border-border/60 bg-background/60 p-4">
                                 <div className="flex items-center justify-between gap-3">
@@ -217,10 +434,90 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
                                 </p>
                               </div>
                             ))}
+                            {ciclo.termo_antecipacao || ciclo.comprovantes_ciclo.length ? (
+                              <div className="space-y-3">
+                                <p className="text-sm font-medium text-foreground">
+                                  Documentos do ciclo
+                                </p>
+                                <div className="grid gap-3">
+                                  {ciclo.termo_antecipacao ? (
+                                    <CycleDocumentLink
+                                      label="Termo de antecipação"
+                                      arquivo={ciclo.termo_antecipacao}
+                                    />
+                                  ) : null}
+                                  {ciclo.comprovantes_ciclo.map((arquivo) => (
+                                    <CycleDocumentLink
+                                      key={`${arquivo.tipo}-${arquivo.arquivo_referencia}`}
+                                      label={arquivo.tipo.replaceAll("_", " ")}
+                                      arquivo={arquivo}
+                                    />
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
                           </CardContent>
                         </Card>
                       ))}
                     </div>
+                    {contrato.meses_nao_pagos.length ? (
+                      <div className="space-y-3">
+                        <p className="text-sm font-medium text-foreground">Meses não pagos</p>
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                          {contrato.meses_nao_pagos.map((mes) => (
+                            <Card
+                              key={mes.id}
+                              className="rounded-[1.5rem] border-border/60 bg-card/60"
+                            >
+                              <CardContent className="space-y-2 pt-6">
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="font-medium">
+                                    {formatMonthYear(mes.referencia_mes)}
+                                  </p>
+                                  <StatusBadge status={mes.status} />
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                  {formatCurrency(mes.valor)}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  {mes.observacao || "Sem observação."}
+                                </p>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {contrato.movimentos_financeiros_avulsos.length ? (
+                      <div className="space-y-3">
+                        <p className="text-sm font-medium text-foreground">
+                          Movimentos financeiros fora do ciclo
+                        </p>
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                          {contrato.movimentos_financeiros_avulsos.map((movimento) => (
+                            <Card
+                              key={movimento.id}
+                              className="rounded-[1.5rem] border-border/60 bg-card/60"
+                            >
+                              <CardContent className="space-y-2 pt-6">
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="font-medium">
+                                    {formatMonthYear(movimento.referencia_mes)}
+                                  </p>
+                                  <StatusBadge status={movimento.status} />
+                                </div>
+                                <p className="text-sm text-muted-foreground">
+                                  {formatCurrency(movimento.valor)}
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  {movimento.observacao || "Sem observação."}
+                                </p>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </AccordionContent>
                 </AccordionItem>
               ))}
@@ -234,19 +531,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {associado.documentos.length ? (
                 associado.documentos.map((documento) => (
-                  <a
-                    key={documento.id}
-                    href={buildBackendFileUrl(documento.arquivo)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-2xl border border-border/60 bg-background/60 p-4 transition hover:border-primary/50"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="font-medium capitalize">{documento.tipo.replaceAll("_", " ")}</p>
-                      <StatusBadge status={documento.status} />
-                    </div>
-                    <p className="mt-2 text-sm text-muted-foreground">Abrir arquivo</p>
-                  </a>
+                  <AssociadoDocumentCard key={documento.id} documento={documento} />
                 ))
               ) : (
                 <p className="text-sm text-muted-foreground">Nenhum documento anexado.</p>
