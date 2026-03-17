@@ -1,8 +1,13 @@
 from django.conf import settings
 from django.conf.urls.static import static
+from django.http import JsonResponse
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
+
+
+def health_check(request):
+    return JsonResponse({"status": "ok", "service": "abase-backend"})
 
 from apps.associados.views import AssociadoViewSet
 from apps.accounts.views import AdminUserViewSet
@@ -91,6 +96,7 @@ router.register(
 )
 
 urlpatterns = [
+    path("api/v1/health/", health_check, name="health-check"),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
         "api/docs/",
