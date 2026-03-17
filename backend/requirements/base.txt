@@ -11,6 +11,7 @@ mysqlclient==2.2.6
 Pillow==11.1.0
 openpyxl==3.1.5
 reportlab==4.4.4
+pypdf==5.4.0
 gunicorn==23.0.0
 python-decouple==3.8
 bcrypt==4.2.1

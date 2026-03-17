@@ -22,6 +22,9 @@ const STATUS_STYLES: Record<string, string> = {
   analise: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   ciclo_iniciado: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   em_analise: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
+  em_analise_renovacao: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
+  aprovado_para_renovacao:
+    "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
   pendente_apto: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   em_aberto: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
   pendente: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
@@ -58,6 +61,38 @@ type StatusBadgeProps = {
   className?: string;
 };
 
+function resolveStatusStyle(status: string) {
+  const normalized = status.toLowerCase();
+  if (STATUS_STYLES[normalized]) {
+    return STATUS_STYLES[normalized];
+  }
+  if (
+    normalized === "contrato_desativado" ||
+    normalized === "contrato_encerrado" ||
+    normalized.includes("ciclo_desativado")
+  ) {
+    return "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30";
+  }
+  if (normalized.includes("ciclo_inadimplente")) {
+    return "bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30";
+  }
+  if (normalized.includes("ciclo_com_pendencia")) {
+    return "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30";
+  }
+  if (normalized.includes("ciclo_em_dia")) {
+    return "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30";
+  }
+  if (
+    normalized.startsWith("em_analise") ||
+    normalized.startsWith("apto_a_renovar") ||
+    normalized.startsWith("ciclo_aberto") ||
+    normalized.startsWith("renovacao_em_analise")
+  ) {
+    return "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30";
+  }
+  return "bg-secondary text-secondary-foreground";
+}
+
 export default function StatusBadge({
   status,
   label,
@@ -69,11 +104,11 @@ export default function StatusBadge({
       className={cn(
         badgeVariants({ variant: "secondary" }),
         "rounded-full border-transparent px-2.5 py-1 capitalize",
-        STATUS_STYLES[normalized] ?? "bg-secondary text-secondary-foreground",
+        resolveStatusStyle(normalized),
         className,
       )}
     >
-      {label ?? normalized.replaceAll("_", " ")}
+      {label ?? normalized.replaceAll("__", " + ").replaceAll("_", " ")}
     </span>
   );
 }

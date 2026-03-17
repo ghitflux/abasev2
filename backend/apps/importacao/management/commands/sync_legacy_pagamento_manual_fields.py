@@ -6,11 +6,13 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django.utils import timezone
 
 from apps.importacao.legacy import list_legacy_pagamento_snapshots_from_dump
 from apps.importacao.models import PagamentoMensalidade
-from apps.importacao.services import _apply_legacy_snapshot_to_pagamento
+from apps.importacao.services import (
+    _apply_legacy_snapshot_to_pagamento,
+    classify_manual_paid_at_difference,
+)
 
 
 def _parse_competencia(value: str | None):
@@ -31,7 +33,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "--file",
-            default="scriptsphp/abasedb1203.sql",
+            default="scriptsphp/abase (2).sql",
             help="Dump SQL legado com a tabela pagamentos_mensalidades.",
         )
         parser.add_argument(
@@ -75,6 +77,7 @@ class Command(BaseCommand):
         updated = 0
         unchanged = 0
         missing = 0
+        timezone_only = 0
         field_updates: dict[str, int] = {}
 
         with transaction.atomic():
@@ -91,7 +94,18 @@ class Command(BaseCommand):
                 matched += 1
                 matched_keys.add(key)
                 original_agente_refi_solicitado = pagamento.agente_refi_solicitado
-                updated_fields = _apply_legacy_snapshot_to_pagamento(pagamento, snapshot)
+                paid_at_comparison = classify_manual_paid_at_difference(
+                    pagamento.manual_paid_at,
+                    snapshot.manual_paid_at,
+                )
+                if paid_at_comparison == "timezone_only":
+                    timezone_only += 1
+
+                updated_fields = _apply_legacy_snapshot_to_pagamento(
+                    pagamento,
+                    snapshot,
+                    overwrite=True,
+                )
                 if (
                     not options["include_refi_flags"]
                     and "agente_refi_solicitado" in updated_fields
@@ -102,12 +116,6 @@ class Command(BaseCommand):
                         for field_name in updated_fields
                         if field_name != "agente_refi_solicitado"
                     ]
-                if (
-                    "manual_paid_at" in updated_fields
-                    and pagamento.manual_paid_at
-                    and timezone.is_naive(pagamento.manual_paid_at)
-                ):
-                    pagamento.manual_paid_at = timezone.make_aware(pagamento.manual_paid_at)
                 if not updated_fields:
                     unchanged += 1
                     continue
@@ -135,6 +143,7 @@ class Command(BaseCommand):
         self.stdout.write(f"snapshots sem pagamento atual correspondente: {unmatched_snapshots}")
         self.stdout.write(f"pagamentos alterados: {updated}")
         self.stdout.write(f"pagamentos já completos: {unchanged}")
+        self.stdout.write(f"pagamentos com diferença apenas de timezone: {timezone_only}")
         if field_updates:
             for field_name in sorted(field_updates):
                 self.stdout.write(f"  - {field_name}: {field_updates[field_name]}")

@@ -10,8 +10,11 @@ DEFAULT_ROLES = (
     ("ADMIN", "Administrador", "Acesso total ao sistema."),
     ("AGENTE", "Agente", "Responsavel pelo cadastro inicial de associados."),
     ("ANALISTA", "Analista", "Validacao documental e analise inicial."),
+    ("ASSOCIADO", "Associado", "Usuario autenticado pelo CPF vinculado ao cadastro."),
+    ("ASSOCIADODOIS", "Associado Dois", "Papel legado preservado para auditoria."),
     ("COORDENADOR", "Coordenador", "Segunda aprovacao do fluxo."),
     ("TESOUREIRO", "Tesoureiro", "Efetivacao financeira e confirmacoes."),
+    ("USER", "Usuario", "Papel legado generico preservado para auditoria."),
 )
 
 

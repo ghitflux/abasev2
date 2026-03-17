@@ -9,12 +9,13 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.associados.models import Associado
-from apps.contratos.competencia import ativar_ciclo_futuro, propagate_competencia_status
-from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.contratos.competencia import propagate_competencia_status
+from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
+from apps.contratos.models import Contrato, Parcela
 from apps.esteira.models import EsteiraItem, Transicao
 from apps.refinanciamento.models import Comprovante
 
-from .models import BaixaManual, Confirmacao
+from .models import BaixaManual, Confirmacao, Pagamento
 
 
 def parse_competencia(value: str | None) -> date:
@@ -136,22 +137,6 @@ class TesourariaService:
         if not comprovante_associado or not comprovante_agente:
             raise ValidationError("Os comprovantes do associado e do agente são obrigatórios.")
 
-        for papel, arquivo in [
-            (Comprovante.Papel.ASSOCIADO, comprovante_associado),
-            (Comprovante.Papel.AGENTE, comprovante_agente),
-        ]:
-            Comprovante.objects.update_or_create(
-                contrato=contrato,
-                refinanciamento=None,
-                papel=papel,
-                defaults={
-                    "tipo": Comprovante.Tipo.PIX,
-                    "arquivo": arquivo,
-                    "nome_original": getattr(arquivo, "name", ""),
-                    "enviado_por": user,
-                },
-            )
-
         contrato.status = Contrato.Status.ATIVO
         contrato.auxilio_liberado_em = timezone.localdate()
         if not contrato.data_aprovacao:
@@ -168,10 +153,54 @@ class TesourariaService:
         contrato.associado.status = Associado.Status.ATIVO
         contrato.associado.save(update_fields=["status", "updated_at"])
 
+        pagamento = Pagamento.objects.create(
+            cadastro=contrato.associado,
+            created_by=user,
+            contrato_codigo=contrato.codigo,
+            contrato_valor_antecipacao=contrato.valor_liquido or contrato.valor_total_antecipacao,
+            contrato_margem_disponivel=contrato.margem_disponivel,
+            cpf_cnpj=contrato.associado.cpf_cnpj,
+            full_name=contrato.associado.nome_completo,
+            agente_responsavel=contrato.agente.full_name if contrato.agente else "",
+            origem=Pagamento.Origem.OPERACIONAL,
+            status=Pagamento.Status.PAGO,
+            valor_pago=contrato.valor_liquido or contrato.valor_total_antecipacao,
+            paid_at=timezone.now(),
+            forma_pagamento="pix",
+            comprovante_associado_path=getattr(comprovante_associado, "name", ""),
+            comprovante_agente_path=getattr(comprovante_agente, "name", ""),
+            notes="Efetivação inicial do contrato pela tesouraria.",
+        )
+
+        rebuild_contract_cycle_state(contrato, execute=True)
+        contrato.refresh_from_db()
         ciclo = contrato.ciclos.order_by("numero").first()
-        if ciclo and ciclo.status == Ciclo.Status.FUTURO:
-            ciclo.status = Ciclo.Status.ABERTO
-            ciclo.save(update_fields=["status", "updated_at"])
+
+        for papel, arquivo, tipo in [
+            (
+                Comprovante.Papel.ASSOCIADO,
+                comprovante_associado,
+                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+            ),
+            (
+                Comprovante.Papel.AGENTE,
+                comprovante_agente,
+                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+            ),
+        ]:
+            Comprovante.objects.create(
+                contrato=contrato,
+                ciclo=ciclo,
+                refinanciamento=None,
+                papel=papel,
+                tipo=tipo,
+                origem=Comprovante.Origem.EFETIVACAO_CONTRATO,
+                arquivo=arquivo,
+                nome_original=getattr(arquivo, "name", ""),
+                enviado_por=user,
+                data_pagamento=pagamento.paid_at,
+                agente_snapshot=contrato.agente.full_name if contrato.agente else "",
+            )
 
         de_situacao = esteira_item.status
         esteira_item.etapa_atual = EsteiraItem.Etapa.CONCLUIDO
@@ -346,8 +375,8 @@ class BaixaManualService:
             .filter(
                 status__in=[
                     Parcela.Status.EM_ABERTO,
+                    Parcela.Status.EM_PREVISAO,
                     Parcela.Status.NAO_DESCONTADO,
-                    Parcela.Status.FUTURO,
                 ],
                 referencia_mes__lt=mes_atual,
             )
@@ -414,8 +443,8 @@ class BaixaManualService:
 
         if parcela.status not in {
             Parcela.Status.EM_ABERTO,
+            Parcela.Status.EM_PREVISAO,
             Parcela.Status.NAO_DESCONTADO,
-            Parcela.Status.FUTURO,
         }:
             raise ValidationError(
                 "Apenas parcelas em aberto, não descontadas ou em previsão podem receber baixa manual."
@@ -430,7 +459,7 @@ class BaixaManualService:
             parcela.observacao = observacao
         parcela.save(update_fields=["status", "data_pagamento", "observacao", "updated_at"])
         propagate_competencia_status(parcela)
-        ativar_ciclo_futuro(parcela.ciclo, parcela_ja_descontada=parcela)
+        rebuild_contract_cycle_state(parcela.ciclo.contrato, execute=True)
 
         return BaixaManual.objects.create(
             parcela=parcela,

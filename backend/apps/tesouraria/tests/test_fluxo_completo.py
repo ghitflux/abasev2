@@ -348,8 +348,30 @@ class TestFluxoCompleto(TestCase):
 
         self.assertEqual(refinanciamento.status, Refinanciamento.Status.CONCLUIDO)
         self.assertIsNotNone(refinanciamento.ciclo_destino)
-        self.assertEqual(refinanciamento.ciclo_destino.status, Ciclo.Status.ABERTO)
+        self.assertEqual(refinanciamento.ciclo_destino.status, Ciclo.Status.FUTURO)
         self.assertEqual(refinanciamento.ciclo_destino.parcelas.count(), 3)
+
+        response = self.admin_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/efetivar/",
+            {
+                "comprovante_associado": SimpleUploadedFile(
+                    "associado-refi.pdf",
+                    b"comprovante associado",
+                    content_type="application/pdf",
+                ),
+                "comprovante_agente": SimpleUploadedFile(
+                    "agente-refi.pdf",
+                    b"comprovante agente",
+                    content_type="application/pdf",
+                ),
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        refinanciamento.refresh_from_db()
+        self.assertEqual(refinanciamento.status, Refinanciamento.Status.EFETIVADO)
+        self.assertEqual(refinanciamento.ciclo_destino.status, Ciclo.Status.ABERTO)
 
     def test_refinanciamento_bloqueado_cpf_duplicado(self):
         associado = self._criar_associado("42345678901")

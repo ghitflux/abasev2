@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   BellRingIcon,
   BriefcaseBusiness,
@@ -12,10 +12,9 @@ import {
   TriangleAlertIcon,
   WalletIcon,
 } from "lucide-react";
-import { toast } from "sonner";
 
 import type {
-  Ciclo,
+  AssociadoCyclesPayload,
   ContratoListItem,
   ContratoResumoCards,
   PaginatedResponse,
@@ -32,6 +31,10 @@ import { cn } from "@/lib/utils";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { usePermissions } from "@/hooks/use-permissions";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
+import {
+  ParcelaDetalheDialog,
+  type ParcelaDetailTarget,
+} from "@/components/contratos/parcela-detalhe-dialog";
 import DatePicker from "@/components/custom/date-picker";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
@@ -61,13 +64,6 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-
-const CONTRATO_STATUS_LABELS: Record<string, string> = {
-  pendente: "Pendente",
-  ativo: "Ativo",
-  desativado: "Desativado",
-  inadimplente: "Inadimplente",
-};
 
 const ETAPA_FLUXO_LABELS: Record<string, string> = {
   analise: "Análise",
@@ -105,75 +101,140 @@ function normalizeEtapaFluxo(stage: string) {
 }
 
 function ContratoCiclosPanel({ associadoId }: { associadoId: number }) {
+  const [selectedTarget, setSelectedTarget] =
+    React.useState<ParcelaDetailTarget | null>(null);
   const ciclosQuery = useQuery({
     queryKey: ["contrato-associado-ciclos", associadoId],
-    queryFn: () => apiFetch<Ciclo[]>(`associados/${associadoId}/ciclos`),
+    queryFn: () => apiFetch<AssociadoCyclesPayload>(`associados/${associadoId}/ciclos`),
   });
 
   if (ciclosQuery.isLoading) {
     return <InlinePanelSkeleton rows={2} className="pt-2" />;
   }
 
-  const ciclos = ciclosQuery.data ?? [];
-  if (!ciclos.length) {
+  const payload = ciclosQuery.data;
+  const ciclos = payload?.ciclos ?? [];
+  const mesesNaoPagos = payload?.meses_nao_pagos ?? [];
+  if (!ciclos.length && !mesesNaoPagos.length) {
     return (
       <p className="text-sm text-muted-foreground">Nenhum ciclo encontrado.</p>
     );
   }
 
   return (
-    <Tabs defaultValue={String(ciclos[0]?.id)}>
-      <TabsList variant="line">
+    <>
+      <Tabs defaultValue={String(ciclos[0]?.id ?? "nao-pagos")}>
+        <TabsList variant="line">
+          {ciclos.map((ciclo) => (
+            <TabsTrigger key={ciclo.id} value={String(ciclo.id)}>
+              <div className="flex flex-col items-start">
+                <span>Ciclo {ciclo.numero}</span>
+                <span className="text-[10px] font-mono text-muted-foreground">
+                  {ciclo.contrato_codigo}
+                </span>
+              </div>
+            </TabsTrigger>
+          ))}
+          {mesesNaoPagos.length ? (
+            <TabsTrigger value="nao-pagos">
+              <div className="flex flex-col items-start">
+                <span>Meses não pagos</span>
+                <span className="text-[10px] font-mono text-muted-foreground">
+                  {mesesNaoPagos.length} registro(s)
+                </span>
+              </div>
+            </TabsTrigger>
+          ) : null}
+        </TabsList>
         {ciclos.map((ciclo) => (
-          <TabsTrigger key={ciclo.id} value={String(ciclo.id)}>
-            <div className="flex flex-col items-start">
-              <span>Ciclo {ciclo.numero}</span>
-              <span className="text-[10px] font-mono text-muted-foreground">
-                {ciclo.contrato_codigo}
-              </span>
-            </div>
-          </TabsTrigger>
-        ))}
-      </TabsList>
-      {ciclos.map((ciclo) => (
-        <TabsContent key={ciclo.id} value={String(ciclo.id)} className="pt-4">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-foreground">{ciclo.contrato_codigo}</p>
-              <p className="text-sm text-muted-foreground">
-                Referências de {formatMonthYear(ciclo.data_inicio)} até{" "}
-                {formatMonthYear(ciclo.data_fim)}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <StatusBadge status={ciclo.contrato_status} label={ciclo.contrato_status} />
-              <StatusBadge status={ciclo.status} />
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            {ciclo.parcelas.map((parcela) => (
-              <div
-                key={parcela.id}
-                className="rounded-2xl border border-border/60 bg-background/70 p-4"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-medium">Parcela {parcela.numero}/3</p>
-                  <StatusBadge status={parcela.status} />
-                </div>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {formatMonthYear(parcela.referencia_mes)}
+          <TabsContent key={ciclo.id} value={String(ciclo.id)} className="pt-4">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-foreground">{ciclo.contrato_codigo}</p>
+                <p className="text-sm text-muted-foreground">
+                  Meses do ciclo: {ciclo.resumo_referencias}
                 </p>
               </div>
-            ))}
-          </div>
-        </TabsContent>
-      ))}
-    </Tabs>
+              <StatusBadge
+                status={ciclo.status_visual_slug}
+                label={ciclo.status_visual_label}
+              />
+            </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              {ciclo.parcelas.map((parcela) => (
+                <button
+                  key={parcela.id}
+                  type="button"
+                  onClick={() =>
+                    setSelectedTarget({
+                      contratoId: ciclo.contrato_id,
+                      referenciaMes: parcela.referencia_mes,
+                      kind: "cycle",
+                    })
+                  }
+                  className="rounded-2xl border border-border/60 bg-background/70 p-4 text-left transition hover:border-primary/50"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-medium">
+                      Parcela {parcela.numero}/{ciclo.parcelas.length}
+                    </p>
+                    <StatusBadge status={parcela.status} />
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {formatMonthYear(parcela.referencia_mes)}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </TabsContent>
+        ))}
+        {mesesNaoPagos.length ? (
+          <TabsContent value="nao-pagos" className="pt-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {mesesNaoPagos.map((mes) => (
+                <button
+                  key={mes.id}
+                  type="button"
+                  onClick={() =>
+                    setSelectedTarget({
+                      contratoId: mes.contrato_id,
+                      referenciaMes: mes.referencia_mes,
+                      kind: "unpaid",
+                    })
+                  }
+                  className="rounded-2xl border border-border/60 bg-background/70 p-4 text-left transition hover:border-primary/50"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-medium">{formatMonthYear(mes.referencia_mes)}</p>
+                    <StatusBadge status={mes.status} />
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">{mes.contrato_codigo}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formatCurrency(mes.valor)}
+                  </p>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {mes.observacao || "Sem observação."}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </TabsContent>
+        ) : null}
+      </Tabs>
+      <ParcelaDetalheDialog
+        associadoId={associadoId}
+        target={selectedTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedTarget(null);
+          }
+        }}
+      />
+    </>
   );
 }
 
 export default function MeusContratosPage() {
-  const queryClient = useQueryClient();
   const { hasRole } = usePermissions();
   const isAdmin = hasRole("ADMIN");
   const [associadoFilter, setAssociadoFilter] = React.useState("");
@@ -304,29 +365,6 @@ export default function MeusContratosPage() {
     }
   }, [page, totalPages]);
 
-  const solicitarRefinanciamentoMutation = useMutation({
-    mutationFn: async ({ contratoId }: { contratoId: number }) =>
-      apiFetch(`refinanciamentos/${contratoId}/solicitar`, {
-        method: "POST",
-      }),
-    onSuccess: () => {
-      toast.success("Refinanciamento solicitado com sucesso.");
-      void queryClient.invalidateQueries({ queryKey: ["contratos-lista"] });
-      void queryClient.invalidateQueries({ queryKey: ["contratos-resumo"] });
-      void queryClient.invalidateQueries({ queryKey: ["coordenacao-refinanciamento"] });
-      void queryClient.invalidateQueries({ queryKey: ["agente-refinanciados"] });
-      void queryClient.invalidateQueries({ queryKey: ["coordenacao-refinanciados"] });
-      void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos"] });
-    },
-    onError: (error) => {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Falha ao solicitar refinanciamento.",
-      );
-    },
-  });
-
   const columns = React.useMemo<DataTableColumn<ContratoListItem>[]>(
     () => [
       {
@@ -386,11 +424,8 @@ export default function MeusContratosPage() {
                 Status do contrato
               </p>
               <StatusBadge
-                status={row.status_contrato_visual}
-                label={
-                  CONTRATO_STATUS_LABELS[row.status_contrato_visual] ??
-                  "Pendente"
-                }
+                status={row.status_visual_slug}
+                label={row.status_visual_label}
               />
             </div>
             <div className="space-y-1">
@@ -428,7 +463,7 @@ export default function MeusContratosPage() {
       },
       {
         id: "mensalidades",
-        header: "Pagamentos livres para refinanciamento",
+        header: "Ciclo atual",
         headerClassName: "w-[16%] whitespace-normal leading-5",
         cellClassName: "whitespace-normal",
         cell: (row) => (
@@ -439,18 +474,6 @@ export default function MeusContratosPage() {
             <p className="text-xs text-muted-foreground">
               {row.mensalidades.descricao}
             </p>
-            <div className="flex flex-wrap gap-2">
-              {row.mensalidades.apto_refinanciamento ? (
-                <Badge className="rounded-full bg-emerald-500/15 text-emerald-200">
-                  Apto a refinanciamento
-                </Badge>
-              ) : null}
-              {row.mensalidades.refinanciamento_ativo ? (
-                <Badge className="rounded-full bg-amber-500/15 text-amber-200">
-                  CPF já possui refinanciamento
-                </Badge>
-              ) : null}
-            </div>
           </div>
         ),
       },
@@ -481,23 +504,6 @@ export default function MeusContratosPage() {
             className="flex flex-wrap items-center gap-2"
             onClick={(event) => event.stopPropagation()}
           >
-            {row.pode_solicitar_refinanciamento ? (
-              <Button
-                size="sm"
-                onClick={() =>
-                  solicitarRefinanciamentoMutation.mutate({ contratoId: row.id })
-                }
-                disabled={
-                  solicitarRefinanciamentoMutation.isPending &&
-                  solicitarRefinanciamentoMutation.variables?.contratoId === row.id
-                }
-              >
-                {solicitarRefinanciamentoMutation.isPending &&
-                solicitarRefinanciamentoMutation.variables?.contratoId === row.id
-                  ? "Solicitando..."
-                  : "Solicitar refinanciamento"}
-              </Button>
-            ) : null}
             <Button variant="outline" size="icon-sm" asChild>
               <Link href={`/associados/${row.associado.id}`}>
                 <EyeIcon className="size-4" />
@@ -507,7 +513,7 @@ export default function MeusContratosPage() {
         ),
       },
     ],
-    [isAdmin, solicitarRefinanciamentoMutation],
+    [isAdmin],
   );
 
   return (
@@ -558,7 +564,7 @@ export default function MeusContratosPage() {
             <p className="text-sm text-muted-foreground">
               {isAdmin
                 ? "Visão consolidada de todos os contratos com filtros por período, associado, agente e status."
-                : "Acompanhe seus contratos, mensalidades e elegibilidade para refinanciamento."}
+                : "Acompanhe seus contratos, quitações do ciclo atual e prontidão para renovação."}
             </p>
           </div>
           {!isAdmin ? (
@@ -718,7 +724,7 @@ export default function MeusContratosPage() {
                     </FilterField>
                   </div>
 
-                  <FilterField label="Pagamentos livres para refinanciamento">
+                  <FilterField label="Pagamentos livres válidos">
                     <Select
                       value={mensalidadesFilter}
                       onValueChange={(value) => {
@@ -731,9 +737,10 @@ export default function MeusContratosPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="todas">Todas</SelectItem>
-                        <SelectItem value="1">1/3</SelectItem>
-                        <SelectItem value="2">2/3</SelectItem>
-                        <SelectItem value="3">3/3</SelectItem>
+                        <SelectItem value="1">1 pagamento</SelectItem>
+                        <SelectItem value="2">2 pagamentos</SelectItem>
+                        <SelectItem value="3">3 pagamentos</SelectItem>
+                        <SelectItem value="4">4 pagamentos</SelectItem>
                       </SelectContent>
                     </Select>
                   </FilterField>

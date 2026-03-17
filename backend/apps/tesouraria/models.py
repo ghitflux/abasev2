@@ -91,6 +91,11 @@ class Pagamento(BaseModel):
         PAGO = "pago", "Pago"
         CANCELADO = "cancelado", "Cancelado"
 
+    class Origem(models.TextChoices):
+        OPERACIONAL = "operacional", "Operacional"
+        LEGADO = "legado", "Legado"
+        OVERRIDE_MANUAL = "override_manual", "Override manual"
+
     cadastro = models.ForeignKey(
         "associados.Associado",
         on_delete=models.PROTECT,
@@ -119,6 +124,17 @@ class Pagamento(BaseModel):
     valor_pago = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     paid_at = models.DateTimeField(null=True, blank=True)
     forma_pagamento = models.CharField(max_length=40, blank=True)
+    legacy_tesouraria_pagamento_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
+    origem = models.CharField(
+        max_length=20,
+        choices=Origem.choices,
+        default=Origem.OPERACIONAL,
+    )
+    referencias_externas = models.JSONField(default=dict, blank=True)
     comprovante_path = models.CharField(max_length=500, blank=True)
     comprovante_associado_path = models.CharField(max_length=500, blank=True)
     comprovante_agente_path = models.CharField(max_length=500, blank=True)

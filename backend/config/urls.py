@@ -12,6 +12,7 @@ from apps.esteira.analise_views import AnaliseViewSet
 from apps.esteira.views import EsteiraViewSet
 from apps.importacao.views import ArquivoRetornoViewSet
 from apps.refinanciamento.views import (
+    AnalistaRefinanciamentoViewSet,
     CoordenadorRefinanciadosViewSet,
     CoordenadorRefinanciamentoViewSet,
     RefinanciamentoViewSet,
@@ -54,6 +55,11 @@ router.register(
     r"coordenacao/refinanciamento",
     CoordenadorRefinanciamentoViewSet,
     basename="coordenacao-refinanciamento",
+)
+router.register(
+    r"analise/refinanciamentos",
+    AnalistaRefinanciamentoViewSet,
+    basename="analise-refinanciamento",
 )
 router.register(
     r"tesouraria/contratos",

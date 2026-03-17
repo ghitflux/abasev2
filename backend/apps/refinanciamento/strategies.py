@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from apps.contratos.models import Ciclo, Contrato
+from apps.contratos.cycle_projection import build_contract_cycle_projection
+from apps.contratos.cycle_timeline import get_contract_cycle_size
+from apps.contratos.models import Contrato
 
-from .payment_rules import (
-    REFINANCIAMENTO_MENSALIDADES_NECESSARIAS,
-    get_free_paid_pagamentos,
-    has_active_refinanciamento,
-)
+from .payment_rules import has_active_refinanciamento
+from .models import Refinanciamento
 
 
 class EligibilityStrategy(ABC):
@@ -19,11 +18,9 @@ class EligibilityStrategy(ABC):
 
 class StandardEligibilityStrategy(EligibilityStrategy):
     def evaluate(self, contrato: Contrato) -> dict[str, object]:
-        ciclo_atual = (
-            contrato.ciclos.exclude(status=Ciclo.Status.FUTURO).order_by("-numero").first()
-            or contrato.ciclos.order_by("-numero").first()
-        )
-        if not ciclo_atual:
+        projection = build_contract_cycle_projection(contrato)
+        ciclos = list(sorted(projection["cycles"], key=lambda item: item["numero"]))
+        if not ciclos:
             return {
                 "elegivel": False,
                 "motivo": "Nenhum ciclo encontrado para o contrato.",
@@ -32,35 +29,45 @@ class StandardEligibilityStrategy(EligibilityStrategy):
                 "tem_refinanciamento_ativo": False,
             }
 
-        pagamentos_livres = get_free_paid_pagamentos(contrato)
-        parcelas_pagas = min(
-            len(pagamentos_livres), REFINANCIAMENTO_MENSALIDADES_NECESSARIAS
+        total_parcelas = get_contract_cycle_size(contrato)
+        ciclo_atual = ciclos[-1]
+        parcelas_pagas = sum(
+            1
+            for parcela in ciclo_atual["parcelas"]
+            if parcela["status"] == "descontado"
         )
         mensalidades_livres = parcelas_pagas
-        tem_refinanciamento_ativo = has_active_refinanciamento(contrato)
+        status_renovacao = projection["status_renovacao"]
+        tem_refinanciamento_ativo = bool(status_renovacao) and status_renovacao != Refinanciamento.Status.APTO_A_RENOVAR
 
-        if tem_refinanciamento_ativo:
+        if tem_refinanciamento_ativo or has_active_refinanciamento(contrato):
             return {
                 "elegivel": False,
-                "motivo": "CPF já possui refinanciamento ativo ou pendente.",
+                "motivo": "CPF já possui renovação em andamento.",
                 "parcelas_pagas": parcelas_pagas,
                 "mensalidades_livres": mensalidades_livres,
-                "tem_refinanciamento_ativo": tem_refinanciamento_ativo,
+                "tem_refinanciamento_ativo": True,
             }
 
-        if len(pagamentos_livres) < REFINANCIAMENTO_MENSALIDADES_NECESSARIAS:
+        limiar = max(total_parcelas - 1, 1)
+        if parcelas_pagas < limiar:
             return {
                 "elegivel": False,
-                "motivo": f"Apenas {parcelas_pagas}/3 pagamentos elegíveis foram identificados.",
+                "motivo": (
+                    f"Apenas {parcelas_pagas}/{total_parcelas} parcelas do ciclo atual foram quitadas."
+                ),
                 "parcelas_pagas": parcelas_pagas,
                 "mensalidades_livres": mensalidades_livres,
-                "tem_refinanciamento_ativo": tem_refinanciamento_ativo,
+                "tem_refinanciamento_ativo": False,
             }
 
         return {
             "elegivel": True,
-            "motivo": "Apto a refinanciamento (3/3).",
+            "motivo": (
+                "Apto a renovar "
+                f"({parcelas_pagas}/{total_parcelas} parcelas quitadas)."
+            ),
             "parcelas_pagas": parcelas_pagas,
             "mensalidades_livres": mensalidades_livres,
-            "tem_refinanciamento_ativo": tem_refinanciamento_ativo,
+            "tem_refinanciamento_ativo": False,
         }

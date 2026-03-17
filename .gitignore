@@ -23,3 +23,4 @@ mysql_data
 redis_data
 *.sqlite3
 *.log
+anexos_legado/

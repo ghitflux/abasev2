@@ -33,203 +33,36 @@ from __future__ import annotations
 
 import re
 import sys
-import unicodedata
 from collections import defaultdict
-from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from datetime import date
+from decimal import Decimal
 from pathlib import Path
-from typing import Any
 
 from django.contrib.auth.hashers import make_password
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django.utils import timezone
 
-from apps.accounts.backends import LEGACY_ROLE_CODE_MAP, ROLE_METADATA
+from apps.accounts.backends import ROLE_METADATA
+from apps.accounts.legacy_helpers import (
+    first_lookup_token as _first_lookup_token,
+    lookup_aliases as _lookup_aliases,
+    map_contrato_status as _map_contrato_status,
+    map_estado_civil as _map_estado_civil,
+    map_legacy_role_code as _map_legacy_role_code,
+    map_refi_status as _map_refi_status,
+)
 from apps.accounts.hashers import encode_legacy_bcrypt_hash, is_legacy_bcrypt_hash
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _ts(value: str | None) -> datetime | None:
-    """Parse MySQL timestamp string to aware datetime."""
-    if not value or value == "NULL":
-        return None
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
-        try:
-            dt = datetime.strptime(value.strip("'"), fmt)
-            return timezone.make_aware(dt)
-        except ValueError:
-            continue
-    return None
-
-
-def _date(value: str | None) -> date | None:
-    if not value or value == "NULL":
-        return None
-    try:
-        return datetime.strptime(value.strip("'"), "%Y-%m-%d").date()
-    except ValueError:
-        return None
-
-
-def _dec(value: str | None) -> Decimal | None:
-    if not value or value == "NULL":
-        return None
-    try:
-        return Decimal(value.strip("'"))
-    except InvalidOperation:
-        return None
-
-
-def _int(value: str | None) -> int | None:
-    if not value or value == "NULL":
-        return None
-    try:
-        return int(value.strip("'"))
-    except ValueError:
-        return None
-
-
-def _str(value: str | None) -> str:
-    if not value or value == "NULL":
-        return ""
-    return value.strip("'").replace("\\'", "'").replace("\\\\", "\\")
-
-
-def _str_or_none(value: str | None) -> str | None:
-    if not value or value == "NULL":
-        return None
-    return value.strip("'").replace("\\'", "'").replace("\\\\", "\\")
-
-
-def _bool(value: str | None) -> bool:
-    if not value or value == "NULL":
-        return False
-    return value.strip("'") in ("1", "true", "True")
-
-
-def _json(value: str | None) -> Any:
-    if not value or value == "NULL":
-        return None
-    import json
-    raw = value.strip("'")
-    candidates = [
-        raw,
-        raw.replace("\\'", "'").replace("\\\\", "\\"),
-        raw.replace("\\'", "'")
-        .replace('\\"', '"')
-        .replace("\\/", "/")
-        .replace("\\\\", "\\"),
-    ]
-
-    for candidate in candidates:
-        try:
-            return json.loads(candidate)
-        except Exception:
-            continue
-
-    try:
-        return json.loads(bytes(raw, "utf-8").decode("unicode_escape"))
-    except Exception:
-        return None
-
-
-# ---------------------------------------------------------------------------
-# SQL parser
-# ---------------------------------------------------------------------------
-
-def extract_table_data(sql_text: str, table_name: str) -> list[dict]:
-    """
-    Extract all rows from INSERT statements for the given table name.
-    Returns a list of dicts {column: raw_value_string}.
-    """
-    # Find INSERT INTO `table_name` (`col1`, ...) VALUES ...;
-    pattern = re.compile(
-        r"INSERT INTO `" + re.escape(table_name) + r"`\s*"
-        r"\(([^)]+)\)\s*VALUES\s*([\s\S]+?);",
-        re.IGNORECASE,
-    )
-    rows = []
-    for match in pattern.finditer(sql_text):
-        cols_raw = match.group(1)
-        values_raw = match.group(2)
-
-        # Parse column names (strip backticks)
-        cols = [c.strip().strip("`") for c in cols_raw.split(",")]
-
-        for row_raw in _split_row_tuples(values_raw):
-            raw_vals = _split_values(row_raw)
-            if len(raw_vals) == len(cols):
-                rows.append(dict(zip(cols, raw_vals)))
-    return rows
-
-
-def _split_row_tuples(values_str: str) -> list[str]:
-    rows = []
-    current = ""
-    depth = 0
-    in_quote = False
-    previous = ""
-
-    for c in values_str:
-        if c == "'" and previous != "\\":
-            in_quote = not in_quote
-
-        if not in_quote and c == "(":
-            depth += 1
-            if depth == 1:
-                previous = c
-                continue
-
-        if not in_quote and c == ")":
-            depth -= 1
-            if depth == 0:
-                rows.append(current)
-                current = ""
-                previous = c
-                continue
-
-        if depth >= 1:
-            current += c
-
-        previous = c
-
-    return rows
-
-
-def _split_values(values_str: str) -> list[str]:
-    """
-    Split a comma-separated values string respecting quoted strings.
-    e.g.: "1, 'hello', NULL, 'it\\'s fine', 2"
-    """
-    result = []
-    current = ""
-    in_quote = False
-    i = 0
-    while i < len(values_str):
-        c = values_str[i]
-        if c == "'" and not in_quote:
-            in_quote = True
-            current += c
-        elif c == "'" and in_quote:
-            # Check for escaped quote
-            if i > 0 and values_str[i - 1] == "\\":
-                current += c
-            else:
-                in_quote = False
-                current += c
-        elif c == "," and not in_quote:
-            result.append(current.strip())
-            current = ""
-        else:
-            current += c
-        i += 1
-    if current.strip():
-        result.append(current.strip())
-    return result
+from core.legacy_dump import (
+    extract_table_data,
+    parse_bool as _bool,
+    parse_date as _date,
+    parse_decimal as _dec,
+    parse_int as _int,
+    parse_json as _json,
+    parse_str as _str,
+    parse_str_or_none as _str_or_none,
+    parse_timestamp as _ts,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1221,88 +1054,3 @@ class Command(BaseCommand):
             f"    refinanciamento_solicitacoes: {created} created, {updated} updated"
         )
 
-
-# ---------------------------------------------------------------------------
-# Value mappers
-# ---------------------------------------------------------------------------
-
-def _normalize_lookup_value(raw: str) -> str:
-    normalized = unicodedata.normalize("NFKD", raw or "")
-    ascii_only = "".join(ch for ch in normalized if not unicodedata.combining(ch))
-    collapsed = re.sub(r"\s+", " ", ascii_only).strip().casefold()
-    return collapsed
-
-
-def _lookup_aliases(raw: str) -> list[str]:
-    normalized = _normalize_lookup_value(raw)
-    if not normalized:
-        return []
-
-    aliases = [normalized]
-    compact = re.sub(r"[^a-z0-9]+", "", normalized)
-    if compact and compact != normalized:
-        aliases.append(compact)
-
-    if "@" in normalized:
-        local_part = normalized.split("@", 1)[0].strip()
-        if local_part and local_part not in aliases:
-            aliases.append(local_part)
-        compact_local = re.sub(r"[^a-z0-9]+", "", local_part)
-        if compact_local and compact_local not in aliases:
-            aliases.append(compact_local)
-
-    return aliases
-
-
-def _first_lookup_token(raw: str) -> str:
-    normalized = _normalize_lookup_value(raw)
-    if not normalized:
-        return ""
-    return normalized.split(" ", 1)[0]
-
-
-def _map_legacy_role_code(raw: str) -> str | None:
-    normalized = _normalize_lookup_value(raw)
-    return LEGACY_ROLE_CODE_MAP.get(normalized)
-
-
-def _map_estado_civil(raw: str) -> str:
-    mapping = {
-        "casado": "casado",
-        "casado(a)": "casado",
-        "solteiro": "solteiro",
-        "solteiro(a)": "solteiro",
-        "divorciado": "divorciado",
-        "divorciado(a)": "divorciado",
-        "viúvo": "viuvo",
-        "viuvo": "viuvo",
-        "viúvo(a)": "viuvo",
-        "viuvo(a)": "viuvo",
-        "união estável": "uniao_estavel",
-    }
-    return mapping.get(raw.lower(), "")
-
-
-def _map_contrato_status(raw: str) -> str:
-    mapping = {
-        "concluído": "ativo",
-        "concluido": "ativo",
-        "ativo": "ativo",
-        "pendente": "em_analise",
-        "cancelado": "cancelado",
-        "encerrado": "encerrado",
-    }
-    return mapping.get(raw.lower(), "em_analise")
-
-
-def _map_refi_status(raw: str) -> str:
-    mapping = {
-        "done": "concluido",
-        "pending": "pendente_apto",
-        "in_progress": "em_analise",
-        "suspended": "bloqueado",
-        "approved": "aprovado",
-        "rejected": "rejeitado",
-        "cancelled": "revertido",
-    }
-    return mapping.get(raw.lower(), "pendente_apto")

@@ -49,6 +49,10 @@ class IsTesoureiroOrAdmin(BaseRolePermission):
     allowed_roles = ("TESOUREIRO", "ADMIN")
 
 
+class IsOperacionalOrAdmin(BaseRolePermission):
+    allowed_roles = ("AGENTE", "COORDENADOR", "ANALISTA", "TESOUREIRO", "ADMIN")
+
+
 class IsAgenteOrTesoureiroOrAdmin(BaseRolePermission):
     allowed_roles = ("AGENTE", "TESOUREIRO", "ADMIN")
 

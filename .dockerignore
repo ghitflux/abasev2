@@ -1,0 +1,14 @@
+.git
+.next
+.pnpm-store
+node_modules
+apps/web/node_modules
+backend/.pytest_cache
+backend/__pycache__
+backend/media
+anexos_legado
+scriptsphp/abase (1).sql
+scriptsphp/abase (2).sql
+*.pyc
+*.pyo
+*.sqlite3

@@ -162,6 +162,7 @@ class Parcela(BaseModel):
     class Status(models.TextChoices):
         FUTURO = "futuro", "Futuro"
         EM_ABERTO = "em_aberto", "Em aberto"
+        EM_PREVISAO = "em_previsao", "Em previsão"
         DESCONTADO = "descontado", "Descontado"
         NAO_DESCONTADO = "nao_descontado", "Não descontado"
         CANCELADO = "cancelado", "Cancelado"

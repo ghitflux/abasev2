@@ -82,6 +82,40 @@ export type Parcela = {
   observacao: string;
 };
 
+export type ComprovanteCiclo = {
+  id: number | null;
+  tipo: string;
+  papel: string;
+  arquivo: string;
+  arquivo_referencia: string;
+  arquivo_disponivel_localmente: boolean;
+  tipo_referencia: string;
+  nome_original: string;
+  mime: string;
+  size_bytes: number | null;
+  data_pagamento: string | null;
+  origem: string;
+  created_at: string | null;
+  legacy_comprovante_id: number | null;
+};
+
+export type ArquivoEvidencia = {
+  id: string;
+  nome: string;
+  url: string;
+  arquivo_referencia: string;
+  arquivo_disponivel_localmente: boolean;
+  tipo_referencia: string;
+  origem: string;
+  papel: string;
+  tipo: string;
+  status: string;
+  competencia: string | null;
+  created_at: string | null;
+};
+
+export type PagamentoInicialEvidencia = ArquivoEvidencia;
+
 export type Ciclo = {
   id: number;
   contrato_id: number;
@@ -91,17 +125,80 @@ export type Ciclo = {
   data_inicio: string;
   data_fim: string;
   status: string;
+  fase_ciclo: string;
+  situacao_financeira: string;
+  status_visual_slug: string;
+  status_visual_label: string;
   valor_total: string;
+  data_ativacao_ciclo: string | null;
+  origem_data_ativacao: string;
+  ativacao_inferida: boolean;
+  data_solicitacao_renovacao: string | null;
+  data_renovacao: string | null;
+  origem_renovacao: string;
+  primeira_competencia_ciclo: string;
+  ultima_competencia_ciclo: string;
+  resumo_referencias: string;
+  refinanciamento_id: number | null;
+  legacy_refinanciamento_id: number | null;
+  comprovantes_ciclo: ComprovanteCiclo[];
+  termo_antecipacao: ComprovanteCiclo | null;
   parcelas: Parcela[];
+};
+
+export type MesNaoPago = {
+  id: number;
+  contrato_id: number;
+  contrato_codigo: string;
+  referencia_mes: string;
+  valor: string;
+  status: string;
+  data_pagamento: string | null;
+  observacao: string;
+  source?: string;
+};
+
+export type AssociadoCyclesPayload = {
+  ciclos: Ciclo[];
+  meses_nao_pagos: MesNaoPago[];
+};
+
+export type ParcelaDetail = {
+  contrato_id: number;
+  contrato_codigo: string;
+  cycle_number: number | null;
+  numero_parcela: number | null;
+  kind: "cycle" | "unpaid";
+  referencia_mes: string;
+  status: string;
+  valor: string;
+  data_vencimento: string | null;
+  observacao: string;
+  data_pagamento: string | null;
+  data_importacao_arquivo: string | null;
+  data_baixa_manual: string | null;
+  data_pagamento_tesouraria: string | null;
+  origem_quitacao: string;
+  origem_quitacao_label: string;
+  competencia_evidencias: ArquivoEvidencia[];
+  documentos_ciclo: ArquivoEvidencia[];
+  termo_antecipacao: ArquivoEvidencia | null;
 };
 
 export type Documento = {
   id: number;
   tipo: string;
   arquivo: string;
+  arquivo_referencia: string;
+  arquivo_disponivel_localmente: boolean;
+  tipo_referencia: string;
+  arquivo_referencia_path?: string;
+  nome_original?: string;
+  origem?: string;
   status: string;
   observacao: string;
   created_at?: string;
+  updated_at?: string;
 };
 
 export type Contato = {
@@ -180,6 +277,20 @@ export type ContratoResumo = {
   contato_web: boolean;
   termos_web: boolean;
   auxilio_liberado_em: string | null;
+  data_primeiro_ciclo_ativado: string | null;
+  origem_data_primeiro_ciclo: string;
+  primeiro_ciclo_ativacao_inferida: boolean;
+  status_visual_slug: string;
+  status_visual_label: string;
+  pagamento_inicial_status: string;
+  pagamento_inicial_status_label: string;
+  pagamento_inicial_valor: string | null;
+  pagamento_inicial_paid_at: string | null;
+  pagamento_inicial_evidencias: PagamentoInicialEvidencia[];
+  status_renovacao: string;
+  refinanciamento_id: number | null;
+  meses_nao_pagos: MesNaoPago[];
+  movimentos_financeiros_avulsos: MesNaoPago[];
   ciclos: Ciclo[];
 };
 
@@ -188,8 +299,12 @@ export type AssociadoListItem = {
   nome_completo: string;
   matricula: string;
   matricula_orgao?: string;
+  matricula_display?: string;
   cpf_cnpj: string;
   status: string;
+  status_renovacao: string;
+  status_visual_slug: string;
+  status_visual_label: string;
   agente?: SimpleUser | null;
   ciclos_abertos: number;
   ciclos_fechados: number;
@@ -198,6 +313,7 @@ export type AssociadoListItem = {
 export type AssociadoDetail = {
   id: number;
   matricula: string;
+  matricula_display?: string;
   tipo_documento: string;
   nome_completo: string;
   cpf_cnpj: string;
@@ -212,6 +328,9 @@ export type AssociadoDetail = {
   matricula_orgao?: string;
   cargo?: string;
   status: string;
+  status_renovacao: string;
+  status_visual_slug: string;
+  status_visual_label: string;
   observacao?: string;
   agente?: SimpleUser | null;
   endereco?: Endereco | null;
@@ -227,6 +346,7 @@ export type EsteiraContrato = {
   associado_nome: string;
   cpf_cnpj: string;
   matricula: string;
+  matricula_display?: string;
 };
 
 export type EsteiraItem = {
@@ -237,6 +357,8 @@ export type EsteiraItem = {
   valor_disponivel: string | null;
   comissao_agente: string | null;
   status_contrato: string | null;
+  status_contrato_visual_slug?: string | null;
+  status_contrato_visual_label?: string | null;
   status_documentacao: string;
   contato_web: boolean;
   termos_web: boolean;
@@ -361,6 +483,7 @@ export type AnaliseDadosItem = {
   nome_completo: string;
   cpf_cnpj: string;
   matricula: string;
+  matricula_display?: string;
   agente?: SimpleUser | null;
   contrato_codigo: string | null;
   created_at: string;
@@ -375,6 +498,7 @@ export type PendenciaItem = {
   associado_id: number;
   associado_nome: string;
   matricula: string;
+  matricula_display?: string;
   cpf_cnpj: string;
   contrato_codigo: string | null;
   created_at: string;
@@ -388,6 +512,7 @@ export type ContratoListItem = {
     id: number;
     nome_completo: string;
     matricula: string;
+    matricula_display?: string;
     cpf_cnpj: string;
     orgao_publico: string;
     matricula_orgao: string;
@@ -396,6 +521,8 @@ export type ContratoListItem = {
   status: string;
   status_resumido: string;
   status_contrato_visual: string;
+  status_visual_slug: string;
+  status_visual_label: string;
   etapa_fluxo: string;
   data_contrato: string;
   valor_mensalidade: string;
@@ -409,6 +536,8 @@ export type ContratoListItem = {
   };
   auxilio_liberado_em: string | null;
   pode_solicitar_refinanciamento: boolean;
+  status_renovacao: string;
+  refinanciamento_id: number | null;
 };
 
 export type ContratoResumoCards = {
@@ -421,10 +550,21 @@ export type ContratoResumoCards = {
 
 export type ComprovanteResumo = {
   id: number;
+  refinanciamento?: number | null;
+  contrato?: number | null;
+  ciclo?: number | null;
   tipo: string;
   papel: string;
   arquivo: string;
+  arquivo_referencia?: string;
+  arquivo_disponivel_localmente?: boolean;
+  tipo_referencia?: string;
   nome_original: string;
+  mime?: string;
+  size_bytes?: number | null;
+  data_pagamento?: string | null;
+  origem?: string;
+  legacy_comprovante_id?: number | null;
   enviado_por?: SimpleUser | null;
   created_at: string;
 };
@@ -492,6 +632,17 @@ export type RefinanciamentoItem = {
   mensalidades_total: number;
   refinanciamento_numero: number;
   pagamento_status: string;
+  legacy_refinanciamento_id?: number | null;
+  origem: string;
+  data_renovacao: string | null;
+  origem_renovacao: string;
+  data_primeiro_ciclo_ativado: string | null;
+  data_ativacao_ciclo: string | null;
+  origem_data_ativacao: string;
+  data_solicitacao_renovacao: string | null;
+  ativacao_inferida: boolean;
+  etapa_operacional: string;
+  motivo_apto_renovacao: string;
   motivo_bloqueio?: string;
   observacao?: string;
   executado_em?: string | null;
@@ -515,29 +666,28 @@ export type PagamentoAgenteItem = {
   cpf_cnpj: string;
   contrato_codigo: string;
   status_contrato: string;
+  status_visual_slug: string;
+  status_visual_label: string;
   data_contrato: string;
   auxilio_liberado_em: string | null;
+  pagamento_inicial_status: string;
+  pagamento_inicial_status_label: string;
+  pagamento_inicial_valor: string | null;
+  pagamento_inicial_paid_at: string | null;
   valor_mensalidade: string;
   comissao_agente: string;
   parcelas_total: number;
   parcelas_pagas: number;
-  comprovantes_efetivacao: Array<{
-    id: string;
-    nome: string;
-    url: string;
-    origem: string;
-    papel: string;
-    tipo: string;
-    status: string;
-    competencia: string | null;
-    created_at: string | null;
-  }>;
+  comprovantes_efetivacao: PagamentoInicialEvidencia[];
+  pagamento_inicial_evidencias: PagamentoInicialEvidencia[];
   ciclos: Array<{
     id: number;
     numero: number;
     data_inicio: string;
     data_fim: string;
     status: string;
+    status_visual_slug: string;
+    status_visual_label: string;
     valor_total: string;
     parcelas: Array<{
       id: number;
@@ -552,6 +702,9 @@ export type PagamentoAgenteItem = {
         id: string;
         nome: string;
         url: string;
+        arquivo_referencia: string;
+        arquivo_disponivel_localmente: boolean;
+        tipo_referencia: string;
         origem: string;
         papel: string;
         tipo: string;

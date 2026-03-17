@@ -7,10 +7,17 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
-from apps.accounts.permissions import IsAdmin, IsAgenteOrAdmin
-from apps.contratos.cycle_normalization import dedupe_cycles_for_display
-from apps.contratos.models import Ciclo, Contrato
-from apps.contratos.serializers import CicloDetailSerializer
+from apps.accounts.permissions import IsAdmin, IsAgenteOrAdmin, IsOperacionalOrAdmin
+from apps.contratos.parcela_detail import build_parcela_detail_payload
+from apps.contratos.cycle_projection import build_contract_cycle_projection
+from apps.contratos.models import Contrato
+from apps.contratos.serializers import (
+    AssociadoCiclosPayloadSerializer,
+    ParcelaDetailQuerySerializer,
+    ParcelaDetailSerializer,
+)
+from apps.refinanciamento.models import Comprovante
+from apps.tesouraria.models import Pagamento
 from core.pagination import StandardResultsSetPagination
 
 from .filters import AssociadoFilter
@@ -30,7 +37,7 @@ from .strategies import build_duplicate_document_message
 class AssociadoViewSet(ModelViewSet):
     filterset_class = AssociadoFilter
     pagination_class = StandardResultsSetPagination
-    search_fields = ["nome_completo", "cpf_cnpj", "matricula"]
+    search_fields = ["nome_completo", "cpf_cnpj", "matricula", "matricula_orgao"]
     ordering_fields = ["nome_completo", "matricula", "created_at", "status"]
     ordering = ["nome_completo"]
 
@@ -60,9 +67,19 @@ class AssociadoViewSet(ModelViewSet):
             )
             .prefetch_related(
                 Prefetch("contratos__ciclos__parcelas"),
+                Prefetch(
+                    "contratos__comprovantes",
+                    queryset=Comprovante.objects.filter(
+                        refinanciamento__isnull=True
+                    ).select_related("enviado_por"),
+                ),
                 Prefetch("documentos"),
                 Prefetch("esteira_item__pendencias"),
                 Prefetch("esteira_item__transicoes"),
+                Prefetch(
+                    "tesouraria_pagamentos",
+                    queryset=Pagamento.all_objects.order_by("created_at", "id"),
+                ),
             )
             .distinct()
         )
@@ -80,12 +97,12 @@ class AssociadoViewSet(ModelViewSet):
             "create",
             "documentos",
             "validar_documento",
-            "retrieve",
-            "ciclos",
             "update",
             "partial_update",
         }:
             return [permissions.IsAuthenticated(), IsAgenteOrAdmin()]
+        if self.action in {"retrieve", "ciclos", "parcela_detalhe"}:
+            return [permissions.IsAuthenticated(), IsOperacionalOrAdmin()]
         return [permissions.IsAuthenticated(), IsAdmin()]
 
     def destroy(self, request, *args, **kwargs):
@@ -134,17 +151,60 @@ class AssociadoViewSet(ModelViewSet):
     @action(detail=True, methods=["get"])
     def ciclos(self, request, pk=None):
         associado = self.get_object()
-        ciclos = list(
-            Ciclo.objects.filter(contrato__associado=associado)
-            .exclude(contrato__status=Contrato.Status.CANCELADO)
-            .select_related("contrato")
-            .prefetch_related("parcelas")
-            .order_by("-numero", "-data_inicio", "-contrato_id")
+        contratos = list(
+            associado.contratos.exclude(status=Contrato.Status.CANCELADO)
+            .prefetch_related("ciclos__parcelas")
+            .order_by("-created_at")
         )
-        serializer = CicloDetailSerializer(
-            dedupe_cycles_for_display(ciclos),
-            many=True,
+        payload = {"ciclos": [], "meses_nao_pagos": []}
+        for contrato in contratos:
+            projection = build_contract_cycle_projection(
+                contrato,
+                include_documents=True,
+            )
+            payload["ciclos"].extend(projection["cycles"])
+            payload["meses_nao_pagos"].extend(projection["unpaid_months"])
+        payload["ciclos"].sort(key=lambda item: item["numero"], reverse=True)
+        payload["meses_nao_pagos"].sort(
+            key=lambda item: item["referencia_mes"], reverse=True
         )
+        serializer = AssociadoCiclosPayloadSerializer(payload)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["get"], url_path="parcela-detalhe")
+    def parcela_detalhe(self, request, pk=None):
+        associado = self.get_object()
+        query_serializer = ParcelaDetailQuerySerializer(data=request.query_params)
+        query_serializer.is_valid(raise_exception=True)
+        contrato_id = query_serializer.validated_data["contrato_id"]
+        referencia_mes = query_serializer.validated_data["referencia_mes"]
+        kind = query_serializer.validated_data["kind"]
+
+        contrato = (
+            associado.contratos.exclude(status=Contrato.Status.CANCELADO)
+            .filter(id=contrato_id)
+            .first()
+        )
+        if contrato is None:
+            return Response(
+                {"detail": "Contrato não encontrado para o associado informado."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            payload = build_parcela_detail_payload(
+                contrato=contrato,
+                referencia_mes=referencia_mes,
+                kind=kind,
+                request=request,
+            )
+        except LookupError as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        serializer = ParcelaDetailSerializer(payload)
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser])

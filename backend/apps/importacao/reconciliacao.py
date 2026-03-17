@@ -9,13 +9,11 @@ from django.db.models import Case, IntegerField, Value, When
 from django.utils import timezone
 
 from apps.associados.models import Associado, only_digits
-from apps.contratos.competencia import (
-    ativar_ciclo_futuro,
-    create_cycle_with_parcelas,
-    propagate_competencia_status,
-    resolve_processing_competencia_parcela,
-)
+from apps.contratos.competencia import propagate_competencia_status, resolve_processing_competencia_parcela
+from apps.contratos.cycle_projection import build_contract_cycle_projection
+from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.refinanciamento.models import Refinanciamento
 
 from .matching import find_associado
 from .models import ArquivoRetorno, ArquivoRetornoItem, ImportacaoLog
@@ -283,13 +281,18 @@ class MotorReconciliacao:
         else:
             item.observacao = "Parcela baixada automaticamente."
 
-        ativar_ciclo_futuro(parcela.ciclo, parcela_ja_descontada=parcela)
+        rebuild_contract_cycle_state(parcela.ciclo.contrato, execute=True)
+        parcela.ciclo.contrato.refresh_from_db()
+        projection = build_contract_cycle_projection(parcela.ciclo.contrato)
         post_result = self._pos_processar_ciclo(parcela.ciclo)
         item.gerou_encerramento = post_result["gerou_encerramento"]
-        item.gerou_novo_ciclo = post_result["gerou_novo_ciclo"]
+        item.gerou_novo_ciclo = (
+            projection["status_renovacao"] == Refinanciamento.Status.APTO_A_RENOVAR
+        )
 
         return {
             "resultado": ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA,
+            "gerou_novo_ciclo": item.gerou_novo_ciclo,
             **post_result,
         }
 
@@ -309,6 +312,7 @@ class MotorReconciliacao:
             associado.status = Associado.Status.INADIMPLENTE
             associado.observacao = self._append_note(associado.observacao, item.status_descricao)
             associado.save(update_fields=["status", "observacao", "updated_at"])
+        rebuild_contract_cycle_state(parcela.ciclo.contrato, execute=True)
 
         item.motivo_rejeicao = item.status_descricao
         item.resultado_processamento = ArquivoRetornoItem.ResultadoProcessamento.NAO_DESCONTADO
@@ -354,44 +358,9 @@ class MotorReconciliacao:
         }
 
     def _pos_processar_ciclo(self, ciclo: Ciclo) -> dict[str, bool]:
-        ciclo = (
-            Ciclo.objects.select_related("contrato")
-            .prefetch_related("parcelas", "contrato__ciclos__parcelas")
-            .get(pk=ciclo.pk)
-        )
-        if ciclo.parcelas.exclude(status=Parcela.Status.DESCONTADO).exists():
-            return {"gerou_encerramento": False, "gerou_novo_ciclo": False}
-
-        gerou_encerramento = False
-        gerou_novo_ciclo = False
-
-        if ciclo.status != Ciclo.Status.CICLO_RENOVADO:
-            ciclo.status = Ciclo.Status.CICLO_RENOVADO
-            ciclo.save(update_fields=["status", "updated_at"])
-            gerou_encerramento = True
-
-        proximo_ciclo = (
-            ciclo.contrato.ciclos.filter(numero=ciclo.numero + 1).first()
-        )
-        if not proximo_ciclo:
-            competencia_inicial = add_months(ciclo.data_fim.replace(day=1), 1)
-            create_cycle_with_parcelas(
-                contrato=ciclo.contrato,
-                numero=ciclo.numero + 1,
-                competencia_inicial=competencia_inicial,
-                parcelas_total=3,
-                ciclo_status=Ciclo.Status.FUTURO,
-                parcela_status=Parcela.Status.FUTURO,
-                valor_mensalidade=ciclo.contrato.valor_mensalidade,
-                valor_total=(ciclo.contrato.valor_mensalidade * Decimal("3")).quantize(
-                    Decimal("0.01")
-                ),
-            )
-            gerou_novo_ciclo = True
-
         return {
-            "gerou_encerramento": gerou_encerramento,
-            "gerou_novo_ciclo": gerou_novo_ciclo,
+            "gerou_encerramento": False,
+            "gerou_novo_ciclo": False,
         }
 
     @staticmethod

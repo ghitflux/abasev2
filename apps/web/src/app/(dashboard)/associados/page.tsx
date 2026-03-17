@@ -15,12 +15,21 @@ import {
   UserXIcon,
 } from "lucide-react";
 
-import type { AssociadoListItem, AssociadoMetricas, Ciclo, PaginatedResponse } from "@/lib/api/types";
+import type {
+  AssociadoCyclesPayload,
+  AssociadoListItem,
+  AssociadoMetricas,
+  PaginatedResponse,
+} from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { formatDateValue, parseDateValue } from "@/lib/date-value";
-import { formatMetricDelta, formatMonthYear } from "@/lib/formatters";
+import { formatCurrency, formatMetricDelta, formatMonthYear } from "@/lib/formatters";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import RoleGuard from "@/components/auth/role-guard";
+import {
+  ParcelaDetalheDialog,
+  type ParcelaDetailTarget,
+} from "@/components/contratos/parcela-detalhe-dialog";
 import DatePicker from "@/components/custom/date-picker";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
@@ -41,62 +50,128 @@ type FiltersState = {
 };
 
 function AssociadoCiclosPanel({ associadoId }: { associadoId: number }) {
+  const [selectedTarget, setSelectedTarget] =
+    React.useState<ParcelaDetailTarget | null>(null);
   const ciclosQuery = useQuery({
     queryKey: ["associado-ciclos", associadoId],
-    queryFn: () => apiFetch<Ciclo[]>(`associados/${associadoId}/ciclos`),
+    queryFn: () => apiFetch<AssociadoCyclesPayload>(`associados/${associadoId}/ciclos`),
   });
 
   if (ciclosQuery.isLoading) {
     return <InlinePanelSkeleton rows={2} className="pt-2" />;
   }
 
-  const ciclos = ciclosQuery.data ?? [];
-  if (!ciclos.length) {
+  const payload = ciclosQuery.data;
+  const ciclos = payload?.ciclos ?? [];
+  const mesesNaoPagos = payload?.meses_nao_pagos ?? [];
+  if (!ciclos.length && !mesesNaoPagos.length) {
     return <p className="text-sm text-muted-foreground">Nenhum ciclo encontrado.</p>;
   }
 
   return (
-    <Tabs defaultValue={String(ciclos[0]?.id)}>
-      <TabsList variant="line">
-        {ciclos.map((ciclo) => (
-          <TabsTrigger key={ciclo.id} value={String(ciclo.id)}>
-            <div className="flex flex-col items-start">
-              <span>Ciclo {ciclo.numero}</span>
-              <span className="text-[10px] font-mono text-muted-foreground">
-                {ciclo.contrato_codigo}
-              </span>
-            </div>
-          </TabsTrigger>
-        ))}
-      </TabsList>
-      {ciclos.map((ciclo) => (
-        <TabsContent key={ciclo.id} value={String(ciclo.id)} className="pt-4">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <p className="text-sm font-medium text-foreground">{ciclo.contrato_codigo}</p>
-              <p className="text-sm text-muted-foreground">
-                Referências de {formatMonthYear(ciclo.data_inicio)} até {formatMonthYear(ciclo.data_fim)}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <StatusBadge status={ciclo.contrato_status} label={ciclo.contrato_status} />
-              <StatusBadge status={ciclo.status} />
-            </div>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            {ciclo.parcelas.map((parcela) => (
-              <div key={parcela.id} className="rounded-2xl border border-border/60 bg-background/70 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-medium">Parcela {parcela.numero}/3</p>
-                  <StatusBadge status={parcela.status} />
-                </div>
-                <p className="mt-2 text-sm text-muted-foreground">{formatMonthYear(parcela.referencia_mes)}</p>
+    <>
+      <Tabs defaultValue={String(ciclos[0]?.id ?? "nao-pagos")}>
+        <TabsList variant="line">
+          {ciclos.map((ciclo) => (
+            <TabsTrigger key={ciclo.id} value={String(ciclo.id)}>
+              <div className="flex flex-col items-start">
+                <span>Ciclo {ciclo.numero}</span>
+                <span className="text-[10px] font-mono text-muted-foreground">
+                  {ciclo.contrato_codigo}
+                </span>
               </div>
-            ))}
-          </div>
-        </TabsContent>
-      ))}
-    </Tabs>
+            </TabsTrigger>
+          ))}
+          {mesesNaoPagos.length ? (
+            <TabsTrigger value="nao-pagos">
+              <div className="flex flex-col items-start">
+                <span>Meses não pagos</span>
+                <span className="text-[10px] font-mono text-muted-foreground">
+                  {mesesNaoPagos.length} registro(s)
+                </span>
+              </div>
+            </TabsTrigger>
+          ) : null}
+        </TabsList>
+        {ciclos.map((ciclo) => (
+          <TabsContent key={ciclo.id} value={String(ciclo.id)} className="pt-4">
+            <div className="mb-4 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-foreground">{ciclo.contrato_codigo}</p>
+                <p className="text-sm text-muted-foreground">
+                  Meses do ciclo: {ciclo.resumo_referencias}
+                </p>
+              </div>
+              <StatusBadge
+                status={ciclo.status_visual_slug}
+                label={ciclo.status_visual_label}
+              />
+            </div>
+            <div className="grid gap-4 md:grid-cols-3">
+              {ciclo.parcelas.map((parcela) => (
+                <button
+                  key={parcela.id}
+                  type="button"
+                  onClick={() =>
+                    setSelectedTarget({
+                      contratoId: ciclo.contrato_id,
+                      referenciaMes: parcela.referencia_mes,
+                      kind: "cycle",
+                    })
+                  }
+                  className="rounded-2xl border border-border/60 bg-background/70 p-4 text-left transition hover:border-primary/50"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-medium">
+                      Parcela {parcela.numero}/{ciclo.parcelas.length}
+                    </p>
+                    <StatusBadge status={parcela.status} />
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">{formatMonthYear(parcela.referencia_mes)}</p>
+                </button>
+              ))}
+            </div>
+          </TabsContent>
+        ))}
+        {mesesNaoPagos.length ? (
+          <TabsContent value="nao-pagos" className="pt-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {mesesNaoPagos.map((mes) => (
+                <button
+                  key={mes.id}
+                  type="button"
+                  onClick={() =>
+                    setSelectedTarget({
+                      contratoId: mes.contrato_id,
+                      referenciaMes: mes.referencia_mes,
+                      kind: "unpaid",
+                    })
+                  }
+                  className="rounded-2xl border border-border/60 bg-background/70 p-4 text-left transition hover:border-primary/50"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-medium">{formatMonthYear(mes.referencia_mes)}</p>
+                    <StatusBadge status={mes.status} />
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">{mes.contrato_codigo}</p>
+                  <p className="text-sm text-muted-foreground">{formatCurrency(mes.valor)}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">{mes.observacao || "Sem observação."}</p>
+                </button>
+              ))}
+            </div>
+          </TabsContent>
+        ) : null}
+      </Tabs>
+      <ParcelaDetalheDialog
+        associadoId={associadoId}
+        target={selectedTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedTarget(null);
+          }
+        }}
+      />
+    </>
   );
 }
 
@@ -183,8 +258,13 @@ function AssociadosPageContent() {
       {
         id: "status",
         header: "Status",
-        accessor: "status",
-        cell: (row) => <StatusBadge status={row.status} />,
+        accessor: "status_visual_label",
+        cell: (row) => (
+          <StatusBadge
+            status={row.status_visual_slug}
+            label={row.status_visual_label}
+          />
+        ),
       },
       {
         id: "acoes",

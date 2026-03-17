@@ -91,7 +91,14 @@ class ArquivoRetornoViewSet(
         return queryset.order_by("-created_at")
 
     def get_serializer_class(self):
-        if self.action in {"descontados", "nao_descontados", "pendencias_manuais", "encerramentos", "novos_ciclos"}:
+        if self.action in {
+            "descontados",
+            "nao_descontados",
+            "pendencias_manuais",
+            "encerramentos",
+            "novos_ciclos",
+            "aptos_renovar",
+        }:
             return ArquivoRetornoItemSerializer
         if self.action == "upload":
             return ArquivoRetornoUploadSerializer
@@ -181,6 +188,12 @@ class ArquivoRetornoViewSet(
     @extend_schema(responses=ArquivoRetornoItemSerializer(many=True))
     @action(detail=True, methods=["get"], url_path="novos-ciclos")
     def novos_ciclos(self, request, pk=None):
+        queryset = self._filtrar_itens(pk, gerou_novo_ciclo=True)
+        return self._paginate_items(queryset)
+
+    @extend_schema(responses=ArquivoRetornoItemSerializer(many=True))
+    @action(detail=True, methods=["get"], url_path="aptos-renovar")
+    def aptos_renovar(self, request, pk=None):
         queryset = self._filtrar_itens(pk, gerou_novo_ciclo=True)
         return self._paginate_items(queryset)
 

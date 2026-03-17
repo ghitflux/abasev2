@@ -9,6 +9,10 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
+from apps.accounts.legacy_helpers import (
+    LEGACY_DOCUMENT_TYPE_MAP,
+    build_legacy_document_path,
+)
 from apps.accounts.management.commands.import_legacy_data import (
     Command as LegacyImportCommand,
     _date,
@@ -90,22 +94,6 @@ CONTRATO_SNAPSHOT_FIELDS = (
     "calc_mensalidade_associativa",
 )
 
-LEGACY_DOCUMENT_TYPE_MAP = {
-    "cpf": Documento.Tipo.CPF,
-    "cpf_frente": Documento.Tipo.DOCUMENTO_FRENTE,
-    "cpf_verso": Documento.Tipo.DOCUMENTO_VERSO,
-    "rg": Documento.Tipo.RG,
-    "rg_frente": Documento.Tipo.DOCUMENTO_FRENTE,
-    "rg_verso": Documento.Tipo.DOCUMENTO_VERSO,
-    "comp_endereco": Documento.Tipo.COMPROVANTE_RESIDENCIA,
-    "comp_renda": Documento.Tipo.OUTRO,
-    "contracheque": Documento.Tipo.CONTRACHEQUE,
-    "contracheque_atual": Documento.Tipo.CONTRACHEQUE,
-    "termo_adesao": Documento.Tipo.TERMO_ADESAO,
-    "termo_antecipacao": Documento.Tipo.TERMO_ANTECIPACAO,
-}
-
-
 class Command(BaseCommand):
     help = (
         "Importa os cadastros legados de agente_cadastros para o formato operacional "
@@ -165,6 +153,7 @@ class Command(BaseCommand):
             "associados_restored": 0,
             "contratos_created": 0,
             "contratos_restored": 0,
+            "contratos_soft_deleted": 0,
             "ciclos_created": 0,
             "parcelas_created": 0,
             "esteiras_created": 0,
@@ -185,6 +174,7 @@ class Command(BaseCommand):
             "Resumo import_legacy_associados_current_flow: "
             + ", ".join(f"{key}={value}" for key, value in summary.items())
         )
+        self.summary = summary
 
     def _bootstrap_lookup_helpers(self):
         lookup = LegacyImportCommand()
@@ -303,6 +293,9 @@ class Command(BaseCommand):
             schedule_conflicts = self._collect_schedule_conflicts(contrato=contrato, row=row)
             if schedule_conflicts:
                 summary["competencia_conflicts"] += 1
+                if contrato_created and had_existing_contracts and contrato.deleted_at is None:
+                    contrato.soft_delete()
+                    summary["contratos_soft_deleted"] += 1
                 self.stderr.write(
                     (
                         "Agenda ignorada para contrato {codigo} por conflito de competência: "
@@ -756,11 +749,6 @@ class Command(BaseCommand):
         if not isinstance(raw_documents, list):
             return 0
 
-        status = (
-            Documento.Status.APROVADO
-            if contract_status in {Contrato.Status.ATIVO, Contrato.Status.ENCERRADO}
-            else Documento.Status.PENDENTE
-        )
         created = 0
 
         for item in raw_documents:
@@ -788,7 +776,7 @@ class Command(BaseCommand):
                 associado=associado,
                 tipo=tipo,
                 arquivo=relative_path,
-                status=status,
+                status=Documento.Status.APROVADO,
                 observacao=str(item.get("original_name") or "")[:500],
             )
             self._apply_timestamps(
@@ -802,13 +790,7 @@ class Command(BaseCommand):
         return created
 
     def _legacy_document_path(self, item: dict) -> str:
-        relative_path = str(item.get("relative_path") or "").strip()
-        if relative_path:
-            return relative_path[:100]
-        stored_name = str(item.get("stored_name") or "").strip()
-        if not stored_name:
-            return ""
-        return f"documentos/legacy/{stored_name}"[:100]
+        return build_legacy_document_path(item)
 
     def _capture_contract_snapshot(self, associado: Associado) -> dict:
         return {field: getattr(associado, field) for field in CONTRATO_SNAPSHOT_FIELDS}

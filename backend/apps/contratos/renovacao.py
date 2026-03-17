@@ -10,6 +10,11 @@ from rest_framework.exceptions import ValidationError
 from apps.importacao.financeiro import build_financeiro_resumo
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem
 
+from .cycle_timeline import (
+    get_contract_activation_payload,
+    get_cycle_activation_info,
+    get_cycle_activation_payload,
+)
 from .models import Ciclo, Contrato, Parcela
 
 
@@ -89,16 +94,25 @@ class RenovacaoCicloService:
         parcelas_minimas_para_renovar = RenovacaoCicloService._parcelas_minimas_para_renovar(
             parcelas_total
         )
+        ativacao_atual = get_cycle_activation_info(ciclo, allow_fallback=False)
+        ativacao_proxima = (
+            get_cycle_activation_info(proximo_ciclo, allow_fallback=False)
+            if proximo_ciclo
+            else None
+        )
 
         # Ciclo ainda não foi ativado — em previsão
-        if ciclo.status == Ciclo.Status.FUTURO:
+        if ciclo.status == Ciclo.Status.FUTURO and ativacao_atual.activated_at is None:
             return "em_previsao"
 
         if parcela.status == Parcela.Status.NAO_DESCONTADO:
             return "inadimplente"
         if ciclo.status == Ciclo.Status.CICLO_RENOVADO:
             return "ciclo_renovado"
-        if proximo_ciclo and proximo_ciclo.status == Ciclo.Status.ABERTO:
+        if proximo_ciclo and (
+            proximo_ciclo.status == Ciclo.Status.ABERTO
+            or (ativacao_proxima and ativacao_proxima.activated_at is not None)
+        ):
             return "ciclo_iniciado"
         if parcelas_total > 0 and parcelas_pagas >= parcelas_minimas_para_renovar:
             return "apto_a_renovar"
@@ -163,6 +177,8 @@ class RenovacaoCicloService:
             parcelas_total=parcelas_total,
             contratos_associado=contratos_associado,
         )
+        ciclo_activation = get_cycle_activation_payload(ciclo)
+        contrato_activation = get_contract_activation_payload(contrato)
 
         return {
             "id": parcela.id,
@@ -179,6 +195,11 @@ class RenovacaoCicloService:
             "status_parcela": parcela.status,
             "status_visual": status_visual,
             "status_explicacao": status_explicacao,
+            "data_primeiro_ciclo_ativado": contrato_activation["data_primeiro_ciclo_ativado"],
+            "data_ativacao_ciclo": ciclo_activation["data_ativacao_ciclo"],
+            "origem_data_ativacao": ciclo_activation["origem_data_ativacao"],
+            "data_solicitacao_renovacao": ciclo_activation["data_solicitacao_renovacao"],
+            "ativacao_inferida": ciclo_activation["ativacao_inferida"],
             "matricula": RenovacaoCicloService._resolve_matricula(parcela, import_item),
             "agente_responsavel": RenovacaoCicloService._resolve_agente_responsavel(contrato),
             "parcelas_pagas": parcelas_pagas,

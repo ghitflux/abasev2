@@ -51,6 +51,8 @@ class CadastroValidationStrategy(ValidationStrategy):
         contrato = data.setdefault("contrato", {})
         mensalidade = Decimal(str(contrato.get("mensalidade") or 0))
         prazo_meses = int(contrato.get("prazo_meses") or 3)
+        if prazo_meses not in {3, 4}:
+            raise ValidationError({"prazo_meses": "O prazo do ciclo deve ser 3 ou 4 meses."})
         taxa_antecipacao = Decimal("30.00")
         valor_total_antecipacao = (mensalidade * Decimal(prazo_meses)).quantize(
             Decimal("0.01")

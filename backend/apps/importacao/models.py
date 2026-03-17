@@ -72,6 +72,7 @@ class ArquivoRetorno(BaseModel):
         TXT = "txt", "TXT"
         CSV = "csv", "CSV"
         XLSX = "xlsx", "XLSX"
+        MANUAL = "man", "Manual"
 
     class Status(models.TextChoices):
         PENDENTE = "pendente", "Pendente"

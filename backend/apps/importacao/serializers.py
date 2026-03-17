@@ -70,6 +70,12 @@ class ArquivoRetornoFinanceiroItemSerializer(serializers.Serializer):
     manual_comprovante_path = serializers.CharField(
         required=False, allow_null=True, allow_blank=True
     )
+    origem_baixa = serializers.CharField(required=False, allow_blank=True)
+    arquivo_referencia = serializers.CharField(
+        required=False, allow_null=True, allow_blank=True
+    )
+    arquivo_disponivel_localmente = serializers.BooleanField(required=False)
+    tipo_referencia = serializers.CharField(required=False, allow_blank=True)
     categoria = serializers.CharField()
 
 

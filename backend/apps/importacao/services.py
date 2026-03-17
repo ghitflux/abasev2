@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta, timezone as dt_timezone
 from pathlib import Path
 from uuid import uuid4
 
@@ -28,36 +28,123 @@ def competencia_to_date(value: str):
     return datetime.strptime(value, "%m/%Y").date().replace(day=1)
 
 
+def normalize_snapshot_manual_paid_at(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if timezone.is_aware(value):
+        return timezone.localtime(value, timezone.get_current_timezone())
+    return timezone.make_aware(value, timezone.get_current_timezone())
+
+
+def compare_manual_paid_at(
+    current: datetime | None,
+    snapshot: datetime | None,
+) -> str:
+    if current is None and snapshot is None:
+        return "missing"
+    if current is None or snapshot is None:
+        return "different"
+
+    normalized_snapshot = normalize_snapshot_manual_paid_at(snapshot)
+    if normalized_snapshot is None:
+        return "different"
+
+    current_local = timezone.localtime(current, timezone.get_current_timezone())
+    if current_local == normalized_snapshot:
+        return "exact"
+
+    return "different"
+
+
+def classify_manual_paid_at_difference(
+    current: datetime | None,
+    snapshot: datetime | None,
+) -> str:
+    if current is None and snapshot is None:
+        return "missing"
+    if current is None or snapshot is None:
+        return "different"
+
+    normalized_snapshot = normalize_snapshot_manual_paid_at(snapshot)
+    if normalized_snapshot is None:
+        return "different"
+
+    current_local = timezone.localtime(current, timezone.get_current_timezone())
+    if current_local != normalized_snapshot:
+        return "different"
+
+    current_utc_naive = current.astimezone(dt_timezone.utc).replace(tzinfo=None)
+    if current_utc_naive - snapshot == timedelta(hours=3):
+        return "timezone_only"
+
+    return "exact"
+
+
 def _apply_legacy_snapshot_to_pagamento(
     pagamento: PagamentoMensalidade,
     snapshot: LegacyPagamentoSnapshot | None,
+    *,
+    overwrite: bool = False,
 ) -> list[str]:
     if not snapshot:
         return []
 
     updated_fields: list[str] = []
 
-    if not pagamento.manual_status and snapshot.manual_status:
-        pagamento.manual_status = snapshot.manual_status
-        updated_fields.append("manual_status")
-    if pagamento.esperado_manual is None and snapshot.esperado_manual is not None:
+    if snapshot.manual_status and (overwrite or not pagamento.manual_status):
+        if pagamento.manual_status != snapshot.manual_status:
+            pagamento.manual_status = snapshot.manual_status
+            updated_fields.append("manual_status")
+    if (
+        snapshot.esperado_manual is not None
+        and (overwrite or pagamento.esperado_manual is None)
+        and pagamento.esperado_manual != snapshot.esperado_manual
+    ):
         pagamento.esperado_manual = snapshot.esperado_manual
         updated_fields.append("esperado_manual")
-    if pagamento.recebido_manual is None and snapshot.recebido_manual is not None:
+    if (
+        snapshot.recebido_manual is not None
+        and (overwrite or pagamento.recebido_manual is None)
+        and pagamento.recebido_manual != snapshot.recebido_manual
+    ):
         pagamento.recebido_manual = snapshot.recebido_manual
         updated_fields.append("recebido_manual")
-    if pagamento.manual_paid_at is None and snapshot.manual_paid_at is not None:
-        pagamento.manual_paid_at = snapshot.manual_paid_at
+    normalized_snapshot_paid_at = normalize_snapshot_manual_paid_at(snapshot.manual_paid_at)
+    if (
+        normalized_snapshot_paid_at is not None
+        and (overwrite or pagamento.manual_paid_at is None)
+        and compare_manual_paid_at(
+            pagamento.manual_paid_at,
+            snapshot.manual_paid_at,
+        )
+        == "different"
+    ):
+        pagamento.manual_paid_at = normalized_snapshot_paid_at
         updated_fields.append("manual_paid_at")
-    if not pagamento.manual_forma_pagamento and snapshot.manual_forma_pagamento:
+    if (
+        snapshot.manual_forma_pagamento
+        and (overwrite or not pagamento.manual_forma_pagamento)
+        and pagamento.manual_forma_pagamento != snapshot.manual_forma_pagamento
+    ):
         pagamento.manual_forma_pagamento = snapshot.manual_forma_pagamento
         updated_fields.append("manual_forma_pagamento")
-    if not pagamento.manual_comprovante_path and snapshot.manual_comprovante_path:
+    if (
+        snapshot.manual_comprovante_path
+        and (overwrite or not pagamento.manual_comprovante_path)
+        and pagamento.manual_comprovante_path != snapshot.manual_comprovante_path
+    ):
         pagamento.manual_comprovante_path = snapshot.manual_comprovante_path
         updated_fields.append("manual_comprovante_path")
-    if not pagamento.agente_refi_solicitado and snapshot.agente_refi_solicitado:
+    if (
+        snapshot.agente_refi_solicitado
+        and (overwrite or not pagamento.agente_refi_solicitado)
+        and pagamento.agente_refi_solicitado != snapshot.agente_refi_solicitado
+    ):
         pagamento.agente_refi_solicitado = snapshot.agente_refi_solicitado
         updated_fields.append("agente_refi_solicitado")
+    if snapshot.has_manual_context() and not pagamento.source_file_path:
+        pagamento.source_file_path = "legacy/pagamentos_mensalidades"
+        updated_fields.append("source_file_path")
 
     return updated_fields
 

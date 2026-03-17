@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from django.db.models import CharField, Count, Prefetch, Q, Value
+from django.db.models import CharField, Prefetch, Q, Value
 from django.db.models.functions import Concat
 from django.utils.dateparse import parse_date
 from drf_spectacular.utils import OpenApiParameter, extend_schema
@@ -14,11 +14,11 @@ from rest_framework.viewsets import GenericViewSet, ReadOnlyModelViewSet
 
 from apps.associados.models import Associado
 from apps.accounts.permissions import IsTesoureiroOrAdmin
-from apps.esteira.models import EsteiraItem
-from apps.refinanciamento.payment_rules import (
-    REFINANCIAMENTO_MENSALIDADES_NECESSARIAS,
-    paid_pagamento_filter,
+from apps.contratos.cycle_projection import build_contract_cycle_projection
+from apps.contratos.cycle_timeline import (
+    get_contract_cycle_size,
 )
+from apps.esteira.models import EsteiraItem
 from core.pagination import StandardResultsSetPagination
 
 from .renovacao import RenovacaoCicloService, parse_competencia_query
@@ -130,18 +130,9 @@ class ContratoViewSet(ReadOnlyModelViewSet):
                 Prefetch("ciclos__parcelas"),
                 Prefetch("associado__refinanciamentos"),
                 Prefetch("associado__pagamentos_mensalidades__refi_itens"),
+                Prefetch("associado__tesouraria_pagamentos"),
             )
             .annotate(
-                pagamentos_refi_livres=Count(
-                    "associado__pagamentos_mensalidades",
-                    filter=paid_pagamento_filter(
-                        prefix="associado__pagamentos_mensalidades__"
-                    )
-                    & Q(
-                        associado__pagamentos_mensalidades__refi_itens__isnull=True
-                    ),
-                    distinct=True,
-                ),
                 agente_nome=Concat(
                     "agente__first_name",
                     Value(" "),
@@ -204,12 +195,28 @@ class ContratoViewSet(ReadOnlyModelViewSet):
         mensalidades = self.request.query_params.get("mensalidades")
         if mensalidades and mensalidades.isdigit():
             mensalidades_count = int(mensalidades)
-            if mensalidades_count >= REFINANCIAMENTO_MENSALIDADES_NECESSARIAS:
-                queryset = queryset.filter(
-                    pagamentos_refi_livres__gte=REFINANCIAMENTO_MENSALIDADES_NECESSARIAS
+            contratos_filtrados = list(queryset)
+            ids_filtrados: list[int] = []
+            for contrato in contratos_filtrados:
+                total = get_contract_cycle_size(contrato)
+                projection = build_contract_cycle_projection(contrato)
+                cycles = list(sorted(projection["cycles"], key=lambda item: item["numero"]))
+                current_cycle = cycles[-1] if cycles else None
+                pagas = (
+                    sum(
+                        1
+                        for parcela in current_cycle["parcelas"]
+                        if parcela["status"] == "descontado"
+                    )
+                    if current_cycle
+                    else 0
                 )
-            else:
-                queryset = queryset.filter(pagamentos_refi_livres=mensalidades_count)
+                if mensalidades_count >= total:
+                    if pagas >= total:
+                        ids_filtrados.append(contrato.id)
+                elif pagas == mensalidades_count:
+                    ids_filtrados.append(contrato.id)
+            queryset = queryset.filter(id__in=ids_filtrados)
 
         return queryset
 

@@ -163,7 +163,13 @@ export const navigationSections: NavigationSection[] = [
             roles: ["ANALISTA", "ADMIN"],
           },
           {
-            title: "Refinanciamento",
+            title: "Aptos",
+            href: "/analise/aptos",
+            icon: RefreshCcw,
+            roles: ["ANALISTA", "ADMIN"],
+          },
+          {
+            title: "Aptos a Renovar",
             href: "/coordenacao/refinanciamento",
             icon: RefreshCcw,
             roles: ["COORDENADOR", "ADMIN"],
@@ -211,7 +217,7 @@ export const navigationSections: NavigationSection[] = [
             roles: ["TESOUREIRO", "ADMIN"],
           },
           {
-            title: "Refinanciamentos",
+            title: "Renovações",
             href: "/tesouraria/refinanciamentos",
             icon: HandCoins,
             roles: ["TESOUREIRO", "ADMIN"],

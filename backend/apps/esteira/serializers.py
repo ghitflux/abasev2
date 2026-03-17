@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from apps.contratos.cycle_projection import get_contract_visual_status_payload
+from core.file_references import build_storage_reference
+
 from .models import DocIssue, EsteiraItem, Pendencia, Transicao
 from .services import EsteiraService
 
@@ -16,14 +19,48 @@ class ContratoEsteiraSerializer(serializers.Serializer):
     associado_nome = serializers.CharField(read_only=True)
     cpf_cnpj = serializers.CharField(read_only=True)
     matricula = serializers.CharField(read_only=True)
+    matricula_display = serializers.CharField(read_only=True)
 
 
 class DocumentoEsteiraSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     tipo = serializers.CharField(read_only=True)
     status = serializers.CharField(read_only=True)
-    arquivo = serializers.FileField(read_only=True)
+    arquivo = serializers.SerializerMethodField()
+    arquivo_referencia = serializers.SerializerMethodField()
+    arquivo_disponivel_localmente = serializers.SerializerMethodField()
+    tipo_referencia = serializers.SerializerMethodField()
     observacao = serializers.CharField(read_only=True)
+    nome_original = serializers.CharField(read_only=True)
+
+    def _reference(self, obj):
+        request = self.context.get("request")
+        current_path = str(getattr(obj.arquivo, "name", "") or "")
+        reference = build_storage_reference(
+            current_path,
+            request=request,
+            missing_type="legado_sem_arquivo",
+        )
+        if obj.arquivo_referencia and obj.arquivo_referencia != reference.arquivo_referencia:
+            return reference.__class__(
+                url=reference.url,
+                arquivo_referencia=obj.arquivo_referencia,
+                arquivo_disponivel_localmente=reference.arquivo_disponivel_localmente,
+                tipo_referencia=reference.tipo_referencia,
+            )
+        return reference
+
+    def get_arquivo(self, obj):
+        return str(getattr(obj.arquivo, "name", "") or "")
+
+    def get_arquivo_referencia(self, obj):
+        return self._reference(obj).arquivo_referencia
+
+    def get_arquivo_disponivel_localmente(self, obj):
+        return self._reference(obj).arquivo_disponivel_localmente
+
+    def get_tipo_referencia(self, obj):
+        return self._reference(obj).tipo_referencia
 
 
 class PendenciaSerializer(serializers.ModelSerializer):
@@ -35,10 +72,8 @@ class PendenciaSerializer(serializers.ModelSerializer):
         source="esteira_item.associado.nome_completo",
         read_only=True,
     )
-    matricula = serializers.CharField(
-        source="esteira_item.associado.matricula",
-        read_only=True,
-    )
+    matricula = serializers.SerializerMethodField()
+    matricula_display = serializers.SerializerMethodField()
     cpf_cnpj = serializers.CharField(
         source="esteira_item.associado.cpf_cnpj",
         read_only=True,
@@ -56,6 +91,7 @@ class PendenciaSerializer(serializers.ModelSerializer):
             "associado_id",
             "associado_nome",
             "matricula",
+            "matricula_display",
             "cpf_cnpj",
             "contrato_codigo",
             "created_at",
@@ -65,6 +101,12 @@ class PendenciaSerializer(serializers.ModelSerializer):
     def get_contrato_codigo(self, obj: Pendencia):
         contrato = obj.esteira_item.associado.contratos.order_by("-created_at").first()
         return contrato.codigo if contrato else None
+
+    def get_matricula(self, obj: Pendencia) -> str:
+        return obj.esteira_item.associado.matricula
+
+    def get_matricula_display(self, obj: Pendencia) -> str:
+        return obj.esteira_item.associado.matricula_display
 
 
 class TransicaoSerializer(serializers.ModelSerializer):
@@ -92,6 +134,8 @@ class EsteiraListSerializer(serializers.ModelSerializer):
     valor_disponivel = serializers.SerializerMethodField()
     comissao_agente = serializers.SerializerMethodField()
     status_contrato = serializers.SerializerMethodField()
+    status_contrato_visual_slug = serializers.SerializerMethodField()
+    status_contrato_visual_label = serializers.SerializerMethodField()
     status_documentacao = serializers.SerializerMethodField()
     contato_web = serializers.SerializerMethodField()
     termos_web = serializers.SerializerMethodField()
@@ -110,6 +154,8 @@ class EsteiraListSerializer(serializers.ModelSerializer):
             "valor_disponivel",
             "comissao_agente",
             "status_contrato",
+            "status_contrato_visual_slug",
+            "status_contrato_visual_label",
             "status_documentacao",
             "contato_web",
             "termos_web",
@@ -135,6 +181,7 @@ class EsteiraListSerializer(serializers.ModelSerializer):
                 "associado_nome": obj.associado.nome_completo,
                 "cpf_cnpj": obj.associado.cpf_cnpj,
                 "matricula": obj.associado.matricula,
+                "matricula_display": obj.associado.matricula_display,
             }
         ).data
 
@@ -155,6 +202,18 @@ class EsteiraListSerializer(serializers.ModelSerializer):
     def get_status_contrato(self, obj: EsteiraItem):
         contrato = self._get_contrato(obj)
         return contrato.status if contrato else None
+
+    def get_status_contrato_visual_slug(self, obj: EsteiraItem):
+        contrato = self._get_contrato(obj)
+        if not contrato:
+            return None
+        return get_contract_visual_status_payload(contrato)["status_visual_slug"]
+
+    def get_status_contrato_visual_label(self, obj: EsteiraItem):
+        contrato = self._get_contrato(obj)
+        if not contrato:
+            return None
+        return get_contract_visual_status_payload(contrato)["status_visual_label"]
 
     def get_status_documentacao(self, obj: EsteiraItem):
         documentos = list(obj.associado.documentos.all())

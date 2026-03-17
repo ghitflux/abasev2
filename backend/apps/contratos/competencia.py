@@ -15,6 +15,12 @@ from rest_framework.exceptions import ValidationError
 from apps.importacao.models import ArquivoRetornoItem
 from apps.tesouraria.models import BaixaManual
 
+from .cycle_timeline import (
+    CICLO_TOTAL_PARCELAS,
+    count_discounted_parcelas,
+    get_contract_cycle_size,
+    get_future_generation_threshold,
+)
 from .models import Ciclo, Contrato, Parcela
 
 CONFLICT_DETAIL_MESSAGE = (
@@ -631,6 +637,42 @@ def create_cycle_with_parcelas(
         referencias=referencias,
     )
     return ciclo, list(ciclo.parcelas.order_by("numero"))
+
+
+def ensure_future_cycle_for_renewal(
+    ciclo: Ciclo,
+    *,
+    parcelas_minimas: int | None = None,
+) -> tuple[Ciclo | None, bool]:
+    if ciclo.status == Ciclo.Status.FUTURO:
+        return ciclo, False
+
+    if parcelas_minimas is None:
+        parcelas_minimas = get_future_generation_threshold(ciclo)
+
+    parcelas_pagas = count_discounted_parcelas(ciclo)
+    if parcelas_pagas < parcelas_minimas:
+        return None, False
+
+    proximo_ciclo = ciclo.contrato.ciclos.filter(numero=ciclo.numero + 1).first()
+    if proximo_ciclo is not None:
+        return proximo_ciclo, False
+
+    cycle_size = get_contract_cycle_size(ciclo)
+    competencia_inicial = add_months(ciclo.data_fim.replace(day=1), 1)
+    novo_ciclo, _parcelas = create_cycle_with_parcelas(
+        contrato=ciclo.contrato,
+        numero=ciclo.numero + 1,
+        competencia_inicial=competencia_inicial,
+        parcelas_total=cycle_size,
+        ciclo_status=Ciclo.Status.FUTURO,
+        parcela_status=Parcela.Status.FUTURO,
+        valor_mensalidade=ciclo.contrato.valor_mensalidade,
+        valor_total=(
+            ciclo.contrato.valor_mensalidade * Decimal(str(cycle_size))
+        ).quantize(Decimal("0.01")),
+    )
+    return novo_ciclo, True
 
 
 def ativar_ciclo_futuro(ciclo: Ciclo, parcela_ja_descontada: Parcela | None = None) -> bool:

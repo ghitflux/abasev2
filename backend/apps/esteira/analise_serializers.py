@@ -97,6 +97,7 @@ class AnaliseMargemSerializer(serializers.ModelSerializer):
 class AnaliseDadosSerializer(serializers.ModelSerializer):
     agente = SimpleUserSerializer(source="agente_responsavel", read_only=True)
     contrato_codigo = serializers.SerializerMethodField()
+    matricula_display = serializers.SerializerMethodField()
 
     class Meta:
         model = Associado
@@ -105,6 +106,7 @@ class AnaliseDadosSerializer(serializers.ModelSerializer):
             "nome_completo",
             "cpf_cnpj",
             "matricula",
+            "matricula_display",
             "agente",
             "contrato_codigo",
             "created_at",
@@ -113,6 +115,9 @@ class AnaliseDadosSerializer(serializers.ModelSerializer):
     def get_contrato_codigo(self, obj: Associado) -> str | None:
         contrato = next(iter(obj.contratos.all()), None)
         return contrato.codigo if contrato else None
+
+    def get_matricula_display(self, obj: Associado) -> str:
+        return obj.matricula_display
 
 
 class AnaliseDadosUpdateSerializer(serializers.Serializer):

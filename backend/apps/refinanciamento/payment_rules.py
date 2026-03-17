@@ -5,17 +5,18 @@ from collections.abc import Iterable
 
 from django.db.models import Exists, OuterRef, Q, QuerySet
 
+from apps.contratos.cycle_timeline import get_contract_cycle_size
 from apps.contratos.models import Contrato
 from apps.importacao.models import PagamentoMensalidade
 
 from .models import Item, Refinanciamento
 
-REFINANCIAMENTO_MENSALIDADES_NECESSARIAS = 3
 PAGAMENTO_STATUS_CODES_OK = ("1", "4")
 REFINANCIAMENTO_ACTIVE_STATUSES = (
+    Refinanciamento.Status.APTO_A_RENOVAR,
+    Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+    Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
     Refinanciamento.Status.PENDENTE_APTO,
-    Refinanciamento.Status.CONCLUIDO,
-    Refinanciamento.Status.EFETIVADO,
     Refinanciamento.Status.SOLICITADO,
     Refinanciamento.Status.EM_ANALISE,
     Refinanciamento.Status.APROVADO,
@@ -100,9 +101,14 @@ def get_free_paid_pagamentos(
     limit: int | None = None,
     for_update: bool = False,
 ) -> list[PagamentoMensalidade]:
-    pagamentos = _dedupe_pagamentos_by_competencia(
-        free_paid_pagamentos_queryset(contrato, for_update=for_update)
-    )
+    if for_update:
+        pagamentos = _dedupe_pagamentos_by_competencia(
+            free_paid_pagamentos_queryset(contrato, for_update=True)
+        )
+    else:
+        pagamentos = _dedupe_pagamentos_by_competencia(
+            free_paid_pagamentos_queryset(contrato, for_update=False)
+        )
     if limit is not None:
         pagamentos = pagamentos[:limit]
     return pagamentos
@@ -131,10 +137,7 @@ def get_prefetched_free_paid_pagamentos(
             continue
         livres.append(pagamento)
 
-    livres = _dedupe_pagamentos_by_competencia(livres)
-    if len(livres) >= REFINANCIAMENTO_MENSALIDADES_NECESSARIAS:
-        return livres
-    return get_free_paid_pagamentos(contrato)
+    return _dedupe_pagamentos_by_competencia(livres)
 
 
 def is_paid_pagamento(pagamento: PagamentoMensalidade) -> bool:
@@ -146,8 +149,9 @@ def is_paid_pagamento(pagamento: PagamentoMensalidade) -> bool:
 
 def refinanciamento_progress(
     pagamentos: Iterable[PagamentoMensalidade],
+    *,
+    contrato: Contrato | None = None,
 ) -> tuple[int, int]:
     livres = len(list(pagamentos))
-    return min(livres, REFINANCIAMENTO_MENSALIDADES_NECESSARIAS), (
-        REFINANCIAMENTO_MENSALIDADES_NECESSARIAS
-    )
+    total = get_contract_cycle_size(contrato)
+    return min(livres, total), total

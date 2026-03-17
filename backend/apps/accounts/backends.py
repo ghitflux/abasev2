@@ -16,8 +16,11 @@ LEGACY_ROLE_CODE_MAP = {
     "admin": "ADMIN",
     "agente": "AGENTE",
     "analista": "ANALISTA",
+    "associado": "ASSOCIADO",
+    "associadodois": "ASSOCIADODOIS",
     "coordenador": "COORDENADOR",
     "tesoureiro": "TESOUREIRO",
+    "user": "USER",
 }
 
 ROLE_METADATA = {

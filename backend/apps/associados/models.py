@@ -5,6 +5,7 @@ from typing import Any
 
 from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist
+from django.core.files.storage import default_storage
 from django.db import models
 
 from core.models import BaseModel
@@ -126,6 +127,14 @@ class Associado(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.nome_completo} ({self.matricula or 'novo'})"
+
+    @property
+    def matricula_display(self) -> str:
+        contato = self._safe_related("contato_historico")
+        matricula_servidor = (
+            getattr(contato, "matricula_servidor", "") if contato else ""
+        )
+        return self.matricula_orgao or matricula_servidor or self.matricula or ""
 
     @property
     def agente(self):
@@ -468,6 +477,11 @@ class ContatoHistorico(BaseModel):
 
 
 class Documento(BaseModel):
+    class Origem(models.TextChoices):
+        OPERACIONAL = "operacional", "Operacional"
+        LEGADO_CADASTRO = "legado_cadastro", "Legado cadastro"
+        OUTRO = "outro", "Outro"
+
     class Tipo(models.TextChoices):
         RG = "rg", "RG"
         CPF = "cpf", "CPF"
@@ -493,6 +507,13 @@ class Documento(BaseModel):
     )
     tipo = models.CharField(max_length=40, choices=Tipo.choices)
     arquivo = models.FileField(upload_to="documentos/")
+    arquivo_referencia_path = models.CharField(max_length=500, blank=True)
+    nome_original = models.CharField(max_length=255, blank=True)
+    origem = models.CharField(
+        max_length=40,
+        choices=Origem.choices,
+        default=Origem.OPERACIONAL,
+    )
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.PENDENTE
     )
@@ -505,5 +526,27 @@ class Documento(BaseModel):
         return f"{self.associado.nome_completo} - {self.tipo}"
 
     def save(self, *args, **kwargs):
+        if self.arquivo and not self.arquivo_referencia_path:
+            self.arquivo_referencia_path = getattr(self.arquivo, "name", "") or ""
+        if self.arquivo and not self.nome_original:
+            self.nome_original = getattr(self.arquivo, "name", "") or ""
         super().save(*args, **kwargs)
         self.associado.sync_documents_snapshot()
+
+    @property
+    def arquivo_referencia(self) -> str:
+        if self.arquivo_referencia_path:
+            return self.arquivo_referencia_path
+        if not self.arquivo:
+            return ""
+        return str(getattr(self.arquivo, "name", "") or "")
+
+    @property
+    def arquivo_disponivel_localmente(self) -> bool:
+        arquivo_name = str(getattr(self.arquivo, "name", "") or "")
+        if not arquivo_name:
+            return False
+        try:
+            return bool(default_storage.exists(arquivo_name))
+        except Exception:
+            return False

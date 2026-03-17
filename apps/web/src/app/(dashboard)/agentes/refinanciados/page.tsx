@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import type { PaginatedResponse, RefinanciamentoItem } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
+import { buildBackendFileUrl } from "@/lib/backend-files";
 import {
   formatCurrency,
   formatDateTime,
@@ -94,8 +95,20 @@ export default function AgenteRefinanciadosPage() {
       },
       {
         id: "executado",
-        header: "Executado em",
-        cell: (row) => formatDateTime(row.executado_em, "N/I"),
+        header: "Ativado em",
+        cell: (row) =>
+          row.data_ativacao_ciclo ? (
+            <div className="space-y-1">
+              <p>{formatDateTime(row.data_ativacao_ciclo, "N/I")}</p>
+              {row.ativacao_inferida ? (
+                <Badge className="rounded-full bg-amber-500/15 text-amber-200">
+                  Inferido
+                </Badge>
+              ) : null}
+            </div>
+          ) : (
+            "N/I"
+          ),
       },
       {
         id: "status",
@@ -121,11 +134,25 @@ export default function AgenteRefinanciadosPage() {
             </Badge>
             <div className="flex flex-wrap gap-2">
               {row.comprovantes.map((comprovante) => (
-                <Button key={comprovante.id} size="sm" variant="outline" asChild>
-                  <a href={comprovante.arquivo} target="_blank" rel="noreferrer">
-                    Ver {comprovante.papel}
-                  </a>
-                </Button>
+                comprovante.arquivo_disponivel_localmente ? (
+                  <Button key={comprovante.id} size="sm" variant="outline" asChild>
+                    <a
+                      href={buildBackendFileUrl(comprovante.arquivo)}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Ver {comprovante.papel}
+                    </a>
+                  </Button>
+                ) : (
+                  <span
+                    key={comprovante.id}
+                    className="inline-flex items-center rounded-full border border-dashed border-border/60 px-3 py-1 text-xs text-muted-foreground"
+                    title={comprovante.arquivo_referencia}
+                  >
+                    {comprovante.papel}: referência legado
+                  </span>
+                )
               ))}
             </div>
           </div>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 
 from django.test import TestCase
 
@@ -143,6 +144,9 @@ class ImportLegacyAssociadosCurrentFlowCommandTestCase(TestCase):
             "esteiras_created": 0,
             "transicoes_created": 0,
             "documentos_created": 0,
+            "contratos_soft_deleted": 0,
+            "ciclos_soft_deleted": 0,
+            "parcelas_soft_deleted": 0,
             "competencia_conflicts": 0,
             "rows_skipped": 0,
             "errors": 0,
@@ -245,6 +249,9 @@ class ImportLegacyAssociadosCurrentFlowCommandTestCase(TestCase):
             "esteiras_created": 0,
             "transicoes_created": 0,
             "documentos_created": 0,
+            "contratos_soft_deleted": 0,
+            "ciclos_soft_deleted": 0,
+            "parcelas_soft_deleted": 0,
             "competencia_conflicts": 0,
             "rows_skipped": 0,
             "errors": 0,
@@ -261,6 +268,35 @@ class ImportLegacyAssociadosCurrentFlowCommandTestCase(TestCase):
         self.assertEqual(Transicao.objects.count(), 0)
         self.assertEqual(associado.contrato_codigo_contrato, contrato_atual.codigo)
         self.assertEqual(associado.email, "existente@example.com")
+
+    def test_documento_legado_importado_com_arquivo_entra_aprovado(self):
+        command = self.make_command()
+        associado = Associado.objects.create(
+            cpf_cnpj="55566677788",
+            nome_completo="Associado Documento",
+            email="documento@example.com",
+        )
+
+        created = command._ensure_documentos(
+            associado=associado,
+            raw_documents=[
+                {
+                    "original_name": "frente.pdf",
+                    "stored_name": "frente.pdf",
+                    "mime": "application/pdf",
+                    "relative_path": "uploads/associados/10/frente.pdf",
+                    "uploaded_at": "2025-09-02 03:16:18",
+                    "field": "cpf_frente",
+                }
+            ],
+            contract_status=Contrato.Status.EM_ANALISE,
+            legacy_created_at=None,
+            legacy_updated_at=None,
+        )
+
+        self.assertEqual(created, 1)
+        documento = Documento.objects.get(associado=associado)
+        self.assertEqual(documento.status, Documento.Status.APROVADO)
 
     def test_importa_contrato_mas_pula_agenda_quando_competencia_ja_esta_ocupada(self):
         associado = Associado.objects.create(
@@ -356,6 +392,9 @@ class ImportLegacyAssociadosCurrentFlowCommandTestCase(TestCase):
             "esteiras_created": 0,
             "transicoes_created": 0,
             "documentos_created": 0,
+            "contratos_soft_deleted": 0,
+            "ciclos_soft_deleted": 0,
+            "parcelas_soft_deleted": 0,
             "competencia_conflicts": 0,
             "rows_skipped": 0,
             "errors": 0,

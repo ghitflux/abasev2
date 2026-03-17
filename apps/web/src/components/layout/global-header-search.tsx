@@ -67,7 +67,10 @@ function dedupeSuggestions(rows: ContratoListItem[]) {
       associadoId: row.associado.id,
       nome: row.associado.nome_completo,
       cpfCnpj: row.associado.cpf_cnpj,
-      matricula: row.associado.matricula || row.associado.matricula_orgao,
+      matricula:
+        row.associado.matricula_display ||
+        row.associado.matricula_orgao ||
+        row.associado.matricula,
       contratoCodigo: row.codigo,
       agenteNome: row.agente?.full_name,
     });

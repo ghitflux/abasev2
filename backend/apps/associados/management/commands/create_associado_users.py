@@ -72,6 +72,15 @@ class Command(BaseCommand):
         dry_run: bool = options["dry_run"]
         target_cpf: str | None = _only_digits(options.get("cpf") or "")
         overwrite: bool = options["overwrite"]
+        summary = {
+            "target_cpf": target_cpf or "",
+            "dry_run": dry_run,
+            "overwrite": overwrite,
+            "associados_total": 0,
+            "processed": 0,
+            "skipped": 0,
+            "errors": 0,
+        }
 
         if dry_run:
             self.stdout.write(self.style.WARNING("DRY RUN — nenhuma alteração será salva.\n"))
@@ -86,6 +95,8 @@ class Command(BaseCommand):
                     "Execute primeiro: python manage.py shell → Role.objects.create(codigo='ASSOCIADO', nome='Associado')"
                 )
             )
+            summary["errors"] = 1
+            self.summary = summary
             return
 
         # Build queryset
@@ -94,21 +105,21 @@ class Command(BaseCommand):
             qs = qs.filter(cpf_cnpj=target_cpf)
             if not qs.exists():
                 self.stderr.write(self.style.ERROR(f"Nenhum associado com CPF {target_cpf}."))
+                summary["errors"] = 1
+                self.summary = summary
                 return
 
         if not overwrite:
             qs = qs.filter(user__isnull=True)
 
         total = qs.count()
+        summary["associados_total"] = total
         if total == 0:
             self.stdout.write(self.style.SUCCESS("Nenhum associado para processar."))
+            self.summary = summary
             return
 
         self.stdout.write(f"Associados a processar: {total}\n")
-
-        created = 0
-        skipped = 0
-        errors = 0
 
         for associado in qs.iterator():
             cpf = _only_digits(associado.cpf_cnpj or "")
@@ -116,7 +127,7 @@ class Command(BaseCommand):
                 self.stdout.write(
                     self.style.WARNING(f"  SKIP  id={associado.id} — CPF vazio")
                 )
-                skipped += 1
+                summary["skipped"] += 1
                 continue
 
             email = _cpf_email(cpf)
@@ -126,7 +137,7 @@ class Command(BaseCommand):
                 self.stdout.write(
                     f"  [DRY]  id={associado.id} cpf={cpf} → email={email} nome='{associado.nome_completo}'"
                 )
-                created += 1
+                summary["processed"] += 1
                 continue
 
             try:
@@ -165,7 +176,7 @@ class Command(BaseCommand):
                         f"  {action}  id={associado.id} cpf={cpf} → {email}"
                     )
                 )
-                created += 1
+                summary["processed"] += 1
 
             except Exception as exc:
                 self.stderr.write(
@@ -173,14 +184,15 @@ class Command(BaseCommand):
                         f"  ERRO   id={associado.id} cpf={cpf}: {exc}"
                     )
                 )
-                errors += 1
+                summary["errors"] += 1
 
         self.stdout.write("")
-        self.stdout.write(f"Processados : {created}")
-        self.stdout.write(f"Ignorados   : {skipped}")
-        self.stdout.write(f"Erros       : {errors}")
+        self.stdout.write(f"Processados : {summary['processed']}")
+        self.stdout.write(f"Ignorados   : {summary['skipped']}")
+        self.stdout.write(f"Erros       : {summary['errors']}")
 
         if dry_run:
             self.stdout.write(self.style.WARNING("\nDRY RUN finalizado — nada foi salvo."))
         else:
             self.stdout.write(self.style.SUCCESS("\nConcluído."))
+        self.summary = summary

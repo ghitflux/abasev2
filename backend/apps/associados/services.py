@@ -8,9 +8,8 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.contratos.competencia import create_cycle_with_parcelas
-from apps.contratos.cycle_normalization import dedupe_cycles_for_display
-from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.contratos.cycle_projection import build_contract_cycle_projection
+from apps.contratos.models import Ciclo, Contrato
 from apps.esteira.models import EsteiraItem, Transicao
 
 from .factories import AssociadoFactory
@@ -124,8 +123,6 @@ class AssociadoService:
         data_aprovacao, data_primeira_mensalidade, mes_averbacao = (
             calculate_contract_dates(contrato_data.get("data_aprovacao"))
         )
-        primeira_referencia = data_primeira_mensalidade.replace(day=1)
-
         prazo_meses = int(contrato_data.get("prazo_meses") or 3)
         valor_mensalidade = Decimal(str(contrato_data.get("mensalidade") or 0))
 
@@ -147,18 +144,6 @@ class AssociadoService:
             contato_web=True,
             termos_web=True,
             status=Contrato.Status.EM_ANALISE,
-        )
-
-        create_cycle_with_parcelas(
-            contrato=contrato,
-            numero=1,
-            competencia_inicial=primeira_referencia,
-            parcelas_total=prazo_meses,
-            ciclo_status=Ciclo.Status.FUTURO,
-            parcela_status=Parcela.Status.EM_ABERTO,
-            data_vencimento_fn=day_of_month,
-            valor_mensalidade=valor_mensalidade,
-            valor_total=(valor_mensalidade * prazo_meses).quantize(Decimal("0.01")),
         )
 
         esteira_item = EsteiraItem.objects.create(
@@ -208,19 +193,14 @@ class AssociadoService:
                 if contrato.status != Contrato.Status.CANCELADO
             ]
 
-        cycles = []
+        logical_cycles = []
         for contrato in contratos:
-            prefetched = getattr(contrato, "_prefetched_objects_cache", {})
-            contrato_cycles = prefetched.get("ciclos")
-            if contrato_cycles is None:
-                contrato_cycles = list(contrato.ciclos.all())
-            cycles.extend(list(contrato_cycles))
-        logical_cycles = dedupe_cycles_for_display(list(cycles))
+            logical_cycles.extend(build_contract_cycle_projection(contrato)["cycles"])
         return {
             "ciclos_abertos": sum(
                 1
                 for cycle in logical_cycles
-                if cycle.status
+                if cycle["status"]
                 in [
                     Ciclo.Status.FUTURO,
                     Ciclo.Status.ABERTO,
@@ -230,7 +210,7 @@ class AssociadoService:
             "ciclos_fechados": sum(
                 1
                 for cycle in logical_cycles
-                if cycle.status
+                if cycle["status"]
                 in [Ciclo.Status.CICLO_RENOVADO, Ciclo.Status.FECHADO]
             ),
         }

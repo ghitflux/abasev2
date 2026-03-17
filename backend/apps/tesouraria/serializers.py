@@ -2,49 +2,21 @@ from __future__ import annotations
 
 from datetime import date
 
-from django.conf import settings
-from django.core.files.storage import default_storage
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.associados.serializers import DadosBancariosSerializer, SimpleUserSerializer
+from apps.contratos.cycle_projection import (
+    build_contract_cycle_projection,
+    get_contract_visual_status_payload,
+)
 from apps.contratos.models import Contrato, Parcela
-from apps.importacao.models import PagamentoMensalidade
+from apps.importacao.models import ArquivoRetorno, PagamentoMensalidade
 from apps.refinanciamento.serializers import ComprovanteResumoSerializer
+from apps.tesouraria.initial_payment import build_initial_payment_payload
+from apps.tesouraria.payment_evidence import build_competencia_evidence_payload
 from apps.tesouraria.models import BaixaManual
-
-
-def _build_absolute_url(request, path: str) -> str:
-    if path.startswith(("http://", "https://")):
-        return path
-    if request:
-        return request.build_absolute_uri(path)
-    return path
-
-
-def _build_storage_url(request, path: str | None) -> str:
-    if not path:
-        return ""
-    if path.startswith(("http://", "https://")):
-        return path
-    if path.startswith(settings.MEDIA_URL):
-        return _build_absolute_url(request, path)
-    normalized_path = path.lstrip("/")
-    try:
-        return _build_absolute_url(request, default_storage.url(normalized_path))
-    except Exception:
-        return _build_absolute_url(
-            request,
-            f"{settings.MEDIA_URL.rstrip('/')}/{normalized_path}",
-        )
-
-
-def _build_filefield_url(request, arquivo) -> str:
-    if not arquivo:
-        return ""
-    try:
-        return _build_absolute_url(request, arquivo.url)
-    except Exception:
-        return _build_storage_url(request, getattr(arquivo, "name", ""))
+from core.file_references import build_filefield_reference, build_storage_reference
 
 
 class TesourariaContratoListSerializer(serializers.Serializer):
@@ -132,6 +104,9 @@ class AgentePagamentoComprovanteSerializer(serializers.Serializer):
     id = serializers.CharField(read_only=True)
     nome = serializers.CharField(read_only=True)
     url = serializers.CharField(read_only=True)
+    arquivo_referencia = serializers.CharField(read_only=True)
+    arquivo_disponivel_localmente = serializers.BooleanField(read_only=True)
+    tipo_referencia = serializers.CharField(read_only=True)
     origem = serializers.CharField(read_only=True)
     papel = serializers.CharField(read_only=True, allow_blank=True)
     tipo = serializers.CharField(read_only=True, allow_blank=True)
@@ -151,72 +126,23 @@ class AgentePagamentoParcelaSerializer(serializers.Serializer):
     observacao = serializers.CharField(read_only=True)
     comprovantes = serializers.SerializerMethodField()
 
+    @extend_schema_field(AgentePagamentoComprovanteSerializer(many=True))
     def get_comprovantes(self, obj: Parcela) -> list[dict[str, object]]:
-        request = self.context.get("request")
-        comprovantes: list[dict[str, object]] = []
-
-        for item in obj.itens_retorno.all():
-            arquivo = getattr(item, "arquivo_retorno", None)
-            if not arquivo or not arquivo.arquivo_url:
-                continue
-            comprovantes.append(
-                {
-                    "id": f"retorno-{item.id}",
-                    "nome": arquivo.arquivo_nome or f"Arquivo retorno {obj.referencia_mes:%m/%Y}",
-                    "url": _build_storage_url(request, arquivo.arquivo_url),
-                    "origem": "arquivo_retorno",
-                    "papel": "",
-                    "tipo": "arquivo_retorno",
-                    "status": item.resultado_processamento or "",
-                    "competencia": obj.referencia_mes,
-                    "created_at": arquivo.created_at,
-                }
-            )
-
         pagamentos_manuais = self.context.get("pagamentos_mensalidade_por_referencia", {})
         pagamento_mensalidade: PagamentoMensalidade | None = pagamentos_manuais.get(
             obj.referencia_mes
         )
-        if pagamento_mensalidade and pagamento_mensalidade.manual_comprovante_path:
-            comprovantes.append(
-                {
-                    "id": f"manual-{pagamento_mensalidade.id}",
-                    "nome": (
-                        pagamento_mensalidade.manual_forma_pagamento
-                        or "Comprovante manual"
-                    ),
-                    "url": _build_storage_url(
-                        request, pagamento_mensalidade.manual_comprovante_path
-                    ),
-                    "origem": "manual",
-                    "papel": "",
-                    "tipo": "manual",
-                    "status": pagamento_mensalidade.manual_status or "",
-                    "competencia": obj.referencia_mes,
-                    "created_at": (
-                        pagamento_mensalidade.manual_paid_at
-                        or pagamento_mensalidade.created_at
-                    ),
-                }
-            )
-
-        baixa_manual: BaixaManual | None = getattr(obj, "baixa_manual", None)
-        if baixa_manual and baixa_manual.comprovante:
-            comprovantes.append(
-                {
-                    "id": f"baixa-manual-{baixa_manual.id}",
-                    "nome": baixa_manual.nome_comprovante or "Comprovante baixa manual",
-                    "url": _build_filefield_url(request, baixa_manual.comprovante),
-                    "origem": "baixa_manual",
-                    "papel": "",
-                    "tipo": "baixa_manual",
-                    "status": "baixa_efetuada",
-                    "competencia": obj.referencia_mes,
-                    "created_at": baixa_manual.created_at,
-                }
-            )
-
-        return AgentePagamentoComprovanteSerializer(comprovantes, many=True).data
+        evidence_payload = build_competencia_evidence_payload(
+            referencia_mes=obj.referencia_mes,
+            arquivo_items=obj.itens_retorno.all(),
+            pagamento_mensalidade=pagamento_mensalidade,
+            baixa_manual=getattr(obj, "baixa_manual", None),
+            request=self.context.get("request"),
+        )
+        return AgentePagamentoComprovanteSerializer(
+            evidence_payload.evidencias,
+            many=True,
+        ).data
 
 
 class AgentePagamentoCicloSerializer(serializers.Serializer):
@@ -225,9 +151,27 @@ class AgentePagamentoCicloSerializer(serializers.Serializer):
     data_inicio = serializers.DateField(read_only=True)
     data_fim = serializers.DateField(read_only=True)
     status = serializers.CharField(read_only=True)
+    status_visual_slug = serializers.SerializerMethodField()
+    status_visual_label = serializers.SerializerMethodField()
     valor_total = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     parcelas = serializers.SerializerMethodField()
 
+    def _projection_cycle(self, obj) -> dict[str, object] | None:
+        projection = build_contract_cycle_projection(obj.contrato)
+        return next(
+            (cycle for cycle in projection["cycles"] if int(cycle["numero"]) == obj.numero),
+            None,
+        )
+
+    def get_status_visual_slug(self, obj) -> str:
+        cycle = self._projection_cycle(obj)
+        return str(cycle["status_visual_slug"]) if cycle else ""
+
+    def get_status_visual_label(self, obj) -> str:
+        cycle = self._projection_cycle(obj)
+        return str(cycle["status_visual_label"]) if cycle else ""
+
+    @extend_schema_field(AgentePagamentoParcelaSerializer(many=True))
     def get_parcelas(self, obj) -> list[dict[str, object]]:
         competencia: date | None = self.context.get("mes_filter")
         parcelas = list(obj.parcelas.all())
@@ -251,7 +195,14 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
     cpf_cnpj = serializers.CharField(source="associado.cpf_cnpj", read_only=True)
     contrato_codigo = serializers.CharField(source="codigo", read_only=True)
     status_contrato = serializers.CharField(source="status", read_only=True)
+    status_visual_slug = serializers.SerializerMethodField()
+    status_visual_label = serializers.SerializerMethodField()
     comprovantes_efetivacao = serializers.SerializerMethodField()
+    pagamento_inicial_status = serializers.SerializerMethodField()
+    pagamento_inicial_status_label = serializers.SerializerMethodField()
+    pagamento_inicial_valor = serializers.SerializerMethodField()
+    pagamento_inicial_paid_at = serializers.SerializerMethodField()
+    pagamento_inicial_evidencias = serializers.SerializerMethodField()
     ciclos = serializers.SerializerMethodField()
     parcelas_total = serializers.SerializerMethodField()
     parcelas_pagas = serializers.SerializerMethodField()
@@ -265,13 +216,20 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
             "cpf_cnpj",
             "contrato_codigo",
             "status_contrato",
+            "status_visual_slug",
+            "status_visual_label",
             "data_contrato",
             "auxilio_liberado_em",
+            "pagamento_inicial_status",
+            "pagamento_inicial_status_label",
+            "pagamento_inicial_valor",
+            "pagamento_inicial_paid_at",
             "valor_mensalidade",
             "comissao_agente",
             "parcelas_total",
             "parcelas_pagas",
             "comprovantes_efetivacao",
+            "pagamento_inicial_evidencias",
             "ciclos",
         ]
 
@@ -291,28 +249,39 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
             and parcela.referencia_mes.month == competencia.month
         ]
 
+    def _initial_payment_payload(self, obj: Contrato):
+        cache = self.context.setdefault("_initial_payment_payloads", {})
+        if obj.pk not in cache:
+            cache[obj.pk] = build_initial_payment_payload(
+                obj,
+                request=self.context.get("request"),
+            )
+        return cache[obj.pk]
+
+    @extend_schema_field(AgentePagamentoComprovanteSerializer(many=True))
     def get_comprovantes_efetivacao(self, obj: Contrato) -> list[dict[str, object]]:
-        request = self.context.get("request")
-        comprovantes = [
-            {
-                "id": f"contrato-{comprovante.id}",
-                "nome": (
-                    comprovante.nome_original
-                    or f"Comprovante {comprovante.get_papel_display()}"
-                ),
-                "url": _build_filefield_url(request, comprovante.arquivo),
-                "origem": "efetivacao_contrato",
-                "papel": comprovante.papel,
-                "tipo": comprovante.tipo,
-                "status": "",
-                "competencia": None,
-                "created_at": comprovante.created_at,
-            }
-            for comprovante in obj.comprovantes.all()
-            if comprovante.refinanciamento_id is None
-        ]
+        comprovantes = self._initial_payment_payload(obj).evidencias
         return AgentePagamentoComprovanteSerializer(comprovantes, many=True).data
 
+    @extend_schema_field(AgentePagamentoComprovanteSerializer(many=True))
+    def get_pagamento_inicial_evidencias(self, obj: Contrato) -> list[dict[str, object]]:
+        comprovantes = self._initial_payment_payload(obj).evidencias
+        return AgentePagamentoComprovanteSerializer(comprovantes, many=True).data
+
+    def get_pagamento_inicial_status(self, obj: Contrato) -> str:
+        return str(self._initial_payment_payload(obj).status)
+
+    def get_pagamento_inicial_status_label(self, obj: Contrato) -> str:
+        return str(self._initial_payment_payload(obj).status_label)
+
+    def get_pagamento_inicial_valor(self, obj: Contrato):
+        valor = self._initial_payment_payload(obj).valor
+        return f"{valor:.2f}" if valor is not None else None
+
+    def get_pagamento_inicial_paid_at(self, obj: Contrato):
+        return self._initial_payment_payload(obj).paid_at
+
+    @extend_schema_field(AgentePagamentoCicloSerializer(many=True))
     def get_ciclos(self, obj: Contrato) -> list[dict[str, object]]:
         competencia: date | None = self.context.get("mes_filter")
         ciclos = list(obj.ciclos.all())
@@ -353,6 +322,12 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
                 if parcela.status == Parcela.Status.DESCONTADO
             ]
         )
+
+    def get_status_visual_slug(self, obj: Contrato) -> str:
+        return str(get_contract_visual_status_payload(obj)["status_visual_slug"])
+
+    def get_status_visual_label(self, obj: Contrato) -> str:
+        return str(get_contract_visual_status_payload(obj)["status_visual_label"])
 
 
 class BaixaManualItemSerializer(serializers.Serializer):

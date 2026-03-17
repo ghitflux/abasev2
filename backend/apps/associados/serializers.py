@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from apps.contratos.cycle_projection import (
+    build_contract_cycle_projection,
+    get_associado_visual_status_payload,
+)
 from apps.contratos.serializers import CicloDetailSerializer, ContratoResumoSerializer
+from core.file_references import build_storage_reference
 
 from .models import Associado, Documento
 from .services import AssociadoService
@@ -83,9 +88,54 @@ class ContatoHistoricoWriteSerializer(serializers.Serializer):
 
 
 class DocumentoSerializer(serializers.ModelSerializer):
+    arquivo_referencia = serializers.SerializerMethodField()
+    arquivo_disponivel_localmente = serializers.SerializerMethodField()
+    tipo_referencia = serializers.SerializerMethodField()
+
     class Meta:
         model = Documento
-        fields = "__all__"
+        fields = [
+            "id",
+            "associado",
+            "tipo",
+            "arquivo",
+            "arquivo_referencia",
+            "arquivo_disponivel_localmente",
+            "tipo_referencia",
+            "arquivo_referencia_path",
+            "nome_original",
+            "origem",
+            "status",
+            "observacao",
+            "created_at",
+            "updated_at",
+        ]
+
+    def _reference(self, obj: Documento):
+        request = self.context.get("request")
+        current_path = str(getattr(obj.arquivo, "name", "") or "")
+        reference = build_storage_reference(
+            current_path,
+            request=request,
+            missing_type="legado_sem_arquivo",
+        )
+        if obj.arquivo_referencia and obj.arquivo_referencia != reference.arquivo_referencia:
+            return reference.__class__(
+                url=reference.url,
+                arquivo_referencia=obj.arquivo_referencia,
+                arquivo_disponivel_localmente=reference.arquivo_disponivel_localmente,
+                tipo_referencia=reference.tipo_referencia,
+            )
+        return reference
+
+    def get_arquivo_referencia(self, obj: Documento) -> str:
+        return self._reference(obj).arquivo_referencia
+
+    def get_arquivo_disponivel_localmente(self, obj: Documento) -> bool:
+        return self._reference(obj).arquivo_disponivel_localmente
+
+    def get_tipo_referencia(self, obj: Documento) -> str:
+        return self._reference(obj).tipo_referencia
 
 
 class DocumentoCreateSerializer(serializers.ModelSerializer):
@@ -157,6 +207,10 @@ class AssociadoListSerializer(serializers.ModelSerializer):
     agente = SimpleUserSerializer(source="agente_responsavel", read_only=True)
     ciclos_abertos = serializers.SerializerMethodField()
     ciclos_fechados = serializers.SerializerMethodField()
+    status_renovacao = serializers.SerializerMethodField()
+    status_visual_slug = serializers.SerializerMethodField()
+    status_visual_label = serializers.SerializerMethodField()
+    matricula_display = serializers.SerializerMethodField()
 
     class Meta:
         model = Associado
@@ -165,8 +219,12 @@ class AssociadoListSerializer(serializers.ModelSerializer):
             "nome_completo",
             "matricula",
             "matricula_orgao",
+            "matricula_display",
             "cpf_cnpj",
             "status",
+            "status_renovacao",
+            "status_visual_slug",
+            "status_visual_label",
             "agente",
             "ciclos_abertos",
             "ciclos_fechados",
@@ -184,6 +242,25 @@ class AssociadoListSerializer(serializers.ModelSerializer):
     def get_ciclos_fechados(self, obj: Associado) -> int:
         return self._contagens_ciclos(obj)["ciclos_fechados"]
 
+    def get_status_renovacao(self, obj: Associado) -> str:
+        contratos = list(
+            obj.contratos.exclude(status="cancelado").order_by("-created_at")
+        )
+        for contrato in contratos:
+            status = str(build_contract_cycle_projection(contrato)["status_renovacao"])
+            if status:
+                return status
+        return ""
+
+    def get_status_visual_slug(self, obj: Associado) -> str:
+        return str(get_associado_visual_status_payload(obj)["status_visual_slug"])
+
+    def get_status_visual_label(self, obj: Associado) -> str:
+        return str(get_associado_visual_status_payload(obj)["status_visual_label"])
+
+    def get_matricula_display(self, obj: Associado) -> str:
+        return obj.matricula_display
+
 
 class AssociadoDetailSerializer(serializers.ModelSerializer):
     agente = SimpleUserSerializer(source="agente_responsavel", read_only=True)
@@ -193,12 +270,17 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
     contratos = ContratoResumoSerializer(many=True, read_only=True)
     documentos = DocumentoSerializer(many=True, read_only=True)
     esteira = EsteiraItemResumoSerializer(source="esteira_item", read_only=True)
+    status_renovacao = serializers.SerializerMethodField()
+    status_visual_slug = serializers.SerializerMethodField()
+    status_visual_label = serializers.SerializerMethodField()
+    matricula_display = serializers.SerializerMethodField()
 
     class Meta:
         model = Associado
         fields = [
             "id",
             "matricula",
+            "matricula_display",
             "tipo_documento",
             "nome_completo",
             "cpf_cnpj",
@@ -213,6 +295,9 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
             "matricula_orgao",
             "cargo",
             "status",
+            "status_renovacao",
+            "status_visual_slug",
+            "status_visual_label",
             "observacao",
             "agente",
             "endereco",
@@ -224,6 +309,23 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def get_status_renovacao(self, obj: Associado) -> str:
+        contratos = list(obj.contratos.exclude(status="cancelado").order_by("-created_at"))
+        for contrato in contratos:
+            status = str(build_contract_cycle_projection(contrato)["status_renovacao"])
+            if status:
+                return status
+        return ""
+
+    def get_status_visual_slug(self, obj: Associado) -> str:
+        return str(get_associado_visual_status_payload(obj)["status_visual_slug"])
+
+    def get_status_visual_label(self, obj: Associado) -> str:
+        return str(get_associado_visual_status_payload(obj)["status_visual_label"])
+
+    def get_matricula_display(self, obj: Associado) -> str:
+        return obj.matricula_display
 
     def get_endereco(self, obj: Associado):
         payload = obj.build_endereco_payload()
@@ -252,7 +354,7 @@ class AssociadoCreateSerializer(serializers.ModelSerializer):
 
     valor_bruto_total = serializers.DecimalField(max_digits=10, decimal_places=2)
     valor_liquido = serializers.DecimalField(max_digits=10, decimal_places=2)
-    prazo_meses = serializers.IntegerField(min_value=1, default=3)
+    prazo_meses = serializers.IntegerField(min_value=3, max_value=4, default=3)
     taxa_antecipacao = serializers.DecimalField(
         max_digits=5, decimal_places=2, default=30
     )
@@ -353,7 +455,12 @@ class AssociadoUpdateSerializer(serializers.ModelSerializer):
         required=False,
         source="contrato.valor_liquido",
     )
-    prazo_meses = serializers.IntegerField(required=False, source="contrato.prazo_meses")
+    prazo_meses = serializers.IntegerField(
+        required=False,
+        min_value=3,
+        max_value=4,
+        source="contrato.prazo_meses",
+    )
     taxa_antecipacao = serializers.DecimalField(
         max_digits=5,
         decimal_places=2,

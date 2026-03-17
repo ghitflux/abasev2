@@ -18,7 +18,7 @@ from apps.associados.serializers import DadosBancariosSerializer
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.importacao.models import ArquivoRetornoItem, PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante
-from apps.tesouraria.models import Confirmacao
+from apps.tesouraria.models import Confirmacao, Pagamento
 from core.pagination import StandardResultsSetPagination
 
 from .serializers import (
@@ -169,6 +169,10 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
                     queryset=PagamentoMensalidade.objects.exclude(
                         manual_comprovante_path=""
                     ).order_by("-referencia_month"),
+                ),
+                Prefetch(
+                    "associado__tesouraria_pagamentos",
+                    queryset=Pagamento.all_objects.order_by("created_at", "id"),
                 ),
             )
             .order_by("-created_at")

@@ -1,33 +1,57 @@
 from __future__ import annotations
 
-from calendar import monthrange
-from datetime import date
+from datetime import datetime
 from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
-from apps.contratos.competencia import create_cycle_with_parcelas
-from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.contratos.cycle_projection import build_contract_cycle_projection
+from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
+from apps.contratos.cycle_timeline import get_contract_cycle_size
+from apps.contratos.models import Contrato, Parcela
 from apps.esteira.models import Transicao
 from apps.importacao.models import PagamentoMensalidade
+from apps.tesouraria.models import Pagamento
 
-from .models import Comprovante, Item, Refinanciamento
-from .payment_rules import (
-    REFINANCIAMENTO_MENSALIDADES_NECESSARIAS,
-    get_free_paid_pagamentos,
-    has_active_refinanciamento,
-)
+from .models import Assumption, Comprovante, Item, Refinanciamento
 from .strategies import StandardEligibilityStrategy
 
+_OPERATIONAL_ACTIVE_STATUSES = {
+    Refinanciamento.Status.APTO_A_RENOVAR,
+    Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+    Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+    Refinanciamento.Status.PENDENTE_APTO,
+    Refinanciamento.Status.SOLICITADO,
+    Refinanciamento.Status.EM_ANALISE,
+    Refinanciamento.Status.APROVADO,
+    Refinanciamento.Status.CONCLUIDO,
+}
 
-def add_months(base_date: date, months: int) -> date:
-    month_index = base_date.month - 1 + months
-    year = base_date.year + month_index // 12
-    month = month_index % 12 + 1
-    day = min(base_date.day, monthrange(year, month)[1])
-    return date(year, month, day)
+
+def _normalize_status(status: str) -> str:
+    mapping = {
+        Refinanciamento.Status.PENDENTE_APTO: Refinanciamento.Status.APTO_A_RENOVAR,
+        Refinanciamento.Status.SOLICITADO: Refinanciamento.Status.APTO_A_RENOVAR,
+        Refinanciamento.Status.EM_ANALISE: Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+        Refinanciamento.Status.APROVADO: Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+        Refinanciamento.Status.CONCLUIDO: Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+    }
+    return mapping.get(status, status)
+
+
+def _cycle_key(parcelas: list[dict[str, object]]) -> str:
+    referencias = [parcela["referencia_mes"] for parcela in parcelas]
+    return "|".join(referencia.strftime("%Y-%m") for referencia in referencias)
+
+
+def _paid_projection_parcelas(parcelas: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [
+        parcela
+        for parcela in parcelas
+        if parcela["status"] == Parcela.Status.DESCONTADO
+    ]
 
 
 class RefinanciamentoService:
@@ -38,7 +62,12 @@ class RefinanciamentoService:
         try:
             return (
                 Contrato.objects.select_related("associado", "agente")
-                .prefetch_related("ciclos__parcelas", "associado__refinanciamentos")
+                .prefetch_related(
+                    "ciclos__parcelas",
+                    "associado__refinanciamentos",
+                    "associado__pagamentos_mensalidades__refi_itens",
+                    "associado__tesouraria_pagamentos",
+                )
                 .get(pk=contrato_id)
             )
         except Contrato.DoesNotExist as exc:
@@ -58,10 +87,12 @@ class RefinanciamentoService:
                     "aprovado_por",
                     "bloqueado_por",
                     "efetivado_por",
+                    "reviewed_by",
                 )
                 .prefetch_related(
+                    "ciclo_origem__parcelas",
                     "ciclo_destino__parcelas",
-                    "comprovantes",
+                    "comprovantes__enviado_por",
                     "itens__pagamento_mensalidade",
                 )
                 .get(pk=refinanciamento_id)
@@ -70,13 +101,11 @@ class RefinanciamentoService:
             raise ValidationError("Refinanciamento não encontrado.") from exc
 
     @staticmethod
-    def _serialize_pagamento_seed(
-        pagamento: PagamentoMensalidade,
-    ) -> dict[str, object]:
+    def _serialize_pagamento_seed(pagamento: PagamentoMensalidade) -> dict[str, object]:
         return {
             "pagamento_mensalidade_id": pagamento.id,
             "referencia_month": pagamento.referencia_month.isoformat(),
-            "status_code": pagamento.status_code,
+            "status_code": pagamento.status_code or "1",
             "valor": str(pagamento.valor or Decimal("0.00")),
             "import_uuid": pagamento.import_uuid,
             "source_file_path": pagamento.source_file_path,
@@ -100,6 +129,36 @@ class RefinanciamentoService:
         )
 
     @staticmethod
+    def _active_operational_refinanciamento(contrato: Contrato) -> Refinanciamento | None:
+        return (
+            Refinanciamento.objects.filter(
+                contrato_origem=contrato,
+                deleted_at__isnull=True,
+                legacy_refinanciamento_id__isnull=True,
+                origem=Refinanciamento.Origem.OPERACIONAL,
+                status__in=_OPERATIONAL_ACTIVE_STATUSES,
+            )
+            .order_by("-created_at", "-id")
+            .first()
+        )
+
+    @staticmethod
+    def _assumption_for_refinanciamento(refinanciamento: Refinanciamento) -> Assumption | None:
+        if not refinanciamento.cycle_key:
+            return None
+        return Assumption.objects.filter(
+            cadastro=refinanciamento.associado,
+            request_key=refinanciamento.cycle_key,
+        ).order_by("-created_at", "-id").first()
+
+    @staticmethod
+    def _sync_contract_and_get_refi(contrato: Contrato) -> tuple[dict[str, object], Refinanciamento | None]:
+        rebuild_contract_cycle_state(contrato, execute=True)
+        contrato.refresh_from_db()
+        projection = build_contract_cycle_projection(contrato)
+        return projection, RefinanciamentoService._active_operational_refinanciamento(contrato)
+
+    @staticmethod
     def verificar_elegibilidade(contrato_id: int) -> dict[str, object]:
         contrato = RefinanciamentoService._get_contrato(contrato_id)
         return RefinanciamentoService.strategy.evaluate(contrato)
@@ -108,112 +167,30 @@ class RefinanciamentoService:
     @transaction.atomic
     def solicitar(contrato_id: int, user) -> Refinanciamento:
         contrato = RefinanciamentoService._get_contrato(contrato_id)
-        if has_active_refinanciamento(contrato):
-            raise ValidationError("CPF já possui refinanciamento ativo ou pendente.")
+        evaluation = RefinanciamentoService.strategy.evaluate(contrato)
+        if not evaluation["elegivel"]:
+            raise ValidationError(evaluation["motivo"])
 
-        ultimo_ciclo = contrato.ciclos.order_by("-numero").first()
-        if not ultimo_ciclo:
-            raise ValidationError("Contrato sem ciclo base para refinanciamento.")
-
-        pagamentos_base = get_free_paid_pagamentos(
-            contrato,
-            limit=REFINANCIAMENTO_MENSALIDADES_NECESSARIAS,
-            for_update=True,
+        projection, refinanciamento = RefinanciamentoService._sync_contract_and_get_refi(
+            contrato
         )
-        if len(pagamentos_base) < REFINANCIAMENTO_MENSALIDADES_NECESSARIAS:
+        if refinanciamento is None:
             raise ValidationError(
-                f"Apenas {len(pagamentos_base)}/3 pagamentos elegíveis foram identificados."
+                "A fila operacional de renovação não pôde ser materializada."
             )
 
-        referencias_base = [
-            pagamento.referencia_month.replace(day=1) for pagamento in pagamentos_base
-        ]
-        referencias_base.sort()
-        cycle_key = "|".join(
-            referencia.strftime("%Y-%m") for referencia in referencias_base
-        )
-        proxima_competencia = add_months(referencias_base[-1], 1)
-        ciclo_destino, _parcelas = create_cycle_with_parcelas(
-            contrato=contrato,
-            numero=ultimo_ciclo.numero + 1,
-            competencia_inicial=proxima_competencia,
-            parcelas_total=3,
-            ciclo_status=Ciclo.Status.FUTURO,
-            parcela_status=Parcela.Status.FUTURO,
-            valor_mensalidade=contrato.valor_mensalidade,
-            valor_total=(contrato.valor_mensalidade * Decimal("3")).quantize(
-                Decimal("0.01")
-            ),
-        )
-
-        valor_refinanciamento = (
-            contrato.valor_liquido
-            if contrato.valor_liquido
-            else ciclo_destino.valor_total
-        )
-        repasse_agente = (valor_refinanciamento * Decimal("0.10")).quantize(
-            Decimal("0.01")
-        )
-        agente = contrato.agente or contrato.associado.agente_responsavel
-        solicitacao_origem = (
-            "Solicitação criada pelo admin."
-            if user.has_role("ADMIN")
-            else "Solicitação criada pelo agente."
-        )
-
-        refinanciamento = Refinanciamento.objects.create(
-            associado=contrato.associado,
-            contrato_origem=contrato,
-            solicitado_por=user,
-            competencia_solicitada=proxima_competencia,
-            status=Refinanciamento.Status.PENDENTE_APTO,
-            ciclo_origem=ultimo_ciclo,
-            ciclo_destino=ciclo_destino,
-            valor_refinanciamento=valor_refinanciamento,
-            repasse_agente=repasse_agente,
-            observacao=solicitacao_origem,
-            mode="admin_auto" if user.has_role("ADMIN") else "auto",
-            cycle_key=cycle_key,
-            ref1=referencias_base[0],
-            ref2=referencias_base[1],
-            ref3=referencias_base[2],
-            cpf_cnpj_snapshot=contrato.associado.cpf_cnpj,
-            nome_snapshot=contrato.associado.nome_completo,
-            agente_snapshot=agente.full_name if agente else "",
-            contrato_codigo_origem=contrato.codigo,
-            contrato_codigo_novo=contrato.codigo,
-            parcelas_ok=REFINANCIAMENTO_MENSALIDADES_NECESSARIAS,
-            parcelas_json=[
-                RefinanciamentoService._serialize_pagamento_seed(pagamento)
-                for pagamento in pagamentos_base
-            ],
-        )
-        Item.objects.bulk_create(
-            [
-                Item(
-                    refinanciamento=refinanciamento,
-                    pagamento_mensalidade=pagamento,
-                    referencia_month=pagamento.referencia_month,
-                    status_code=pagamento.status_code,
-                    valor=pagamento.valor,
-                    import_uuid=pagamento.import_uuid,
-                    source_file_path=pagamento.source_file_path,
-                )
-                for pagamento in pagamentos_base
-            ]
-        )
-        PagamentoMensalidade.objects.filter(
-            id__in=[pagamento.id for pagamento in pagamentos_base]
-        ).update(agente_refi_solicitado=True)
-
-        ultimo_ciclo.status = Ciclo.Status.APTO_A_RENOVAR
-        ultimo_ciclo.save(update_fields=["status", "updated_at"])
+        if refinanciamento.solicitado_por_id is None:
+            refinanciamento.solicitado_por = user
+            refinanciamento.save(update_fields=["solicitado_por", "updated_at"])
 
         RefinanciamentoService._registrar_auditoria(
             contrato,
             user,
-            "solicitar_refinanciamento",
-            f"Solicitação de refinanciamento enviada para coordenação com base em {cycle_key}.",
+            "sincronizar_renovacao",
+            (
+                "Fila operacional de renovação sincronizada com base em "
+                f"{projection['status_renovacao'] or 'sem_status'}."
+            ),
         )
         return refinanciamento
 
@@ -221,30 +198,145 @@ class RefinanciamentoService:
     @transaction.atomic
     def aprovar(refinanciamento_id: int, user) -> Refinanciamento:
         refinanciamento = RefinanciamentoService._get_refinanciamento(refinanciamento_id)
-        if refinanciamento.status not in [
-            Refinanciamento.Status.PENDENTE_APTO,
-            Refinanciamento.Status.SOLICITADO,
-            Refinanciamento.Status.EM_ANALISE,
-        ]:
-            raise ValidationError("Refinanciamento não está apto para aprovação.")
+        if _normalize_status(refinanciamento.status) != Refinanciamento.Status.APTO_A_RENOVAR:
+            raise ValidationError("Somente associados aptos podem seguir para análise.")
 
-        refinanciamento.status = Refinanciamento.Status.CONCLUIDO
+        refinanciamento.status = Refinanciamento.Status.EM_ANALISE_RENOVACAO
         refinanciamento.aprovado_por = user
-        refinanciamento.observacao = "Refinanciamento aprovado pela coordenação."
+        refinanciamento.coordenador_note = "Renovação aprovada pela coordenação."
         refinanciamento.save(
-            update_fields=["status", "aprovado_por", "observacao", "updated_at"]
+            update_fields=["status", "aprovado_por", "coordenador_note", "updated_at"]
         )
 
-        if refinanciamento.ciclo_destino:
-            refinanciamento.ciclo_destino.status = Ciclo.Status.ABERTO
-            refinanciamento.ciclo_destino.save(update_fields=["status", "updated_at"])
-            refinanciamento.ciclo_destino.parcelas.update(status=Parcela.Status.EM_ABERTO)
+        assumption = RefinanciamentoService._assumption_for_refinanciamento(refinanciamento)
+        if assumption:
+            assumption.status = Assumption.Status.LIBERADO
+            assumption.solicitado_por = refinanciamento.solicitado_por
+            assumption.liberado_em = timezone.now()
+            assumption.assumido_em = None
+            assumption.finalizado_em = None
+            assumption.save(
+                update_fields=[
+                    "status",
+                    "solicitado_por",
+                    "liberado_em",
+                    "assumido_em",
+                    "finalizado_em",
+                    "updated_at",
+                ]
+            )
 
         RefinanciamentoService._registrar_auditoria(
             refinanciamento.contrato_origem,
             user,
-            "aprovar_refinanciamento",
-            "Refinanciamento aprovado e novo ciclo ativado.",
+            "aprovar_renovacao_coordenacao",
+            "Renovação encaminhada para a fila de análise.",
+        )
+        return refinanciamento
+
+    @staticmethod
+    @transaction.atomic
+    def assumir_analise(refinanciamento_id: int, user) -> Refinanciamento:
+        refinanciamento = RefinanciamentoService._get_refinanciamento(refinanciamento_id)
+        if refinanciamento.status != Refinanciamento.Status.EM_ANALISE_RENOVACAO:
+            raise ValidationError("A renovação não está disponível para análise.")
+
+        assumption = RefinanciamentoService._assumption_for_refinanciamento(refinanciamento)
+        if assumption is None:
+            raise ValidationError("Nenhuma fila analítica foi encontrada para esta renovação.")
+        if (
+            assumption.status == Assumption.Status.ASSUMIDO
+            and assumption.analista_id
+            and assumption.analista_id != user.id
+        ):
+            raise ValidationError("Esta renovação já foi assumida por outro analista.")
+
+        assumption.analista = user
+        assumption.status = Assumption.Status.ASSUMIDO
+        assumption.assumido_em = timezone.now()
+        assumption.heartbeat_at = timezone.now()
+        assumption.save(
+            update_fields=["analista", "status", "assumido_em", "heartbeat_at", "updated_at"]
+        )
+
+        RefinanciamentoService._registrar_auditoria(
+            refinanciamento.contrato_origem,
+            user,
+            "assumir_renovacao_analise",
+            "Renovação assumida na fila analítica.",
+        )
+        return refinanciamento
+
+    @staticmethod
+    @transaction.atomic
+    def aprovar_analise(
+        refinanciamento_id: int,
+        termo_antecipacao,
+        user,
+        observacao: str = "",
+    ) -> Refinanciamento:
+        refinanciamento = RefinanciamentoService._get_refinanciamento(refinanciamento_id)
+        if refinanciamento.status != Refinanciamento.Status.EM_ANALISE_RENOVACAO:
+            raise ValidationError("A renovação não está disponível para aprovação analítica.")
+        if not termo_antecipacao:
+            raise ValidationError("O termo de antecipação é obrigatório.")
+
+        assumption = RefinanciamentoService._assumption_for_refinanciamento(refinanciamento)
+        if assumption and assumption.analista_id and assumption.analista_id != user.id:
+            raise ValidationError("A renovação foi assumida por outro analista.")
+
+        Comprovante.objects.create(
+            refinanciamento=refinanciamento,
+            contrato=refinanciamento.contrato_origem,
+            ciclo=refinanciamento.ciclo_origem,
+            tipo=Comprovante.Tipo.TERMO_ANTECIPACAO,
+            papel=Comprovante.Papel.OPERACIONAL,
+            origem=Comprovante.Origem.ANALISE_RENOVACAO,
+            arquivo=termo_antecipacao,
+            nome_original=getattr(termo_antecipacao, "name", ""),
+            enviado_por=user,
+        )
+
+        refinanciamento.status = Refinanciamento.Status.APROVADO_PARA_RENOVACAO
+        refinanciamento.reviewed_by = user
+        refinanciamento.reviewed_at = timezone.now()
+        refinanciamento.analista_note = observacao
+        refinanciamento.termo_antecipacao_path = getattr(termo_antecipacao, "name", "")
+        refinanciamento.termo_antecipacao_original_name = getattr(
+            termo_antecipacao, "name", ""
+        )
+        refinanciamento.termo_antecipacao_mime = (
+            getattr(termo_antecipacao, "content_type", "") or ""
+        )
+        refinanciamento.termo_antecipacao_size_bytes = getattr(
+            termo_antecipacao, "size", None
+        )
+        refinanciamento.termo_antecipacao_uploaded_at = timezone.now()
+        refinanciamento.save(
+            update_fields=[
+                "status",
+                "reviewed_by",
+                "reviewed_at",
+                "analista_note",
+                "termo_antecipacao_path",
+                "termo_antecipacao_original_name",
+                "termo_antecipacao_mime",
+                "termo_antecipacao_size_bytes",
+                "termo_antecipacao_uploaded_at",
+                "updated_at",
+            ]
+        )
+
+        if assumption:
+            assumption.status = Assumption.Status.FINALIZADO
+            assumption.finalizado_em = timezone.now()
+            assumption.save(update_fields=["status", "finalizado_em", "updated_at"])
+
+        RefinanciamentoService._registrar_auditoria(
+            refinanciamento.contrato_origem,
+            user,
+            "aprovar_renovacao_analise",
+            "Renovação aprovada na análise com termo de antecipação anexado.",
         )
         return refinanciamento
 
@@ -256,6 +348,7 @@ class RefinanciamentoService:
             Refinanciamento.Status.BLOQUEADO,
             Refinanciamento.Status.REVERTIDO,
             Refinanciamento.Status.EFETIVADO,
+            Refinanciamento.Status.DESATIVADO,
         ]:
             raise ValidationError("Refinanciamento já está em estado final.")
 
@@ -273,14 +366,11 @@ class RefinanciamentoService:
             ]
         )
 
-        if refinanciamento.ciclo_destino:
-            refinanciamento.ciclo_destino.status = Ciclo.Status.FECHADO
-            refinanciamento.ciclo_destino.save(update_fields=["status", "updated_at"])
-            refinanciamento.ciclo_destino.parcelas.update(
-                status=Parcela.Status.CANCELADO,
-                competencia_lock=None,
-                observacao=f"Refinanciamento bloqueado: {motivo}",
-            )
+        assumption = RefinanciamentoService._assumption_for_refinanciamento(refinanciamento)
+        if assumption:
+            assumption.status = Assumption.Status.FINALIZADO
+            assumption.finalizado_em = timezone.now()
+            assumption.save(update_fields=["status", "finalizado_em", "updated_at"])
 
         RefinanciamentoService._registrar_auditoria(
             refinanciamento.contrato_origem,
@@ -292,34 +382,73 @@ class RefinanciamentoService:
 
     @staticmethod
     @transaction.atomic
+    def desativar(refinanciamento_id: int, motivo: str, user) -> Refinanciamento:
+        refinanciamento = RefinanciamentoService._get_refinanciamento(refinanciamento_id)
+        if refinanciamento.status in {
+            Refinanciamento.Status.EFETIVADO,
+            Refinanciamento.Status.DESATIVADO,
+            Refinanciamento.Status.REVERTIDO,
+        }:
+            raise ValidationError("A renovação já está em estado final.")
+
+        refinanciamento.associado.status = refinanciamento.associado.Status.INATIVO
+        refinanciamento.associado.observacao = (
+            f"{refinanciamento.associado.observacao}\n{motivo}".strip()
+        )
+        refinanciamento.associado.save(update_fields=["status", "observacao", "updated_at"])
+
+        contrato = refinanciamento.contrato_origem
+        if contrato is not None and contrato.status != Contrato.Status.CANCELADO:
+            contrato.status = Contrato.Status.ENCERRADO
+            contrato.save(update_fields=["status", "updated_at"])
+
+        refinanciamento.status = Refinanciamento.Status.DESATIVADO
+        refinanciamento.bloqueado_por = user
+        refinanciamento.motivo_bloqueio = motivo
+        refinanciamento.observacao = motivo
+        refinanciamento.save(
+            update_fields=[
+                "status",
+                "bloqueado_por",
+                "motivo_bloqueio",
+                "observacao",
+                "updated_at",
+            ]
+        )
+
+        assumption = RefinanciamentoService._assumption_for_refinanciamento(refinanciamento)
+        if assumption:
+            assumption.status = Assumption.Status.FINALIZADO
+            assumption.finalizado_em = timezone.now()
+            assumption.save(update_fields=["status", "finalizado_em", "updated_at"])
+
+        RefinanciamentoService._registrar_auditoria(
+            refinanciamento.contrato_origem,
+            user,
+            "desativar_associado_renovacao",
+            motivo,
+        )
+        return refinanciamento
+
+    @staticmethod
+    @transaction.atomic
     def reverter(refinanciamento_id: int, user) -> Refinanciamento:
         refinanciamento = RefinanciamentoService._get_refinanciamento(refinanciamento_id)
         if refinanciamento.status not in [
+            Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
             Refinanciamento.Status.CONCLUIDO,
-            Refinanciamento.Status.EFETIVADO,
         ]:
-            raise ValidationError("Somente refinanciamentos concluídos podem ser revertidos.")
+            raise ValidationError("Somente renovações aprovadas podem ser revertidas.")
 
         refinanciamento.status = Refinanciamento.Status.REVERTIDO
-        refinanciamento.observacao = "Refinanciamento revertido."
+        refinanciamento.observacao = "Renovação revertida."
         refinanciamento.save(update_fields=["status", "observacao", "updated_at"])
-
-        if refinanciamento.ciclo_destino:
-            refinanciamento.ciclo_destino.status = Ciclo.Status.FECHADO
-            refinanciamento.ciclo_destino.save(update_fields=["status", "updated_at"])
-            refinanciamento.ciclo_destino.parcelas.exclude(
-                status=Parcela.Status.DESCONTADO
-            ).update(
-                status=Parcela.Status.CANCELADO,
-                competencia_lock=None,
-                observacao="Refinanciamento revertido.",
-            )
 
         RefinanciamentoService._registrar_auditoria(
             refinanciamento.contrato_origem,
             user,
             "reverter_refinanciamento",
-            "Refinanciamento revertido.",
+            "Renovação revertida antes da efetivação da tesouraria.",
         )
         return refinanciamento
 
@@ -332,45 +461,88 @@ class RefinanciamentoService:
         user,
     ) -> Refinanciamento:
         refinanciamento = RefinanciamentoService._get_refinanciamento(refinanciamento_id)
-        if refinanciamento.status != Refinanciamento.Status.CONCLUIDO:
-            raise ValidationError("Somente refinanciamentos aprovados podem ser efetivados.")
+        if _normalize_status(refinanciamento.status) != Refinanciamento.Status.APROVADO_PARA_RENOVACAO:
+            raise ValidationError(
+                "Somente renovações aprovadas pela análise podem ser efetivadas."
+            )
         if not comprovante_associado or not comprovante_agente:
             raise ValidationError("Os dois comprovantes são obrigatórios.")
 
-        for papel, arquivo in [
-            (Comprovante.Papel.ASSOCIADO, comprovante_associado),
-            (Comprovante.Papel.AGENTE, comprovante_agente),
-        ]:
-            Comprovante.objects.update_or_create(
-                refinanciamento=refinanciamento,
-                papel=papel,
-                defaults={
-                    "tipo": Comprovante.Tipo.PIX,
-                    "arquivo": arquivo,
-                    "nome_original": getattr(arquivo, "name", ""),
-                    "enviado_por": user,
-                    "contrato": refinanciamento.contrato_origem,
-                },
-            )
+        contrato = refinanciamento.contrato_origem
+        if contrato is None:
+            raise ValidationError("Renovação sem contrato de origem.")
+
+        executado_em = timezone.now()
+        Pagamento.objects.create(
+            cadastro=contrato.associado,
+            created_by=user,
+            contrato_codigo=contrato.codigo,
+            contrato_valor_antecipacao=refinanciamento.valor_refinanciamento,
+            contrato_margem_disponivel=contrato.margem_disponivel,
+            cpf_cnpj=contrato.associado.cpf_cnpj,
+            full_name=contrato.associado.nome_completo,
+            agente_responsavel=contrato.agente.full_name if contrato.agente else "",
+            origem=Pagamento.Origem.OPERACIONAL,
+            status=Pagamento.Status.PAGO,
+            valor_pago=refinanciamento.valor_refinanciamento,
+            paid_at=executado_em,
+            forma_pagamento="pix",
+            comprovante_associado_path=getattr(comprovante_associado, "name", ""),
+            comprovante_agente_path=getattr(comprovante_agente, "name", ""),
+            notes=f"Renovação efetivada via tesouraria para refi #{refinanciamento.id}.",
+        )
 
         refinanciamento.status = Refinanciamento.Status.EFETIVADO
         refinanciamento.efetivado_por = user
-        refinanciamento.executado_em = timezone.now()
-        refinanciamento.observacao = "Refinanciamento efetivado pela tesouraria."
+        refinanciamento.executado_em = executado_em
+        refinanciamento.data_ativacao_ciclo = executado_em
+        refinanciamento.origem = Refinanciamento.Origem.OPERACIONAL
+        refinanciamento.observacao = "Renovação efetivada pela tesouraria."
         refinanciamento.save(
             update_fields=[
                 "status",
                 "efetivado_por",
                 "executado_em",
+                "data_ativacao_ciclo",
+                "origem",
                 "observacao",
                 "updated_at",
             ]
         )
 
+        rebuild_contract_cycle_state(contrato, execute=True)
+        refinanciamento.refresh_from_db()
+
+        for papel, arquivo, tipo in [
+            (
+                Comprovante.Papel.ASSOCIADO,
+                comprovante_associado,
+                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+            ),
+            (
+                Comprovante.Papel.AGENTE,
+                comprovante_agente,
+                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+            ),
+        ]:
+            Comprovante.objects.create(
+                refinanciamento=refinanciamento,
+                contrato=contrato,
+                ciclo=refinanciamento.ciclo_destino,
+                tipo=tipo,
+                papel=papel,
+                origem=Comprovante.Origem.TESOURARIA_RENOVACAO,
+                arquivo=arquivo,
+                nome_original=getattr(arquivo, "name", ""),
+                enviado_por=user,
+                data_pagamento=executado_em,
+                agente_snapshot=contrato.agente.full_name if contrato.agente else "",
+            )
+
         RefinanciamentoService._registrar_auditoria(
-            refinanciamento.contrato_origem,
+            contrato,
             user,
             "efetivar_refinanciamento",
-            "Tesouraria anexou comprovantes e efetivou o refinanciamento.",
+            "Tesouraria anexou comprovantes e materializou o próximo ciclo.",
         )
         return refinanciamento

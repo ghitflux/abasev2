@@ -39,6 +39,10 @@ export type ArquivoRetornoFinanceiroItem = {
   manual_forma_pagamento?: string | null;
   manual_paid_at?: string | null;
   manual_comprovante_path?: string | null;
+  origem_baixa?: string;
+  arquivo_referencia?: string | null;
+  arquivo_disponivel_localmente?: boolean;
+  tipo_referencia?: string;
   categoria?: string;
 };
 

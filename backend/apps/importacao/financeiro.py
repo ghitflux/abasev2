@@ -5,8 +5,10 @@ import unicodedata
 from datetime import date
 from decimal import Decimal
 
+from core.file_references import build_storage_reference
+
 from .legacy import LegacyPagamentoSnapshot, list_legacy_pagamento_snapshots
-from .models import PagamentoMensalidade
+from .models import ArquivoRetorno, PagamentoMensalidade
 
 RETORNO_MENSALIDADE_MIN = Decimal("100.00")
 RETORNO_VALORES_3050 = {Decimal("30.00"), Decimal("50.00")}
@@ -62,6 +64,7 @@ def _build_row(
     item: PagamentoMensalidade,
     *,
     legacy_snapshot: LegacyPagamentoSnapshot | None = None,
+    report_reference: dict[str, object] | None = None,
 ) -> dict:
     status_code = (item.status_code or "").strip()
     status_label = STATUS_LABELS.get(status_code, status_code or "-")
@@ -116,6 +119,44 @@ def _build_row(
     elif esperado in RETORNO_VALORES_3050:
         categoria = "valores_30_50"
 
+    evidence = {
+        "origem_baixa": "sem_evidencia",
+        "arquivo_referencia": None,
+        "arquivo_disponivel_localmente": False,
+        "tipo_referencia": "",
+    }
+    if ok_arquivo:
+        evidence = {
+            "origem_baixa": "arquivo_retorno",
+            "arquivo_referencia": None,
+            "arquivo_disponivel_localmente": False,
+            "tipo_referencia": "",
+        }
+    elif ok_manual and manual_comprovante_path:
+        reference = build_storage_reference(manual_comprovante_path)
+        evidence = {
+            "origem_baixa": "manual",
+            "arquivo_referencia": reference.arquivo_referencia or None,
+            "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
+            "tipo_referencia": reference.tipo_referencia,
+        }
+    elif ok_manual and report_reference is not None:
+        evidence = {
+            "origem_baixa": "relatorio_competencia",
+            "arquivo_referencia": report_reference["arquivo_referencia"] or None,
+            "arquivo_disponivel_localmente": bool(
+                report_reference["arquivo_disponivel_localmente"]
+            ),
+            "tipo_referencia": str(report_reference["tipo_referencia"]),
+        }
+    elif ok_manual:
+        evidence = {
+            "origem_baixa": "manual_sem_arquivo",
+            "arquivo_referencia": None,
+            "arquivo_disponivel_localmente": False,
+            "tipo_referencia": "sem_arquivo",
+        }
+
     return {
         "id": item.id,
         "associado_id": item.associado_id,
@@ -138,6 +179,7 @@ def _build_row(
         "manual_forma_pagamento": manual_forma_pagamento or None,
         "manual_paid_at": manual_paid_at,
         "manual_comprovante_path": manual_comprovante_path or None,
+        **evidence,
         "categoria": categoria,
     }
 
@@ -163,6 +205,27 @@ def _build_totals(rows: list[dict]) -> dict:
 
 def build_financeiro_payload(*, competencia) -> dict:
     legacy_snapshots = list_legacy_pagamento_snapshots(competencia=competencia)
+    manual_report = (
+        ArquivoRetorno.objects.filter(
+            competencia=competencia,
+            formato=ArquivoRetorno.Formato.MANUAL,
+            status=ArquivoRetorno.Status.CONCLUIDO,
+        )
+        .order_by("-processado_em", "-created_at", "-id")
+        .first()
+    )
+    report_reference = None
+    if manual_report is not None:
+        reference = build_storage_reference(
+            manual_report.arquivo_url,
+            missing_type="relatorio_competencia",
+            local_type="relatorio_competencia",
+        )
+        report_reference = {
+            "arquivo_referencia": reference.arquivo_referencia,
+            "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
+            "tipo_referencia": reference.tipo_referencia,
+        }
     pagamentos = canonicalize_pagamentos(
         list(
             PagamentoMensalidade.objects.filter(referencia_month=competencia)
@@ -174,6 +237,7 @@ def build_financeiro_payload(*, competencia) -> dict:
         _build_row(
             item,
             legacy_snapshot=legacy_snapshots.get(re.sub(r"\D", "", item.cpf_cnpj or "")),
+            report_reference=report_reference,
         )
         for item in pagamentos
     ]

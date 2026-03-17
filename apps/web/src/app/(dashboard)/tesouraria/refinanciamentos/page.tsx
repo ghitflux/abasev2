@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import type { PaginatedResponse, RefinanciamentoItem } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
+import { buildBackendFileUrl } from "@/lib/backend-files";
 import { formatCurrency, formatDateTime, formatMonthYear } from "@/lib/formatters";
 import DatePicker from "@/components/custom/date-picker";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
@@ -130,15 +131,20 @@ export default function TesourariaRefinanciamentosPage() {
       },
       {
         id: "pagamento",
-        header: "Pagamento",
+        header: "Ativação do ciclo",
         cell: (row) => (
           <div className="space-y-1">
             <StatusBadge status={row.pagamento_status} />
             <p className="text-xs text-muted-foreground">
-              {row.executado_em
-                ? `Efetivado em: ${formatDateTime(row.executado_em)}`
+              {row.data_ativacao_ciclo
+                ? `Ativado em: ${formatDateTime(row.data_ativacao_ciclo)}`
                 : "Aguardando anexação / conferência"}
             </p>
+            {row.ativacao_inferida ? (
+              <Badge className="rounded-full bg-amber-500/15 text-amber-200">
+                Data inferida pela tesouraria
+              </Badge>
+            ) : null}
           </div>
         ),
       },
@@ -154,12 +160,12 @@ export default function TesourariaRefinanciamentosPage() {
       },
       {
         id: "solicitacao",
-        header: "Solicitação",
+        header: "Etapa da renovação",
         cell: (row) => (
           <div className="space-y-1">
-            <StatusBadge status={row.status} />
+            <StatusBadge status={row.etapa_operacional || row.status} />
             <p className="text-xs text-muted-foreground">
-              Solicitado em: {formatDateTime(row.created_at)}
+              Solicitado em: {formatDateTime(row.data_solicitacao_renovacao ?? row.created_at)}
             </p>
             <CopySnippet label="CPF" value={row.cpf_cnpj} mono inline />
           </div>
@@ -177,7 +183,8 @@ export default function TesourariaRefinanciamentosPage() {
             <div className="grid min-w-72 gap-3">
               <UploadTile
                 label="Associado"
-                existingUrl={associado?.arquivo}
+                existingUrl={associado?.arquivo_disponivel_localmente ? associado.arquivo : undefined}
+                existingReference={associado?.arquivo_referencia}
                 existingName={associado?.nome_original}
                 draftFile={draft.associado}
                 onSelect={(file) =>
@@ -195,7 +202,8 @@ export default function TesourariaRefinanciamentosPage() {
               />
               <UploadTile
                 label="Agente"
-                existingUrl={agente?.arquivo}
+                existingUrl={agente?.arquivo_disponivel_localmente ? agente.arquivo : undefined}
+                existingReference={agente?.arquivo_referencia}
                 existingName={agente?.nome_original}
                 draftFile={draft.agente}
                 onSelect={(file) =>
@@ -211,7 +219,7 @@ export default function TesourariaRefinanciamentosPage() {
                   }))
                 }
               />
-              {draft.associado && draft.agente ? (
+              {row.status !== "efetivado" && draft.associado && draft.agente ? (
                 <Button
                   size="sm"
                   onClick={() =>
@@ -241,9 +249,9 @@ export default function TesourariaRefinanciamentosPage() {
             <p className="text-sm uppercase tracking-[0.28em] text-muted-foreground">
               Tesouraria
             </p>
-            <h1 className="text-3xl font-semibold">Refinanciamentos</h1>
+            <h1 className="text-3xl font-semibold">Renovações aprovadas</h1>
             <p className="text-sm text-muted-foreground">
-              Gestão de conferência, anexação e efetivação de refinanciamentos.
+              Conferência final, anexação de comprovantes e materialização do próximo ciclo.
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
@@ -322,6 +330,7 @@ export default function TesourariaRefinanciamentosPage() {
 function UploadTile({
   label,
   existingUrl,
+  existingReference,
   existingName,
   draftFile,
   onSelect,
@@ -329,6 +338,7 @@ function UploadTile({
 }: {
   label: string;
   existingUrl?: string;
+  existingReference?: string;
   existingName?: string;
   draftFile?: File;
   onSelect: (file: File) => void;
@@ -348,13 +358,19 @@ function UploadTile({
       </div>
       {existingUrl ? (
         <a
-          href={existingUrl}
+          href={buildBackendFileUrl(existingUrl)}
           target="_blank"
           rel="noreferrer"
           className="text-sm text-primary underline-offset-4 hover:underline"
         >
           Ver comprovante {existingName ? `(${existingName})` : ""}
         </a>
+      ) : existingReference ? (
+        <div className="space-y-1 text-sm">
+          <p className="font-medium">{existingName || label}</p>
+          <p className="text-xs text-muted-foreground break-all">{existingReference}</p>
+          <p className="text-[11px] text-amber-200">Referência de arquivo legado</p>
+        </div>
       ) : draftFile ? (
         <div className="space-y-1 text-sm">
           <p className="font-medium">{draftFile.name}</p>

@@ -418,7 +418,9 @@ export default function AnalisePage() {
         cell: (row) => (
           <div className="text-sm">
             <p>{row.contrato?.cpf_cnpj ?? "-"}</p>
-            <p className="text-muted-foreground">{row.contrato?.matricula ?? "-"}</p>
+            <p className="text-muted-foreground">
+              {row.contrato?.matricula_display ?? row.contrato?.matricula ?? "-"}
+            </p>
           </div>
         ),
       },
@@ -634,7 +636,9 @@ export default function AnalisePage() {
         cell: (row) => (
           <div className="space-y-1">
             <p className="font-medium text-foreground">{row.nome_completo}</p>
-            <p className="text-xs text-muted-foreground">{row.contrato_codigo ?? row.matricula}</p>
+            <p className="text-xs text-muted-foreground">
+              {row.contrato_codigo ?? row.matricula_display ?? row.matricula}
+            </p>
           </div>
         ),
       },
@@ -644,7 +648,7 @@ export default function AnalisePage() {
         cell: (row) => (
           <div className="space-y-1 text-sm">
             <p>{row.cpf_cnpj}</p>
-            <p className="text-muted-foreground">{row.matricula}</p>
+            <p className="text-muted-foreground">{row.matricula_display ?? row.matricula}</p>
           </div>
         ),
       },
@@ -974,7 +978,7 @@ export default function AnalisePage() {
                             <p className="font-medium capitalize">{documento.tipo.replaceAll("_", " ")}</p>
                             <StatusBadge status={documento.status} />
                           </div>
-                          {documento.arquivo ? (
+                          {documento.arquivo_disponivel_localmente && documento.arquivo ? (
                             <Button asChild size="sm" variant="outline">
                               <a href={buildBackendFileUrl(documento.arquivo)} target="_blank" rel="noreferrer">
                                 <ExternalLinkIcon className="size-4" />
@@ -982,7 +986,12 @@ export default function AnalisePage() {
                               </a>
                             </Button>
                           ) : (
-                            <p className="text-sm text-muted-foreground">Arquivo indisponível.</p>
+                            <div className="text-sm text-muted-foreground">
+                              <p>Arquivo indisponível localmente.</p>
+                              <p className="text-xs text-amber-200">
+                                {documento.arquivo_referencia || "Referência de arquivo legado"}
+                              </p>
+                            </div>
                           )}
                         </div>
                       </div>

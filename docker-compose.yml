@@ -73,6 +73,7 @@ services:
       retries: 6
     volumes:
       - ./backend:/app
+      - backend_media:/app/media
 
   celery:
     build:
@@ -103,6 +104,39 @@ services:
         condition: service_started
     volumes:
       - ./backend:/app
+      - backend_media:/app/media
+
+  backend-tools:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    profiles: ["tools"]
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.development}
+      SECRET_KEY: ${SECRET_KEY:-change-me-abase-v2-dev-secret-key-2026}
+      DEBUG: ${DEBUG:-True}
+      DATABASE_NAME: ${DATABASE_NAME:-abase_v2}
+      DATABASE_USER: ${DATABASE_USER:-abase}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD:-abase}
+      DATABASE_HOST: mysql
+      DATABASE_PORT: 3306
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/1}
+      CELERY_RESULT_BACKEND: ${CELERY_RESULT_BACKEND:-redis://redis:6379/2}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    working_dir: /app
+    command: python manage.py check
+    volumes:
+      - ./backend:/app
+      - .:/workspace
+      - backend_media:/app/media
 
   frontend:
     build:
@@ -131,5 +165,6 @@ services:
 volumes:
   mysql_data:
   redis_data:
+  backend_media:
   pnpm_node_modules:
   pnpm_store:

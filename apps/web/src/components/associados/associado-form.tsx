@@ -117,6 +117,10 @@ const documentFields = [
 ] as const;
 
 const PRAZO_ANTECIPACAO_PADRAO = 3;
+const PRAZO_ANTECIPACAO_OPTIONS = [
+  { value: "3", label: "3 parcelas" },
+  { value: "4", label: "4 parcelas" },
+];
 const TAXA_ANTECIPACAO_PADRAO = 30;
 
 const schema = z
@@ -173,7 +177,7 @@ const schema = z
         .number()
         .nullable()
         .refine((value) => (value ?? 0) > 0, "Informe o valor líquido."),
-      prazo_meses: z.number().min(1, "Prazo inválido."),
+      prazo_meses: z.number().min(3, "Prazo inválido.").max(4, "Prazo inválido."),
       taxa_antecipacao: z.number().min(0, "Taxa inválida."),
       mensalidade: z
         .number()
@@ -508,14 +512,6 @@ export default function AssociadoForm({
     if (mode !== "create") {
       return;
     }
-
-    if (prazoMeses !== PRAZO_ANTECIPACAO_PADRAO) {
-      setValue("contrato.prazo_meses", PRAZO_ANTECIPACAO_PADRAO, {
-        shouldDirty: false,
-        shouldValidate: false,
-      });
-    }
-
     if (taxaAntecipacao !== TAXA_ANTECIPACAO_PADRAO) {
       setValue("contrato.taxa_antecipacao", TAXA_ANTECIPACAO_PADRAO, {
         shouldDirty: false,
@@ -529,12 +525,11 @@ export default function AssociadoForm({
         shouldValidate: false,
       });
     }
-  }, [dataAprovacao, mode, prazoMeses, setValue, taxaAntecipacao]);
+  }, [dataAprovacao, mode, setValue, taxaAntecipacao]);
 
   const mutation = useMutation({
     mutationFn: async (values: FormValues) => {
-      const prazoPayload =
-        mode === "create" ? PRAZO_ANTECIPACAO_PADRAO : values.contrato.prazo_meses;
+      const prazoPayload = values.contrato.prazo_meses;
       const taxaPayload =
         mode === "create"
           ? TAXA_ANTECIPACAO_PADRAO
@@ -832,19 +827,6 @@ export default function AssociadoForm({
                   <FieldError errors={[errors.cpf_cnpj]} />
                 </FieldContent>
               </Field>
-              {mode === "edit" && initialData?.matricula ? (
-                <Field>
-                  <FieldLabel>Matrícula</FieldLabel>
-                  <FieldContent>
-                    <Input
-                      readOnly
-                      aria-readonly="true"
-                      value={initialData.matricula}
-                      className="rounded-xl bg-card/60"
-                    />
-                  </FieldContent>
-                </Field>
-              ) : null}
               <Field>
                 <FieldLabel>RG</FieldLabel>
                 <FieldContent>
@@ -1270,14 +1252,25 @@ export default function AssociadoForm({
                           control={control}
                           name="contrato.prazo_meses"
                           render={({ field }) => (
-                            <Input
-                              readOnly
-                              aria-readonly="true"
+                            <Select
                               value={String(
                                 field.value ?? PRAZO_ANTECIPACAO_PADRAO,
                               )}
-                              className="rounded-xl bg-card/60"
-                            />
+                              onValueChange={(value) =>
+                                field.onChange(Number.parseInt(value, 10))
+                              }
+                            >
+                              <SelectTrigger className="w-full rounded-xl bg-card/60">
+                                <SelectValue placeholder="Prazo do ciclo" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {PRAZO_ANTECIPACAO_OPTIONS.map((option) => (
+                                  <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           )}
                         />
                         <FieldError errors={[errors.contrato?.prazo_meses]} />

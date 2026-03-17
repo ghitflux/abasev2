@@ -93,6 +93,7 @@ class Command(BaseCommand):
             raise CommandError("Nenhum usuário operacional encontrado no dump legado.")
 
         summary = {
+            "usuarios_operacionais": len(selected_user_roles),
             "users_created": 0,
             "users_updated": 0,
             "roles_created": 0,
@@ -162,6 +163,7 @@ class Command(BaseCommand):
             f"sem_fonte_legada={summary['associados_without_legacy_source']} "
             f"snapshot_sem_agente={summary['associados_with_unresolved_agent']}"
         )
+        self.summary = summary
 
     def _ensure_roles(self, summary: dict[str, int]) -> dict[str, Role]:
         roles_by_code: dict[str, Role] = {}

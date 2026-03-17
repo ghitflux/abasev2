@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import tempfile
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
@@ -13,6 +14,7 @@ from apps.associados.models import Associado
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante
+from apps.tesouraria.models import Pagamento
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
@@ -60,6 +62,10 @@ class AgentePagamentosViewSetTestCase(TestCase):
 
         self.tes_client = APIClient()
         self.tes_client.force_authenticate(self.tesoureiro)
+
+    @staticmethod
+    def _aware(value: datetime):
+        return timezone.make_aware(value)
 
     def _create_contract(self, *, cpf: str, nome: str, agente: User) -> Contrato:
         associado = Associado.objects.create(
@@ -143,6 +149,22 @@ class AgentePagamentosViewSetTestCase(TestCase):
             ),
             enviado_por=self.tesoureiro,
         )
+        Pagamento.objects.create(
+            cadastro=contrato.associado,
+            created_by=self.tesoureiro,
+            contrato_codigo=contrato.codigo,
+            contrato_valor_antecipacao=Decimal("1200.00"),
+            contrato_margem_disponivel=Decimal("1200.00"),
+            cpf_cnpj=contrato.associado.cpf_cnpj,
+            full_name=contrato.associado.nome_completo,
+            agente_responsavel=contrato.agente.full_name,
+            origem=Pagamento.Origem.OPERACIONAL,
+            status=Pagamento.Status.PAGO,
+            valor_pago=Decimal("1200.00"),
+            paid_at=self._aware(datetime(2026, 1, 12, 9, 30)),
+            forma_pagamento="pix",
+            notes="Efetivação inicial do contrato pela tesouraria.",
+        )
         Comprovante.objects.create(
             contrato=contrato,
             refinanciamento=None,
@@ -215,18 +237,69 @@ class AgentePagamentosViewSetTestCase(TestCase):
 
         row = payload["results"][0]
         self.assertEqual(row["contrato_codigo"], contrato.codigo)
+        self.assertEqual(row["status_visual_label"], "Apto para Renovação")
+        self.assertEqual(row["pagamento_inicial_status"], "pago")
+        self.assertEqual(row["pagamento_inicial_status_label"], "Pago")
+        self.assertEqual(row["pagamento_inicial_valor"], "1200.00")
         self.assertEqual(len(row["comprovantes_efetivacao"]), 2)
+        self.assertEqual(len(row["pagamento_inicial_evidencias"]), 2)
         self.assertEqual(row["parcelas_total"], 3)
         self.assertEqual(row["parcelas_pagas"], 2)
 
         ciclo = row["ciclos"][0]
+        self.assertEqual(ciclo["status_visual_label"], "Apto para Renovação")
         parcela_fev = next(parcela for parcela in ciclo["parcelas"] if parcela["numero"] == 1)
         parcela_mar = next(parcela for parcela in ciclo["parcelas"] if parcela["numero"] == 2)
 
         self.assertEqual(parcela_fev["comprovantes"][0]["origem"], "arquivo_retorno")
-        self.assertIn("/media/arquivos_retorno/retorno-fevereiro.txt", parcela_fev["comprovantes"][0]["url"])
+        self.assertEqual(
+            parcela_fev["comprovantes"][0]["arquivo_referencia"],
+            "arquivos_retorno/retorno-fevereiro.txt",
+        )
         self.assertEqual(parcela_mar["comprovantes"][0]["origem"], "manual")
-        self.assertIn("/media/comprovantes/manual-marco.pdf", parcela_mar["comprovantes"][0]["url"])
+        self.assertEqual(
+            parcela_mar["comprovantes"][0]["arquivo_referencia"],
+            "comprovantes/manual-marco.pdf",
+        )
+
+    def test_pagamento_inicial_pago_sem_arquivo_retorna_placeholder(self):
+        contrato = self._create_contract(
+            cpf="22211133344",
+            nome="Associada Placeholder",
+            agente=self.agente,
+        )
+        Pagamento.objects.create(
+            cadastro=contrato.associado,
+            created_by=self.tesoureiro,
+            contrato_codigo=contrato.codigo,
+            contrato_valor_antecipacao=Decimal("1200.00"),
+            contrato_margem_disponivel=Decimal("420.00"),
+            cpf_cnpj=contrato.associado.cpf_cnpj,
+            full_name=contrato.associado.nome_completo,
+            agente_responsavel=contrato.agente.full_name,
+            origem=Pagamento.Origem.OVERRIDE_MANUAL,
+            status=Pagamento.Status.PAGO,
+            valor_pago=Decimal("420.00"),
+            paid_at=self._aware(datetime(2026, 3, 16, 9, 6)),
+            forma_pagamento="pix",
+            notes="Pagamento recebido fora do recorte do dump local.",
+        )
+
+        response = self.agent_client.get("/api/v1/agente/pagamentos/")
+        self.assertEqual(response.status_code, 200, response.json())
+        row = next(
+            item
+            for item in response.json()["results"]
+            if item["contrato_codigo"] == contrato.codigo
+        )
+        self.assertEqual(row["pagamento_inicial_status"], "pago")
+        self.assertEqual(row["pagamento_inicial_status_label"], "Pago")
+        self.assertEqual(row["pagamento_inicial_valor"], "420.00")
+        self.assertEqual(len(row["pagamento_inicial_evidencias"]), 2)
+        self.assertEqual(
+            {item["tipo_referencia"] for item in row["pagamento_inicial_evidencias"]},
+            {"placeholder_recebido"},
+        )
 
     def test_filtro_por_mes_retorna_apenas_parcelas_da_competencia(self):
         contrato = self._create_contract(

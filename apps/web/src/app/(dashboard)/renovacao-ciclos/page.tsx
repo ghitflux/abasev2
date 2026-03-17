@@ -188,7 +188,8 @@ type MetricStatusKey =
   | "ciclo_renovado"
   | "apto_a_renovar"
   | "em_aberto"
-  | "inadimplente";
+  | "inadimplente"
+  | "em_previsao";
 
 type CycleMetricDialogConfig = {
   key: string;
@@ -266,6 +267,11 @@ const MONTHLY_METRIC_META: Record<
     label: "Inadimplentes",
     tone: "danger",
     description: "Associados com retorno nao descontado ou status consolidado de inadimplencia.",
+  },
+  em_previsao: {
+    label: "Em previsao",
+    tone: "warning",
+    description: "Ciclos futuros ainda inativos, aguardando efetivacao da renovacao.",
   },
 };
 
@@ -1794,6 +1800,7 @@ function MonthlyCycleCard({
       apto_a_renovar: filteredRows.filter((row) => matchesMetricStatus(row, "apto_a_renovar")),
       em_aberto: filteredRows.filter((row) => matchesMetricStatus(row, "em_aberto")),
       inadimplente: filteredRows.filter((row) => matchesMetricStatus(row, "inadimplente")),
+      em_previsao: filteredRows.filter((row) => matchesMetricStatus(row, "em_previsao")),
     }),
     [filteredRows],
   );
@@ -1803,6 +1810,7 @@ function MonthlyCycleCard({
       aptoRenovar: metricRowsByStatus.apto_a_renovar.length,
       emAberto: metricRowsByStatus.em_aberto.length,
       inadimplente: metricRowsByStatus.inadimplente.length,
+      emPrevisao: metricRowsByStatus.em_previsao.length,
     }),
     [metricRowsByStatus],
   );
