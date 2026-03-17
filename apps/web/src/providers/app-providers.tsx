@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { ThemeProvider } from "next-themes";
 
 import { QueryProvider } from "@/providers/query-provider";
@@ -12,7 +13,9 @@ export function AppProviders({ children }: React.PropsWithChildren) {
     <ThemeProvider attribute="class" defaultTheme="dark" forcedTheme="dark" enableSystem={false}>
       <QueryProvider>
         <TooltipProvider delayDuration={100}>
-          <RouteTransitionProvider>{children}</RouteTransitionProvider>
+          <React.Suspense fallback={null}>
+            <RouteTransitionProvider>{children}</RouteTransitionProvider>
+          </React.Suspense>
         </TooltipProvider>
         <Toaster richColors position="top-right" />
       </QueryProvider>
