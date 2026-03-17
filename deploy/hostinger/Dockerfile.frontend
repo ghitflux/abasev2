@@ -45,6 +45,8 @@ ARG NEXT_PUBLIC_API_URL
 ARG NODE_ENV=production
 
 WORKDIR /app/apps/web
+# Patch tsconfig: remove ignoreDeprecations "6.0" not supported by TS 5.x
+RUN sed -i '/"ignoreDeprecations"/d' tsconfig.json
 RUN pnpm build
 
 # ── Estágio 3: Runtime ───────────────────────────────────────
