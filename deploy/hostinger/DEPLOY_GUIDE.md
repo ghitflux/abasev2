@@ -217,21 +217,46 @@ cp /opt/ABASE/data/certbot/conf/live/abasepiaui.cloud/fullchain.pem \
 
 ### 4.3 Certificado real Let's Encrypt (após DNS propagar)
 
-```bash
-# Parar o nginx antes para liberar porta 80
-docker compose -f /opt/ABASE/repo/deploy/hostinger/docker-compose.prod.yml stop nginx
+O nginx já está configurado com `location /.well-known/acme-challenge/` apontando para
+`/var/www/certbot`. Use o método **webroot** — não é necessário derrubar o nginx:
 
+```bash
+# NÃO precisa parar o nginx — usa webroot via nginx ativo
 docker run --rm \
   -v /opt/ABASE/data/certbot/conf:/etc/letsencrypt \
   -v /opt/ABASE/data/certbot/www:/var/www/certbot \
-  -p 80:80 \
-  certbot/certbot certonly --standalone \
+  certbot/certbot certonly --webroot \
+  --webroot-path=/var/www/certbot \
   --email ghitflux@gmail.com --agree-tos --no-eff-email \
   -d abasepiaui.cloud -d www.abasepiaui.cloud
-
-# Reiniciar nginx
-docker compose -f /opt/ABASE/repo/deploy/hostinger/docker-compose.prod.yml start nginx
 ```
+
+O certbot salva em `live/abasepiaui.cloud-0001/` se já existia um cert anterior.
+Corrija com symlink **relativo** (caminho absoluto não funciona dentro do container):
+
+```bash
+# Se o cert foi salvo em abasepiaui.cloud-0001 (versão nova):
+# 1. Mover/renomear o diretório antigo (autoassinado)
+mv /opt/ABASE/data/certbot/conf/live/abasepiaui.cloud \
+   /opt/ABASE/data/certbot/conf/live/abasepiaui.cloud.selfsigned.bak
+
+# 2. Criar symlink RELATIVO (obrigatório — caminho absoluto quebra dentro do container)
+cd /opt/ABASE/data/certbot/conf/live
+ln -s abasepiaui.cloud-0001 abasepiaui.cloud
+
+# 3. Restart nginx para carregar o novo cert
+docker compose -f /opt/ABASE/repo/deploy/hostinger/docker-compose.prod.yml \
+  --env-file /opt/ABASE/env/.env.production restart nginx
+
+# 4. Verificar issuer (deve ser "Let's Encrypt", não autoassinado)
+echo | openssl s_client -connect localhost:443 -servername abasepiaui.cloud 2>/dev/null \
+  | openssl x509 -noout -issuer -dates
+```
+
+> ⚠️ **ERRO COMUM:** Criar symlink com `ln -s /opt/ABASE/data/certbot/conf/live/abasepiaui.cloud-0001 abasepiaui.cloud`
+> (caminho absoluto do host) faz o link ficar quebrado DENTRO do container nginx,
+> que monta o volume em `/etc/letsencrypt/`. Use sempre `ln -s abasepiaui.cloud-0001 abasepiaui.cloud`
+> (caminho relativo).
 
 ### 4.4 Renovação automática (cron)
 
@@ -449,6 +474,8 @@ docker compose -f deploy/hostinger/docker-compose.prod.yml restart nginx
 |Dashboard vazio após login|`/api/backend/` retornando 404|Corrigir nginx (ver acima)|
 |`createsuperuser` falha com `--username`|`USERNAME_FIELD = "email"`|Usar flag `--email`|
 |Certbot falha|DNS não aponta para o IP da VPS|Usar certificado autoassinado até DNS propagar|
+|SSL still autoassinado após certbot|Symlink absoluto quebra dentro do container nginx|Usar symlink relativo: `ln -s abasepiaui.cloud-0001 abasepiaui.cloud`|
+|`live/abasepiaui.cloud-0001` gerado|Cert anterior já existia no diretório|Mover antigo para `.selfsigned.bak`, criar symlink relativo para `-0001`|
 
 ---
 
