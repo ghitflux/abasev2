@@ -11,7 +11,7 @@ export const V1ConfiguracoesUsuariosPartialUpdatePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("A unique integer value identifying this user."),
+    .describe("Um valor inteiro único que identifica este user."),
 });
 
 export const V1ConfiguracoesUsuariosPartialUpdate200Schema = z.lazy(

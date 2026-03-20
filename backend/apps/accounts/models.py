@@ -99,6 +99,72 @@ class UserRole(BaseModel):
         return f"{self.user.email} -> {self.role.codigo}"
 
 
+class MobileAccessToken(BaseModel):
+    class Scope(models.TextChoices):
+        LEGACY_APP = "legacy_app", "Aplicativo legado"
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="mobile_access_tokens",
+    )
+    key = models.CharField(max_length=64, unique=True, db_index=True)
+    token_prefix = models.CharField(max_length=12, blank=True)
+    scope = models.CharField(
+        max_length=30,
+        choices=Scope.choices,
+        default=Scope.LEGACY_APP,
+    )
+    name = models.CharField(max_length=120, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    @property
+    def is_active(self) -> bool:
+        if self.deleted_at is not None or self.revoked_at is not None:
+            return False
+        if self.expires_at is None:
+            return True
+        return self.expires_at > timezone.now()
+
+    def __str__(self) -> str:
+        return f"{self.user.email} - {self.scope}"
+
+
+class PasswordResetRequest(BaseModel):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="password_reset_requests",
+    )
+    email = models.EmailField()
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    requested_from_ip = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    @property
+    def is_active(self) -> bool:
+        return (
+            self.deleted_at is None
+            and self.used_at is None
+            and self.expires_at > timezone.now()
+        )
+
+    def __str__(self) -> str:
+        return f"Reset {self.email}"
+
+
 class AgenteMargemConfig(BaseModel):
     """Percentual de margem/comissão vigente de um agente (agente_margens)."""
 

@@ -1,0 +1,6 @@
+{
+  "enum": ["nenhuma", "mensal", "trimestral", "anual"],
+  "type": "string",
+  "description": "* `nenhuma` - Nenhuma\n* `mensal` - Mensal\n* `trimestral` - Trimestral\n* `anual` - Anual",
+  "x-readme-ref-name": "RecorrenciaEnum"
+}

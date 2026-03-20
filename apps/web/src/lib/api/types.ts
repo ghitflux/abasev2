@@ -603,6 +603,41 @@ export type ConfirmacaoItem = {
   status_visual: string;
 };
 
+export type DespesaArquivo = {
+  nome: string;
+  url: string;
+  arquivo_referencia: string;
+  arquivo_disponivel_localmente: boolean;
+  tipo_referencia: string;
+};
+
+export type DespesaItem = {
+  id: number;
+  categoria: string;
+  descricao: string;
+  valor: string;
+  data_despesa: string;
+  data_pagamento: string | null;
+  status: string;
+  tipo: string;
+  recorrencia: string;
+  recorrencia_ativa: boolean;
+  observacoes: string;
+  status_anexo: string;
+  anexo: DespesaArquivo | null;
+  lancado_por: SimpleUser | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type DespesaKpis = {
+  total_despesas: number;
+  valor_total: string;
+  valor_pago: string;
+  valor_pendente: string;
+  pendentes_anexo: number;
+};
+
 export type RefinanciamentoItem = {
   id: number;
   contrato_id: number;

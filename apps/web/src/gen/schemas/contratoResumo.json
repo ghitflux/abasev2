@@ -65,94 +65,39 @@
       "format": "date",
       "nullable": true
     },
-    "ciclos": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "id": { "type": "integer", "readOnly": true },
-          "contrato_id": { "type": "integer", "readOnly": true },
-          "contrato_codigo": { "type": "string", "readOnly": true },
-          "contrato_status": { "type": "string", "readOnly": true },
-          "numero": { "type": "integer", "maximum": 65535, "minimum": 0 },
-          "data_inicio": { "type": "string", "format": "date" },
-          "data_fim": { "type": "string", "format": "date" },
-          "status": {
-            "enum": [
-              "futuro",
-              "aberto",
-              "ciclo_renovado",
-              "apto_a_renovar",
-              "fechado"
-            ],
-            "type": "string",
-            "description": "* `futuro` - Futuro\n* `aberto` - Aberto\n* `ciclo_renovado` - Ciclo renovado\n* `apto_a_renovar` - Apto a renovar\n* `fechado` - Fechado",
-            "x-readme-ref-name": "CicloDetailStatusEnum"
-          },
-          "valor_total": {
-            "type": "string",
-            "format": "decimal",
-            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
-          },
-          "parcelas": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "id": { "type": "integer", "readOnly": true },
-                "numero": { "type": "integer", "maximum": 65535, "minimum": 0 },
-                "referencia_mes": { "type": "string", "format": "date" },
-                "valor": {
-                  "type": "string",
-                  "format": "decimal",
-                  "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
-                },
-                "data_vencimento": { "type": "string", "format": "date" },
-                "status": {
-                  "enum": [
-                    "futuro",
-                    "em_aberto",
-                    "descontado",
-                    "nao_descontado",
-                    "cancelado"
-                  ],
-                  "type": "string",
-                  "description": "* `futuro` - Futuro\n* `em_aberto` - Em aberto\n* `descontado` - Descontado\n* `nao_descontado` - Não descontado\n* `cancelado` - Cancelado",
-                  "x-readme-ref-name": "ParcelaStatusEnum"
-                },
-                "data_pagamento": {
-                  "type": "string",
-                  "format": "date",
-                  "nullable": true
-                },
-                "observacao": { "type": "string" }
-              },
-              "required": [
-                "data_vencimento",
-                "id",
-                "numero",
-                "referencia_mes",
-                "valor"
-              ],
-              "x-readme-ref-name": "Parcela"
-            },
-            "readOnly": true
-          }
-        },
-        "required": [
-          "contrato_codigo",
-          "contrato_id",
-          "contrato_status",
-          "data_fim",
-          "data_inicio",
-          "id",
-          "parcelas"
-        ],
-        "x-readme-ref-name": "CicloDetail"
-      },
-      "readOnly": true
-    }
+    "data_primeiro_ciclo_ativado": { "type": "string", "readOnly": true },
+    "origem_data_primeiro_ciclo": { "type": "string", "readOnly": true },
+    "primeiro_ciclo_ativacao_inferida": { "type": "boolean", "readOnly": true },
+    "status_visual_slug": { "type": "string", "readOnly": true },
+    "status_visual_label": { "type": "string", "readOnly": true },
+    "pagamento_inicial_status": { "type": "string", "readOnly": true },
+    "pagamento_inicial_status_label": { "type": "string", "readOnly": true },
+    "pagamento_inicial_valor": { "type": "string", "readOnly": true },
+    "pagamento_inicial_paid_at": { "type": "string", "readOnly": true },
+    "pagamento_inicial_evidencias": { "type": "string", "readOnly": true },
+    "status_renovacao": { "type": "string", "readOnly": true },
+    "refinanciamento_id": { "type": "string", "readOnly": true },
+    "meses_nao_pagos": { "type": "string", "readOnly": true },
+    "movimentos_financeiros_avulsos": { "type": "string", "readOnly": true },
+    "ciclos": { "type": "string", "readOnly": true }
   },
-  "required": ["ciclos", "id"],
+  "required": [
+    "ciclos",
+    "data_primeiro_ciclo_ativado",
+    "id",
+    "meses_nao_pagos",
+    "movimentos_financeiros_avulsos",
+    "origem_data_primeiro_ciclo",
+    "pagamento_inicial_evidencias",
+    "pagamento_inicial_paid_at",
+    "pagamento_inicial_status",
+    "pagamento_inicial_status_label",
+    "pagamento_inicial_valor",
+    "primeiro_ciclo_ativacao_inferida",
+    "refinanciamento_id",
+    "status_renovacao",
+    "status_visual_label",
+    "status_visual_slug"
+  ],
   "x-readme-ref-name": "ContratoResumo"
 }

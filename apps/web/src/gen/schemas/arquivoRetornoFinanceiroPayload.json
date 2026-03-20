@@ -152,6 +152,10 @@
             "nullable": true
           },
           "manual_comprovante_path": { "type": "string", "nullable": true },
+          "origem_baixa": { "type": "string" },
+          "arquivo_referencia": { "type": "string", "nullable": true },
+          "arquivo_disponivel_localmente": { "type": "boolean" },
+          "tipo_referencia": { "type": "string" },
           "categoria": { "type": "string" }
         },
         "required": [

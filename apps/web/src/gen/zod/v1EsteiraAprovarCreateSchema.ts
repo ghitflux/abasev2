@@ -10,7 +10,7 @@ export const V1EsteiraAprovarCreatePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("A unique integer value identifying this esteira item."),
+    .describe("Um valor inteiro único que identifica este esteira item."),
 });
 
 export const V1EsteiraAprovarCreate200Schema = z.lazy(() => esteiraListSchema);
@@ -26,6 +26,8 @@ export const V1EsteiraAprovarCreateMutationRequestSchema = z
     valor_disponivel: true,
     comissao_agente: true,
     status_contrato: true,
+    status_contrato_visual_slug: true,
+    status_contrato_visual_label: true,
     status_documentacao: true,
     contato_web: true,
     termos_web: true,

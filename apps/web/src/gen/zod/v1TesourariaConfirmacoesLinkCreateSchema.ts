@@ -10,7 +10,7 @@ export const V1TesourariaConfirmacoesLinkCreatePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("A unique integer value identifying this confirmacao."),
+    .describe("Um valor inteiro único que identifica este confirmacao."),
 });
 
 export const V1TesourariaConfirmacoesLinkCreate200Schema = z.lazy(

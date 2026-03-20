@@ -7,7 +7,7 @@ import type { TesourariaContratoList } from "./TesourariaContratoList.ts";
 
 export type V1TesourariaContratosCongelarCreatePathParams = {
   /**
-   * @description A unique integer value identifying this contrato.
+   * @description Um valor inteiro único que identifica este contrato.
    * @type integer
    */
   id: number;
@@ -27,6 +27,7 @@ export type V1TesourariaContratosCongelarCreateMutationRequest = Omit<
   | "status"
   | "agente"
   | "agente_nome"
+  | "comissao_agente"
   | "margem_disponivel"
   | "comprovantes"
   | "dados_bancarios"

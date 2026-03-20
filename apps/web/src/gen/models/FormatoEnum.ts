@@ -7,12 +7,13 @@ export const formatoEnumEnum = {
   txt: "txt",
   csv: "csv",
   xlsx: "xlsx",
+  man: "man",
 } as const;
 
 export type FormatoEnumEnumKey =
   (typeof formatoEnumEnum)[keyof typeof formatoEnumEnum];
 
 /**
- * @description * `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX
+ * @description * `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX\n* `man` - Manual
  */
 export type FormatoEnum = FormatoEnumEnumKey;

@@ -4,7 +4,8 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Count, Prefetch, Q, Sum
+from django.db.models import Count, DecimalField, Prefetch, Q, Sum, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -13,6 +14,7 @@ from apps.contratos.competencia import propagate_competencia_status
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Contrato, Parcela
 from apps.esteira.models import EsteiraItem, Transicao
+from apps.financeiro.models import Despesa
 from apps.refinanciamento.models import Comprovante
 
 from .models import BaixaManual, Confirmacao, Pagamento
@@ -470,3 +472,70 @@ class BaixaManualService:
             valor_pago=valor_pago,
             data_baixa=timezone.localdate(),
         )
+
+
+class DespesaService:
+    @staticmethod
+    def listar_despesas(
+        *,
+        competencia: date | None = None,
+        search: str | None = None,
+        status: str | None = None,
+        status_anexo: str | None = None,
+        tipo: str | None = None,
+    ):
+        queryset = Despesa.objects.select_related("user").order_by(
+            "-data_despesa",
+            "-created_at",
+            "-id",
+        )
+
+        if competencia:
+            queryset = queryset.filter(
+                data_despesa__year=competencia.year,
+                data_despesa__month=competencia.month,
+            )
+
+        if search:
+            queryset = queryset.filter(
+                Q(categoria__icontains=search) | Q(descricao__icontains=search)
+            )
+
+        if status in {choice[0] for choice in Despesa.Status.choices}:
+            queryset = queryset.filter(status=status)
+
+        if status_anexo in {choice[0] for choice in Despesa.StatusAnexo.choices}:
+            queryset = queryset.filter(status_anexo=status_anexo)
+
+        if tipo in {choice[0] for choice in Despesa.Tipo.choices}:
+            queryset = queryset.filter(tipo=tipo)
+
+        return queryset
+
+    @staticmethod
+    def kpis(queryset) -> dict[str, object]:
+        zero = Value(Decimal("0.00"), output_field=DecimalField(max_digits=15, decimal_places=2))
+        return queryset.aggregate(
+            total_despesas=Count("id"),
+            valor_total=Coalesce(Sum("valor"), zero),
+            valor_pago=Coalesce(
+                Sum("valor", filter=Q(status=Despesa.Status.PAGO)),
+                zero,
+            ),
+            valor_pendente=Coalesce(
+                Sum("valor", filter=Q(status=Despesa.Status.PENDENTE)),
+                zero,
+            ),
+            pendentes_anexo=Count(
+                "id",
+                filter=Q(status_anexo=Despesa.StatusAnexo.PENDENTE),
+            ),
+        )
+
+    @staticmethod
+    def anexar(despesa: Despesa, arquivo) -> Despesa:
+        despesa.anexo = arquivo
+        despesa.nome_anexo = getattr(arquivo, "name", "")[:255]
+        despesa.status_anexo = Despesa.StatusAnexo.ANEXADO
+        despesa.save(update_fields=["anexo", "nome_anexo", "status_anexo", "updated_at"])
+        return despesa

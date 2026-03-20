@@ -6,8 +6,17 @@
 import * as z from "zod";
 
 /**
- * @description * `pix` - PIX\n* `contrato` - Contrato\n* `outro` - Outro
+ * @description * `pix` - PIX\n* `contrato` - Contrato\n* `termo_antecipacao` - Termo de antecipação\n* `comprovante_pagamento_associado` - Comprovante pagamento associado\n* `comprovante_pagamento_agente` - Comprovante pagamento agente\n* `outro` - Outro
  */
 export const comprovanteResumoTipoEnumSchema = z
-  .enum(["pix", "contrato", "outro"])
-  .describe("* `pix` - PIX\n* `contrato` - Contrato\n* `outro` - Outro");
+  .enum([
+    "pix",
+    "contrato",
+    "termo_antecipacao",
+    "comprovante_pagamento_associado",
+    "comprovante_pagamento_agente",
+    "outro",
+  ])
+  .describe(
+    "* `pix` - PIX\n* `contrato` - Contrato\n* `termo_antecipacao` - Termo de antecipação\n* `comprovante_pagamento_associado` - Comprovante pagamento associado\n* `comprovante_pagamento_agente` - Comprovante pagamento agente\n* `outro` - Outro",
+  );

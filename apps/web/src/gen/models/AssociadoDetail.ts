@@ -23,6 +23,10 @@ export type AssociadoDetail = {
    */
   matricula?: string;
   /**
+   * @type string
+   */
+  readonly matricula_display: string;
+  /**
    * @description * `CPF` - CPF\n* `CNPJ` - CNPJ
    * @type string | undefined
    */
@@ -87,6 +91,18 @@ export type AssociadoDetail = {
    * @type string | undefined
    */
   status?: Status427Enum;
+  /**
+   * @type string
+   */
+  readonly status_renovacao: string;
+  /**
+   * @type string
+   */
+  readonly status_visual_slug: string;
+  /**
+   * @type string
+   */
+  readonly status_visual_label: string;
   /**
    * @type string | undefined
    */

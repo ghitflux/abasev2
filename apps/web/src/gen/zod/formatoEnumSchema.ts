@@ -6,8 +6,8 @@
 import * as z from "zod";
 
 /**
- * @description * `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX
+ * @description * `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX\n* `man` - Manual
  */
 export const formatoEnumSchema = z
-  .enum(["txt", "csv", "xlsx"])
-  .describe("* `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX");
+  .enum(["txt", "csv", "xlsx", "man"])
+  .describe("* `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX\n* `man` - Manual");

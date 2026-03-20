@@ -6,12 +6,13 @@
 export const papelEnumEnum = {
   associado: "associado",
   agente: "agente",
+  operacional: "operacional",
 } as const;
 
 export type PapelEnumEnumKey =
   (typeof papelEnumEnum)[keyof typeof papelEnumEnum];
 
 /**
- * @description * `associado` - Associado\n* `agente` - Agente
+ * @description * `associado` - Associado\n* `agente` - Agente\n* `operacional` - Operacional
  */
 export type PapelEnum = PapelEnumEnumKey;

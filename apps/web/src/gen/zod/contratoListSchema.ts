@@ -26,6 +26,8 @@ export const contratoListSchema = z.object({
   },
   status_resumido: z.string(),
   status_contrato_visual: z.string(),
+  status_visual_slug: z.string(),
+  status_visual_label: z.string(),
   etapa_fluxo: z.string(),
   data_contrato: z.optional(z.iso.date()),
   valor_mensalidade: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
@@ -33,4 +35,6 @@ export const contratoListSchema = z.object({
   mensalidades: z.string(),
   auxilio_liberado_em: z.iso.date().nullish(),
   pode_solicitar_refinanciamento: z.boolean(),
+  status_renovacao: z.string(),
+  refinanciamento_id: z.string(),
 });

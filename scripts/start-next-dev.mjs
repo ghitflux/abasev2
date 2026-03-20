@@ -15,6 +15,15 @@ const nextCliCandidates = [
 
 function stopExistingNextDev() {
   if (process.platform !== "win32") {
+    try {
+      execFileSync(
+        "pkill",
+        ["-f", `${webDir}.+next/dist/bin/next dev`],
+        { stdio: "ignore" }
+      );
+    } catch (error) {
+      // pkill exits with status 1 when no process matches, which is expected.
+    }
     return;
   }
 
@@ -75,6 +84,7 @@ const hasPortArg = forwardedArgs.some(
 );
 const defaultArgs = hasPortArg ? [] : ["--port", process.env.ABASE_WEB_PORT ?? "3000"];
 const nextCliPath = nextCliCandidates.find((candidate) => existsSync(candidate));
+const nextDevArgs = [nextCliPath, "dev", ...forwardedArgs, ...defaultArgs];
 
 if (!nextCliPath) {
   console.error("Nao foi possivel localizar o CLI do Next em apps/web/node_modules.");
@@ -83,9 +93,10 @@ if (!nextCliPath) {
 
 const child = spawn(
   process.execPath,
-  [nextCliPath, "dev", "--turbopack", ...forwardedArgs, ...defaultArgs],
+  nextDevArgs,
   {
     cwd: webDir,
+    env: process.env,
     stdio: "inherit",
   }
 );

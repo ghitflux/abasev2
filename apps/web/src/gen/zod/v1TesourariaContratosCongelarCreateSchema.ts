@@ -10,7 +10,7 @@ export const V1TesourariaContratosCongelarCreatePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("A unique integer value identifying this contrato."),
+    .describe("Um valor inteiro único que identifica este contrato."),
 });
 
 export const V1TesourariaContratosCongelarCreate200Schema = z.lazy(
@@ -31,6 +31,7 @@ export const V1TesourariaContratosCongelarCreateMutationRequestSchema = z
     status: true,
     agente: true,
     agente_nome: true,
+    comissao_agente: true,
     margem_disponivel: true,
     comprovantes: true,
     dados_bancarios: true,

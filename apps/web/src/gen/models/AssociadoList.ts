@@ -22,6 +22,15 @@ export type AssociadoList = {
    */
   matricula?: string;
   /**
+   * @maxLength 60
+   * @type string | undefined
+   */
+  matricula_orgao?: string;
+  /**
+   * @type string
+   */
+  readonly matricula_display: string;
+  /**
    * @maxLength 18
    * @type string
    */
@@ -31,6 +40,18 @@ export type AssociadoList = {
    * @type string | undefined
    */
   status?: Status427Enum;
+  /**
+   * @type string
+   */
+  readonly status_renovacao: string;
+  /**
+   * @type string
+   */
+  readonly status_visual_slug: string;
+  /**
+   * @type string
+   */
+  readonly status_visual_label: string;
   readonly agente: SimpleUser;
   /**
    * @type integer

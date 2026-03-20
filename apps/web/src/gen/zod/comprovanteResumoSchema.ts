@@ -4,24 +4,50 @@
  */
 
 import * as z from "zod";
+import { comprovanteResumoOrigemEnumSchema } from "./comprovanteResumoOrigemEnumSchema.ts";
 import { comprovanteResumoTipoEnumSchema } from "./comprovanteResumoTipoEnumSchema.ts";
 import { papelEnumSchema } from "./papelEnumSchema.ts";
 import { simpleUserSchema } from "./simpleUserSchema.ts";
 
 export const comprovanteResumoSchema = z.object({
   id: z.int(),
+  refinanciamento: z.int().nullish(),
+  contrato: z.int().nullish(),
+  ciclo: z.int().nullish(),
   get tipo() {
     return comprovanteResumoTipoEnumSchema
-      .describe("* `pix` - PIX\n* `contrato` - Contrato\n* `outro` - Outro")
+      .describe(
+        "* `pix` - PIX\n* `contrato` - Contrato\n* `termo_antecipacao` - Termo de antecipação\n* `comprovante_pagamento_associado` - Comprovante pagamento associado\n* `comprovante_pagamento_agente` - Comprovante pagamento agente\n* `outro` - Outro",
+      )
       .optional();
   },
   get papel() {
     return papelEnumSchema
-      .describe("* `associado` - Associado\n* `agente` - Agente")
+      .describe(
+        "* `associado` - Associado\n* `agente` - Agente\n* `operacional` - Operacional",
+      )
       .optional();
   },
   arquivo: z.url(),
+  arquivo_referencia: z.string(),
+  arquivo_disponivel_localmente: z.boolean(),
+  tipo_referencia: z.string(),
   nome_original: z.optional(z.string().max(255)),
+  mime: z.optional(z.string().max(120)),
+  size_bytes: z
+    .int()
+    .min(-9223372036854776000)
+    .max(9223372036854776000)
+    .nullish(),
+  data_pagamento: z.iso.datetime().nullish(),
+  get origem() {
+    return comprovanteResumoOrigemEnumSchema
+      .describe(
+        "* `efetivacao_contrato` - Efetivação do contrato\n* `analise_renovacao` - Análise da renovação\n* `tesouraria_renovacao` - Tesouraria da renovação\n* `legado` - Legado\n* `outro` - Outro",
+      )
+      .optional();
+  },
+  legacy_comprovante_id: z.int().min(0).max(4294967295).nullish(),
   get enviado_por() {
     return simpleUserSchema;
   },

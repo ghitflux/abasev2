@@ -51,7 +51,6 @@ export const schemaRetrieveQueryParamsSchema = z
         "hi",
         "hr",
         "hsb",
-        "ht",
         "hu",
         "hy",
         "ia",

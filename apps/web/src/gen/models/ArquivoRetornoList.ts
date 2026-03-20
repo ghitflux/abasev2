@@ -17,7 +17,7 @@ export type ArquivoRetornoList = {
    */
   arquivo_nome: string;
   /**
-   * @description * `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX
+   * @description * `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX\n* `man` - Manual
    * @type string
    */
   formato: FormatoEnum;

@@ -30,5 +30,9 @@ export const arquivoRetornoFinanceiroItemSchema = z.object({
   manual_forma_pagamento: z.string().nullish(),
   manual_paid_at: z.iso.datetime().nullish(),
   manual_comprovante_path: z.string().nullish(),
+  origem_baixa: z.optional(z.string()),
+  arquivo_referencia: z.string().nullish(),
+  arquivo_disponivel_localmente: z.optional(z.boolean()),
+  tipo_referencia: z.optional(z.string()),
   categoria: z.string(),
 });

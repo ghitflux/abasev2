@@ -8,6 +8,8 @@
     "valor_disponivel": { "type": "string", "readOnly": true },
     "comissao_agente": { "type": "string", "readOnly": true },
     "status_contrato": { "type": "string", "readOnly": true },
+    "status_contrato_visual_slug": { "type": "string", "readOnly": true },
+    "status_contrato_visual_label": { "type": "string", "readOnly": true },
     "status_documentacao": { "type": "string", "readOnly": true },
     "contato_web": { "type": "string", "readOnly": true },
     "termos_web": { "type": "string", "readOnly": true },
@@ -70,6 +72,7 @@
           "associado_id": { "type": "integer", "readOnly": true },
           "associado_nome": { "type": "string", "readOnly": true },
           "matricula": { "type": "string", "readOnly": true },
+          "matricula_display": { "type": "string", "readOnly": true },
           "cpf_cnpj": { "type": "string", "readOnly": true },
           "contrato_codigo": { "type": "string", "readOnly": true },
           "created_at": {
@@ -91,7 +94,8 @@
           "created_at",
           "descricao",
           "id",
-          "matricula"
+          "matricula",
+          "matricula_display"
         ],
         "x-readme-ref-name": "Pendencia"
       },
@@ -199,6 +203,8 @@
     "orgao_publico",
     "pendencias",
     "status_contrato",
+    "status_contrato_visual_label",
+    "status_contrato_visual_slug",
     "status_documentacao",
     "termos_web",
     "transicoes",

@@ -7,7 +7,7 @@ import type { AdminUserList } from "./AdminUserList.ts";
 
 export type V1ConfiguracoesUsuariosRetrievePathParams = {
   /**
-   * @description A unique integer value identifying this user.
+   * @description Um valor inteiro único que identifica este user.
    * @type integer
    */
   id: number;

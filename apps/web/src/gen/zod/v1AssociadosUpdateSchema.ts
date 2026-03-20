@@ -10,7 +10,7 @@ export const V1AssociadosUpdatePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("A unique integer value identifying this associado."),
+    .describe("Um valor inteiro único que identifica este associado."),
 });
 
 export const V1AssociadosUpdate200Schema = z.lazy(() => associadoUpdateSchema);

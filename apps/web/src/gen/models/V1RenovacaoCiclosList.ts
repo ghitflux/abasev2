@@ -11,7 +11,7 @@ export type V1RenovacaoCiclosListQueryParams = {
    */
   competencia?: string;
   /**
-   * @description Which field to use when ordering the results.
+   * @description Qual campo usar ao ordenar os resultados.
    * @type string | undefined
    */
   ordering?: string;

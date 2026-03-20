@@ -61,6 +61,26 @@ export type RenovacaoCicloItem = {
    */
   status_explicacao: string;
   /**
+   * @type string, date-time
+   */
+  data_primeiro_ciclo_ativado: string | null;
+  /**
+   * @type string, date-time
+   */
+  data_ativacao_ciclo: string | null;
+  /**
+   * @type string
+   */
+  origem_data_ativacao: string;
+  /**
+   * @type string, date-time
+   */
+  data_solicitacao_renovacao: string | null;
+  /**
+   * @type boolean
+   */
+  ativacao_inferida: boolean;
+  /**
    * @type string
    */
   matricula: string;

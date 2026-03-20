@@ -12,7 +12,7 @@ export const V1ImportacaoArquivoRetornoReprocessarCreatePathParamsSchema =
     id: z.coerce
       .number()
       .int()
-      .describe("A unique integer value identifying this arquivo retorno."),
+      .describe("Um valor inteiro único que identifica este arquivo retorno."),
   });
 
 export const V1ImportacaoArquivoRetornoReprocessarCreate200Schema = z.lazy(

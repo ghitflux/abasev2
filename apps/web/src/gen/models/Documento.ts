@@ -3,6 +3,7 @@
  * Do not edit manually.
  */
 
+import type { DocumentoOrigemEnum } from "./DocumentoOrigemEnum.ts";
 import type { DocumentoStatusEnum } from "./DocumentoStatusEnum.ts";
 import type { DocumentoTipoEnum } from "./DocumentoTipoEnum.ts";
 
@@ -12,17 +13,9 @@ export type Documento = {
    */
   readonly id: number;
   /**
-   * @type string, date-time
+   * @type integer
    */
-  readonly created_at: string;
-  /**
-   * @type string, date-time
-   */
-  readonly updated_at: string;
-  /**
-   * @type string, date-time
-   */
-  deleted_at?: string | null;
+  associado: number;
   /**
    * @description * `rg` - RG\n* `cpf` - CPF\n* `documento_frente` - Documento (frente)\n* `documento_verso` - Documento (verso)\n* `comprovante_residencia` - Comprovante de residência\n* `divulgacao` - Divulgação\n* `contracheque` - Contracheque\n* `termo_adesao` - Termo de adesão\n* `termo_antecipacao` - Termo de antecipação\n* `outro` - Outro
    * @type string
@@ -33,6 +26,33 @@ export type Documento = {
    */
   arquivo: string;
   /**
+   * @type string
+   */
+  readonly arquivo_referencia: string;
+  /**
+   * @type boolean
+   */
+  readonly arquivo_disponivel_localmente: boolean;
+  /**
+   * @type string
+   */
+  readonly tipo_referencia: string;
+  /**
+   * @maxLength 500
+   * @type string | undefined
+   */
+  arquivo_referencia_path?: string;
+  /**
+   * @maxLength 255
+   * @type string | undefined
+   */
+  nome_original?: string;
+  /**
+   * @description * `operacional` - Operacional\n* `legado_cadastro` - Legado cadastro\n* `outro` - Outro
+   * @type string | undefined
+   */
+  origem?: DocumentoOrigemEnum;
+  /**
    * @description * `pendente` - Pendente\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado
    * @type string | undefined
    */
@@ -42,7 +62,11 @@ export type Documento = {
    */
   observacao?: string;
   /**
-   * @type integer
+   * @type string, date-time
    */
-  associado: number;
+  readonly created_at: string;
+  /**
+   * @type string, date-time
+   */
+  readonly updated_at: string;
 };

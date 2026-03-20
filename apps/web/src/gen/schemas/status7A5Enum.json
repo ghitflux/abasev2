@@ -1,0 +1,6 @@
+{
+  "enum": ["pendente", "pago"],
+  "type": "string",
+  "description": "* `pendente` - Pendente\n* `pago` - Pago",
+  "x-readme-ref-name": "Status7a5Enum"
+}

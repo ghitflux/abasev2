@@ -85,7 +85,8 @@ export type AssociadoCreate = {
    */
   valor_liquido: string;
   /**
-   * @minLength 1
+   * @minLength 3
+   * @maxLength 4
    * @default 3
    * @type integer | undefined
    */

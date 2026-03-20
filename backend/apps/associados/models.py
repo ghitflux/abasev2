@@ -117,6 +117,15 @@ class Associado(BaseModel):
         blank=True,
     )
     agente_filial = models.CharField(max_length=160, blank=True)
+    aceite_termos = models.BooleanField(default=False)
+    termo_adesao_admin_path = models.CharField(max_length=500, blank=True)
+    termo_antecipacao_admin_path = models.CharField(max_length=500, blank=True)
+    contato_status = models.CharField(max_length=20, blank=True)
+    contato_updated_at = models.DateTimeField(null=True, blank=True)
+    auxilio1_status = models.CharField(max_length=20, blank=True)
+    auxilio1_updated_at = models.DateTimeField(null=True, blank=True)
+    auxilio2_status = models.CharField(max_length=20, blank=True)
+    auxilio2_updated_at = models.DateTimeField(null=True, blank=True)
     auxilio_taxa = models.DecimalField(max_digits=5, decimal_places=2, default=10)
     auxilio_data_envio = models.DateField(null=True, blank=True)
     auxilio_status = models.CharField(max_length=80, blank=True)
@@ -550,3 +559,47 @@ class Documento(BaseModel):
             return bool(default_storage.exists(arquivo_name))
         except Exception:
             return False
+
+
+class Auxilio2Filiacao(BaseModel):
+    class Status(models.TextChoices):
+        PENDENTE = "pendente", "Pendente"
+        PAGO = "pago", "Pago"
+        EXPIRADO = "expirado", "Expirado"
+        CANCELADO = "cancelado", "Cancelado"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="auxilio2_filiacoes",
+    )
+    associado = models.ForeignKey(
+        Associado,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="auxilio2_filiacoes",
+    )
+    txid = models.CharField(max_length=255, unique=True, null=True, blank=True)
+    charge_id = models.CharField(max_length=255, blank=True, db_index=True)
+    loc_id = models.BigIntegerField(null=True, blank=True)
+    valor = models.DecimalField(max_digits=10, decimal_places=2, default=30)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDENTE,
+    )
+    pix_copia_cola = models.TextField(blank=True)
+    imagem_qrcode = models.TextField(blank=True)
+    raw = models.JSONField(null=True, blank=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "status"]),
+            models.Index(fields=["charge_id"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Auxilio2 #{self.pk} - {self.user_id} - {self.status}"

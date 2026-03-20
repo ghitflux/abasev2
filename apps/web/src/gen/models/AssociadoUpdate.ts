@@ -91,6 +91,8 @@ export type AssociadoUpdate = {
    */
   valor_liquido?: string;
   /**
+   * @minLength 3
+   * @maxLength 4
    * @type integer | undefined
    */
   prazo_meses?: number;

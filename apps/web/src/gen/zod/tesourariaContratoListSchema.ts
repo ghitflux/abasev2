@@ -19,6 +19,7 @@ export const tesourariaContratoListSchema = z.object({
     return simpleUserSchema;
   },
   agente_nome: z.string(),
+  comissao_agente: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
   margem_disponivel: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
   comprovantes: z.string(),
   dados_bancarios: z.string(),

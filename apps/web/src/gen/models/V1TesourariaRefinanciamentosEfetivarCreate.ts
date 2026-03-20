@@ -7,7 +7,7 @@ import type { RefinanciamentoList } from "./RefinanciamentoList.ts";
 
 export type V1TesourariaRefinanciamentosEfetivarCreatePathParams = {
   /**
-   * @description A unique integer value identifying this refinanciamento.
+   * @description Um valor inteiro único que identifica este refinanciamento.
    * @type integer
    */
   id: number;
@@ -35,6 +35,17 @@ export type V1TesourariaRefinanciamentosEfetivarCreateMutationRequest = Omit<
   | "mensalidades_total"
   | "refinanciamento_numero"
   | "pagamento_status"
+  | "legacy_refinanciamento_id"
+  | "origem"
+  | "data_renovacao"
+  | "origem_renovacao"
+  | "motivo_apto_renovacao"
+  | "data_primeiro_ciclo_ativado"
+  | "data_ativacao_ciclo"
+  | "origem_data_ativacao"
+  | "data_solicitacao_renovacao"
+  | "ativacao_inferida"
+  | "etapa_operacional"
   | "created_at"
   | "updated_at"
   | "auditoria"

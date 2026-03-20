@@ -11,6 +11,7 @@ from apps.contratos.cycle_projection import (
     get_contract_visual_status_payload,
 )
 from apps.contratos.models import Contrato, Parcela
+from apps.financeiro.models import Despesa
 from apps.importacao.models import ArquivoRetorno, PagamentoMensalidade
 from apps.refinanciamento.serializers import ComprovanteResumoSerializer
 from apps.tesouraria.initial_payment import build_initial_payment_payload
@@ -376,3 +377,146 @@ class DarBaixaManualSerializer(serializers.Serializer):
     comprovante = serializers.FileField(required=True)
     valor_pago = serializers.DecimalField(max_digits=10, decimal_places=2, required=True)
     observacao = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class DespesaAnexoSerializer(serializers.Serializer):
+    nome = serializers.CharField(read_only=True)
+    url = serializers.CharField(read_only=True)
+    arquivo_referencia = serializers.CharField(read_only=True)
+    arquivo_disponivel_localmente = serializers.BooleanField(read_only=True)
+    tipo_referencia = serializers.CharField(read_only=True)
+
+
+class DespesaListSerializer(serializers.ModelSerializer):
+    lancado_por = SimpleUserSerializer(source="user", read_only=True)
+    anexo = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Despesa
+        fields = [
+            "id",
+            "categoria",
+            "descricao",
+            "valor",
+            "data_despesa",
+            "data_pagamento",
+            "status",
+            "tipo",
+            "recorrencia",
+            "recorrencia_ativa",
+            "observacoes",
+            "status_anexo",
+            "anexo",
+            "lancado_por",
+            "created_at",
+            "updated_at",
+        ]
+
+    @extend_schema_field(DespesaAnexoSerializer(allow_null=True))
+    def get_anexo(self, obj: Despesa) -> dict[str, object] | None:
+        if not obj.anexo:
+            return None
+
+        reference = build_filefield_reference(
+            obj.anexo,
+            request=self.context.get("request"),
+            missing_type="legado_sem_arquivo",
+        )
+        return {
+            "nome": obj.nome_anexo or obj.anexo.name.rsplit("/", 1)[-1],
+            "url": reference.url,
+            "arquivo_referencia": reference.arquivo_referencia,
+            "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
+            "tipo_referencia": reference.tipo_referencia,
+        }
+
+
+class DespesaWriteSerializer(serializers.ModelSerializer):
+    anexo = serializers.FileField(required=False, allow_null=True)
+    data_pagamento = serializers.DateField(required=False, allow_null=True)
+    tipo = serializers.ChoiceField(
+        choices=Despesa.Tipo.choices,
+        required=False,
+        allow_blank=True,
+    )
+    recorrencia = serializers.ChoiceField(
+        choices=Despesa.Recorrencia.choices,
+        required=False,
+    )
+
+    class Meta:
+        model = Despesa
+        fields = [
+            "categoria",
+            "descricao",
+            "valor",
+            "data_despesa",
+            "data_pagamento",
+            "status",
+            "tipo",
+            "recorrencia",
+            "recorrencia_ativa",
+            "observacoes",
+            "anexo",
+        ]
+
+    def validate(self, attrs):
+        instance: Despesa | None = getattr(self, "instance", None)
+        resolved_status = attrs.get(
+            "status",
+            instance.status if instance else Despesa.Status.PENDENTE,
+        )
+        resolved_data_pagamento = attrs.get(
+            "data_pagamento",
+            instance.data_pagamento if instance else None,
+        )
+
+        if resolved_status == Despesa.Status.PAGO and resolved_data_pagamento is None:
+            raise serializers.ValidationError(
+                {
+                    "data_pagamento": "A data de pagamento é obrigatória quando a despesa estiver paga."
+                }
+            )
+
+        if resolved_status == Despesa.Status.PENDENTE:
+            attrs["data_pagamento"] = None
+
+        return attrs
+
+    def create(self, validated_data):
+        anexo = validated_data.pop("anexo", None)
+        request = self.context["request"]
+        validated_data.setdefault("status", Despesa.Status.PENDENTE)
+        validated_data.setdefault("recorrencia", Despesa.Recorrencia.NENHUMA)
+        validated_data.setdefault("recorrencia_ativa", True)
+        despesa = Despesa(user=request.user, **validated_data)
+        if anexo:
+            despesa.anexo = anexo
+            despesa.nome_anexo = getattr(anexo, "name", "")[:255]
+            despesa.status_anexo = Despesa.StatusAnexo.ANEXADO
+        else:
+            despesa.status_anexo = Despesa.StatusAnexo.PENDENTE
+        despesa.save()
+        return despesa
+
+    def update(self, instance, validated_data):
+        anexo = validated_data.pop("anexo", None)
+
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+
+        if anexo:
+            instance.anexo = anexo
+            instance.nome_anexo = getattr(anexo, "name", "")[:255]
+            instance.status_anexo = Despesa.StatusAnexo.ANEXADO
+
+        if not instance.anexo:
+            instance.status_anexo = Despesa.StatusAnexo.PENDENTE
+            instance.nome_anexo = ""
+
+        instance.save()
+        return instance
+
+
+class DespesaAnexarSerializer(serializers.Serializer):
+    anexo = serializers.FileField(required=True)

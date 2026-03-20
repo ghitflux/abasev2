@@ -3,6 +3,7 @@
  * Do not edit manually.
  */
 
+import type { ComprovanteResumoOrigemEnum } from "./ComprovanteResumoOrigemEnum.ts";
 import type { ComprovanteResumoTipoEnum } from "./ComprovanteResumoTipoEnum.ts";
 import type { PapelEnum } from "./PapelEnum.ts";
 import type { SimpleUser } from "./SimpleUser.ts";
@@ -13,12 +14,24 @@ export type ComprovanteResumo = {
    */
   readonly id: number;
   /**
-   * @description * `pix` - PIX\n* `contrato` - Contrato\n* `outro` - Outro
+   * @type integer
+   */
+  refinanciamento?: number | null;
+  /**
+   * @type integer
+   */
+  contrato?: number | null;
+  /**
+   * @type integer
+   */
+  ciclo?: number | null;
+  /**
+   * @description * `pix` - PIX\n* `contrato` - Contrato\n* `termo_antecipacao` - Termo de antecipação\n* `comprovante_pagamento_associado` - Comprovante pagamento associado\n* `comprovante_pagamento_agente` - Comprovante pagamento agente\n* `outro` - Outro
    * @type string | undefined
    */
   tipo?: ComprovanteResumoTipoEnum;
   /**
-   * @description * `associado` - Associado\n* `agente` - Agente
+   * @description * `associado` - Associado\n* `agente` - Agente\n* `operacional` - Operacional
    * @type string | undefined
    */
   papel?: PapelEnum;
@@ -27,10 +40,48 @@ export type ComprovanteResumo = {
    */
   arquivo: string;
   /**
+   * @type string
+   */
+  readonly arquivo_referencia: string;
+  /**
+   * @type boolean
+   */
+  readonly arquivo_disponivel_localmente: boolean;
+  /**
+   * @type string
+   */
+  readonly tipo_referencia: string;
+  /**
    * @maxLength 255
    * @type string | undefined
    */
   nome_original?: string;
+  /**
+   * @maxLength 120
+   * @type string | undefined
+   */
+  mime?: string;
+  /**
+   * @minLength -9223372036854776000
+   * @maxLength 9223372036854776000
+   * @type integer, int64
+   */
+  size_bytes?: number | null;
+  /**
+   * @type string, date-time
+   */
+  data_pagamento?: string | null;
+  /**
+   * @description * `efetivacao_contrato` - Efetivação do contrato\n* `analise_renovacao` - Análise da renovação\n* `tesouraria_renovacao` - Tesouraria da renovação\n* `legado` - Legado\n* `outro` - Outro
+   * @type string | undefined
+   */
+  origem?: ComprovanteResumoOrigemEnum;
+  /**
+   * @minLength 0
+   * @maxLength 4294967295
+   * @type integer, int64
+   */
+  legacy_comprovante_id?: number | null;
   readonly enviado_por: SimpleUser;
   /**
    * @type string, date-time

@@ -53,7 +53,6 @@ export const schemaRetrieveQueryParamsLangEnum = {
   hi: "hi",
   hr: "hr",
   hsb: "hsb",
-  ht: "ht",
   hu: "hu",
   hy: "hy",
   ia: "ia",

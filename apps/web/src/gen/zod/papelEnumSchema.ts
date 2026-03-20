@@ -6,8 +6,10 @@
 import * as z from "zod";
 
 /**
- * @description * `associado` - Associado\n* `agente` - Agente
+ * @description * `associado` - Associado\n* `agente` - Agente\n* `operacional` - Operacional
  */
 export const papelEnumSchema = z
-  .enum(["associado", "agente"])
-  .describe("* `associado` - Associado\n* `agente` - Agente");
+  .enum(["associado", "agente", "operacional"])
+  .describe(
+    "* `associado` - Associado\n* `agente` - Agente\n* `operacional` - Operacional",
+  );

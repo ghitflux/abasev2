@@ -7,7 +7,7 @@ import type { ArquivoRetornoFinanceiroPayload } from "./ArquivoRetornoFinanceiro
 
 export type V1ImportacaoArquivoRetornoFinanceiroRetrievePathParams = {
   /**
-   * @description A unique integer value identifying this arquivo retorno.
+   * @description Um valor inteiro único que identifica este arquivo retorno.
    * @type integer
    */
   id: number;

@@ -16,6 +16,7 @@ import { tipoDocumentoEnumSchema } from "./tipoDocumentoEnumSchema.ts";
 export const associadoDetailSchema = z.object({
   id: z.int(),
   matricula: z.optional(z.string().max(20)),
+  matricula_display: z.string(),
   get tipo_documento() {
     return tipoDocumentoEnumSchema
       .describe("* `CPF` - CPF\n* `CNPJ` - CNPJ")
@@ -42,6 +43,9 @@ export const associadoDetailSchema = z.object({
       )
       .optional();
   },
+  status_renovacao: z.string(),
+  status_visual_slug: z.string(),
+  status_visual_label: z.string(),
   observacao: z.optional(z.string()),
   get agente() {
     return simpleUserSchema;

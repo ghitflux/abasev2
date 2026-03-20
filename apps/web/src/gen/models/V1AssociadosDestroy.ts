@@ -5,7 +5,7 @@
 
 export type V1AssociadosDestroyPathParams = {
   /**
-   * @description A unique integer value identifying this associado.
+   * @description Um valor inteiro único que identifica este associado.
    * @type integer
    */
   id: number;

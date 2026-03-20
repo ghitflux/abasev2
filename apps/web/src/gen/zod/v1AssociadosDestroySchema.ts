@@ -9,7 +9,7 @@ export const V1AssociadosDestroyPathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("A unique integer value identifying this associado."),
+    .describe("Um valor inteiro único que identifica este associado."),
 });
 
 /**

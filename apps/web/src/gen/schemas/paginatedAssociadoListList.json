@@ -23,6 +23,8 @@
           "id": { "type": "integer", "readOnly": true },
           "nome_completo": { "type": "string", "maxLength": 255 },
           "matricula": { "type": "string", "maxLength": 20 },
+          "matricula_orgao": { "type": "string", "maxLength": 60 },
+          "matricula_display": { "type": "string", "readOnly": true },
           "cpf_cnpj": { "type": "string", "maxLength": 18 },
           "status": {
             "enum": [
@@ -37,6 +39,9 @@
             "description": "* `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente",
             "x-readme-ref-name": "Status427Enum"
           },
+          "status_renovacao": { "type": "string", "readOnly": true },
+          "status_visual_slug": { "type": "string", "readOnly": true },
+          "status_visual_label": { "type": "string", "readOnly": true },
           "agente": {
             "allOf": [
               {
@@ -60,7 +65,11 @@
           "ciclos_fechados",
           "cpf_cnpj",
           "id",
-          "nome_completo"
+          "matricula_display",
+          "nome_completo",
+          "status_renovacao",
+          "status_visual_label",
+          "status_visual_slug"
         ],
         "x-readme-ref-name": "AssociadoList"
       }

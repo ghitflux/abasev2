@@ -9,9 +9,9 @@ import { relatorioGeradoSchema } from "./relatorioGeradoSchema.ts";
 export const V1RelatoriosListQueryParamsSchema = z
   .object({
     ordering: z.optional(
-      z.string().describe("Which field to use when ordering the results."),
+      z.string().describe("Qual campo usar ao ordenar os resultados."),
     ),
-    search: z.optional(z.string().describe("A search term.")),
+    search: z.optional(z.string().describe("Um termo de busca.")),
   })
   .optional();
 

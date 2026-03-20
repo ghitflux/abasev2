@@ -11,6 +11,8 @@ export const associadoListSchema = z.object({
   id: z.int(),
   nome_completo: z.string().max(255),
   matricula: z.optional(z.string().max(20)),
+  matricula_orgao: z.optional(z.string().max(60)),
+  matricula_display: z.string(),
   cpf_cnpj: z.string().max(18),
   get status() {
     return status427EnumSchema
@@ -19,6 +21,9 @@ export const associadoListSchema = z.object({
       )
       .optional();
   },
+  status_renovacao: z.string(),
+  status_visual_slug: z.string(),
+  status_visual_label: z.string(),
   get agente() {
     return simpleUserSchema;
   },

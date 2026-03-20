@@ -21,6 +21,7 @@ export const pendenciaSchema = z.object({
   associado_id: z.int(),
   associado_nome: z.string(),
   matricula: z.string(),
+  matricula_display: z.string(),
   cpf_cnpj: z.string(),
   contrato_codigo: z.string(),
   created_at: z.iso.datetime(),

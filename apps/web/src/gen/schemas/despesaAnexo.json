@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "nome": { "type": "string", "readOnly": true },
+    "url": { "type": "string", "readOnly": true },
+    "arquivo_referencia": { "type": "string", "readOnly": true },
+    "arquivo_disponivel_localmente": { "type": "boolean", "readOnly": true },
+    "tipo_referencia": { "type": "string", "readOnly": true }
+  },
+  "required": [
+    "arquivo_disponivel_localmente",
+    "arquivo_referencia",
+    "nome",
+    "tipo_referencia",
+    "url"
+  ],
+  "x-readme-ref-name": "DespesaAnexo"
+}

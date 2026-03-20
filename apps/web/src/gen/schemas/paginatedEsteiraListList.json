@@ -27,6 +27,11 @@
           "valor_disponivel": { "type": "string", "readOnly": true },
           "comissao_agente": { "type": "string", "readOnly": true },
           "status_contrato": { "type": "string", "readOnly": true },
+          "status_contrato_visual_slug": { "type": "string", "readOnly": true },
+          "status_contrato_visual_label": {
+            "type": "string",
+            "readOnly": true
+          },
           "status_documentacao": { "type": "string", "readOnly": true },
           "contato_web": { "type": "string", "readOnly": true },
           "termos_web": { "type": "string", "readOnly": true },
@@ -89,6 +94,8 @@
           "ordem",
           "orgao_publico",
           "status_contrato",
+          "status_contrato_visual_label",
+          "status_contrato_visual_slug",
           "status_documentacao",
           "termos_web",
           "valor_disponivel"

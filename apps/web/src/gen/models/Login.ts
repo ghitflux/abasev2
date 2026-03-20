@@ -5,9 +5,13 @@
 
 export type Login = {
   /**
-   * @type string, email
+   * @type string | undefined, email
    */
-  email: string;
+  email?: string;
+  /**
+   * @type string | undefined
+   */
+  cpf?: string;
   /**
    * @type string
    */

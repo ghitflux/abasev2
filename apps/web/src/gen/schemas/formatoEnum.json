@@ -1,6 +1,6 @@
 {
-  "enum": ["txt", "csv", "xlsx"],
+  "enum": ["txt", "csv", "xlsx", "man"],
   "type": "string",
-  "description": "* `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX",
+  "description": "* `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX\n* `man` - Manual",
   "x-readme-ref-name": "FormatoEnum"
 }

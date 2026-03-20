@@ -6,6 +6,7 @@
 import * as z from "zod";
 
 export const loginSchema = z.object({
-  email: z.email(),
+  email: z.optional(z.email()),
+  cpf: z.optional(z.string()),
   password: z.string(),
 });

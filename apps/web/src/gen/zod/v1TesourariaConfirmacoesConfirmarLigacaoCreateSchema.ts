@@ -11,7 +11,7 @@ export const V1TesourariaConfirmacoesConfirmarLigacaoCreatePathParamsSchema =
     id: z.coerce
       .number()
       .int()
-      .describe("A unique integer value identifying this confirmacao."),
+      .describe("Um valor inteiro único que identifica este confirmacao."),
   });
 
 export const V1TesourariaConfirmacoesConfirmarLigacaoCreate200Schema = z.lazy(

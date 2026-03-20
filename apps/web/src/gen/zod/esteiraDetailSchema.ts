@@ -18,6 +18,8 @@ export const esteiraDetailSchema = z.object({
   valor_disponivel: z.string(),
   comissao_agente: z.string(),
   status_contrato: z.string(),
+  status_contrato_visual_slug: z.string(),
+  status_contrato_visual_label: z.string(),
   status_documentacao: z.string(),
   contato_web: z.string(),
   termos_web: z.string(),

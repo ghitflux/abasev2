@@ -93,6 +93,22 @@ export type ArquivoRetornoFinanceiroItem = {
    */
   manual_comprovante_path?: string | null;
   /**
+   * @type string | undefined
+   */
+  origem_baixa?: string;
+  /**
+   * @type string
+   */
+  arquivo_referencia?: string | null;
+  /**
+   * @type boolean | undefined
+   */
+  arquivo_disponivel_localmente?: boolean;
+  /**
+   * @type string | undefined
+   */
+  tipo_referencia?: string;
+  /**
    * @type string
    */
   categoria: string;

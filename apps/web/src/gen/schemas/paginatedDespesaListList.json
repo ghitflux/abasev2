@@ -1,0 +1,136 @@
+{
+  "type": "object",
+  "required": ["count", "results"],
+  "properties": {
+    "count": { "type": "integer", "example": 123 },
+    "next": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=4"
+    },
+    "previous": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=2"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "categoria": { "type": "string", "maxLength": 100 },
+          "descricao": { "type": "string", "maxLength": 255 },
+          "valor": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$"
+          },
+          "data_despesa": { "type": "string", "format": "date" },
+          "data_pagamento": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "status": {
+            "enum": ["pendente", "pago"],
+            "type": "string",
+            "description": "* `pendente` - Pendente\n* `pago` - Pago",
+            "x-readme-ref-name": "Status7a5Enum"
+          },
+          "tipo": {
+            "oneOf": [
+              {
+                "enum": ["fixa", "variavel"],
+                "type": "string",
+                "description": "* `fixa` - Fixa\n* `variavel` - Variável",
+                "x-readme-ref-name": "TipoC90Enum"
+              },
+              { "enum": [""], "x-readme-ref-name": "BlankEnum" }
+            ]
+          },
+          "recorrencia": {
+            "enum": ["nenhuma", "mensal", "trimestral", "anual"],
+            "type": "string",
+            "description": "* `nenhuma` - Nenhuma\n* `mensal` - Mensal\n* `trimestral` - Trimestral\n* `anual` - Anual",
+            "x-readme-ref-name": "RecorrenciaEnum"
+          },
+          "recorrencia_ativa": { "type": "boolean" },
+          "observacoes": { "type": "string" },
+          "status_anexo": {
+            "enum": ["pendente", "anexado"],
+            "type": "string",
+            "description": "* `pendente` - Pendente\n* `anexado` - Anexado",
+            "x-readme-ref-name": "StatusAnexoEnum"
+          },
+          "anexo": {
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "nome": { "type": "string", "readOnly": true },
+                  "url": { "type": "string", "readOnly": true },
+                  "arquivo_referencia": { "type": "string", "readOnly": true },
+                  "arquivo_disponivel_localmente": {
+                    "type": "boolean",
+                    "readOnly": true
+                  },
+                  "tipo_referencia": { "type": "string", "readOnly": true }
+                },
+                "required": [
+                  "arquivo_disponivel_localmente",
+                  "arquivo_referencia",
+                  "nome",
+                  "tipo_referencia",
+                  "url"
+                ],
+                "x-readme-ref-name": "DespesaAnexo"
+              }
+            ],
+            "nullable": true,
+            "readOnly": true
+          },
+          "lancado_por": {
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer", "readOnly": true },
+                  "full_name": { "type": "string", "readOnly": true }
+                },
+                "required": ["full_name", "id"],
+                "x-readme-ref-name": "SimpleUser"
+              }
+            ],
+            "readOnly": true
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          }
+        },
+        "required": [
+          "anexo",
+          "categoria",
+          "created_at",
+          "data_despesa",
+          "descricao",
+          "id",
+          "lancado_por",
+          "updated_at",
+          "valor"
+        ],
+        "x-readme-ref-name": "DespesaList"
+      }
+    }
+  },
+  "x-readme-ref-name": "PaginatedDespesaListList"
+}

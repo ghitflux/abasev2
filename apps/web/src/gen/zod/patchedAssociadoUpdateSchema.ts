@@ -49,7 +49,7 @@ export const patchedAssociadoUpdateSchema = z.object({
   },
   valor_bruto_total: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
   valor_liquido: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
-  prazo_meses: z.optional(z.int()),
+  prazo_meses: z.optional(z.int().min(3).max(4)),
   taxa_antecipacao: z.optional(z.string().regex(/^-?\d{0,3}(?:\.\d{0,2})?$/)),
   mensalidade: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
   margem_disponivel: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),

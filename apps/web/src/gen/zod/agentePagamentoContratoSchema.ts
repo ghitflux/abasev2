@@ -4,6 +4,8 @@
  */
 
 import * as z from "zod";
+import { agentePagamentoCicloSchema } from "./agentePagamentoCicloSchema.ts";
+import { agentePagamentoComprovanteSchema } from "./agentePagamentoComprovanteSchema.ts";
 
 export const agentePagamentoContratoSchema = z.object({
   id: z.int(),
@@ -12,12 +14,25 @@ export const agentePagamentoContratoSchema = z.object({
   cpf_cnpj: z.string(),
   contrato_codigo: z.string(),
   status_contrato: z.string(),
+  status_visual_slug: z.string(),
+  status_visual_label: z.string(),
   data_contrato: z.optional(z.iso.date()),
   auxilio_liberado_em: z.iso.date().nullish(),
+  pagamento_inicial_status: z.string(),
+  pagamento_inicial_status_label: z.string(),
+  pagamento_inicial_valor: z.string(),
+  pagamento_inicial_paid_at: z.string(),
   valor_mensalidade: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
   comissao_agente: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
   parcelas_total: z.int(),
   parcelas_pagas: z.int(),
-  comprovantes_efetivacao: z.string(),
-  ciclos: z.string(),
+  get comprovantes_efetivacao() {
+    return z.array(agentePagamentoComprovanteSchema);
+  },
+  get pagamento_inicial_evidencias() {
+    return z.array(agentePagamentoComprovanteSchema);
+  },
+  get ciclos() {
+    return z.array(agentePagamentoCicloSchema);
+  },
 });

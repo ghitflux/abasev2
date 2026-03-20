@@ -12,7 +12,7 @@ export const arquivoRetornoDetailSchema = z.object({
   arquivo_nome: z.string().max(255),
   get formato() {
     return formatoEnumSchema.describe(
-      "* `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX",
+      "* `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX\n* `man` - Manual",
     );
   },
   sistema_origem: z.string(),

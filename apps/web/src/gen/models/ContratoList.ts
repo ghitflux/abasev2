@@ -35,6 +35,14 @@ export type ContratoList = {
   /**
    * @type string
    */
+  readonly status_visual_slug: string;
+  /**
+   * @type string
+   */
+  readonly status_visual_label: string;
+  /**
+   * @type string
+   */
   readonly etapa_fluxo: string;
   /**
    * @type string | undefined, date
@@ -62,4 +70,12 @@ export type ContratoList = {
    * @type boolean
    */
   readonly pode_solicitar_refinanciamento: boolean;
+  /**
+   * @type string
+   */
+  readonly status_renovacao: string;
+  /**
+   * @type string
+   */
+  readonly refinanciamento_id: string;
 };

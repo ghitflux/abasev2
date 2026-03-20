@@ -34,6 +34,23 @@
           "status_parcela": { "type": "string" },
           "status_visual": { "type": "string" },
           "status_explicacao": { "type": "string" },
+          "data_primeiro_ciclo_ativado": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "data_ativacao_ciclo": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "origem_data_ativacao": { "type": "string" },
+          "data_solicitacao_renovacao": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "ativacao_inferida": { "type": "boolean" },
           "matricula": { "type": "string" },
           "agente_responsavel": { "type": "string" },
           "parcelas_pagas": { "type": "integer" },
@@ -66,6 +83,7 @@
         "required": [
           "agente_responsavel",
           "associado_id",
+          "ativacao_inferida",
           "ciclo_id",
           "ciclo_numero",
           "competencia",
@@ -74,7 +92,10 @@
           "contrato_referencia_renovacao_codigo",
           "contrato_referencia_renovacao_id",
           "cpf_cnpj",
+          "data_ativacao_ciclo",
           "data_pagamento",
+          "data_primeiro_ciclo_ativado",
+          "data_solicitacao_renovacao",
           "gerou_encerramento",
           "gerou_novo_ciclo",
           "id",
@@ -82,6 +103,7 @@
           "nome_associado",
           "orgao_pagto_nome",
           "orgao_publico",
+          "origem_data_ativacao",
           "parcelas_pagas",
           "parcelas_total",
           "possui_multiplos_contratos",

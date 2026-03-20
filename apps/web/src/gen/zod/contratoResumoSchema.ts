@@ -4,7 +4,6 @@
  */
 
 import * as z from "zod";
-import { cicloDetailSchema } from "./cicloDetailSchema.ts";
 import { status1D4EnumSchema } from "./status1D4EnumSchema.ts";
 
 export const contratoResumoSchema = z.object({
@@ -35,7 +34,19 @@ export const contratoResumoSchema = z.object({
   contato_web: z.optional(z.boolean()),
   termos_web: z.optional(z.boolean()),
   auxilio_liberado_em: z.iso.date().nullish(),
-  get ciclos() {
-    return z.array(cicloDetailSchema);
-  },
+  data_primeiro_ciclo_ativado: z.string(),
+  origem_data_primeiro_ciclo: z.string(),
+  primeiro_ciclo_ativacao_inferida: z.boolean(),
+  status_visual_slug: z.string(),
+  status_visual_label: z.string(),
+  pagamento_inicial_status: z.string(),
+  pagamento_inicial_status_label: z.string(),
+  pagamento_inicial_valor: z.string(),
+  pagamento_inicial_paid_at: z.string(),
+  pagamento_inicial_evidencias: z.string(),
+  status_renovacao: z.string(),
+  refinanciamento_id: z.string(),
+  meses_nao_pagos: z.string(),
+  movimentos_financeiros_avulsos: z.string(),
+  ciclos: z.string(),
 });

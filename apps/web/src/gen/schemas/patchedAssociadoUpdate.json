@@ -93,7 +93,7 @@
       "format": "decimal",
       "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
     },
-    "prazo_meses": { "type": "integer" },
+    "prazo_meses": { "type": "integer", "maximum": 4, "minimum": 3 },
     "taxa_antecipacao": {
       "type": "string",
       "format": "decimal",

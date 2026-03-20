@@ -7,7 +7,7 @@ import type { EsteiraList } from "./EsteiraList.ts";
 
 export type V1EsteiraAprovarCreatePathParams = {
   /**
-   * @description A unique integer value identifying this esteira item.
+   * @description Um valor inteiro único que identifica este esteira item.
    * @type integer
    */
   id: number;
@@ -24,6 +24,8 @@ export type V1EsteiraAprovarCreateMutationRequest = Omit<
   | "valor_disponivel"
   | "comissao_agente"
   | "status_contrato"
+  | "status_contrato_visual_slug"
+  | "status_contrato_visual_label"
   | "status_documentacao"
   | "contato_web"
   | "termos_web"

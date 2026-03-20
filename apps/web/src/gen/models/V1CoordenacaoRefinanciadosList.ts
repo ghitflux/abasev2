@@ -7,22 +7,22 @@ import type { PaginatedRefinanciamentoListList } from "./PaginatedRefinanciament
 
 export type V1CoordenacaoRefinanciadosListQueryParams = {
   /**
-   * @description Which field to use when ordering the results.
+   * @description Qual campo usar ao ordenar os resultados.
    * @type string | undefined
    */
   ordering?: string;
   /**
-   * @description A page number within the paginated result set.
+   * @description Um número de página dentro do conjunto de resultados paginado.
    * @type integer | undefined
    */
   page?: number;
   /**
-   * @description Number of results to return per page.
+   * @description Número de resultados a serem retornados por página.
    * @type integer | undefined
    */
   page_size?: number;
   /**
-   * @description A search term.
+   * @description Um termo de busca.
    * @type string | undefined
    */
   search?: string;

@@ -1,0 +1,126 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "numero": { "type": "integer", "readOnly": true },
+    "data_inicio": { "type": "string", "format": "date", "readOnly": true },
+    "data_fim": { "type": "string", "format": "date", "readOnly": true },
+    "status": { "type": "string", "readOnly": true },
+    "status_visual_slug": { "type": "string", "readOnly": true },
+    "status_visual_label": { "type": "string", "readOnly": true },
+    "valor_total": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+      "readOnly": true
+    },
+    "parcelas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "numero": { "type": "integer", "readOnly": true },
+          "referencia_mes": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true
+          },
+          "valor": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+            "readOnly": true
+          },
+          "data_vencimento": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true
+          },
+          "status": { "type": "string", "readOnly": true },
+          "data_pagamento": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true,
+            "nullable": true
+          },
+          "observacao": { "type": "string", "readOnly": true },
+          "comprovantes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "readOnly": true },
+                "nome": { "type": "string", "readOnly": true },
+                "url": { "type": "string", "readOnly": true },
+                "arquivo_referencia": { "type": "string", "readOnly": true },
+                "arquivo_disponivel_localmente": {
+                  "type": "boolean",
+                  "readOnly": true
+                },
+                "tipo_referencia": { "type": "string", "readOnly": true },
+                "origem": { "type": "string", "readOnly": true },
+                "papel": { "type": "string", "readOnly": true },
+                "tipo": { "type": "string", "readOnly": true },
+                "status": { "type": "string", "readOnly": true },
+                "competencia": {
+                  "type": "string",
+                  "format": "date",
+                  "readOnly": true,
+                  "nullable": true
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "readOnly": true,
+                  "nullable": true
+                }
+              },
+              "required": [
+                "arquivo_disponivel_localmente",
+                "arquivo_referencia",
+                "competencia",
+                "created_at",
+                "id",
+                "nome",
+                "origem",
+                "papel",
+                "status",
+                "tipo",
+                "tipo_referencia",
+                "url"
+              ],
+              "x-readme-ref-name": "AgentePagamentoComprovante"
+            },
+            "readOnly": true
+          }
+        },
+        "required": [
+          "comprovantes",
+          "data_pagamento",
+          "data_vencimento",
+          "id",
+          "numero",
+          "observacao",
+          "referencia_mes",
+          "status",
+          "valor"
+        ],
+        "x-readme-ref-name": "AgentePagamentoParcela"
+      },
+      "readOnly": true
+    }
+  },
+  "required": [
+    "data_fim",
+    "data_inicio",
+    "id",
+    "numero",
+    "parcelas",
+    "status",
+    "status_visual_label",
+    "status_visual_slug",
+    "valor_total"
+  ],
+  "x-readme-ref-name": "AgentePagamentoCiclo"
+}

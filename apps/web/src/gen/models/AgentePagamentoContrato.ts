@@ -3,6 +3,9 @@
  * Do not edit manually.
  */
 
+import type { AgentePagamentoCiclo } from "./AgentePagamentoCiclo.ts";
+import type { AgentePagamentoComprovante } from "./AgentePagamentoComprovante.ts";
+
 export type AgentePagamentoContrato = {
   /**
    * @type integer
@@ -29,6 +32,14 @@ export type AgentePagamentoContrato = {
    */
   readonly status_contrato: string;
   /**
+   * @type string
+   */
+  readonly status_visual_slug: string;
+  /**
+   * @type string
+   */
+  readonly status_visual_label: string;
+  /**
    * @type string | undefined, date
    */
   data_contrato?: string;
@@ -36,6 +47,22 @@ export type AgentePagamentoContrato = {
    * @type string, date
    */
   auxilio_liberado_em?: string | null;
+  /**
+   * @type string
+   */
+  readonly pagamento_inicial_status: string;
+  /**
+   * @type string
+   */
+  readonly pagamento_inicial_status_label: string;
+  /**
+   * @type string
+   */
+  readonly pagamento_inicial_valor: string;
+  /**
+   * @type string
+   */
+  readonly pagamento_inicial_paid_at: string;
   /**
    * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
    * @type string | undefined, decimal
@@ -55,11 +82,15 @@ export type AgentePagamentoContrato = {
    */
   readonly parcelas_pagas: number;
   /**
-   * @type string
+   * @type array
    */
-  readonly comprovantes_efetivacao: string;
+  readonly comprovantes_efetivacao: AgentePagamentoComprovante[];
   /**
-   * @type string
+   * @type array
    */
-  readonly ciclos: string;
+  readonly pagamento_inicial_evidencias: AgentePagamentoComprovante[];
+  /**
+   * @type array
+   */
+  readonly ciclos: AgentePagamentoCiclo[];
 };

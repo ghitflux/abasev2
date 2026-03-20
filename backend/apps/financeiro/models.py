@@ -15,6 +15,10 @@ class Despesa(BaseModel):
         FIXA = "fixa", "Fixa"
         VARIAVEL = "variavel", "Variável"
 
+    class StatusAnexo(models.TextChoices):
+        PENDENTE = "pendente", "Pendente"
+        ANEXADO = "anexado", "Anexado"
+
     class Recorrencia(models.TextChoices):
         NENHUMA = "nenhuma", "Nenhuma"
         MENSAL = "mensal", "Mensal"
@@ -42,6 +46,13 @@ class Despesa(BaseModel):
     )
     recorrencia_ativa = models.BooleanField(default=True)
     observacoes = models.TextField(blank=True)
+    anexo = models.FileField(upload_to="despesas/", null=True, blank=True)
+    nome_anexo = models.CharField(max_length=255, blank=True)
+    status_anexo = models.CharField(
+        max_length=20,
+        choices=StatusAnexo.choices,
+        default=StatusAnexo.PENDENTE,
+    )
     comprovantes_json = models.JSONField(null=True, blank=True)
 
     class Meta:

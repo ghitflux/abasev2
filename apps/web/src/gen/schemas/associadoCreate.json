@@ -80,7 +80,12 @@
       "format": "decimal",
       "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
     },
-    "prazo_meses": { "type": "integer", "minimum": 1, "default": 3 },
+    "prazo_meses": {
+      "type": "integer",
+      "maximum": 4,
+      "minimum": 3,
+      "default": 3
+    },
     "taxa_antecipacao": {
       "type": "string",
       "format": "decimal",

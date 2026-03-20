@@ -1,0 +1,6 @@
+{
+  "enum": ["pendente", "anexado"],
+  "type": "string",
+  "description": "* `pendente` - Pendente\n* `anexado` - Anexado",
+  "x-readme-ref-name": "StatusAnexoEnum"
+}

@@ -7,7 +7,7 @@ import type { RelatorioGerado } from "./RelatorioGerado.ts";
 
 export type V1RelatoriosDownloadRetrievePathParams = {
   /**
-   * @description A unique integer value identifying this relatorio gerado.
+   * @description Um valor inteiro único que identifica este relatorio gerado.
    * @type integer
    */
   id: number;

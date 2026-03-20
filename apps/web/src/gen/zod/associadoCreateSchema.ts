@@ -41,7 +41,7 @@ export const associadoCreateSchema = z.object({
   },
   valor_bruto_total: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
   valor_liquido: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
-  prazo_meses: z.optional(z.int().min(1).default(3)),
+  prazo_meses: z.optional(z.int().min(3).max(4).default(3)),
   taxa_antecipacao: z.optional(
     z
       .string()

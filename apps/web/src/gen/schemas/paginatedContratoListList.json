@@ -30,6 +30,7 @@
                   "id": { "type": "integer", "readOnly": true },
                   "nome_completo": { "type": "string", "readOnly": true },
                   "matricula": { "type": "string", "readOnly": true },
+                  "matricula_display": { "type": "string", "readOnly": true },
                   "cpf_cnpj": { "type": "string", "readOnly": true },
                   "orgao_publico": { "type": "string", "readOnly": true },
                   "matricula_orgao": { "type": "string", "readOnly": true },
@@ -39,6 +40,7 @@
                   "cpf_cnpj",
                   "id",
                   "matricula",
+                  "matricula_display",
                   "matricula_orgao",
                   "nome_completo",
                   "orgao_publico",
@@ -77,6 +79,8 @@
           },
           "status_resumido": { "type": "string", "readOnly": true },
           "status_contrato_visual": { "type": "string", "readOnly": true },
+          "status_visual_slug": { "type": "string", "readOnly": true },
+          "status_visual_label": { "type": "string", "readOnly": true },
           "etapa_fluxo": { "type": "string", "readOnly": true },
           "data_contrato": { "type": "string", "format": "date" },
           "valor_mensalidade": {
@@ -98,7 +102,9 @@
           "pode_solicitar_refinanciamento": {
             "type": "boolean",
             "readOnly": true
-          }
+          },
+          "status_renovacao": { "type": "string", "readOnly": true },
+          "refinanciamento_id": { "type": "string", "readOnly": true }
         },
         "required": [
           "agente",
@@ -107,8 +113,12 @@
           "id",
           "mensalidades",
           "pode_solicitar_refinanciamento",
+          "refinanciamento_id",
           "status_contrato_visual",
-          "status_resumido"
+          "status_renovacao",
+          "status_resumido",
+          "status_visual_label",
+          "status_visual_slug"
         ],
         "x-readme-ref-name": "ContratoList"
       }

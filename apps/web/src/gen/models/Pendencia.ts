@@ -43,6 +43,10 @@ export type Pendencia = {
   /**
    * @type string
    */
+  readonly matricula_display: string;
+  /**
+   * @type string
+   */
   readonly cpf_cnpj: string;
   /**
    * @type string

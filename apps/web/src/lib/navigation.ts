@@ -82,6 +82,7 @@ const ROUTE_SEARCH_ALIASES: Partial<Record<string, string[]>> = {
   "/tesouraria/confirmacoes": ["confirmacoes", "tesouraria confirmacoes"],
   "/tesouraria/refinanciamentos": ["refinanciamentos", "tesouraria refinanciamentos"],
   "/tesouraria/baixa-manual": ["baixa manual", "baixa", "manual"],
+  "/tesouraria/despesas": ["despesas", "tesouraria despesas", "lancamento de despesas"],
   "/importacao": ["importacao", "arquivo retorno", "importar retorno"],
   "/renovacao-ciclos": [
     "renovacao de ciclos",
@@ -227,6 +228,12 @@ export const navigationSections: NavigationSection[] = [
             href: "/tesouraria/baixa-manual",
             icon: ArrowDownToLine,
             roles: ["TESOUREIRO", "COORDENADOR", "ADMIN"],
+          },
+          {
+            title: "Despesas",
+            href: "/tesouraria/despesas",
+            icon: ClipboardCheck,
+            roles: ["TESOUREIRO", "ADMIN"],
           },
         ],
       },

@@ -4,20 +4,31 @@
  */
 
 import * as z from "zod";
+import { documentoOrigemEnumSchema } from "./documentoOrigemEnumSchema.ts";
 import { documentoStatusEnumSchema } from "./documentoStatusEnumSchema.ts";
 import { documentoTipoEnumSchema } from "./documentoTipoEnumSchema.ts";
 
 export const documentoSchema = z.object({
   id: z.int(),
-  created_at: z.iso.datetime(),
-  updated_at: z.iso.datetime(),
-  deleted_at: z.iso.datetime().nullish(),
+  associado: z.int(),
   get tipo() {
     return documentoTipoEnumSchema.describe(
       "* `rg` - RG\n* `cpf` - CPF\n* `documento_frente` - Documento (frente)\n* `documento_verso` - Documento (verso)\n* `comprovante_residencia` - Comprovante de residência\n* `divulgacao` - Divulgação\n* `contracheque` - Contracheque\n* `termo_adesao` - Termo de adesão\n* `termo_antecipacao` - Termo de antecipação\n* `outro` - Outro",
     );
   },
   arquivo: z.url(),
+  arquivo_referencia: z.string(),
+  arquivo_disponivel_localmente: z.boolean(),
+  tipo_referencia: z.string(),
+  arquivo_referencia_path: z.optional(z.string().max(500)),
+  nome_original: z.optional(z.string().max(255)),
+  get origem() {
+    return documentoOrigemEnumSchema
+      .describe(
+        "* `operacional` - Operacional\n* `legado_cadastro` - Legado cadastro\n* `outro` - Outro",
+      )
+      .optional();
+  },
   get status() {
     return documentoStatusEnumSchema
       .describe(
@@ -26,5 +37,6 @@ export const documentoSchema = z.object({
       .optional();
   },
   observacao: z.optional(z.string()),
-  associado: z.int(),
+  created_at: z.iso.datetime(),
+  updated_at: z.iso.datetime(),
 });

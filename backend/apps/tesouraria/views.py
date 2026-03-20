@@ -5,9 +5,9 @@ from datetime import datetime
 from django.db.models import Count, Prefetch, Q
 from rest_framework import mixins, permissions
 from rest_framework.decorators import action
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
-from rest_framework.viewsets import GenericViewSet
+from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
 from apps.accounts.permissions import (
     IsAgenteOrTesoureiroOrAdmin,
@@ -16,6 +16,7 @@ from apps.accounts.permissions import (
 )
 from apps.associados.serializers import DadosBancariosSerializer
 from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.financeiro.models import Despesa
 from apps.importacao.models import ArquivoRetornoItem, PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante
 from apps.tesouraria.models import Confirmacao, Pagamento
@@ -27,11 +28,20 @@ from .serializers import (
     ConfirmacaoLinkSerializer,
     ConfirmacaoListSerializer,
     CongelarContratoSerializer,
+    DespesaAnexarSerializer,
+    DespesaListSerializer,
+    DespesaWriteSerializer,
     DarBaixaManualSerializer,
     EfetivarContratoSerializer,
     TesourariaContratoListSerializer,
 )
-from .services import BaixaManualService, ConfirmacaoService, TesourariaService, parse_competencia
+from .services import (
+    BaixaManualService,
+    ConfirmacaoService,
+    DespesaService,
+    TesourariaService,
+    parse_competencia,
+)
 
 
 def parse_month_filter(value: str | None):
@@ -295,3 +305,73 @@ class BaixaManualViewSet(mixins.ListModelMixin, GenericViewSet):
             {"id": baixa.id, "message": "Baixa manual registrada com sucesso."},
             status=201,
         )
+
+
+class DespesaViewSet(ModelViewSet):
+    queryset = Despesa.objects.none()
+    permission_classes = [permissions.IsAuthenticated, IsTesoureiroOrAdmin]
+    pagination_class = StandardResultsSetPagination
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_queryset(self):
+        competencia_param = self.request.query_params.get("competencia")
+        competencia = parse_competencia(competencia_param) if competencia_param else None
+        return DespesaService.listar_despesas(
+            competencia=competencia,
+            search=self.request.query_params.get("search"),
+            status=self.request.query_params.get("status"),
+            status_anexo=self.request.query_params.get("status_anexo"),
+            tipo=self.request.query_params.get("tipo"),
+        )
+
+    def get_serializer_class(self):
+        if self.action in {"create", "partial_update", "update"}:
+            return DespesaWriteSerializer
+        return DespesaListSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["request"] = self.request
+        return context
+
+    def list(self, request, *args, **kwargs):  # noqa: A003
+        queryset = self.filter_queryset(self.get_queryset())
+        kpis = DespesaService.kpis(queryset)
+        page = self.paginate_queryset(queryset)
+        serializer = self.get_serializer(page if page is not None else queryset, many=True)
+        if page is not None:
+            response = self.get_paginated_response(serializer.data)
+            response.data["kpis"] = kpis
+            return response
+        return Response({"results": serializer.data, "kpis": kpis})
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        despesa = serializer.save()
+        output = DespesaListSerializer(despesa, context=self.get_serializer_context())
+        return Response(output.data, status=201)
+
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        despesa = serializer.save()
+        output = DespesaListSerializer(despesa, context=self.get_serializer_context())
+        return Response(output.data)
+
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data)
+        serializer.is_valid(raise_exception=True)
+        despesa = serializer.save()
+        output = DespesaListSerializer(despesa, context=self.get_serializer_context())
+        return Response(output.data)
+
+    @action(detail=True, methods=["post"], url_path="anexar")
+    def anexar(self, request, pk=None):
+        payload = DespesaAnexarSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        despesa = DespesaService.anexar(self.get_object(), payload.validated_data["anexo"])
+        serializer = DespesaListSerializer(despesa, context=self.get_serializer_context())
+        return Response(serializer.data)

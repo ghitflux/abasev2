@@ -7,7 +7,7 @@ import type { RefinanciamentoList } from "./RefinanciamentoList.ts";
 
 export type V1RefinanciamentosElegibilidadeRetrievePathParams = {
   /**
-   * @description A unique integer value identifying this refinanciamento.
+   * @description Um valor inteiro único que identifica este refinanciamento.
    * @type integer
    */
   id: number;

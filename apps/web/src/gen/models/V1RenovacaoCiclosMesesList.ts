@@ -7,12 +7,12 @@ import type { RenovacaoCicloMes } from "./RenovacaoCicloMes.ts";
 
 export type V1RenovacaoCiclosMesesListQueryParams = {
   /**
-   * @description Which field to use when ordering the results.
+   * @description Qual campo usar ao ordenar os resultados.
    * @type string | undefined
    */
   ordering?: string;
   /**
-   * @description A search term.
+   * @description Um termo de busca.
    * @type string | undefined
    */
   search?: string;

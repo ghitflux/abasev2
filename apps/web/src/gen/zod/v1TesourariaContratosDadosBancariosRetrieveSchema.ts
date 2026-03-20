@@ -11,7 +11,7 @@ export const V1TesourariaContratosDadosBancariosRetrievePathParamsSchema =
     id: z.coerce
       .number()
       .int()
-      .describe("A unique integer value identifying this contrato."),
+      .describe("Um valor inteiro único que identifica este contrato."),
   });
 
 export const V1TesourariaContratosDadosBancariosRetrieve200Schema = z.lazy(

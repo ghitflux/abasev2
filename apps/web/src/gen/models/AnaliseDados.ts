@@ -25,6 +25,10 @@ export type AnaliseDados = {
    * @type string | undefined
    */
   matricula?: string;
+  /**
+   * @type string
+   */
+  readonly matricula_display: string;
   readonly agente: SimpleUser;
   /**
    * @type string

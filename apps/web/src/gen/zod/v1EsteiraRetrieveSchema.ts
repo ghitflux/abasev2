@@ -10,7 +10,7 @@ export const V1EsteiraRetrievePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("A unique integer value identifying this esteira item."),
+    .describe("Um valor inteiro único que identifica este esteira item."),
 });
 
 export const V1EsteiraRetrieve200Schema = z.lazy(() => esteiraDetailSchema);

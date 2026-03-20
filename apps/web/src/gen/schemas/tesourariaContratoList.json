@@ -24,6 +24,12 @@
       "readOnly": true
     },
     "agente_nome": { "type": "string", "readOnly": true },
+    "comissao_agente": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+      "readOnly": true
+    },
     "margem_disponivel": {
       "type": "string",
       "format": "decimal",
@@ -42,6 +48,7 @@
     "associado_id",
     "chave_pix",
     "codigo",
+    "comissao_agente",
     "comprovantes",
     "cpf_cnpj",
     "dados_bancarios",

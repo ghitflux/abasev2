@@ -11,28 +11,30 @@ export const V1ImportacaoArquivoRetornoPendenciasManuaisListPathParamsSchema =
     id: z.coerce
       .number()
       .int()
-      .describe("A unique integer value identifying this arquivo retorno."),
+      .describe("Um valor inteiro único que identifica este arquivo retorno."),
   });
 
 export const V1ImportacaoArquivoRetornoPendenciasManuaisListQueryParamsSchema =
   z
     .object({
       ordering: z.optional(
-        z.string().describe("Which field to use when ordering the results."),
+        z.string().describe("Qual campo usar ao ordenar os resultados."),
       ),
       page: z.optional(
         z.coerce
           .number()
           .int()
-          .describe("A page number within the paginated result set."),
+          .describe(
+            "Um número de página dentro do conjunto de resultados paginado.",
+          ),
       ),
       page_size: z.optional(
         z.coerce
           .number()
           .int()
-          .describe("Number of results to return per page."),
+          .describe("Número de resultados a serem retornados por página."),
       ),
-      search: z.optional(z.string().describe("A search term.")),
+      search: z.optional(z.string().describe("Um termo de busca.")),
     })
     .optional();
 

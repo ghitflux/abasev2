@@ -3,7 +3,6 @@
  * Do not edit manually.
  */
 
-import type { CicloDetail } from "./CicloDetail.ts";
 import type { Status1D4Enum } from "./Status1D4Enum.ts";
 
 export type ContratoResumo = {
@@ -96,7 +95,63 @@ export type ContratoResumo = {
    */
   auxilio_liberado_em?: string | null;
   /**
-   * @type array
+   * @type string
    */
-  readonly ciclos: CicloDetail[];
+  readonly data_primeiro_ciclo_ativado: string;
+  /**
+   * @type string
+   */
+  readonly origem_data_primeiro_ciclo: string;
+  /**
+   * @type boolean
+   */
+  readonly primeiro_ciclo_ativacao_inferida: boolean;
+  /**
+   * @type string
+   */
+  readonly status_visual_slug: string;
+  /**
+   * @type string
+   */
+  readonly status_visual_label: string;
+  /**
+   * @type string
+   */
+  readonly pagamento_inicial_status: string;
+  /**
+   * @type string
+   */
+  readonly pagamento_inicial_status_label: string;
+  /**
+   * @type string
+   */
+  readonly pagamento_inicial_valor: string;
+  /**
+   * @type string
+   */
+  readonly pagamento_inicial_paid_at: string;
+  /**
+   * @type string
+   */
+  readonly pagamento_inicial_evidencias: string;
+  /**
+   * @type string
+   */
+  readonly status_renovacao: string;
+  /**
+   * @type string
+   */
+  readonly refinanciamento_id: string;
+  /**
+   * @type string
+   */
+  readonly meses_nao_pagos: string;
+  /**
+   * @type string
+   */
+  readonly movimentos_financeiros_avulsos: string;
+  /**
+   * @type string
+   */
+  readonly ciclos: string;
 };

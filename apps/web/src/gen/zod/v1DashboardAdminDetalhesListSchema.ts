@@ -13,11 +13,11 @@ export const V1DashboardAdminDetalhesListQueryParamsSchema = z.object({
   date_start: z.optional(z.string()),
   metric: z.string(),
   ordering: z.optional(
-    z.string().describe("Which field to use when ordering the results."),
+    z.string().describe("Qual campo usar ao ordenar os resultados."),
   ),
   page: z.optional(z.coerce.number().int()),
   page_size: z.optional(z.string()),
-  search: z.optional(z.string().describe("A search term.")),
+  search: z.optional(z.string().describe("Um termo de busca.")),
   section: z.string(),
   status: z.optional(z.string()),
 });

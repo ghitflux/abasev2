@@ -39,6 +39,14 @@ export type EsteiraList = {
   /**
    * @type string
    */
+  readonly status_contrato_visual_slug: string;
+  /**
+   * @type string
+   */
+  readonly status_contrato_visual_label: string;
+  /**
+   * @type string
+   */
   readonly status_documentacao: string;
   /**
    * @type string

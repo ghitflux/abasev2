@@ -7,7 +7,7 @@ import type { TesourariaContratoList } from "./TesourariaContratoList.ts";
 
 export type V1TesourariaContratosDadosBancariosRetrievePathParams = {
   /**
-   * @description A unique integer value identifying this contrato.
+   * @description Um valor inteiro único que identifica este contrato.
    * @type integer
    */
   id: number;

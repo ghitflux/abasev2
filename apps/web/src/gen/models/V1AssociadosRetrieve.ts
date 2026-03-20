@@ -7,7 +7,7 @@ import type { AssociadoDetail } from "./AssociadoDetail.ts";
 
 export type V1AssociadosRetrievePathParams = {
   /**
-   * @description A unique integer value identifying this associado.
+   * @description Um valor inteiro único que identifica este associado.
    * @type integer
    */
   id: number;

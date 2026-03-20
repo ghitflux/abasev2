@@ -153,4 +153,29 @@ describe("GlobalHeaderSearch", () => {
     expect(push).toHaveBeenCalledWith("/tesouraria/baixa-manual");
     expect(input).toHaveValue("");
   });
+
+  it("reconhece a rota de despesas da tesouraria na busca global", async () => {
+    const user = userEvent.setup();
+    mockedApiFetch.mockResolvedValue({
+      count: 0,
+      next: null,
+      previous: null,
+      results: [],
+    } as never);
+
+    renderSearch();
+
+    const input = screen.getByPlaceholderText("Buscar rota, associado, CPF ou matrícula");
+
+    await user.click(input);
+    await user.type(input, "despesas");
+
+    const option = await screen.findByRole("button", { name: /Despesas/i });
+    await user.click(option);
+
+    await waitFor(() =>
+      expect(startRouteTransition).toHaveBeenCalledWith("/tesouraria/despesas"),
+    );
+    expect(push).toHaveBeenCalledWith("/tesouraria/despesas");
+  });
 });

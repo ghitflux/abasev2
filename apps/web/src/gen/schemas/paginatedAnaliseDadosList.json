@@ -24,6 +24,7 @@
           "nome_completo": { "type": "string", "maxLength": 255 },
           "cpf_cnpj": { "type": "string", "maxLength": 18 },
           "matricula": { "type": "string", "maxLength": 20 },
+          "matricula_display": { "type": "string", "readOnly": true },
           "agente": {
             "allOf": [
               {
@@ -55,6 +56,7 @@
           "cpf_cnpj",
           "created_at",
           "id",
+          "matricula_display",
           "nome_completo"
         ],
         "x-readme-ref-name": "AnaliseDados"

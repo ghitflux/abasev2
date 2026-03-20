@@ -10,7 +10,7 @@ export const V1RelatoriosDownloadRetrievePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("A unique integer value identifying this relatorio gerado."),
+    .describe("Um valor inteiro único que identifica este relatorio gerado."),
 });
 
 export const V1RelatoriosDownloadRetrieve200Schema = z.lazy(

@@ -5,7 +5,7 @@
 
 import type { ComprovanteResumo } from "./ComprovanteResumo.ts";
 import type { SimpleUser } from "./SimpleUser.ts";
-import type { Status3BcEnum } from "./Status3BcEnum.ts";
+import type { Status707Enum } from "./Status707Enum.ts";
 
 export type RefinanciamentoDetail = {
   /**
@@ -42,10 +42,10 @@ export type RefinanciamentoDetail = {
    */
   competencia_solicitada: string;
   /**
-   * @description * `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado
+   * @description * `apto_a_renovar` - Apto a renovar\n* `em_analise_renovacao` - Em análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado
    * @type string | undefined
    */
-  status?: Status3BcEnum;
+  status?: Status707Enum;
   /**
    * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
    * @type string | undefined, decimal
@@ -84,6 +84,50 @@ export type RefinanciamentoDetail = {
    * @type string
    */
   readonly pagamento_status: string;
+  /**
+   * @type integer
+   */
+  readonly legacy_refinanciamento_id: number;
+  /**
+   * @type string
+   */
+  readonly origem: string;
+  /**
+   * @type string
+   */
+  readonly data_renovacao: string;
+  /**
+   * @type string
+   */
+  readonly origem_renovacao: string;
+  /**
+   * @type string
+   */
+  readonly motivo_apto_renovacao: string;
+  /**
+   * @type string
+   */
+  readonly data_primeiro_ciclo_ativado: string;
+  /**
+   * @type string
+   */
+  readonly data_ativacao_ciclo: string;
+  /**
+   * @type string
+   */
+  readonly origem_data_ativacao: string;
+  /**
+   * @type string
+   */
+  readonly data_solicitacao_renovacao: string;
+  /**
+   * @type boolean
+   */
+  readonly ativacao_inferida: boolean;
+  /**
+   * @type string
+   */
+  readonly etapa_operacional: string;
   /**
    * @type string | undefined
    */

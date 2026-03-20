@@ -36,7 +36,9 @@ describe("navigation", () => {
     );
 
     expect(hrefs).toContain("/agentes/pagamentos");
+    expect(hrefs).toContain("/tesouraria/despesas");
     expect(canAccessPath("/agentes/pagamentos", ["TESOUREIRO"])).toBe(true);
+    expect(canAccessPath("/tesouraria/despesas", ["TESOUREIRO"])).toBe(true);
     expect(getLegacyRouteTarget("/pagamentos", "TESOUREIRO")).toBe(
       "/agentes/pagamentos",
     );
@@ -62,8 +64,12 @@ describe("navigation", () => {
     expect(agentEntries.map((entry) => entry.href)).toContain("/agentes/pagamentos");
     expect(agentEntries.map((entry) => entry.href)).not.toContain("/renovacao-ciclos");
     expect(adminEntries.map((entry) => entry.href)).toContain("/renovacao-ciclos");
+    expect(adminEntries.map((entry) => entry.href)).toContain("/tesouraria/despesas");
     expect(
       adminEntries.find((entry) => entry.href === "/tesouraria/baixa-manual")?.searchTerms,
     ).toEqual(expect.arrayContaining(["Baixa Manual", "baixa manual", "manual"]));
+    expect(
+      adminEntries.find((entry) => entry.href === "/tesouraria/despesas")?.searchTerms,
+    ).toEqual(expect.arrayContaining(["Despesas", "despesas", "lancamento de despesas"]));
   });
 });

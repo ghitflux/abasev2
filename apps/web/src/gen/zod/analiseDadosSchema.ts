@@ -11,6 +11,7 @@ export const analiseDadosSchema = z.object({
   nome_completo: z.string().max(255),
   cpf_cnpj: z.string().max(18),
   matricula: z.optional(z.string().max(20)),
+  matricula_display: z.string(),
   get agente() {
     return simpleUserSchema;
   },

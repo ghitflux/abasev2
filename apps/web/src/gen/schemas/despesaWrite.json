@@ -1,0 +1,42 @@
+{
+  "type": "object",
+  "properties": {
+    "categoria": { "type": "string", "maxLength": 100 },
+    "descricao": { "type": "string", "maxLength": 255 },
+    "valor": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$"
+    },
+    "data_despesa": { "type": "string", "format": "date" },
+    "data_pagamento": { "type": "string", "format": "date", "nullable": true },
+    "status": {
+      "enum": ["pendente", "pago"],
+      "type": "string",
+      "description": "* `pendente` - Pendente\n* `pago` - Pago",
+      "x-readme-ref-name": "Status7a5Enum"
+    },
+    "tipo": {
+      "oneOf": [
+        {
+          "enum": ["fixa", "variavel"],
+          "type": "string",
+          "description": "* `fixa` - Fixa\n* `variavel` - Variável",
+          "x-readme-ref-name": "TipoC90Enum"
+        },
+        { "enum": [""], "x-readme-ref-name": "BlankEnum" }
+      ]
+    },
+    "recorrencia": {
+      "enum": ["nenhuma", "mensal", "trimestral", "anual"],
+      "type": "string",
+      "description": "* `nenhuma` - Nenhuma\n* `mensal` - Mensal\n* `trimestral` - Trimestral\n* `anual` - Anual",
+      "x-readme-ref-name": "RecorrenciaEnum"
+    },
+    "recorrencia_ativa": { "type": "boolean" },
+    "observacoes": { "type": "string" },
+    "anexo": { "type": "string", "format": "uri", "nullable": true }
+  },
+  "required": ["categoria", "data_despesa", "descricao", "valor"],
+  "x-readme-ref-name": "DespesaWrite"
+}

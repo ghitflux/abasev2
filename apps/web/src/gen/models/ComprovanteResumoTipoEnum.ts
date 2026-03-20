@@ -6,6 +6,9 @@
 export const comprovanteResumoTipoEnumEnum = {
   pix: "pix",
   contrato: "contrato",
+  termo_antecipacao: "termo_antecipacao",
+  comprovante_pagamento_associado: "comprovante_pagamento_associado",
+  comprovante_pagamento_agente: "comprovante_pagamento_agente",
   outro: "outro",
 } as const;
 
@@ -13,6 +16,6 @@ export type ComprovanteResumoTipoEnumEnumKey =
   (typeof comprovanteResumoTipoEnumEnum)[keyof typeof comprovanteResumoTipoEnumEnum];
 
 /**
- * @description * `pix` - PIX\n* `contrato` - Contrato\n* `outro` - Outro
+ * @description * `pix` - PIX\n* `contrato` - Contrato\n* `termo_antecipacao` - Termo de antecipação\n* `comprovante_pagamento_associado` - Comprovante pagamento associado\n* `comprovante_pagamento_agente` - Comprovante pagamento agente\n* `outro` - Outro
  */
 export type ComprovanteResumoTipoEnum = ComprovanteResumoTipoEnumEnumKey;

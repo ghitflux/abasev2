@@ -9,6 +9,7 @@ export const associadoContratoSchema = z.object({
   id: z.int(),
   nome_completo: z.string(),
   matricula: z.string(),
+  matricula_display: z.string(),
   cpf_cnpj: z.string(),
   orgao_publico: z.string(),
   matricula_orgao: z.string(),

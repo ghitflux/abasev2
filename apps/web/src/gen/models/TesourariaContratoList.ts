@@ -47,6 +47,11 @@ export type TesourariaContratoList = {
    * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
    * @type string, decimal
    */
+  readonly comissao_agente: string;
+  /**
+   * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
+   * @type string, decimal
+   */
   readonly margem_disponivel: string;
   /**
    * @type string

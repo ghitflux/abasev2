@@ -17,19 +17,24 @@ export const V1AssociadosListQueryParamsSchema = z
     matricula: z.optional(z.string()),
     nome: z.optional(z.string().describe("Busca parcial por nome")),
     ordering: z.optional(
-      z.string().describe("Which field to use when ordering the results."),
+      z.string().describe("Qual campo usar ao ordenar os resultados."),
     ),
     orgao_publico: z.optional(z.string().describe("Filtrar por órgão público")),
     page: z.optional(
       z.coerce
         .number()
         .int()
-        .describe("A page number within the paginated result set."),
+        .describe(
+          "Um número de página dentro do conjunto de resultados paginado.",
+        ),
     ),
     page_size: z.optional(
-      z.coerce.number().int().describe("Number of results to return per page."),
+      z.coerce
+        .number()
+        .int()
+        .describe("Número de resultados a serem retornados por página."),
     ),
-    search: z.optional(z.string().describe("A search term.")),
+    search: z.optional(z.string().describe("Um termo de busca.")),
     status: z.optional(
       z
         .enum([
