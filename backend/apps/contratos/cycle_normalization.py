@@ -11,6 +11,7 @@ from apps.refinanciamento.models import Comprovante, Refinanciamento
 from apps.tesouraria.models import Confirmacao
 
 from .models import Ciclo, Contrato, Parcela
+from .cycle_timeline import get_destination_refinanciamento
 
 CONTRACT_STATUS_PRIORITY = {
     Contrato.Status.ATIVO: 0,
@@ -185,7 +186,7 @@ def _reassign_related_records(
         ciclo_origem=canonical_cycle
     )
 
-    if not hasattr(canonical_cycle, "refinanciamento_destino"):
+    if get_destination_refinanciamento(canonical_cycle) is None:
         Refinanciamento.objects.filter(ciclo_destino=duplicate_cycle).update(
             ciclo_destino=canonical_cycle
         )

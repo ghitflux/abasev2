@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -8,6 +9,26 @@ from pathlib import Path
 from typing import Any
 
 from django.utils import timezone
+
+
+def default_legacy_dump_path() -> Path:
+    repo_root = Path(__file__).resolve().parents[2]
+    candidates = [
+        os.environ.get("ABASE_LEGACY_DUMP_FILE"),
+        repo_root / "dumps_legado" / "abase_dump_legado_21.03.2026.sql",
+        repo_root / "scriptsphp" / "abase (2).sql",
+        "dumps_legado/abase_dump_legado_21.03.2026.sql",
+        "scriptsphp/abase (2).sql",
+        "/legacy-dumps/abase (2).sql",
+        "/tmp/abase_legacy.sql",
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        path = Path(candidate).expanduser()
+        if path.exists():
+            return path
+    return Path("dumps_legado/abase_dump_legado_21.03.2026.sql")
 
 
 def parse_timestamp(value: str | None) -> datetime | None:

@@ -5,15 +5,20 @@ import json
 from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from datetime import date
 
 from apps.associados.models import Associado
 
+from .cycle_projection import build_contract_cycle_projection
+from .models import Parcela
 from .cycle_timeline import (
     get_contract_first_cycle_activation_info,
     get_destination_refinanciamento,
     get_first_cycle,
     get_refinanciamento_activation_info,
 )
+
+PROJECTION_STATUS_QUITADA = "quitada"
 
 
 @dataclass(frozen=True)
@@ -68,6 +73,178 @@ def _new_finding(
     )
 
 
+def _normalize_materialized_status(parcela, *, today: date) -> str:
+    if (
+        parcela.status == Parcela.Status.EM_ABERTO
+        and parcela.data_vencimento is not None
+        and parcela.data_vencimento >= today
+    ):
+        return Parcela.Status.EM_PREVISAO
+    return parcela.status
+
+
+def _contract_scenario_tags(
+    *,
+    contrato,
+    projection: dict[str, object],
+) -> list[str]:
+    cycle_size = int(projection.get("cycle_size") or 0)
+    unpaid_months = list(projection.get("unpaid_months", []))
+    regularized = [
+        item
+        for item in unpaid_months
+        if item.get("status") == PROJECTION_STATUS_QUITADA
+    ]
+    actual_parcelas = [
+        parcela
+        for ciclo in contrato.ciclos.order_by("numero").prefetch_related("parcelas")
+        for parcela in ciclo.parcelas.all()
+        if parcela.status != Parcela.Status.CANCELADO
+    ]
+    today = date.today()
+    actual_refs = sorted(
+        (
+            parcela.referencia_mes,
+            _normalize_materialized_status(parcela, today=today),
+        )
+        for parcela in actual_parcelas
+    )
+    canonical_refs = sorted(
+        (parcela["referencia_mes"], parcela["status"])
+        for ciclo in projection.get("cycles", [])
+        for parcela in ciclo["parcelas"]
+    )
+
+    tags: list[str] = []
+    if cycle_size == 4:
+        tags.append("ciclo_quatro_parcelas")
+    if unpaid_months:
+        tags.append("ciclo_com_lacuna")
+    if regularized:
+        tags.append("lacuna_regularizada_fora_do_ciclo")
+    if any(getattr(parcela, "baixa_manual_id", None) for parcela in actual_parcelas):
+        tags.append("baixa_manual")
+    if any(
+        cycle["status"] == "ciclo_renovado"
+        and sum(
+            1
+            for parcela in cycle["parcelas"]
+            if parcela["status"] == Parcela.Status.DESCONTADO
+        )
+        < cycle_size
+        for cycle in projection.get("cycles", [])
+    ):
+        tags.append("renovacao_com_ciclo_incompleto")
+    if len({parcela.referencia_mes for parcela in actual_parcelas}) != len(actual_parcelas):
+        tags.append("competencia_duplicada_em_ciclos")
+    if actual_refs != canonical_refs:
+        tags.append("divergencia_materializado_canonico")
+    if not tags:
+        tags.append("ciclo_regular")
+    return sorted(set(tags))
+
+
+def _append_projection_findings(
+    *,
+    findings: list[TimelineFinding],
+    associado: Associado,
+    contrato,
+    projection: dict[str, object],
+    scenario_tags: list[str],
+) -> None:
+    unpaid_months = list(projection.get("unpaid_months", []))
+    regularized = [
+        item
+        for item in unpaid_months
+        if item.get("status") == PROJECTION_STATUS_QUITADA
+    ]
+    actual_parcelas = [
+        parcela
+        for ciclo in contrato.ciclos.order_by("numero").prefetch_related("parcelas")
+        for parcela in ciclo.parcelas.all()
+        if parcela.status != Parcela.Status.CANCELADO
+    ]
+    today = date.today()
+
+    if "ciclo_com_lacuna" in scenario_tags:
+        findings.append(
+            _new_finding(
+                classification="ciclo_com_lacuna",
+                associado=associado,
+                contrato=contrato,
+                detail=(
+                    f"{len(unpaid_months)} competência(s) vencida(s) seguem fora da composição "
+                    "dos ciclos."
+                ),
+            )
+        )
+    if "lacuna_regularizada_fora_do_ciclo" in scenario_tags:
+        findings.append(
+            _new_finding(
+                classification="lacuna_regularizada_fora_do_ciclo",
+                associado=associado,
+                contrato=contrato,
+                detail=(
+                    f"{len(regularized)} competência(s) foram regularizadas tardiamente e "
+                    "permanecem fora dos ciclos."
+                ),
+            )
+        )
+    if "renovacao_com_ciclo_incompleto" in scenario_tags:
+        findings.append(
+            _new_finding(
+                classification="renovacao_com_ciclo_incompleto",
+                associado=associado,
+                contrato=contrato,
+                detail="Existe renovação efetivada com ciclo anterior ainda incompleto.",
+            )
+        )
+    if "competencia_duplicada_em_ciclos" in scenario_tags:
+        findings.append(
+            _new_finding(
+                classification="competencia_duplicada_em_ciclos",
+                associado=associado,
+                contrato=contrato,
+                detail="Há competências materializadas mais de uma vez entre os ciclos.",
+            )
+        )
+    if "divergencia_materializado_canonico" in scenario_tags:
+        findings.append(
+            _new_finding(
+                classification="divergencia_materializado_canonico",
+                associado=associado,
+                contrato=contrato,
+                detail=(
+                    "Os ciclos materializados divergem da projeção canônica construída a "
+                    "partir do financeiro."
+                ),
+            )
+        )
+    if any(parcela.status == Parcela.Status.NAO_DESCONTADO for parcela in actual_parcelas):
+        findings.append(
+            _new_finding(
+                classification="mes_vencido_materializado_em_ciclo",
+                associado=associado,
+                contrato=contrato,
+                detail="Existe competência não descontada ainda materializada dentro de ciclo.",
+            )
+        )
+    if any(
+        parcela.status == Parcela.Status.EM_ABERTO
+        and parcela.data_vencimento is not None
+        and parcela.data_vencimento < today
+        for parcela in actual_parcelas
+    ):
+        findings.append(
+            _new_finding(
+                classification="parcela_vencida_materializada_no_ciclo",
+                associado=associado,
+                contrato=contrato,
+                detail="Existe parcela vencida em aberto ainda materializada dentro de ciclo.",
+            )
+        )
+
+
 def audit_associado_cycle_timeline(associado: Associado) -> dict[str, object]:
     contratos = list(associado.contratos.prefetch_related("ciclos__parcelas").order_by("created_at", "id"))
     refinanciamentos = list(
@@ -82,6 +259,18 @@ def audit_associado_cycle_timeline(associado: Associado) -> dict[str, object]:
 
     for contrato in contratos:
         ciclos = list(contrato.ciclos.order_by("numero").prefetch_related("parcelas"))
+        projection = build_contract_cycle_projection(contrato)
+        scenario_tags = _contract_scenario_tags(
+            contrato=contrato,
+            projection=projection,
+        )
+        _append_projection_findings(
+            findings=findings,
+            associado=associado,
+            contrato=contrato,
+            projection=projection,
+            scenario_tags=scenario_tags,
+        )
         first_cycle = get_first_cycle(contrato)
         first_activation = (
             get_contract_first_cycle_activation_info(contrato, allow_fallback=False)
@@ -108,6 +297,14 @@ def audit_associado_cycle_timeline(associado: Associado) -> dict[str, object]:
             {
                 "contrato_id": contrato.id,
                 "contrato_codigo": contrato.codigo,
+                "cycle_size": projection.get("cycle_size"),
+                "scenario_tags": scenario_tags,
+                "possui_meses_nao_descontados": projection.get(
+                    "possui_meses_nao_descontados"
+                ),
+                "meses_nao_descontados_count": projection.get(
+                    "meses_nao_descontados_count"
+                ),
                 "primeiro_ciclo_id": first_cycle.id if first_cycle else None,
                 "primeiro_ciclo_ativado_em": _serialize_dt(
                     first_activation.activated_at if first_activation else None
@@ -225,6 +422,7 @@ def build_cycle_timeline_audit(*, cpf: str | None = None) -> dict[str, object]:
 
     associados = [audit_associado_cycle_timeline(associado) for associado in queryset]
     counter: Counter[str] = Counter()
+    scenario_counter: Counter[str] = Counter()
     with_findings = 0
     for associado in associados:
         classes = associado["classifications"]
@@ -232,12 +430,16 @@ def build_cycle_timeline_audit(*, cpf: str | None = None) -> dict[str, object]:
             with_findings += 1
         for classification in classes:
             counter[classification] += 1
+        for contrato in associado["contratos"]:
+            for tag in contrato.get("scenario_tags", []):
+                scenario_counter[tag] += 1
 
     return {
         "summary": {
             "total_associados": len(associados),
             "associados_com_achados": with_findings,
             "classifications": dict(counter),
+            "scenario_tags": dict(scenario_counter),
         },
         "associados": associados,
     }

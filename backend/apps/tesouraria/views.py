@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Prefetch, Q
+from django.utils import timezone
 from rest_framework import mixins, permissions
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -15,11 +16,12 @@ from apps.accounts.permissions import (
     IsTesoureiroOrAdmin,
 )
 from apps.associados.serializers import DadosBancariosSerializer
+from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.financeiro.models import Despesa
 from apps.importacao.models import ArquivoRetornoItem, PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante
-from apps.tesouraria.models import Confirmacao, Pagamento
+from apps.tesouraria.models import Confirmacao, Pagamento, PagamentoNotificacao
 from core.pagination import StandardResultsSetPagination
 
 from .serializers import (
@@ -176,9 +178,7 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
                 ),
                 Prefetch(
                     "associado__pagamentos_mensalidades",
-                    queryset=PagamentoMensalidade.objects.exclude(
-                        manual_comprovante_path=""
-                    ).order_by("-referencia_month"),
+                    queryset=PagamentoMensalidade.objects.order_by("-referencia_month"),
                 ),
                 Prefetch(
                     "associado__tesouraria_pagamentos",
@@ -206,15 +206,6 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
         if status_filter in {choice[0] for choice in Contrato.Status.choices}:
             queryset = queryset.filter(status=status_filter)
 
-        if competencia:
-            queryset = queryset.filter(
-                Q(
-                    ciclos__parcelas__referencia_mes__year=competencia.year,
-                    ciclos__parcelas__referencia_mes__month=competencia.month,
-                )
-                | Q(data_contrato__year=competencia.year, data_contrato__month=competencia.month)
-            )
-
         return queryset
 
     def get_serializer_context(self):
@@ -222,48 +213,101 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
         context["mes_filter"] = parse_month_filter(
             self.request.query_params.get("mes")
         )
+        if hasattr(self, "_contract_projection_cache"):
+            context["_contract_projection_cache"] = self._contract_projection_cache
         return context
+
+    def _notification_queryset(self):
+        user = self.request.user
+        if user.has_role("AGENTE") and not user.has_role("ADMIN"):
+            return PagamentoNotificacao.objects.filter(
+                agente=user,
+                lida_em__isnull=True,
+            )
+        return PagamentoNotificacao.objects.none()
 
     def list(self, request, *args, **kwargs):  # noqa: A003
         queryset = self.filter_queryset(self.get_queryset())
         competencia = parse_month_filter(request.query_params.get("mes"))
 
-        parcelas_filter = Q()
-        if competencia:
-            parcelas_filter &= Q(
-                ciclos__parcelas__referencia_mes__year=competencia.year,
-                ciclos__parcelas__referencia_mes__month=competencia.month,
+        contratos = list(queryset)
+        projection_cache = {
+            contrato.id: build_contract_cycle_projection(contrato)
+            for contrato in contratos
+        }
+        self._contract_projection_cache = projection_cache
+
+        def parcela_no_recorte(parcela: dict[str, object]) -> bool:
+            if competencia is None:
+                return True
+            referencia_mes = parcela["referencia_mes"]
+            return (
+                referencia_mes.year == competencia.year
+                and referencia_mes.month == competencia.month
             )
 
-        resumo = queryset.aggregate(
-            total=Count("id", distinct=True),
-            efetivados=Count(
-                "id", filter=Q(auxilio_liberado_em__isnull=False), distinct=True
-            ),
-            com_anexos=Count(
-                "id",
-                filter=Q(comprovantes__id__isnull=False, comprovantes__refinanciamento__isnull=True),
-                distinct=True,
-            ),
-            parcelas_pagas=Count(
-                "ciclos__parcelas",
-                filter=parcelas_filter & Q(ciclos__parcelas__status=Parcela.Status.DESCONTADO),
-                distinct=True,
-            ),
-            parcelas_total=Count(
-                "ciclos__parcelas",
-                filter=parcelas_filter,
-                distinct=True,
-            ),
-        )
+        if competencia is not None:
+            contratos = [
+                contrato
+                for contrato in contratos
+                if any(
+                    parcela_no_recorte(parcela)
+                    for ciclo in projection_cache[contrato.id]["cycles"]
+                    for parcela in ciclo["parcelas"]
+                )
+                or (
+                    contrato.data_contrato.year == competencia.year
+                    and contrato.data_contrato.month == competencia.month
+                )
+            ]
 
-        page = self.paginate_queryset(queryset)
-        serializer = self.get_serializer(page if page is not None else queryset, many=True)
+        resumo = {
+            "total": len(contratos),
+            "efetivados": sum(
+                1 for contrato in contratos if contrato.auxilio_liberado_em is not None
+            ),
+            "com_anexos": sum(
+                1
+                for contrato in contratos
+                if contrato.comprovantes.filter(refinanciamento__isnull=True).exists()
+            ),
+            "parcelas_pagas": sum(
+                1
+                for contrato in contratos
+                for ciclo in projection_cache[contrato.id]["cycles"]
+                for parcela in ciclo["parcelas"]
+                if parcela_no_recorte(parcela)
+                and parcela["status"] == Parcela.Status.DESCONTADO
+            ),
+            "parcelas_total": sum(
+                1
+                for contrato in contratos
+                for ciclo in projection_cache[contrato.id]["cycles"]
+                for parcela in ciclo["parcelas"]
+                if parcela_no_recorte(parcela)
+            ),
+        }
+
+        page = self.paginate_queryset(contratos)
+        serializer = self.get_serializer(page if page is not None else contratos, many=True)
         if page is not None:
             response = self.get_paginated_response(serializer.data)
             response.data["resumo"] = resumo
             return response
         return Response({"results": serializer.data, "resumo": resumo})
+
+    @action(detail=False, methods=["get"], url_path="notificacoes")
+    def notificacoes(self, request):
+        return Response({"unread_count": self._notification_queryset().count()})
+
+    @action(detail=False, methods=["post"], url_path="notificacoes/marcar-lidas")
+    def marcar_notificacoes_lidas(self, request):
+        now = timezone.now()
+        marked_count = self._notification_queryset().update(
+            lida_em=now,
+            updated_at=now,
+        )
+        return Response({"marked_count": marked_count})
 
 
 class BaixaManualViewSet(mixins.ListModelMixin, GenericViewSet):

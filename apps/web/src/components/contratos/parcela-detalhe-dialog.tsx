@@ -13,6 +13,7 @@ import {
   formatDateTime,
   formatMonthYear,
 } from "@/lib/formatters";
+import { usePermissions } from "@/hooks/use-permissions";
 import StatusBadge from "@/components/custom/status-badge";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -160,6 +161,8 @@ export function ParcelaDetalheDialog({
   target: ParcelaDetailTarget | null;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { hasRole } = usePermissions();
+  const isAgent = hasRole("AGENTE") && !hasRole("ADMIN");
   const detalheQuery = useQuery({
     queryKey: [
       "parcela-detalhe",
@@ -262,14 +265,16 @@ export function ParcelaDetalheDialog({
                 </p>
               </section>
 
-              <EvidenceSection
-                title="Anexos da competência"
-                evidences={detail.competencia_evidencias}
-                emptyLabel="Nenhuma evidência anexada para esta competência."
-              />
+              {isAgent && !detail.competencia_evidencias.length ? null : (
+                <EvidenceSection
+                  title="Anexos da competência"
+                  evidences={detail.competencia_evidencias}
+                  emptyLabel="Nenhuma evidência anexada para esta competência."
+                />
+              )}
 
               <EvidenceSection
-                title="Documentos do ciclo"
+                title={isAgent ? "Comprovantes do agente" : "Documentos do ciclo"}
                 evidences={documentosCiclo}
                 emptyLabel="Nenhum documento de tesouraria ou renovação vinculado a este ciclo."
               />

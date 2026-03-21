@@ -13,7 +13,7 @@ from ..reconciliacao import MotorReconciliacao
 
 
 class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
-    def test_status_1_baixa_automatica_e_abre_novo_ciclo(self):
+    def test_status_1_baixa_automatica_mantem_ciclo_apto_sem_gerar_futuro(self):
         _, contrato, ciclo = self.create_associado_com_contrato(
             cpf="23993596315",
             nome="Maria de Jesus Santana Costa",
@@ -43,14 +43,13 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
         ultima_parcela = ciclo.parcelas.get(numero=3)
 
         self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA)
-        self.assertTrue(outcome["gerou_encerramento"])
-        self.assertTrue(outcome["gerou_novo_ciclo"])
+        self.assertFalse(outcome["gerou_encerramento"])
+        self.assertFalse(outcome["gerou_novo_ciclo"])
         self.assertEqual(ultima_parcela.status, Parcela.Status.DESCONTADO)
-        self.assertEqual(ciclo.status, Ciclo.Status.CICLO_RENOVADO)
-        self.assertEqual(contrato.ciclos.count(), 2)
-        self.assertEqual(contrato.ciclos.get(numero=2).status, Ciclo.Status.ABERTO)
+        self.assertEqual(ciclo.status, Ciclo.Status.APTO_A_RENOVAR)
+        self.assertEqual(contrato.ciclos.count(), 1)
 
-    def test_status_1_abre_novo_ciclo_mesmo_quando_proxima_janela_ja_esta_ocupada(self):
+    def test_status_1_mantem_ciclo_apto_mesmo_quando_proxima_janela_ja_esta_ocupada(self):
         associado, contrato, ciclo = self.create_associado_com_contrato(
             cpf="23993596316",
             nome="Maria Competencia Ocupada",
@@ -126,10 +125,10 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
         item.refresh_from_db()
         ciclo.refresh_from_db()
         self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA)
-        self.assertTrue(outcome["gerou_encerramento"])
-        self.assertTrue(outcome["gerou_novo_ciclo"])
-        self.assertEqual(ciclo.status, Ciclo.Status.CICLO_RENOVADO)
-        self.assertEqual(contrato.ciclos.count(), 2)
+        self.assertFalse(outcome["gerou_encerramento"])
+        self.assertFalse(outcome["gerou_novo_ciclo"])
+        self.assertEqual(ciclo.status, Ciclo.Status.APTO_A_RENOVAR)
+        self.assertEqual(contrato.ciclos.count(), 1)
         self.assertFalse(
             ImportacaoLog.objects.filter(
                 arquivo_retorno=arquivo,
@@ -165,7 +164,7 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
 
         associado.refresh_from_db()
         self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.NAO_DESCONTADO)
-        self.assertEqual(ciclo.parcelas.get(numero=3).status, Parcela.Status.NAO_DESCONTADO)
+        self.assertEqual(ciclo.parcelas.get(numero=3).status, Parcela.Status.EM_PREVISAO)
         self.assertEqual(associado.status, Associado.Status.INADIMPLENTE)
 
     def test_status_4_baixa_automatica_com_diferenca(self):
@@ -226,7 +225,7 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
 
         associado.refresh_from_db()
         self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.NAO_DESCONTADO)
-        self.assertEqual(ciclo.parcelas.get(numero=3).status, Parcela.Status.NAO_DESCONTADO)
+        self.assertEqual(ciclo.parcelas.get(numero=3).status, Parcela.Status.EM_PREVISAO)
         self.assertEqual(associado.status, Associado.Status.INADIMPLENTE)
 
     def test_divergencia_de_valor_vai_para_pendencia_manual(self):
@@ -511,9 +510,9 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
         ciclo_atual.refresh_from_db()
         ciclo_futuro.refresh_from_db()
         self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA)
-        self.assertTrue(item.gerou_encerramento)
-        self.assertFalse(item.gerou_novo_ciclo)
-        self.assertEqual(ciclo_atual.status, Ciclo.Status.CICLO_RENOVADO)
+        self.assertFalse(item.gerou_encerramento)
+        self.assertTrue(item.gerou_novo_ciclo)
+        self.assertEqual(ciclo_atual.status, Ciclo.Status.APTO_A_RENOVAR)
         self.assertEqual(ciclo_futuro.status, Ciclo.Status.FUTURO)
         self.assertFalse(
             ciclo_futuro.parcelas.exclude(status=Parcela.Status.FUTURO).exists()

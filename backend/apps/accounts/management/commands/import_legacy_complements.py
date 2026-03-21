@@ -475,13 +475,19 @@ class Command(BaseCommand):
         if legacy_id is not None:
             existing = (
                 Refinanciamento.all_objects.filter(legacy_refinanciamento_id=legacy_id)
+                .order_by("created_at", "id")
                 .only("id")
                 .first()
             )
             if existing is not None:
                 return existing
         filters = self._refinanciamento_lookup_filters(row)
-        return Refinanciamento.all_objects.filter(**filters).only("id").first()
+        return (
+            Refinanciamento.all_objects.filter(**filters)
+            .order_by("created_at", "id")
+            .only("id")
+            .first()
+        )
 
     def _next_month_start(
         self,
@@ -952,14 +958,13 @@ class Command(BaseCommand):
                 "contrato_origem_id": contrato_origem_id,
             }
             filters = self._refinanciamento_lookup_filters(row)
-            obj, created = Refinanciamento.all_objects.update_or_create(
-                **filters,
-                defaults=defaults,
-            )
-            if created:
+            obj = self._find_refinanciamento(row)
+            if obj is None:
+                create_payload = {**defaults, **filters}
+                obj = Refinanciamento.objects.create(**create_payload)
                 summary["created"] += 1
             else:
-                summary["updated"] += 1
+                summary["updated"] += int(bool(self._apply_updates(obj, defaults)))
             self._sync_timestamps(Refinanciamento, obj.pk, row)
             self._refi_map[legacy_id] = obj.pk
             summary["processed"] += 1
@@ -1200,14 +1205,17 @@ class Command(BaseCommand):
                     "ref3": parse_date(row.get("ref3")),
                     "contrato_codigo_origem": parse_str(row.get("contrato_codigo_origem"))[:80],
                 }
-                obj, created = Refinanciamento.all_objects.update_or_create(
-                    **lookup,
-                    defaults=defaults,
+                obj = (
+                    Refinanciamento.all_objects.filter(**lookup)
+                    .order_by("created_at", "id")
+                    .first()
                 )
-                if created:
+                if obj is None:
+                    create_payload = {**defaults, **lookup}
+                    obj = Refinanciamento.objects.create(**create_payload)
                     summary["created"] += 1
                 else:
-                    summary["updated"] += 1
+                    summary["updated"] += int(bool(self._apply_updates(obj, defaults)))
             else:
                 summary["updated"] += int(bool(self._apply_updates(obj, defaults)))
 

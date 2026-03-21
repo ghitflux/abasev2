@@ -27,7 +27,7 @@ from apps.tesouraria.legacy_initial_payments import (
     merge_initial_payment_overrides,
 )
 from apps.tesouraria.models import Pagamento
-from core.legacy_dump import LegacyDump
+from core.legacy_dump import LegacyDump, default_legacy_dump_path
 
 
 def _default_report_path(prefix: str) -> Path:
@@ -47,7 +47,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "--file",
-            default="scriptsphp/abase (2).sql",
+            default=str(default_legacy_dump_path()),
             help="Dump SQL legado.",
         )
         parser.add_argument(
@@ -191,6 +191,14 @@ class Command(BaseCommand):
             contrato_codigo=record.contrato_codigo,
         )
         if record.legacy_id is not None:
+            legacy_lookup = Pagamento.all_objects.filter(
+                legacy_tesouraria_pagamento_id=record.legacy_id,
+            )
+            if associado is not None:
+                legacy_lookup = legacy_lookup.filter(cadastro=associado)
+            found = legacy_lookup.order_by("id").first()
+            if found is not None:
+                return found
             found = base.filter(legacy_tesouraria_pagamento_id=record.legacy_id).first()
             if found is not None:
                 return found
@@ -210,6 +218,20 @@ class Command(BaseCommand):
                 Pagamento.all_objects.filter(
                     cadastro=associado,
                     contrato_codigo=record.contrato_codigo,
+                )
+                .order_by("created_at", "id")
+                .first()
+            )
+            if found is not None:
+                return found
+            found = (
+                Pagamento.all_objects.filter(
+                    cadastro=associado,
+                    contrato_codigo="",
+                )
+                .filter(
+                    paid_at=record.paid_at,
+                    valor_pago=record.valor_pago,
                 )
                 .order_by("created_at", "id")
                 .first()
@@ -503,8 +525,15 @@ class Command(BaseCommand):
             created_pagamento = True
 
         pagamento.status = record.status or pagamento.status
+        pagamento.cadastro = associado
+        pagamento.contrato_codigo = contrato.codigo
+        pagamento.contrato_valor_antecipacao = (
+            contrato.valor_liquido or contrato.valor_total_antecipacao
+        )
         pagamento.legacy_tesouraria_pagamento_id = record.legacy_id
         pagamento.origem = self._payment_origin(record)
+        pagamento.full_name = associado.nome_completo
+        pagamento.agente_responsavel = contrato.agente.full_name if contrato.agente else ""
         pagamento.forma_pagamento = record.forma_pagamento or pagamento.forma_pagamento
         pagamento.notes = record.notes or pagamento.notes
         pagamento.valor_pago = self._resolve_value(pagamento, record)
@@ -564,8 +593,13 @@ class Command(BaseCommand):
         if execute:
             update_fields = [
                 "status",
+                "cadastro",
+                "contrato_codigo",
+                "contrato_valor_antecipacao",
                 "legacy_tesouraria_pagamento_id",
                 "origem",
+                "full_name",
+                "agente_responsavel",
                 "forma_pagamento",
                 "notes",
                 "valor_pago",

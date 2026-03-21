@@ -1,4 +1,5 @@
 import tempfile
+from decimal import Decimal
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -7,6 +8,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
 from apps.associados.models import Associado, DadosBancarios, Documento, Endereco, ContatoHistorico
+from apps.contratos.models import Contrato
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
@@ -79,8 +81,14 @@ class AssociadoPermissionsTestCase(TestCase):
     def test_agente_pode_visualizar_proprio_associado(self):
         response = self.agent_client.get(f"/api/v1/associados/{self.associado.id}/")
         self.assertEqual(response.status_code, 200, response.json())
-        self.assertEqual(response.json()["id"], self.associado.id)
-        self.assertEqual(len(response.json()["documentos"]), 1)
+        payload = response.json()
+        self.assertEqual(payload["id"], self.associado.id)
+        self.assertIn("contato", payload)
+        self.assertIn("contratos", payload)
+        self.assertNotIn("documentos", payload)
+        self.assertNotIn("endereco", payload)
+        self.assertNotIn("dados_bancarios", payload)
+        self.assertNotIn("esteira", payload)
 
     def test_agente_pode_atualizar_proprio_associado(self):
         response = self.agent_client.patch(
@@ -241,3 +249,106 @@ class AssociadoPermissionsTestCase(TestCase):
     def test_admin_pode_listar_associados(self):
         response = self.admin_client.get("/api/v1/associados/")
         self.assertEqual(response.status_code, 200, response.json())
+
+    def test_operacional_pode_listar_agentes_ativos(self):
+        response = self.admin_client.get("/api/v1/associados/agentes/")
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertGreaterEqual(len(payload), 2)
+        self.assertEqual(set(payload[0].keys()), {"id", "full_name"})
+        self.assertIn(
+            self.agente.full_name,
+            [item["full_name"] for item in payload],
+        )
+
+    def test_admin_deve_informar_agente_ao_criar_associado(self):
+        response = self.admin_client.post(
+            "/api/v1/associados/",
+            {
+                "tipo_documento": "CPF",
+                "cpf_cnpj": "32345678901",
+                "nome_completo": "Associado Sem Agente",
+                "endereco": {
+                    "cep": "64000000",
+                    "endereco": "Rua Teste",
+                    "numero": "10",
+                    "bairro": "Centro",
+                    "cidade": "Teresina",
+                    "uf": "PI",
+                },
+                "dados_bancarios": {
+                    "banco": "Banco do Brasil",
+                    "agencia": "1234",
+                    "conta": "12345-6",
+                    "tipo_conta": "corrente",
+                },
+                "contato": {
+                    "celular": "86999999999",
+                    "email": "semagente@teste.local",
+                    "orgao_publico": "SEFAZ",
+                    "situacao_servidor": "ativo",
+                    "matricula_servidor": "MAT-33",
+                },
+                "valor_bruto_total": "1500.00",
+                "valor_liquido": "1200.00",
+                "prazo_meses": 3,
+                "taxa_antecipacao": "1.50",
+                "mensalidade": "500.00",
+                "margem_disponivel": "900.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertEqual(
+            response.json()["agente_responsavel_id"][0],
+            "Selecione o agente responsável.",
+        )
+
+    def test_admin_pode_definir_agente_e_repasse_na_criacao(self):
+        response = self.admin_client.post(
+            "/api/v1/associados/",
+            {
+                "tipo_documento": "CPF",
+                "cpf_cnpj": "42345678901",
+                "nome_completo": "Associado Com Repasse",
+                "endereco": {
+                    "cep": "64000000",
+                    "endereco": "Rua Teste",
+                    "numero": "10",
+                    "bairro": "Centro",
+                    "cidade": "Teresina",
+                    "uf": "PI",
+                },
+                "dados_bancarios": {
+                    "banco": "Banco do Brasil",
+                    "agencia": "1234",
+                    "conta": "12345-6",
+                    "tipo_conta": "corrente",
+                },
+                "contato": {
+                    "celular": "86999999999",
+                    "email": "repasse@teste.local",
+                    "orgao_publico": "SEFAZ",
+                    "situacao_servidor": "ativo",
+                    "matricula_servidor": "MAT-44",
+                },
+                "valor_bruto_total": "1500.00",
+                "valor_liquido": "1200.00",
+                "prazo_meses": 3,
+                "taxa_antecipacao": "1.50",
+                "mensalidade": "500.00",
+                "margem_disponivel": "900.00",
+                "agente_responsavel_id": self.outro_agente.id,
+                "percentual_repasse": "12.50",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        associado = Associado.objects.get(cpf_cnpj="42345678901")
+        contrato = Contrato.objects.filter(associado=associado).latest("created_at")
+        self.assertEqual(associado.agente_responsavel, self.outro_agente)
+        self.assertEqual(associado.auxilio_taxa, Decimal("12.50"))
+        self.assertEqual(contrato.agente, self.outro_agente)
+        self.assertEqual(contrato.comissao_agente, Decimal("62.50"))

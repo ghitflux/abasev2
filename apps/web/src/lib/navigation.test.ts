@@ -25,6 +25,15 @@ describe("navigation", () => {
         "/agentes/refinanciados",
       ]),
     );
+
+    const cadastros = sections.find((section) => section.title === "Operação");
+    const financeiro = sections.find((section) => section.title === "Financeiro");
+    const cadastroChildren =
+      cadastros?.items.find((item) => item.title === "Cadastros")?.children ?? [];
+    const financeiroChildren = financeiro?.items.flatMap((item) => item.children ?? []) ?? [];
+
+    expect(cadastroChildren.map((entry) => entry.href)).toContain("/agentes/pagamentos");
+    expect(financeiroChildren.map((entry) => entry.href)).not.toContain("/agentes/pagamentos");
   });
 
   it("expoe meus pagamentos para tesoureiro no modulo financeiro", () => {
@@ -71,5 +80,19 @@ describe("navigation", () => {
     expect(
       adminEntries.find((entry) => entry.href === "/tesouraria/despesas")?.searchTerms,
     ).toEqual(expect.arrayContaining(["Despesas", "despesas", "lancamento de despesas"]));
+  });
+
+  it("renomeia a rota aptos do analista e libera detalhe de associado", () => {
+    const analystSections = getNavigationForRole("ANALISTA");
+    const analiseChildren =
+      analystSections
+        .find((section) => section.title === "Operação")
+        ?.items.find((item) => item.title === "Análise")
+        ?.children ?? [];
+
+    expect(
+      analiseChildren.find((item) => item.href === "/analise/aptos")?.title,
+    ).toBe("Contratos para Renovação");
+    expect(canAccessPath("/associados/123", ["ANALISTA"])).toBe(true);
   });
 });

@@ -21,7 +21,16 @@ from apps.tesouraria.models import Pagamento
 class ParcelaDetalheEndpointTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
+        role_admin = Role.objects.create(codigo="ADMIN", nome="Administrador")
         role_agente = Role.objects.create(codigo="AGENTE", nome="Agente")
+        cls.admin = User.objects.create_user(
+            email="admin.parcelas@abase.local",
+            password="Senha@123",
+            first_name="Admin",
+            last_name="Parcelas",
+            is_active=True,
+        )
+        cls.admin.roles.add(role_admin)
         cls.agente = User.objects.create_user(
             email="agente.parcelas@abase.local",
             password="Senha@123",
@@ -34,6 +43,8 @@ class ParcelaDetalheEndpointTestCase(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.client.force_authenticate(self.agente)
+        self.admin_client = APIClient()
+        self.admin_client.force_authenticate(self.admin)
 
     @staticmethod
     def _aware(value: datetime):
@@ -168,7 +179,7 @@ class ParcelaDetalheEndpointTestCase(TestCase):
             resultado_processamento=ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA,
         )
 
-        response = self.client.get(
+        response = self.admin_client.get(
             f"/api/v1/associados/{contrato.associado_id}/parcela-detalhe/",
             {
                 "contrato_id": contrato.id,
@@ -250,7 +261,7 @@ class ParcelaDetalheEndpointTestCase(TestCase):
             origem=Comprovante.Origem.TESOURARIA_RENOVACAO,
         )
 
-        response = self.client.get(
+        response = self.admin_client.get(
             f"/api/v1/associados/{contrato.associado_id}/parcela-detalhe/",
             {
                 "contrato_id": contrato.id,
@@ -301,3 +312,48 @@ class ParcelaDetalheEndpointTestCase(TestCase):
         self.assertEqual(payload["kind"], "unpaid")
         self.assertEqual(payload["origem_quitacao"], "pendente")
         self.assertEqual(payload["competencia_evidencias"], [])
+
+    def test_agente_restrito_so_recebe_comprovantes_do_agente(self):
+        contrato = self._create_contract(
+            cpf="74185296300",
+            nome="Associado Restrito Parcela",
+        )
+        ciclo = contrato.ciclos.get(numero=1)
+        Comprovante.objects.create(
+            contrato=contrato,
+            ciclo=ciclo,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+            papel=Comprovante.Papel.ASSOCIADO,
+            arquivo=SimpleUploadedFile(
+                "associado.pdf", b"assoc", content_type="application/pdf"
+            ),
+            enviado_por=self.agente,
+            origem=Comprovante.Origem.EFETIVACAO_CONTRATO,
+        )
+        Comprovante.objects.create(
+            contrato=contrato,
+            ciclo=ciclo,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+            papel=Comprovante.Papel.AGENTE,
+            arquivo=SimpleUploadedFile(
+                "agente.pdf", b"agente", content_type="application/pdf"
+            ),
+            enviado_por=self.agente,
+            origem=Comprovante.Origem.EFETIVACAO_CONTRATO,
+        )
+
+        response = self.client.get(
+            f"/api/v1/associados/{contrato.associado_id}/parcela-detalhe/",
+            {
+                "contrato_id": contrato.id,
+                "referencia_mes": "2026-02-01",
+                "kind": "cycle",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["competencia_evidencias"], [])
+        self.assertIsNone(payload["termo_antecipacao"])
+        self.assertEqual(len(payload["documentos_ciclo"]), 1)
+        self.assertEqual(payload["documentos_ciclo"][0]["papel"], "agente")

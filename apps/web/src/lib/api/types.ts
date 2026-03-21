@@ -69,6 +69,7 @@ export type AssociadoMetricas = {
   ativos: Metrica;
   em_analise: Metrica;
   inativos: Metrica;
+  liquidados: Metrica;
 };
 
 export type Parcela = {
@@ -289,6 +290,8 @@ export type ContratoResumo = {
   pagamento_inicial_evidencias: PagamentoInicialEvidencia[];
   status_renovacao: string;
   refinanciamento_id: number | null;
+  possui_meses_nao_descontados: boolean;
+  meses_nao_descontados_count: number;
   meses_nao_pagos: MesNaoPago[];
   movimentos_financeiros_avulsos: MesNaoPago[];
   ciclos: Ciclo[];
@@ -305,6 +308,8 @@ export type AssociadoListItem = {
   status_renovacao: string;
   status_visual_slug: string;
   status_visual_label: string;
+  possui_meses_nao_descontados: boolean;
+  meses_nao_descontados_count: number;
   agente?: SimpleUser | null;
   ciclos_abertos: number;
   ciclos_fechados: number;
@@ -331,6 +336,9 @@ export type AssociadoDetail = {
   status_renovacao: string;
   status_visual_slug: string;
   status_visual_label: string;
+  possui_meses_nao_descontados: boolean;
+  meses_nao_descontados_count: number;
+  percentual_repasse?: string;
   observacao?: string;
   agente?: SimpleUser | null;
   endereco?: Endereco | null;
@@ -339,6 +347,7 @@ export type AssociadoDetail = {
   contratos: ContratoResumo[];
   documentos: Documento[];
   esteira?: EsteiraResumo | null;
+  mobile_sessions?: { last_used_at: string | null; is_active: boolean }[];
 };
 
 export type EsteiraContrato = {
@@ -351,6 +360,7 @@ export type EsteiraContrato = {
 
 export type EsteiraItem = {
   id: number;
+  associado_id: number;
   ordem: number;
   contrato: EsteiraContrato | null;
   data_assinatura: string | null;
@@ -393,13 +403,13 @@ export type EsteiraItem = {
 };
 
 export type AnaliseSectionKey =
-  | "ativos"
-  | "todos"
-  | "recebidos"
-  | "recebida"
-  | "reenvio"
-  | "incompleta"
-  | "pendente";
+  | "ver_todos"
+  | "pendencias"
+  | "pendencias_corrigidas"
+  | "enviado_tesouraria"
+  | "enviado_coordenacao"
+  | "efetivados"
+  | "cancelados";
 
 export type AnaliseResumo = {
   competencia: {
@@ -505,6 +515,13 @@ export type PendenciaItem = {
   resolvida_em: string | null;
 };
 
+export type PendenciaResumo = {
+  total: number;
+  retornadas_agente: number;
+  internas: number;
+  associados_impactados: number;
+};
+
 export type ContratoListItem = {
   id: number;
   codigo: string;
@@ -538,6 +555,8 @@ export type ContratoListItem = {
   pode_solicitar_refinanciamento: boolean;
   status_renovacao: string;
   refinanciamento_id: number | null;
+  possui_meses_nao_descontados: boolean;
+  meses_nao_descontados_count: number;
 };
 
 export type ContratoResumoCards = {
@@ -546,6 +565,7 @@ export type ContratoResumoCards = {
   ativos: number;
   pendentes: number;
   inadimplentes: number;
+  liquidados: number;
 };
 
 export type ComprovanteResumo = {
@@ -645,6 +665,8 @@ export type RefinanciamentoItem = {
   associado_id: number;
   associado_nome: string;
   cpf_cnpj: string;
+  matricula: string;
+  matricula_display?: string;
   agente?: SimpleUser | null;
   solicitado_por?: SimpleUser | null;
   aprovado_por?: SimpleUser | null;
@@ -694,6 +716,20 @@ export type RefinanciamentoItem = {
   comprovantes: ComprovanteResumo[];
 };
 
+export type RefinanciamentoResumo = {
+  total: number;
+  em_analise: number;
+  assumidos: number;
+  aprovados: number;
+  efetivados: number;
+  concluidos: number;
+  bloqueados: number;
+  revertidos: number;
+  em_fluxo: number;
+  com_anexo_agente: number;
+  repasse_total: string;
+};
+
 export type PagamentoAgenteItem = {
   id: number;
   associado_id: number;
@@ -703,6 +739,8 @@ export type PagamentoAgenteItem = {
   status_contrato: string;
   status_visual_slug: string;
   status_visual_label: string;
+  possui_meses_nao_descontados: boolean;
+  meses_nao_descontados_count: number;
   data_contrato: string;
   auxilio_liberado_em: string | null;
   pagamento_inicial_status: string;
@@ -757,6 +795,10 @@ export type PagamentoAgenteResumo = {
   com_anexos: number;
   parcelas_pagas: number;
   parcelas_total: number;
+};
+
+export type PagamentoAgenteNotificacoes = {
+  unread_count: number;
 };
 
 export type PaginatedPagamentosAgenteResponse =

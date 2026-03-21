@@ -6,6 +6,7 @@ services:
     image: abase-v2-mysql:local
     restart: unless-stopped
     environment:
+      TZ: ${TZ:-America/Fortaleza}
       MYSQL_DATABASE: ${DATABASE_NAME:-abase_v2}
       MYSQL_USER: ${DATABASE_USER:-abase}
       MYSQL_PASSWORD: ${DATABASE_PASSWORD:-abase}
@@ -23,6 +24,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    environment:
+      TZ: ${TZ:-America/Fortaleza}
     ports:
       - "6379:6379"
     healthcheck:
@@ -41,6 +44,7 @@ services:
     env_file:
       - .env
     environment:
+      TZ: ${TZ:-America/Fortaleza}
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.development}
       SECRET_KEY: ${SECRET_KEY:-change-me-abase-v2-dev-secret-key-2026}
       DEBUG: ${DEBUG:-True}
@@ -83,6 +87,7 @@ services:
     env_file:
       - .env
     environment:
+      TZ: ${TZ:-America/Fortaleza}
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.development}
       SECRET_KEY: ${SECRET_KEY:-change-me-abase-v2-dev-secret-key-2026}
       DEBUG: ${DEBUG:-True}
@@ -115,6 +120,7 @@ services:
     env_file:
       - .env
     environment:
+      TZ: ${TZ:-America/Fortaleza}
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.development}
       SECRET_KEY: ${SECRET_KEY:-change-me-abase-v2-dev-secret-key-2026}
       DEBUG: ${DEBUG:-True}
@@ -146,6 +152,7 @@ services:
     env_file:
       - .env
     environment:
+      TZ: ${TZ:-America/Fortaleza}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
       INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:8000/api/v1}
       CI: "true"

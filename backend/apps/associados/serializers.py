@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from rest_framework import serializers
 
+from apps.accounts.models import MobileAccessToken, User
 from apps.contratos.cycle_projection import (
     build_contract_cycle_projection,
     get_associado_visual_status_payload,
@@ -12,6 +13,22 @@ from core.file_references import build_storage_reference
 from .models import Associado, Documento
 from .services import AssociadoService
 from .strategies import CadastroValidationStrategy, EdicaoValidationStrategy
+
+
+def _is_agent_restricted(context: dict) -> bool:
+    request = context.get("request")
+    if not request or not getattr(request, "user", None):
+        return False
+    user = request.user
+    return user.has_role("AGENTE") and not user.has_role("ADMIN")
+
+
+def _can_manage_agent_assignment(context: dict) -> bool:
+    request = context.get("request")
+    if not request or not getattr(request, "user", None):
+        return False
+    user = request.user
+    return user.has_role("ADMIN", "ANALISTA", "COORDENADOR", "TESOUREIRO")
 
 
 class SimpleUserSerializer(serializers.Serializer):
@@ -210,6 +227,8 @@ class AssociadoListSerializer(serializers.ModelSerializer):
     status_renovacao = serializers.SerializerMethodField()
     status_visual_slug = serializers.SerializerMethodField()
     status_visual_label = serializers.SerializerMethodField()
+    possui_meses_nao_descontados = serializers.SerializerMethodField()
+    meses_nao_descontados_count = serializers.SerializerMethodField()
     matricula_display = serializers.SerializerMethodField()
 
     class Meta:
@@ -225,6 +244,8 @@ class AssociadoListSerializer(serializers.ModelSerializer):
             "status_renovacao",
             "status_visual_slug",
             "status_visual_label",
+            "possui_meses_nao_descontados",
+            "meses_nao_descontados_count",
             "agente",
             "ciclos_abertos",
             "ciclos_fechados",
@@ -258,6 +279,18 @@ class AssociadoListSerializer(serializers.ModelSerializer):
     def get_status_visual_label(self, obj: Associado) -> str:
         return str(get_associado_visual_status_payload(obj)["status_visual_label"])
 
+    def get_possui_meses_nao_descontados(self, obj: Associado) -> bool:
+        return any(
+            bool(build_contract_cycle_projection(contrato)["possui_meses_nao_descontados"])
+            for contrato in obj.contratos.exclude(status="cancelado")
+        )
+
+    def get_meses_nao_descontados_count(self, obj: Associado) -> int:
+        return sum(
+            int(build_contract_cycle_projection(contrato)["meses_nao_descontados_count"])
+            for contrato in obj.contratos.exclude(status="cancelado")
+        )
+
     def get_matricula_display(self, obj: Associado) -> str:
         return obj.matricula_display
 
@@ -273,7 +306,11 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
     status_renovacao = serializers.SerializerMethodField()
     status_visual_slug = serializers.SerializerMethodField()
     status_visual_label = serializers.SerializerMethodField()
+    possui_meses_nao_descontados = serializers.SerializerMethodField()
+    meses_nao_descontados_count = serializers.SerializerMethodField()
     matricula_display = serializers.SerializerMethodField()
+    percentual_repasse = serializers.SerializerMethodField()
+    mobile_sessions = serializers.SerializerMethodField()
 
     class Meta:
         model = Associado
@@ -298,6 +335,9 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
             "status_renovacao",
             "status_visual_slug",
             "status_visual_label",
+            "possui_meses_nao_descontados",
+            "meses_nao_descontados_count",
+            "percentual_repasse",
             "observacao",
             "agente",
             "endereco",
@@ -308,7 +348,32 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
             "esteira",
             "created_at",
             "updated_at",
+            "mobile_sessions",
         ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if _is_agent_restricted(self.context):
+            for field_name in [
+                "tipo_documento",
+                "rg",
+                "orgao_expedidor",
+                "email",
+                "telefone",
+                "data_nascimento",
+                "profissao",
+                "estado_civil",
+                "orgao_publico",
+                "matricula_orgao",
+                "cargo",
+                "percentual_repasse",
+                "observacao",
+                "endereco",
+                "dados_bancarios",
+                "documentos",
+                "esteira",
+            ]:
+                self.fields.pop(field_name, None)
 
     def get_status_renovacao(self, obj: Associado) -> str:
         contratos = list(obj.contratos.exclude(status="cancelado").order_by("-created_at"))
@@ -324,8 +389,23 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
     def get_status_visual_label(self, obj: Associado) -> str:
         return str(get_associado_visual_status_payload(obj)["status_visual_label"])
 
+    def get_possui_meses_nao_descontados(self, obj: Associado) -> bool:
+        return any(
+            bool(build_contract_cycle_projection(contrato)["possui_meses_nao_descontados"])
+            for contrato in obj.contratos.exclude(status="cancelado")
+        )
+
+    def get_meses_nao_descontados_count(self, obj: Associado) -> int:
+        return sum(
+            int(build_contract_cycle_projection(contrato)["meses_nao_descontados_count"])
+            for contrato in obj.contratos.exclude(status="cancelado")
+        )
+
     def get_matricula_display(self, obj: Associado) -> str:
         return obj.matricula_display
+
+    def get_percentual_repasse(self, obj: Associado) -> str:
+        return f"{obj.auxilio_taxa:.2f}"
 
     def get_endereco(self, obj: Associado):
         payload = obj.build_endereco_payload()
@@ -344,6 +424,23 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
         if not payload:
             return None
         return ContatoHistoricoSerializer(payload).data
+
+    def get_mobile_sessions(self, obj: Associado) -> list:
+        user = getattr(obj, "user", None)
+        if not user:
+            return []
+        qs = MobileAccessToken.objects.filter(
+            user=user,
+            revoked_at__isnull=True,
+            deleted_at__isnull=True,
+        ).order_by("-last_used_at")[:3]
+        return [
+            {
+                "last_used_at": t.last_used_at,
+                "is_active": t.is_active,
+            }
+            for t in qs
+        ]
 
 
 class AssociadoCreateSerializer(serializers.ModelSerializer):
@@ -379,6 +476,17 @@ class AssociadoCreateSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False,
     )
+    agente_responsavel_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        write_only=True,
+    )
+    percentual_repasse = serializers.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        required=False,
+        default=10,
+    )
 
     class Meta:
         model = Associado
@@ -408,11 +516,37 @@ class AssociadoCreateSerializer(serializers.ModelSerializer):
             "data_primeira_mensalidade",
             "mes_averbacao",
             "doacao_associado",
+            "agente_responsavel_id",
+            "percentual_repasse",
             "documentos_payload",
         ]
         read_only_fields = ["id", "matricula"]
 
     def validate(self, attrs):
+        agente_responsavel_id = attrs.get("agente_responsavel_id")
+        percentual_repasse = attrs.get("percentual_repasse")
+        sent_agente_responsavel = "agente_responsavel_id" in self.initial_data
+        sent_percentual_repasse = "percentual_repasse" in self.initial_data
+        if (
+            (sent_agente_responsavel or sent_percentual_repasse)
+            and not _can_manage_agent_assignment(self.context)
+        ):
+            raise serializers.ValidationError(
+                "Seu perfil não pode definir agente responsável ou percentual de repasse."
+            )
+        if _can_manage_agent_assignment(self.context) and agente_responsavel_id is None:
+            raise serializers.ValidationError(
+                {"agente_responsavel_id": "Selecione o agente responsável."}
+            )
+        if agente_responsavel_id is not None and not User.objects.filter(
+            id=agente_responsavel_id,
+            is_active=True,
+            user_roles__deleted_at__isnull=True,
+            user_roles__role__codigo="AGENTE",
+        ).exists():
+            raise serializers.ValidationError(
+                {"agente_responsavel_id": "Agente responsável inválido."}
+            )
         contrato = {
             "valor_bruto_total": attrs.pop("valor_bruto_total"),
             "valor_liquido": attrs.pop("valor_liquido"),
@@ -426,6 +560,7 @@ class AssociadoCreateSerializer(serializers.ModelSerializer):
             ),
             "mes_averbacao": attrs.pop("mes_averbacao", None),
             "doacao_associado": attrs.pop("doacao_associado", 0),
+            "percentual_repasse": attrs.pop("percentual_repasse", 10),
         }
         attrs["contrato"] = contrato
         return CadastroValidationStrategy().validate(attrs)
@@ -479,6 +614,12 @@ class AssociadoUpdateSerializer(serializers.ModelSerializer):
         required=False,
         source="contrato.margem_disponivel",
     )
+    agente_responsavel_id = serializers.IntegerField(required=False, allow_null=True)
+    percentual_repasse = serializers.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        required=False,
+    )
 
     class Meta:
         model = Associado
@@ -505,10 +646,28 @@ class AssociadoUpdateSerializer(serializers.ModelSerializer):
             "taxa_antecipacao",
             "mensalidade",
             "margem_disponivel",
+            "agente_responsavel_id",
+            "percentual_repasse",
         ]
         read_only_fields = ["id", "matricula", "cpf_cnpj"]
 
     def validate(self, attrs):
+        if (
+            "agente_responsavel_id" in attrs or "percentual_repasse" in attrs
+        ) and not _can_manage_agent_assignment(self.context):
+            raise serializers.ValidationError(
+                "Seu perfil não pode definir agente responsável ou percentual de repasse."
+            )
+        agente_responsavel_id = attrs.get("agente_responsavel_id")
+        if agente_responsavel_id is not None and not User.objects.filter(
+            id=agente_responsavel_id,
+            is_active=True,
+            user_roles__deleted_at__isnull=True,
+            user_roles__role__codigo="AGENTE",
+        ).exists():
+            raise serializers.ValidationError(
+                {"agente_responsavel_id": "Agente responsável inválido."}
+            )
         return EdicaoValidationStrategy().validate(attrs)
 
     def update(self, instance, validated_data):
@@ -516,9 +675,15 @@ class AssociadoUpdateSerializer(serializers.ModelSerializer):
         dados_bancarios_data = validated_data.pop("dados_bancarios", None)
         contato_data = validated_data.pop("contato", None)
         contrato_data = validated_data.pop("contrato", None)
+        agente_responsavel_id = validated_data.pop("agente_responsavel_id", None)
+        percentual_repasse = validated_data.pop("percentual_repasse", None)
 
         for field, value in validated_data.items():
             setattr(instance, field, value)
+        if agente_responsavel_id is not None:
+            instance.agente_responsavel_id = agente_responsavel_id
+        if percentual_repasse is not None:
+            instance.auxilio_taxa = percentual_repasse
         if endereco_data:
             instance.cep = endereco_data.get("cep", instance.cep)
             instance.logradouro = endereco_data.get("logradouro", instance.logradouro)
@@ -561,6 +726,14 @@ class AssociadoUpdateSerializer(serializers.ModelSerializer):
             if contrato:
                 for field, value in contrato_data.items():
                     setattr(contrato, field, value)
+                if agente_responsavel_id is not None:
+                    contrato.agente_id = agente_responsavel_id
+                contrato.save()
+        elif agente_responsavel_id is not None or percentual_repasse is not None:
+            contrato = instance.contratos.order_by("-created_at").first()
+            if contrato:
+                if agente_responsavel_id is not None:
+                    contrato.agente_id = agente_responsavel_id
                 contrato.save()
 
         return instance
@@ -579,3 +752,4 @@ class AssociadoMetricasSerializer(serializers.Serializer):
     ativos = MetricaSerializer()
     em_analise = MetricaSerializer()
     inativos = MetricaSerializer()
+    liquidados = MetricaSerializer()

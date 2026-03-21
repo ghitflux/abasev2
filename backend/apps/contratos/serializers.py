@@ -12,7 +12,7 @@ from apps.contratos.cycle_timeline import (
     get_contract_cycle_size,
     get_cycle_activation_payload,
 )
-from apps.refinanciamento.models import Refinanciamento
+from apps.refinanciamento.models import Comprovante, Refinanciamento
 from apps.tesouraria.initial_payment import build_initial_payment_payload
 
 from .models import Ciclo, Contrato, Parcela
@@ -42,6 +42,14 @@ def _get_contract_projection(
     if contrato.id not in cache:
         cache[contrato.id] = build_contract_cycle_projection(contrato)
     return cache[contrato.id]
+
+
+def _is_agent_restricted(context: dict[str, object]) -> bool:
+    request = context.get("request")
+    if not request or not getattr(request, "user", None):
+        return False
+    user = request.user
+    return user.has_role("AGENTE") and not user.has_role("ADMIN")
 
 
 class AssociadoContratoSerializer(serializers.Serializer):
@@ -266,6 +274,8 @@ class ContratoResumoSerializer(serializers.ModelSerializer):
     ciclos = serializers.SerializerMethodField()
     meses_nao_pagos = serializers.SerializerMethodField()
     movimentos_financeiros_avulsos = serializers.SerializerMethodField()
+    possui_meses_nao_descontados = serializers.SerializerMethodField()
+    meses_nao_descontados_count = serializers.SerializerMethodField()
     data_primeiro_ciclo_ativado = serializers.SerializerMethodField()
     origem_data_primeiro_ciclo = serializers.SerializerMethodField()
     primeiro_ciclo_ativacao_inferida = serializers.SerializerMethodField()
@@ -313,6 +323,8 @@ class ContratoResumoSerializer(serializers.ModelSerializer):
             "pagamento_inicial_evidencias",
             "status_renovacao",
             "refinanciamento_id",
+            "possui_meses_nao_descontados",
+            "meses_nao_descontados_count",
             "meses_nao_pagos",
             "movimentos_financeiros_avulsos",
             "ciclos",
@@ -342,7 +354,21 @@ class ContratoResumoSerializer(serializers.ModelSerializer):
             obj,
             include_documents=True,
         )
-        return ProjectedCicloSerializer(projection["cycles"], many=True).data
+        cycles = projection["cycles"]
+        if _is_agent_restricted(self.context):
+            filtered_cycles = []
+            for cycle in cycles:
+                next_cycle = dict(cycle)
+                next_cycle["termo_antecipacao"] = None
+                next_cycle["comprovantes_ciclo"] = [
+                    comprovante
+                    for comprovante in cycle["comprovantes_ciclo"]
+                    if str(comprovante.get("papel", "")).lower()
+                    == Comprovante.Papel.AGENTE
+                ]
+                filtered_cycles.append(next_cycle)
+            cycles = filtered_cycles
+        return ProjectedCicloSerializer(cycles, many=True).data
 
     def get_meses_nao_pagos(self, obj: Contrato):
         projection = _get_contract_projection(self.context, obj)
@@ -354,6 +380,16 @@ class ContratoResumoSerializer(serializers.ModelSerializer):
             projection["movimentos_financeiros_avulsos"],
             many=True,
         ).data
+
+    def get_possui_meses_nao_descontados(self, obj: Contrato) -> bool:
+        return bool(
+            _get_contract_projection(self.context, obj)["possui_meses_nao_descontados"]
+        )
+
+    def get_meses_nao_descontados_count(self, obj: Contrato) -> int:
+        return int(
+            _get_contract_projection(self.context, obj)["meses_nao_descontados_count"]
+        )
 
     def get_status_renovacao(self, obj: Contrato) -> str:
         return str(_get_contract_projection(self.context, obj)["status_renovacao"])
@@ -387,9 +423,16 @@ class ContratoResumoSerializer(serializers.ModelSerializer):
         return self._initial_payment_payload(obj).paid_at
 
     def get_pagamento_inicial_evidencias(self, obj: Contrato):
+        evidencias = self._initial_payment_payload(obj).evidencias
+        if _is_agent_restricted(self.context):
+            evidencias = [
+                evidencia
+                for evidencia in evidencias
+                if str(getattr(evidencia, "papel", "")).lower()
+                == Comprovante.Papel.AGENTE
+            ]
         return InitialPaymentEvidenceSerializer(
-            self._initial_payment_payload(obj).evidencias,
-            many=True,
+            evidencias, many=True
         ).data
 
 
@@ -413,6 +456,8 @@ class ContratoListSerializer(serializers.ModelSerializer):
     refinanciamento_id = serializers.SerializerMethodField()
     status_visual_slug = serializers.SerializerMethodField()
     status_visual_label = serializers.SerializerMethodField()
+    possui_meses_nao_descontados = serializers.SerializerMethodField()
+    meses_nao_descontados_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Contrato
@@ -435,6 +480,8 @@ class ContratoListSerializer(serializers.ModelSerializer):
             "pode_solicitar_refinanciamento",
             "status_renovacao",
             "refinanciamento_id",
+            "possui_meses_nao_descontados",
+            "meses_nao_descontados_count",
         ]
 
     def get_status_resumido(self, obj: Contrato) -> str:
@@ -446,11 +493,11 @@ class ContratoListSerializer(serializers.ModelSerializer):
 
     def get_status_contrato_visual(self, obj: Contrato) -> str:
         projection = _get_contract_projection(self.context, obj)
+        if projection["possui_meses_nao_descontados"]:
+            return "inadimplente"
         visual_slug = str(
             get_contract_visual_status_payload(obj, projection=projection)["status_visual_slug"]
         )
-        if "ciclo_inadimplente" in visual_slug:
-            return "inadimplente"
         if visual_slug in {"contrato_desativado", "contrato_encerrado"}:
             return "desativado"
         if visual_slug == "em_analise":
@@ -514,6 +561,16 @@ class ContratoListSerializer(serializers.ModelSerializer):
             get_contract_visual_status_payload(obj, projection=projection)["status_visual_label"]
         )
 
+    def get_possui_meses_nao_descontados(self, obj: Contrato) -> bool:
+        return bool(
+            _get_contract_projection(self.context, obj)["possui_meses_nao_descontados"]
+        )
+
+    def get_meses_nao_descontados_count(self, obj: Contrato) -> int:
+        return int(
+            _get_contract_projection(self.context, obj)["meses_nao_descontados_count"]
+        )
+
 
 class ContratoResumoCardsSerializer(serializers.Serializer):
     total = serializers.IntegerField()
@@ -521,6 +578,7 @@ class ContratoResumoCardsSerializer(serializers.Serializer):
     ativos = serializers.IntegerField()
     pendentes = serializers.IntegerField()
     inadimplentes = serializers.IntegerField()
+    liquidados = serializers.IntegerField()
 
 
 class RenovacaoCicloResumoSerializer(serializers.Serializer):

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from django.db.models import OuterRef, Prefetch, Q, Subquery
+from decimal import Decimal
+
+from django.db.models import Count, OuterRef, Prefetch, Q, Subquery, Sum
 from django.utils.dateparse import parse_date
 from rest_framework import mixins, permissions, status
 from rest_framework.decorators import action
@@ -16,7 +18,7 @@ from apps.accounts.permissions import (
 )
 from core.pagination import StandardResultsSetPagination
 
-from .models import Assumption, Refinanciamento
+from .models import Assumption, Comprovante, Refinanciamento
 from .serializers import (
     AprovarAnaliseRefinanciamentoSerializer,
     AprovarEmMassaRefinanciamentoSerializer,
@@ -101,6 +103,10 @@ class BaseRefinanciamentoViewSet(
         if status_filters:
             queryset = queryset.filter(status__in=status_filters)
 
+        cycle_key = self.request.query_params.get("cycle_key")
+        if cycle_key:
+            queryset = queryset.filter(cycle_key__icontains=cycle_key)
+
         origin_filters = self._get_multi_param("origem")
         if origin_filters:
             queryset = queryset.filter(origem__in=origin_filters)
@@ -157,6 +163,63 @@ class BaseRefinanciamentoViewSet(
                 ]
             )
         return queryset.none()
+
+    @action(detail=False, methods=["get"], url_path="resumo")
+    def resumo(self, request):
+        queryset = self.get_queryset()
+        resumo = queryset.aggregate(
+            total=Count("id"),
+            em_analise=Count(
+                "id", filter=Q(status=Refinanciamento.Status.EM_ANALISE_RENOVACAO)
+            ),
+            assumidos=Count(
+                "id", filter=Q(assumption_status_value=Assumption.Status.ASSUMIDO)
+            ),
+            aprovados=Count(
+                "id", filter=Q(status=Refinanciamento.Status.APROVADO_PARA_RENOVACAO)
+            ),
+            efetivados=Count(
+                "id", filter=Q(status=Refinanciamento.Status.EFETIVADO)
+            ),
+            concluidos=Count(
+                "id",
+                filter=Q(
+                    status__in=[
+                        Refinanciamento.Status.CONCLUIDO,
+                        Refinanciamento.Status.EFETIVADO,
+                    ]
+                ),
+            ),
+            bloqueados=Count(
+                "id", filter=Q(status=Refinanciamento.Status.BLOQUEADO)
+            ),
+            revertidos=Count(
+                "id", filter=Q(status=Refinanciamento.Status.REVERTIDO)
+            ),
+            em_fluxo=Count(
+                "id",
+                filter=Q(
+                    status__in=[
+                        Refinanciamento.Status.APTO_A_RENOVAR,
+                        Refinanciamento.Status.PENDENTE_APTO,
+                        Refinanciamento.Status.SOLICITADO,
+                        Refinanciamento.Status.EM_ANALISE,
+                        Refinanciamento.Status.APROVADO,
+                        Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                        Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+                    ]
+                ),
+            ),
+            repasse_total=Sum("repasse_agente"),
+        )
+        resumo["com_anexo_agente"] = (
+            queryset.filter(comprovantes__papel=Comprovante.Papel.AGENTE)
+            .values("id")
+            .distinct()
+            .count()
+        )
+        resumo["repasse_total"] = resumo["repasse_total"] or Decimal("0.00")
+        return Response(resumo)
 
 
 class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
@@ -364,6 +427,10 @@ class AnalistaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
         assignment = self.request.query_params.get("assignment")
         if assignment == "minhas":
             queryset = queryset.filter(assumption_analista_id=self.request.user.id)
+        elif assignment == "assumidas":
+            queryset = queryset.filter(
+                assumption_status_value=Assumption.Status.ASSUMIDO
+            )
         elif assignment == "nao_assumidas":
             queryset = queryset.filter(assumption_analista_id__isnull=True)
         return queryset

@@ -13,6 +13,7 @@ from apps.importacao.services import (
     _apply_legacy_snapshot_to_pagamento,
     classify_manual_paid_at_difference,
 )
+from core.legacy_dump import default_legacy_dump_path
 
 
 def _parse_competencia(value: str | None):
@@ -33,7 +34,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "--file",
-            default="scriptsphp/abase (2).sql",
+            default=str(default_legacy_dump_path()),
             help="Dump SQL legado com a tabela pagamentos_mensalidades.",
         )
         parser.add_argument(
@@ -132,6 +133,20 @@ class Command(BaseCommand):
 
         unmatched_snapshots = total_snapshots - len(matched_keys)
         mode = "execute" if options["execute"] else "dry-run"
+        self.summary = {
+            "mode": mode,
+            "dump": str(dump_path),
+            "competencia": competencia.strftime("%Y-%m") if competencia else None,
+            "pagamentos_avaliados": total_pagamentos,
+            "snapshots_manuais": total_snapshots,
+            "pagamentos_com_snapshot": matched,
+            "pagamentos_sem_snapshot": missing,
+            "snapshots_sem_pagamento": unmatched_snapshots,
+            "pagamentos_alterados": updated,
+            "pagamentos_ja_completos": unchanged,
+            "timezone_only": timezone_only,
+            "field_updates": field_updates,
+        }
         self.stdout.write(f"modo: {mode}")
         self.stdout.write(f"dump: {dump_path}")
         if competencia:

@@ -16,7 +16,7 @@ from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.legacy_renewals import load_legacy_renewals, next_month_start
 from apps.contratos.models import Contrato
 from apps.refinanciamento.models import Comprovante, Refinanciamento
-from core.legacy_dump import LegacyDump
+from core.legacy_dump import LegacyDump, default_legacy_dump_path
 
 
 def _default_report_path(prefix: str) -> Path:
@@ -36,7 +36,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "--file",
-            default="scriptsphp/abase (2).sql",
+            default=str(default_legacy_dump_path()),
             help="Dump SQL legado.",
         )
         parser.add_argument("--cpf", help="Filtra um associado específico por CPF.")

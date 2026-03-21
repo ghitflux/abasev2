@@ -1,9 +1,16 @@
 "use client";
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  BadgeCheckIcon,
+  BriefcaseBusinessIcon,
+  HandCoinsIcon,
+  PaperclipIcon,
+} from "lucide-react";
 
 import type {
+  PagamentoAgenteNotificacoes,
   PaginatedPagamentosAgenteResponse,
   PagamentoAgenteItem,
   PagamentoAgenteResumo,
@@ -17,7 +24,8 @@ import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import StatusBadge from "@/components/custom/status-badge";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
-import { SummaryCardSkeleton } from "@/components/shared/page-skeletons";
+import { MetricCardSkeleton } from "@/components/shared/page-skeletons";
+import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -91,12 +99,14 @@ function ComprovanteChip({
 }
 
 export default function MeusPagamentosPage() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = React.useState("");
   const [status, setStatus] = React.useState("todos");
   const [mes, setMes] = React.useState("");
   const [pageSize, setPageSize] = React.useState("15");
   const [page, setPage] = React.useState(1);
   const debouncedSearch = useDebouncedValue(search, 300);
+  const markedUnreadCountRef = React.useRef(0);
 
   const query = useQuery({
     queryKey: ["agente-pagamentos", page, pageSize, debouncedSearch, status, mes],
@@ -111,6 +121,31 @@ export default function MeusPagamentosPage() {
         },
       }),
   });
+  const notificacoesQuery = useQuery({
+    queryKey: ["agente-pagamentos-notificacoes"],
+    queryFn: () =>
+      apiFetch<PagamentoAgenteNotificacoes>("agente/pagamentos/notificacoes"),
+  });
+
+  React.useEffect(() => {
+    const unreadCount = notificacoesQuery.data?.unread_count ?? 0;
+    if (!unreadCount || unreadCount === markedUnreadCountRef.current) {
+      if (!unreadCount) {
+        markedUnreadCountRef.current = 0;
+      }
+      return;
+    }
+
+    markedUnreadCountRef.current = unreadCount;
+    void apiFetch<{ marked_count: number }>(
+      "agente/pagamentos/notificacoes/marcar-lidas",
+      { method: "POST" },
+    ).then(() => {
+      void queryClient.invalidateQueries({
+        queryKey: ["agente-pagamentos-notificacoes"],
+      });
+    });
+  }, [notificacoesQuery.data?.unread_count, queryClient]);
 
   const rows = query.data?.results ?? [];
   const resumo: PagamentoAgenteResumo = {
@@ -153,10 +188,17 @@ export default function MeusPagamentosPage() {
         id: "status",
         header: "Status",
         cell: (row) => (
-          <StatusBadge
-            status={row.status_visual_slug}
-            label={row.status_visual_label}
-          />
+          <div className="space-y-1">
+            <StatusBadge
+              status={row.status_visual_slug}
+              label={row.status_visual_label}
+            />
+            {row.possui_meses_nao_descontados ? (
+              <p className="text-xs text-amber-200">
+                {row.meses_nao_descontados_count} mês(es) não descontado(s)
+              </p>
+            ) : null}
+          </div>
         ),
       },
       {
@@ -226,23 +268,39 @@ export default function MeusPagamentosPage() {
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {query.isLoading && !query.data ? (
-          Array.from({ length: 4 }).map((_, index) => <SummaryCardSkeleton key={index} />)
+          Array.from({ length: 4 }).map((_, index) => <MetricCardSkeleton key={index} />)
         ) : (
           <>
-            <ResumoCard label="Contratos" value={resumo.total} />
-            <ResumoCard label="Efetivados" value={resumo.efetivados} colorClass="text-emerald-400" />
-            <ResumoCard label="Com anexos" value={resumo.com_anexos} />
-            <Card className="rounded-[1.75rem] border-border/60 bg-card/70">
-              <CardContent className="space-y-1 p-6">
-                <p className="text-sm text-muted-foreground">Parcelas pagas</p>
-                <p className="text-2xl font-semibold">
-                  {resolveCount(resumo.parcelas_pagas).toLocaleString("pt-BR")}/
-                  {resolveCount(resumo.parcelas_total).toLocaleString("pt-BR")}
-                </p>
-              </CardContent>
-            </Card>
+            <StatsCard
+              title="Contratos com repasse"
+              value={resolveCount(resumo.total).toLocaleString("pt-BR")}
+              delta={`${resolveCount(resumo.efetivados).toLocaleString("pt-BR")} efetivados no recorte`}
+              icon={BriefcaseBusinessIcon}
+              tone="neutral"
+            />
+            <StatsCard
+              title="Efetivados"
+              value={resolveCount(resumo.efetivados).toLocaleString("pt-BR")}
+              delta="Pagamentos iniciais já confirmados"
+              icon={BadgeCheckIcon}
+              tone="positive"
+            />
+            <StatsCard
+              title="Com anexos"
+              value={resolveCount(resumo.com_anexos).toLocaleString("pt-BR")}
+              delta="Contratos com evidência disponível"
+              icon={PaperclipIcon}
+              tone="neutral"
+            />
+            <StatsCard
+              title="Parcelas pagas"
+              value={`${resolveCount(resumo.parcelas_pagas).toLocaleString("pt-BR")}/${resolveCount(resumo.parcelas_total).toLocaleString("pt-BR")}`}
+              delta={`${Math.max(resolveCount(resumo.parcelas_total) - resolveCount(resumo.parcelas_pagas), 0).toLocaleString("pt-BR")} ainda pendentes`}
+              icon={HandCoinsIcon}
+              tone="positive"
+            />
           </>
         )}
       </section>
@@ -504,26 +562,5 @@ function InfoCard({ label, value }: { label: string; value: string }) {
       <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
       <p className="mt-2 text-sm font-medium">{value}</p>
     </div>
-  );
-}
-
-function ResumoCard({
-  label,
-  value,
-  colorClass,
-}: {
-  label: string;
-  value?: number | null;
-  colorClass?: string;
-}) {
-  return (
-    <Card className="rounded-[1.75rem] border-border/60 bg-card/70">
-      <CardContent className="space-y-1 p-6">
-        <p className="text-sm text-muted-foreground">{label}</p>
-        <p className={`text-3xl font-semibold ${colorClass ?? ""}`}>
-          {resolveCount(value).toLocaleString("pt-BR")}
-        </p>
-      </CardContent>
-    </Card>
   );
 }

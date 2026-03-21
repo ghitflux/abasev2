@@ -70,7 +70,7 @@ class AnaliseViewSet(GenericViewSet):
 
     @action(detail=False, methods=["get"])
     def filas(self, request):
-        secao = request.query_params.get("secao", "ativos").strip().lower()
+        secao = request.query_params.get("secao", "ver_todos").strip().lower()
         queryset = AnaliseService.fila_queryset(
             secao,
             request.user,

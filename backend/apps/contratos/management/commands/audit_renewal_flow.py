@@ -12,7 +12,7 @@ from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.cycle_timeline import get_contract_cycle_size
 from apps.contratos.models import Contrato
 from apps.refinanciamento.models import Refinanciamento
-from core.legacy_dump import LegacyDump, parse_date, parse_str
+from core.legacy_dump import LegacyDump, default_legacy_dump_path, parse_date, parse_str
 
 
 def _default_report_path(prefix: str) -> Path:
@@ -118,7 +118,7 @@ class Command(BaseCommand):
         parser.add_argument(
             "--file",
             dest="legacy_file",
-            default="scriptsphp/abase (2).sql",
+            default=str(default_legacy_dump_path()),
             help="Dump SQL legado opcional usado para apoio na auditoria.",
         )
         parser.add_argument(

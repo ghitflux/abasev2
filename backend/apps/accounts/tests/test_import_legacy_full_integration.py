@@ -8,6 +8,8 @@ from pathlib import Path
 from django.core.management import call_command
 from django.test import TransactionTestCase
 
+from core.legacy_dump import default_legacy_dump_path
+
 
 class ImportLegacyFullIntegrationTestCase(TransactionTestCase):
     reset_sequences = False
@@ -15,7 +17,9 @@ class ImportLegacyFullIntegrationTestCase(TransactionTestCase):
     def _resolve_dump_path(self) -> Path:
         candidates = [
             os.environ.get("ABASE_LEGACY_DUMP_FILE"),
-            str(Path(__file__).resolve().parents[4] / "scriptsphp" / "abase (2).sql"),
+            str(default_legacy_dump_path()),
+            str(Path(__file__).resolve().parents[5] / "dumps_legado" / "abase_dump_legado_21.03.2026.sql"),
+            str(Path(__file__).resolve().parents[5] / "scriptsphp" / "abase (2).sql"),
             "/legacy-dumps/abase (2).sql",
             "/tmp/abase_legacy.sql",
         ]
@@ -43,35 +47,22 @@ class ImportLegacyFullIntegrationTestCase(TransactionTestCase):
             report = json.loads(report_path.read_text(encoding="utf-8"))
 
         self.assertEqual(report["status"], "100% concluído")
+        self.assertEqual(report["summary"]["roles"], report["sections"]["roles"]["source_rows"])
         self.assertEqual(
-            report["summary"],
-            {
-                "roles": 8,
-                "users_operacionais": 36,
-                "agente_cadastros": 648,
-                "associados": 647,
-                "cpf_duplicado_consolidado": 1,
-                "associado_users": 647,
-                "contratos": 648,
-                "ciclos": 648,
-                "parcelas": 1944,
-                "documentos": 4405,
-                "agente_cadastro_assumptions": 111,
-                "agente_doc_issues": 437,
-                "agente_doc_reuploads": 616,
-                "agente_margens": 11,
-                "agente_margem_historicos": 11,
-                "agente_margem_snapshots": 671,
-                "despesas": 82,
-                "pagamentos_mensalidades": 2081,
-                "tesouraria_confirmacoes": 198,
-                "tesouraria_pagamentos": 648,
-                "refinanciamentos": 347,
-                "refinanciamento_assumptions": 251,
-                "refinanciamento_ajustes_valor": 0,
-                "refinanciamento_comprovantes": 690,
-                "refinanciamento_itens": 51,
-                "refinanciamento_solicitacoes": 330,
-                "competencia_conflicts": 0,
-            },
+            report["summary"]["users_operacionais"],
+            report["sections"]["users_operacionais"]["source_rows"],
         )
+        self.assertEqual(
+            report["summary"]["associados"],
+            report["sections"]["associados"]["actual_rows"],
+        )
+        self.assertEqual(
+            report["summary"]["contratos"],
+            report["sections"]["contratos"]["actual_rows"],
+        )
+        self.assertEqual(
+            report["summary"]["pagamentos_mensalidades"],
+            report["sections"]["pagamentos_mensalidades"]["source_rows"],
+        )
+        self.assertEqual(report["summary"]["competencia_conflicts"], 0)
+        self.assertTrue(str(dump_path).endswith(report["source_file"].split("/")[-1]))

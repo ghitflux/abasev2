@@ -91,10 +91,17 @@ class Contrato(BaseModel):
             timestamp = timezone.now().strftime("%Y%m%d%H%M%S")
             self.codigo = f"CTR-{timestamp}-{secrets.token_hex(3).upper()}"
         base_comissao = to_decimal(self.valor_mensalidade) or to_decimal(self.valor_bruto)
-        if base_comissao:
-            self.comissao_agente = (base_comissao * Decimal("0.10")).quantize(
-                Decimal("0.01")
+        percentual_repasse = Decimal("10.00")
+        if self.associado_id and getattr(self, "associado", None):
+            associado_percentual = to_decimal(
+                getattr(self.associado, "auxilio_taxa", None)
             )
+            if associado_percentual is not None:
+                percentual_repasse = associado_percentual
+        if base_comissao:
+            self.comissao_agente = (
+                base_comissao * (percentual_repasse / Decimal("100"))
+            ).quantize(Decimal("0.01"))
         valor_mensalidade = to_decimal(self.valor_mensalidade)
         if valor_mensalidade and self.prazo_meses:
             self.valor_total_antecipacao = (

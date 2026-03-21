@@ -14,6 +14,7 @@ from apps.tesouraria.payment_evidence import (
     build_competencia_evidence_payload,
     get_pagamento_for_reference,
 )
+from apps.tesouraria.models import BaixaManual
 from core.file_references import build_storage_reference
 
 
@@ -109,6 +110,23 @@ def _query_retorno_items(
     return list(queryset.order_by("arquivo_retorno__created_at", "id"))
 
 
+def _query_baixa_manual(
+    *,
+    contrato: Contrato,
+    referencia_mes: date,
+    parcela: Parcela | None,
+) -> BaixaManual | None:
+    queryset = BaixaManual.objects.select_related("parcela").filter(
+        parcela__associado=contrato.associado,
+        parcela__referencia_mes=referencia_mes,
+    )
+    if parcela is not None:
+        preferred = queryset.filter(parcela=parcela).order_by("-data_baixa", "-id").first()
+        if preferred is not None:
+            return preferred
+    return queryset.order_by("-data_baixa", "-id").first()
+
+
 def _resolve_target(
     projection: dict[str, object],
     *,
@@ -183,6 +201,11 @@ def build_parcela_detail_payload(
         associado=contrato.associado,
         referencia_mes=referencia_mes,
     )
+    baixa_manual = _query_baixa_manual(
+        contrato=contrato,
+        referencia_mes=referencia_mes,
+        parcela=actual_parcela,
+    )
     evidence_payload = build_competencia_evidence_payload(
         referencia_mes=referencia_mes,
         arquivo_items=_query_retorno_items(
@@ -191,7 +214,7 @@ def build_parcela_detail_payload(
             parcela=actual_parcela,
         ),
         pagamento_mensalidade=pagamento_mensalidade,
-        baixa_manual=getattr(actual_parcela, "baixa_manual", None),
+        baixa_manual=baixa_manual,
         request=request,
     )
 

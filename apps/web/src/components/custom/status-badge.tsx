@@ -19,6 +19,7 @@ const STATUS_STYLES: Record<string, string> = {
     "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
   anexado: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
   pago: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
+  quitada: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
   aberto: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   analise: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   ciclo_iniciado: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",

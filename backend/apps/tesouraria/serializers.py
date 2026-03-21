@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -10,14 +11,50 @@ from apps.contratos.cycle_projection import (
     build_contract_cycle_projection,
     get_contract_visual_status_payload,
 )
+from apps.contratos.parcela_detail import _query_actual_parcela, _query_retorno_items
 from apps.contratos.models import Contrato, Parcela
 from apps.financeiro.models import Despesa
 from apps.importacao.models import ArquivoRetorno, PagamentoMensalidade
 from apps.refinanciamento.serializers import ComprovanteResumoSerializer
 from apps.tesouraria.initial_payment import build_initial_payment_payload
-from apps.tesouraria.payment_evidence import build_competencia_evidence_payload
+from apps.tesouraria.payment_evidence import (
+    build_competencia_evidence_payload,
+    canonicalize_pagamentos,
+)
 from apps.tesouraria.models import BaixaManual
 from core.file_references import build_filefield_reference, build_storage_reference
+
+
+def _is_agent_restricted(context: dict) -> bool:
+    request = context.get("request")
+    if not request or not getattr(request, "user", None):
+        return False
+    user = request.user
+    return user.has_role("AGENTE") and not user.has_role("ADMIN")
+
+
+def _projection_cache(
+    context: dict[str, object],
+) -> dict[int, dict[str, object]]:
+    return context.setdefault("_contract_projection_cache", {})
+
+
+def _get_contract_projection(
+    context: dict[str, object],
+    contrato: Contrato,
+) -> dict[str, object]:
+    cache = _projection_cache(context)
+    if contrato.id not in cache:
+        cache[contrato.id] = build_contract_cycle_projection(contrato)
+    return cache[contrato.id]
+
+
+def _prefetched_pagamento_por_referencia(
+    contrato: Contrato,
+) -> dict[date, PagamentoMensalidade]:
+    pagamentos = list(getattr(contrato.associado, "pagamentos_mensalidades").all())
+    canonical = canonicalize_pagamentos(pagamentos)
+    return {pagamento.referencia_month: pagamento for pagamento in canonical}
 
 
 class TesourariaContratoListSerializer(serializers.Serializer):
@@ -128,16 +165,31 @@ class AgentePagamentoParcelaSerializer(serializers.Serializer):
     comprovantes = serializers.SerializerMethodField()
 
     @extend_schema_field(AgentePagamentoComprovanteSerializer(many=True))
-    def get_comprovantes(self, obj: Parcela) -> list[dict[str, object]]:
-        pagamentos_manuais = self.context.get("pagamentos_mensalidade_por_referencia", {})
-        pagamento_mensalidade: PagamentoMensalidade | None = pagamentos_manuais.get(
-            obj.referencia_mes
+    def get_comprovantes(self, obj: Parcela | dict[str, Any]) -> list[dict[str, object]]:
+        referencia_mes = (
+            obj.get("referencia_mes")
+            if isinstance(obj, dict)
+            else obj.referencia_mes
         )
+        pagamento_mensalidade = None
+        if isinstance(obj, dict):
+            pagamento_mensalidade = obj.get("_pagamento_mensalidade")
+        if pagamento_mensalidade is None:
+            pagamentos_manuais = self.context.get("pagamentos_mensalidade_por_referencia", {})
+            pagamento_mensalidade = pagamentos_manuais.get(referencia_mes)
         evidence_payload = build_competencia_evidence_payload(
-            referencia_mes=obj.referencia_mes,
-            arquivo_items=obj.itens_retorno.all(),
+            referencia_mes=referencia_mes,
+            arquivo_items=(
+                obj.get("_arquivo_items", [])
+                if isinstance(obj, dict)
+                else obj.itens_retorno.all()
+            ),
             pagamento_mensalidade=pagamento_mensalidade,
-            baixa_manual=getattr(obj, "baixa_manual", None),
+            baixa_manual=(
+                obj.get("_baixa_manual")
+                if isinstance(obj, dict)
+                else getattr(obj, "baixa_manual", None)
+            ),
             request=self.context.get("request"),
         )
         return AgentePagamentoComprovanteSerializer(
@@ -152,36 +204,21 @@ class AgentePagamentoCicloSerializer(serializers.Serializer):
     data_inicio = serializers.DateField(read_only=True)
     data_fim = serializers.DateField(read_only=True)
     status = serializers.CharField(read_only=True)
-    status_visual_slug = serializers.SerializerMethodField()
-    status_visual_label = serializers.SerializerMethodField()
+    status_visual_slug = serializers.CharField(read_only=True)
+    status_visual_label = serializers.CharField(read_only=True)
     valor_total = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
     parcelas = serializers.SerializerMethodField()
-
-    def _projection_cycle(self, obj) -> dict[str, object] | None:
-        projection = build_contract_cycle_projection(obj.contrato)
-        return next(
-            (cycle for cycle in projection["cycles"] if int(cycle["numero"]) == obj.numero),
-            None,
-        )
-
-    def get_status_visual_slug(self, obj) -> str:
-        cycle = self._projection_cycle(obj)
-        return str(cycle["status_visual_slug"]) if cycle else ""
-
-    def get_status_visual_label(self, obj) -> str:
-        cycle = self._projection_cycle(obj)
-        return str(cycle["status_visual_label"]) if cycle else ""
 
     @extend_schema_field(AgentePagamentoParcelaSerializer(many=True))
     def get_parcelas(self, obj) -> list[dict[str, object]]:
         competencia: date | None = self.context.get("mes_filter")
-        parcelas = list(obj.parcelas.all())
+        parcelas = list(obj.get("parcelas", []))
         if competencia:
             parcelas = [
                 parcela
                 for parcela in parcelas
-                if parcela.referencia_mes.year == competencia.year
-                and parcela.referencia_mes.month == competencia.month
+                if parcela["referencia_mes"].year == competencia.year
+                and parcela["referencia_mes"].month == competencia.month
             ]
         return AgentePagamentoParcelaSerializer(
             parcelas,
@@ -198,6 +235,8 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
     status_contrato = serializers.CharField(source="status", read_only=True)
     status_visual_slug = serializers.SerializerMethodField()
     status_visual_label = serializers.SerializerMethodField()
+    possui_meses_nao_descontados = serializers.SerializerMethodField()
+    meses_nao_descontados_count = serializers.SerializerMethodField()
     comprovantes_efetivacao = serializers.SerializerMethodField()
     pagamento_inicial_status = serializers.SerializerMethodField()
     pagamento_inicial_status_label = serializers.SerializerMethodField()
@@ -219,6 +258,8 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
             "status_contrato",
             "status_visual_slug",
             "status_visual_label",
+            "possui_meses_nao_descontados",
+            "meses_nao_descontados_count",
             "data_contrato",
             "auxilio_liberado_em",
             "pagamento_inicial_status",
@@ -235,19 +276,20 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
         ]
 
     def _parcelas_visiveis(self, obj: Contrato) -> list[Parcela]:
+        projection = _get_contract_projection(self.context, obj)
         competencia: date | None = self.context.get("mes_filter")
         parcelas = [
             parcela
-            for ciclo in obj.ciclos.all()
-            for parcela in ciclo.parcelas.all()
+            for ciclo in projection["cycles"]
+            for parcela in ciclo["parcelas"]
         ]
         if not competencia:
             return parcelas
         return [
             parcela
             for parcela in parcelas
-            if parcela.referencia_mes.year == competencia.year
-            and parcela.referencia_mes.month == competencia.month
+            if parcela["referencia_mes"].year == competencia.year
+            and parcela["referencia_mes"].month == competencia.month
         ]
 
     def _initial_payment_payload(self, obj: Contrato):
@@ -262,11 +304,23 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
     @extend_schema_field(AgentePagamentoComprovanteSerializer(many=True))
     def get_comprovantes_efetivacao(self, obj: Contrato) -> list[dict[str, object]]:
         comprovantes = self._initial_payment_payload(obj).evidencias
+        if _is_agent_restricted(self.context):
+            comprovantes = [
+                comprovante
+                for comprovante in comprovantes
+                if str(comprovante.get("papel", "")).lower() == "agente"
+            ]
         return AgentePagamentoComprovanteSerializer(comprovantes, many=True).data
 
     @extend_schema_field(AgentePagamentoComprovanteSerializer(many=True))
     def get_pagamento_inicial_evidencias(self, obj: Contrato) -> list[dict[str, object]]:
         comprovantes = self._initial_payment_payload(obj).evidencias
+        if _is_agent_restricted(self.context):
+            comprovantes = [
+                comprovante
+                for comprovante in comprovantes
+                if str(comprovante.get("papel", "")).lower() == "agente"
+            ]
         return AgentePagamentoComprovanteSerializer(comprovantes, many=True).data
 
     def get_pagamento_inicial_status(self, obj: Contrato) -> str:
@@ -285,29 +339,56 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
     @extend_schema_field(AgentePagamentoCicloSerializer(many=True))
     def get_ciclos(self, obj: Contrato) -> list[dict[str, object]]:
         competencia: date | None = self.context.get("mes_filter")
-        ciclos = list(obj.ciclos.all())
+        projection = _get_contract_projection(self.context, obj)
+        ciclos = list(projection["cycles"])
         if competencia:
             ciclos = [
                 ciclo
                 for ciclo in ciclos
                 if any(
-                    parcela.referencia_mes.year == competencia.year
-                    and parcela.referencia_mes.month == competencia.month
-                    for parcela in ciclo.parcelas.all()
+                    parcela["referencia_mes"].year == competencia.year
+                    and parcela["referencia_mes"].month == competencia.month
+                    for parcela in ciclo["parcelas"]
                 )
             ]
 
-        pagamentos_por_referencia = {
-            pagamento.referencia_month: pagamento
-            for pagamento in obj.associado.pagamentos_mensalidades.all()
-            if pagamento.manual_comprovante_path
-        }
+        pagamentos_por_referencia = _prefetched_pagamento_por_referencia(obj)
+        ciclos_payload: list[dict[str, object]] = []
+        for ciclo in ciclos:
+            parcelas_payload: list[dict[str, object]] = []
+            for parcela in ciclo["parcelas"]:
+                referencia_mes = parcela["referencia_mes"]
+                actual_parcela = _query_actual_parcela(
+                    contrato=obj,
+                    referencia_mes=referencia_mes,
+                )
+                parcelas_payload.append(
+                    {
+                        **parcela,
+                        "_pagamento_mensalidade": pagamentos_por_referencia.get(
+                            referencia_mes
+                        ),
+                        "_arquivo_items": _query_retorno_items(
+                            contrato=obj,
+                            referencia_mes=referencia_mes,
+                            parcela=actual_parcela,
+                        ),
+                        "_baixa_manual": getattr(actual_parcela, "baixa_manual", None),
+                    }
+                )
+            ciclos_payload.append(
+                {
+                    **ciclo,
+                    "parcelas": parcelas_payload,
+                }
+            )
+
         serializer_context = {
             **self.context,
             "pagamentos_mensalidade_por_referencia": pagamentos_por_referencia,
         }
         return AgentePagamentoCicloSerializer(
-            ciclos,
+            ciclos_payload,
             many=True,
             context=serializer_context,
         ).data
@@ -320,15 +401,35 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
             [
                 parcela
                 for parcela in self._parcelas_visiveis(obj)
-                if parcela.status == Parcela.Status.DESCONTADO
+                if parcela["status"] == Parcela.Status.DESCONTADO
             ]
         )
 
     def get_status_visual_slug(self, obj: Contrato) -> str:
-        return str(get_contract_visual_status_payload(obj)["status_visual_slug"])
+        projection = _get_contract_projection(self.context, obj)
+        return str(
+            get_contract_visual_status_payload(
+                obj,
+                projection=projection,
+            )["status_visual_slug"]
+        )
 
     def get_status_visual_label(self, obj: Contrato) -> str:
-        return str(get_contract_visual_status_payload(obj)["status_visual_label"])
+        projection = _get_contract_projection(self.context, obj)
+        return str(
+            get_contract_visual_status_payload(
+                obj,
+                projection=projection,
+            )["status_visual_label"]
+        )
+
+    def get_possui_meses_nao_descontados(self, obj: Contrato) -> bool:
+        projection = _get_contract_projection(self.context, obj)
+        return bool(projection["possui_meses_nao_descontados"])
+
+    def get_meses_nao_descontados_count(self, obj: Contrato) -> int:
+        projection = _get_contract_projection(self.context, obj)
+        return int(projection["meses_nao_descontados_count"])
 
 
 class BaixaManualItemSerializer(serializers.Serializer):

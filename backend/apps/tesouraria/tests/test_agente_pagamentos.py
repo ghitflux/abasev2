@@ -241,8 +241,10 @@ class AgentePagamentosViewSetTestCase(TestCase):
         self.assertEqual(row["pagamento_inicial_status"], "pago")
         self.assertEqual(row["pagamento_inicial_status_label"], "Pago")
         self.assertEqual(row["pagamento_inicial_valor"], "1200.00")
-        self.assertEqual(len(row["comprovantes_efetivacao"]), 2)
-        self.assertEqual(len(row["pagamento_inicial_evidencias"]), 2)
+        self.assertEqual(len(row["comprovantes_efetivacao"]), 1)
+        self.assertEqual(len(row["pagamento_inicial_evidencias"]), 1)
+        self.assertEqual(row["comprovantes_efetivacao"][0]["papel"], "agente")
+        self.assertEqual(row["pagamento_inicial_evidencias"][0]["papel"], "agente")
         self.assertEqual(row["parcelas_total"], 3)
         self.assertEqual(row["parcelas_pagas"], 2)
 
@@ -295,11 +297,48 @@ class AgentePagamentosViewSetTestCase(TestCase):
         self.assertEqual(row["pagamento_inicial_status"], "pago")
         self.assertEqual(row["pagamento_inicial_status_label"], "Pago")
         self.assertEqual(row["pagamento_inicial_valor"], "420.00")
-        self.assertEqual(len(row["pagamento_inicial_evidencias"]), 2)
+        self.assertEqual(len(row["pagamento_inicial_evidencias"]), 1)
         self.assertEqual(
             {item["tipo_referencia"] for item in row["pagamento_inicial_evidencias"]},
             {"placeholder_recebido"},
         )
+
+    def test_agente_consulta_e_marca_notificacoes_de_pagamento_como_lidas(self):
+        contrato = self._create_contract(
+            cpf="77711133355",
+            nome="Associado Notificacao",
+            agente=self.agente,
+        )
+        Pagamento.objects.create(
+            cadastro=contrato.associado,
+            created_by=self.tesoureiro,
+            contrato_codigo=contrato.codigo,
+            contrato_valor_antecipacao=Decimal("1200.00"),
+            contrato_margem_disponivel=Decimal("1200.00"),
+            cpf_cnpj=contrato.associado.cpf_cnpj,
+            full_name=contrato.associado.nome_completo,
+            agente_responsavel=contrato.agente.full_name,
+            origem=Pagamento.Origem.OPERACIONAL,
+            status=Pagamento.Status.PAGO,
+            valor_pago=Decimal("1200.00"),
+            paid_at=self._aware(datetime(2026, 1, 12, 9, 30)),
+            forma_pagamento="pix",
+            notes="Pagamento notificado.",
+        )
+
+        response = self.agent_client.get("/api/v1/agente/pagamentos/notificacoes/")
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["unread_count"], 1)
+
+        response = self.agent_client.post(
+            "/api/v1/agente/pagamentos/notificacoes/marcar-lidas/"
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["marked_count"], 1)
+
+        response = self.agent_client.get("/api/v1/agente/pagamentos/notificacoes/")
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["unread_count"], 0)
 
     def test_filtro_por_mes_retorna_apenas_parcelas_da_competencia(self):
         contrato = self._create_contract(

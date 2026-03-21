@@ -48,9 +48,27 @@ class AssociadoService:
         return round(((atual - anterior) / anterior) * 100, 1)
 
     @staticmethod
-    def calcular_metricas():
+    def calcular_metricas(queryset=None):
         hoje = timezone.localdate()
         inicio_mes_atual = hoje.replace(day=1)
+
+        if queryset is not None:
+            base = queryset.distinct()
+            payload = {}
+            definicoes = {
+                "total": Q(),
+                "ativos": Q(status=Associado.Status.ATIVO),
+                "em_analise": Q(status=Associado.Status.EM_ANALISE),
+                "inativos": Q(status=Associado.Status.INATIVO),
+                "liquidados": Q(contratos__status=Contrato.Status.ENCERRADO),
+            }
+
+            for chave, filtro in definicoes.items():
+                payload[chave] = {
+                    "count": base.filter(filtro).distinct().count(),
+                    "variacao_percentual": 0.0,
+                }
+            return payload
 
         base = Associado.objects.all()
         anterior_base = Associado.objects.filter(created_at__lt=inicio_mes_atual)
@@ -61,11 +79,12 @@ class AssociadoService:
             "ativos": Q(status=Associado.Status.ATIVO),
             "em_analise": Q(status=Associado.Status.EM_ANALISE),
             "inativos": Q(status=Associado.Status.INATIVO),
+            "liquidados": Q(contratos__status=Contrato.Status.ENCERRADO),
         }
 
         for chave, filtro in definicoes.items():
-            atual = base.filter(filtro).count()
-            anterior = anterior_base.filter(filtro).count()
+            atual = base.filter(filtro).distinct().count()
+            anterior = anterior_base.filter(filtro).distinct().count()
             payload[chave] = {
                 "count": atual,
                 "variacao_percentual": AssociadoService._variacao_percentual(
@@ -85,6 +104,13 @@ class AssociadoService:
         contato_data = dados.pop("contato")
         documentos_payload = dados.pop("documentos_payload", [])
         contrato_data = dados.pop("contrato")
+        agente_responsavel = agente
+        agente_responsavel_id = dados.pop("agente_responsavel_id", None)
+        if agente_responsavel_id:
+            agente_responsavel = agente.__class__.objects.get(pk=agente_responsavel_id)
+        percentual_repasse = Decimal(
+            str(contrato_data.get("percentual_repasse") or Decimal("10.00"))
+        )
 
         associado_data = {
             "cpf_cnpj": dados["cpf_cnpj"],
@@ -113,12 +139,17 @@ class AssociadoService:
             "chave_pix": dados_bancarios_data.get("chave_pix", ""),
             "cargo": dados.get("cargo", "") or dados.get("profissao", ""),
             "observacao": dados.get("observacao", ""),
+            "auxilio_taxa": percentual_repasse,
         }
 
         if dados["tipo_documento"] == Associado.TipoDocumento.CNPJ:
-            associado = AssociadoFactory.criar_pessoa_juridica(associado_data, agente)
+            associado = AssociadoFactory.criar_pessoa_juridica(
+                associado_data, agente_responsavel
+            )
         else:
-            associado = AssociadoFactory.criar_pessoa_fisica(associado_data, agente)
+            associado = AssociadoFactory.criar_pessoa_fisica(
+                associado_data, agente_responsavel
+            )
 
         data_aprovacao, data_primeira_mensalidade, mes_averbacao = (
             calculate_contract_dates(contrato_data.get("data_aprovacao"))
@@ -128,7 +159,7 @@ class AssociadoService:
 
         contrato = Contrato.objects.create(
             associado=associado,
-            agente=agente,
+            agente=agente_responsavel,
             valor_bruto=contrato_data.get("valor_bruto_total", 0),
             valor_liquido=contrato_data.get("valor_liquido", 0),
             valor_mensalidade=valor_mensalidade,
@@ -214,3 +245,33 @@ class AssociadoService:
                 in [Ciclo.Status.CICLO_RENOVADO, Ciclo.Status.FECHADO]
             ),
         }
+
+    @staticmethod
+    def total_ciclos_logicos(associado: Associado) -> int:
+        contagens = AssociadoService.contar_ciclos_logicos(associado)
+        return contagens["ciclos_abertos"] + contagens["ciclos_fechados"]
+
+    @staticmethod
+    def associado_eh_renovado(associado: Associado) -> bool:
+        contratos_cache = getattr(associado, "_prefetched_objects_cache", {}).get(
+            "contratos"
+        )
+        if contratos_cache is None:
+            contratos = (
+                associado.contratos.exclude(status=Contrato.Status.CANCELADO)
+                .prefetch_related("ciclos__parcelas")
+            )
+        else:
+            contratos = [
+                contrato
+                for contrato in contratos_cache
+                if contrato.status != Contrato.Status.CANCELADO
+            ]
+
+        for contrato in contratos:
+            projection = build_contract_cycle_projection(contrato)
+            if projection.get("refinanciamento_id"):
+                return True
+            if len(projection.get("cycles", [])) > 1:
+                return True
+        return False

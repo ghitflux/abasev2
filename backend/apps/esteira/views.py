@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from django.db.models import Prefetch, Q
+from django.db.models import Count, Prefetch, Q
 from rest_framework import mixins, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -82,6 +82,27 @@ class EsteiraViewSet(
 
         return queryset
 
+    def _get_pendencias_queryset(self):
+        queryset = Pendencia.objects.select_related(
+            "esteira_item__associado",
+            "esteira_item__associado__agente_responsavel",
+        ).filter(status=Pendencia.Status.ABERTA)
+
+        user = self.request.user
+        if user.has_role("AGENTE") and not user.has_role("ADMIN"):
+            queryset = queryset.filter(esteira_item__associado__agente_responsavel=user)
+
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(
+                Q(esteira_item__associado__nome_completo__icontains=search)
+                | Q(esteira_item__associado__cpf_cnpj__icontains=search)
+                | Q(esteira_item__associado__matricula__icontains=search)
+                | Q(esteira_item__associado__contratos__codigo__icontains=search)
+            ).distinct()
+
+        return queryset
+
     @action(detail=True, methods=["post"])
     def assumir(self, request, pk=None):
         esteira_item = EsteiraService.assumir(self.get_object(), request.user)
@@ -134,24 +155,7 @@ class EsteiraViewSet(
 
     @action(detail=False, methods=["get"])
     def pendencias(self, request):
-        queryset = Pendencia.objects.select_related(
-            "esteira_item__associado",
-            "esteira_item__associado__agente_responsavel",
-        ).filter(status=Pendencia.Status.ABERTA)
-
-        user = request.user
-        if user.has_role("AGENTE") and not user.has_role("ADMIN"):
-            queryset = queryset.filter(esteira_item__associado__agente_responsavel=user)
-
-        search = request.query_params.get("search")
-        if search:
-            queryset = queryset.filter(
-                Q(esteira_item__associado__nome_completo__icontains=search)
-                | Q(esteira_item__associado__cpf_cnpj__icontains=search)
-                | Q(esteira_item__associado__matricula__icontains=search)
-                | Q(esteira_item__associado__contratos__codigo__icontains=search)
-            ).distinct()
-
+        queryset = self._get_pendencias_queryset()
         page = self.paginate_queryset(queryset.order_by("-created_at"))
         if page is not None:
             serializer = PendenciaSerializer(page, many=True)
@@ -159,3 +163,14 @@ class EsteiraViewSet(
 
         serializer = PendenciaSerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["get"], url_path="pendencias-resumo")
+    def pendencias_resumo(self, request):
+        queryset = self._get_pendencias_queryset()
+        resumo = queryset.aggregate(
+            total=Count("id"),
+            retornadas_agente=Count("id", filter=Q(retornado_para_agente=True)),
+            internas=Count("id", filter=Q(retornado_para_agente=False)),
+            associados_impactados=Count("esteira_item__associado_id", distinct=True),
+        )
+        return Response(resumo, status=status.HTTP_200_OK)

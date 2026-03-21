@@ -7,6 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from django.core.files.storage import default_storage
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -14,7 +15,7 @@ from django.utils import timezone
 from apps.accounts.models import Role, User
 from apps.associados.models import Associado
 from apps.contratos.models import Ciclo, Contrato
-from apps.refinanciamento.models import Comprovante
+from apps.refinanciamento.models import Comprovante, Refinanciamento
 from apps.tesouraria.initial_payment import build_initial_payment_payload
 from apps.tesouraria.models import Pagamento
 
@@ -246,3 +247,103 @@ INSERT INTO `tesouraria_pagamentos` (`id`,`agente_cadastro_id`,`created_by_user_
         payload = build_initial_payment_payload(contrato)
         self.assertEqual(payload.evidencia_status, "arquivo_local")
         self.assertTrue(all(item["arquivo_disponivel_localmente"] for item in payload.evidencias))
+
+    def test_payload_uses_legacy_refinanciamento_comprovantes_as_fallback(self):
+        contrato = self._create_contract(
+            cpf="33322211100",
+            nome="Associado Fallback Refi",
+            codigo="CTR-20260315090000-FALL",
+        )
+        ciclo_origem = contrato.ciclos.get()
+        refinanciamento = Refinanciamento.objects.create(
+            associado=contrato.associado,
+            contrato_origem=contrato,
+            solicitado_por=self.user,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            ciclo_origem=ciclo_origem,
+            executado_em=self._aware(datetime(2026, 3, 16, 9, 6)),
+            data_ativacao_ciclo=self._aware(datetime(2026, 3, 16, 9, 6)),
+            cycle_key="2026-01|2026-02|2026-03",
+            ref1=date(2026, 1, 1),
+            ref2=date(2026, 2, 1),
+            ref3=date(2026, 3, 1),
+        )
+        Comprovante.objects.create(
+            refinanciamento=refinanciamento,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+            papel=Comprovante.Papel.ASSOCIADO,
+            origem=Comprovante.Origem.LEGADO,
+            arquivo=SimpleUploadedFile("assoc.jpeg", b"assoc", content_type="image/jpeg"),
+            nome_original="assoc.jpeg",
+            enviado_por=self.user,
+        )
+        Comprovante.objects.create(
+            refinanciamento=refinanciamento,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+            papel=Comprovante.Papel.AGENTE,
+            origem=Comprovante.Origem.LEGADO,
+            arquivo=SimpleUploadedFile("agente.jpeg", b"agente", content_type="image/jpeg"),
+            nome_original="agente.jpeg",
+            enviado_por=self.user,
+        )
+
+        payload = build_initial_payment_payload(contrato)
+
+        self.assertEqual(payload.status, Pagamento.Status.PAGO)
+        self.assertEqual(payload.status_label, Pagamento.Status.PAGO.label)
+        self.assertEqual(payload.evidencia_status, "arquivo_local")
+        self.assertEqual(len(payload.evidencias), 2)
+        self.assertEqual(
+            {item["papel"] for item in payload.evidencias},
+            {Comprovante.Papel.ASSOCIADO, Comprovante.Papel.AGENTE},
+        )
+
+    def test_sync_reuses_existing_legacy_payment_without_contract_code(self):
+        contrato = self._create_contract(
+            cpf="44433322211",
+            nome="Associado Pagamento Legado",
+            codigo="CTR-20260315090000-REUSE",
+        )
+        pagamento = Pagamento.objects.create(
+            cadastro=contrato.associado,
+            created_by=self.user,
+            contrato_codigo="",
+            contrato_margem_disponivel=Decimal("420.00"),
+            cpf_cnpj=contrato.associado.cpf_cnpj,
+            full_name=contrato.associado.nome_completo,
+            agente_responsavel=self.user.full_name,
+            status=Pagamento.Status.PENDENTE,
+            valor_pago=Decimal("420.00"),
+            paid_at=self._aware(datetime(2026, 3, 15, 9, 6, 1)),
+            legacy_tesouraria_pagamento_id=20,
+            origem=Pagamento.Origem.LEGADO,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            dump_path = temp_path / "legacy.sql"
+            self._write_dump(
+                dump_path,
+                legacy_payment_id=20,
+                legacy_cadastro_id=12,
+                cpf=contrato.associado.cpf_cnpj,
+                contrato_codigo=contrato.codigo,
+                status="pago",
+                valor_pago="'420.00'",
+                paid_at="2026-03-15 09:06:01",
+            )
+
+            call_command(
+                "sync_legacy_initial_payments",
+                "--file",
+                str(dump_path),
+                "--cpf",
+                contrato.associado.cpf_cnpj,
+                "--execute",
+            )
+
+        pagamento.refresh_from_db()
+        self.assertEqual(pagamento.contrato_codigo, contrato.codigo)
+        self.assertEqual(pagamento.status, Pagamento.Status.PAGO)
+        self.assertEqual(pagamento.legacy_tesouraria_pagamento_id, 20)

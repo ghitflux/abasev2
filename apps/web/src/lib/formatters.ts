@@ -1,8 +1,38 @@
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
-
 const ISO_DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const ISO_MONTH_ONLY_RE = /^(\d{4})-(\d{2})$/;
+const APP_TIME_ZONE = "America/Fortaleza";
+
+function getFormatter(options: Intl.DateTimeFormatOptions) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: APP_TIME_ZONE,
+    ...options,
+  });
+}
+
+const DATE_FORMATTER = getFormatter({
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
+const DATETIME_FORMATTER = getFormatter({
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+const MONTH_YEAR_FORMATTER = getFormatter({
+  month: "short",
+  year: "numeric",
+});
+
+const LONG_MONTH_YEAR_FORMATTER = getFormatter({
+  month: "long",
+  year: "numeric",
+});
 
 function parseDisplayDate(value: string | Date) {
   if (value instanceof Date) return value;
@@ -36,6 +66,18 @@ function parseDisplayDate(value: string | Date) {
   return new Date(value);
 }
 
+function getPart(
+  formatter: Intl.DateTimeFormat,
+  value: Date,
+  type: Intl.DateTimeFormatPartTypes,
+) {
+  return formatter.formatToParts(value).find((part) => part.type === type)?.value ?? "";
+}
+
+function formatShortMonth(value: Date) {
+  return getPart(MONTH_YEAR_FORMATTER, value, "month").replace(".", "").toLowerCase();
+}
+
 export function formatCurrency(value?: number | string | null) {
   const numeric =
     typeof value === "number"
@@ -54,28 +96,37 @@ export function formatDate(value?: string | Date | null, fallback = "-") {
   if (!value) return fallback;
   const date = parseDisplayDate(value);
   if (Number.isNaN(date.getTime())) return fallback;
-  return format(date, "dd/MM/yyyy", { locale: ptBR });
+  const day = getPart(DATE_FORMATTER, date, "day");
+  const month = getPart(DATE_FORMATTER, date, "month");
+  const year = getPart(DATE_FORMATTER, date, "year");
+  return `${day}/${month}/${year}`;
 }
 
 export function formatDateTime(value?: string | Date | null, fallback = "-") {
   if (!value) return fallback;
   const date = parseDisplayDate(value);
   if (Number.isNaN(date.getTime())) return fallback;
-  return format(date, "dd/MM/yyyy HH:mm", { locale: ptBR });
+  const day = getPart(DATETIME_FORMATTER, date, "day");
+  const month = getPart(DATETIME_FORMATTER, date, "month");
+  const year = getPart(DATETIME_FORMATTER, date, "year");
+  const hour = getPart(DATETIME_FORMATTER, date, "hour");
+  const minute = getPart(DATETIME_FORMATTER, date, "minute");
+  return `${day}/${month}/${year} ${hour}:${minute}`;
 }
 
 export function formatMonthYear(value?: string | Date | null, fallback = "-") {
   if (!value) return fallback;
   const date = parseDisplayDate(value);
   if (Number.isNaN(date.getTime())) return fallback;
-  return format(date, "MMM/yyyy", { locale: ptBR });
+  const year = getPart(MONTH_YEAR_FORMATTER, date, "year");
+  return `${formatShortMonth(date)}/${year}`;
 }
 
 export function formatLongMonthYear(value?: string | Date | null, fallback = "-") {
   if (!value) return fallback;
   const date = parseDisplayDate(value);
   if (Number.isNaN(date.getTime())) return fallback;
-  return format(date, "MMMM 'de' yyyy", { locale: ptBR });
+  return LONG_MONTH_YEAR_FORMATTER.format(date).toLowerCase();
 }
 
 export function formatMetricDelta(value: number) {

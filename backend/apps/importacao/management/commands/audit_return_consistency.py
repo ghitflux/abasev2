@@ -6,6 +6,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.importacao.audit import build_return_consistency_report, write_report_json
+from core.legacy_dump import default_legacy_dump_path
 
 
 def _parse_competencia(value: str | None):
@@ -26,7 +27,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "--file",
-            default="scriptsphp/abase (2).sql",
+            default=str(default_legacy_dump_path()),
             help="Dump SQL legado com a tabela pagamentos_mensalidades.",
         )
         parser.add_argument(

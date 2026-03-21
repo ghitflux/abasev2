@@ -16,7 +16,7 @@ from apps.tesouraria.legacy_initial_payments import (
     load_legacy_initial_payments,
     merge_initial_payment_overrides,
 )
-from core.legacy_dump import LegacyDump
+from core.legacy_dump import LegacyDump, default_legacy_dump_path
 
 
 def _default_report_path(prefix: str) -> Path:
@@ -42,7 +42,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "--file",
-            default="scriptsphp/abase (2).sql",
+            default=str(default_legacy_dump_path()),
             help="Dump SQL legado.",
         )
         parser.add_argument("--cpf", help="Filtra um associado específico por CPF.")

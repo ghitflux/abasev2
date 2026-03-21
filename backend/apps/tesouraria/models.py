@@ -143,5 +143,40 @@ class Pagamento(BaseModel):
     class Meta:
         ordering = ["-created_at"]
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        agente_id = getattr(self.cadastro, "agente_responsavel_id", None)
+        if self.status == self.Status.PAGO and agente_id:
+            PagamentoNotificacao.objects.get_or_create(
+                pagamento=self,
+                agente_id=agente_id,
+            )
+
     def __str__(self) -> str:
         return f"Pagamento #{self.pk} - {self.full_name} - {self.status}"
+
+
+class PagamentoNotificacao(BaseModel):
+    pagamento = models.ForeignKey(
+        "tesouraria.Pagamento",
+        on_delete=models.CASCADE,
+        related_name="notificacoes",
+    )
+    agente = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="pagamento_notificacoes",
+    )
+    lida_em = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["pagamento", "agente"],
+                name="uniq_pagamento_notificacao_por_agente",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"Notificacao pagamento#{self.pagamento_id} para agente#{self.agente_id}"

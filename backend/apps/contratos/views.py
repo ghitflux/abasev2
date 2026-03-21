@@ -14,7 +14,10 @@ from rest_framework.viewsets import GenericViewSet, ReadOnlyModelViewSet
 
 from apps.associados.models import Associado
 from apps.accounts.permissions import IsTesoureiroOrAdmin
-from apps.contratos.cycle_projection import build_contract_cycle_projection
+from apps.contratos.cycle_projection import (
+    build_contract_cycle_projection,
+    get_contract_visual_status_payload,
+)
 from apps.contratos.cycle_timeline import (
     get_contract_cycle_size,
 )
@@ -43,34 +46,63 @@ def parse_competencia_filter(value: str | None):
 
 
 def filter_by_status_visual(queryset, status_visual: str):
-    if status_visual == "inadimplente":
-        return queryset.filter(associado__status=Associado.Status.INADIMPLENTE)
+    if status_visual == "liquidado":
+        return queryset.filter(status=Contrato.Status.ENCERRADO)
 
-    if status_visual == "desativado":
-        return queryset.filter(
-            Q(associado__status=Associado.Status.INATIVO)
-            | Q(status__in=[Contrato.Status.ENCERRADO, Contrato.Status.CANCELADO])
+    contratos = list(queryset)
+    filtered_ids: list[int] = []
+    for contrato in contratos:
+        projection = build_contract_cycle_projection(contrato)
+        has_unpaid_months = bool(projection["possui_meses_nao_descontados"])
+        phase_slug = str(
+            get_contract_visual_status_payload(
+                contrato,
+                projection=projection,
+            )["status_visual_slug"]
         )
 
-    if status_visual == "ativo":
-        return queryset.filter(status=Contrato.Status.ATIVO).exclude(
-            associado__status__in=[
-                Associado.Status.INATIVO,
-                Associado.Status.INADIMPLENTE,
-            ]
-        )
+        if status_visual == "inadimplente" and has_unpaid_months:
+            filtered_ids.append(contrato.id)
+            continue
 
-    if status_visual == "pendente":
-        return (
-            queryset.exclude(associado__status=Associado.Status.INADIMPLENTE)
-            .exclude(
-                Q(associado__status=Associado.Status.INATIVO)
-                | Q(status__in=[Contrato.Status.ENCERRADO, Contrato.Status.CANCELADO])
-            )
-            .exclude(status=Contrato.Status.ATIVO)
-        )
+        if status_visual == "desativado" and (
+            contrato.associado.status == Associado.Status.INATIVO
+            or contrato.status in {Contrato.Status.ENCERRADO, Contrato.Status.CANCELADO}
+        ):
+            filtered_ids.append(contrato.id)
+            continue
 
-    return queryset
+        if status_visual == "pendente" and phase_slug == "em_analise":
+            filtered_ids.append(contrato.id)
+            continue
+
+        if status_visual == "ativo" and (
+            not has_unpaid_months
+            and phase_slug
+            in {
+                "ciclo_aberto",
+                "apto_a_renovar",
+                "renovacao_em_analise",
+                "aprovado_para_renovacao",
+                "ciclo_renovado",
+            }
+        ):
+            filtered_ids.append(contrato.id)
+            continue
+
+    return queryset.filter(id__in=filtered_ids)
+
+
+def _contract_total_cycles(contrato: Contrato) -> int:
+    projection = build_contract_cycle_projection(contrato)
+    return len(projection["cycles"])
+
+
+def _contract_is_renewed(contrato: Contrato) -> bool:
+    projection = build_contract_cycle_projection(contrato)
+    if projection.get("refinanciamento_id"):
+        return True
+    return len(projection.get("cycles", [])) > 1
 
 
 def filter_by_etapa_fluxo(queryset, etapa_fluxo: str):
@@ -158,13 +190,22 @@ class ContratoViewSet(ReadOnlyModelViewSet):
 
         agente_filter = self.request.query_params.get("agente")
         if agente_filter and user.has_role("ADMIN"):
-            queryset = queryset.filter(
-                Q(agente_nome__icontains=agente_filter)
-                | Q(agente__email__icontains=agente_filter)
-            )
+            if agente_filter.isdigit():
+                queryset = queryset.filter(agente_id=int(agente_filter))
+            else:
+                queryset = queryset.filter(
+                    Q(agente_nome__icontains=agente_filter)
+                    | Q(agente__email__icontains=agente_filter)
+                )
 
         status_visual_filter = self.request.query_params.get("status_visual")
-        if status_visual_filter in {"pendente", "ativo", "desativado", "inadimplente"}:
+        if status_visual_filter in {
+            "pendente",
+            "ativo",
+            "desativado",
+            "inadimplente",
+            "liquidado",
+        }:
             queryset = filter_by_status_visual(queryset, status_visual_filter)
 
         status_filter = self.request.query_params.get("status")
@@ -215,8 +256,42 @@ class ContratoViewSet(ReadOnlyModelViewSet):
                     if pagas >= total:
                         ids_filtrados.append(contrato.id)
                 elif pagas == mensalidades_count:
-                    ids_filtrados.append(contrato.id)
+                        ids_filtrados.append(contrato.id)
             queryset = queryset.filter(id__in=ids_filtrados)
+
+        numero_ciclos = self.request.query_params.get("numero_ciclos")
+        if numero_ciclos and numero_ciclos.isdigit():
+            contratos_filtrados = list(queryset)
+            queryset = queryset.filter(
+                id__in=[
+                    contrato.id
+                    for contrato in contratos_filtrados
+                    if _contract_total_cycles(contrato) == int(numero_ciclos)
+                ]
+            )
+
+        perfil_ciclo = (self.request.query_params.get("perfil_ciclo") or "").strip().lower()
+        if perfil_ciclo in {"novo", "renovado"}:
+            contratos_filtrados = list(queryset)
+            filtered_ids = []
+            for contrato in contratos_filtrados:
+                renovado = _contract_is_renewed(contrato)
+                if perfil_ciclo == "renovado" and renovado:
+                    filtered_ids.append(contrato.id)
+                if perfil_ciclo == "novo" and not renovado:
+                    filtered_ids.append(contrato.id)
+            queryset = queryset.filter(id__in=filtered_ids)
+
+        status_renovacao = (self.request.query_params.get("status_renovacao") or "").strip()
+        if status_renovacao:
+            contratos_filtrados = list(queryset)
+            queryset = queryset.filter(
+                id__in=[
+                    contrato.id
+                    for contrato in contratos_filtrados
+                    if str(build_contract_cycle_projection(contrato)["status_renovacao"]) == status_renovacao
+                ]
+            )
 
         return queryset
 
@@ -227,6 +302,7 @@ class ContratoViewSet(ReadOnlyModelViewSet):
         ativos = filter_by_status_visual(queryset, "ativo").count()
         pendentes = filter_by_status_visual(queryset, "pendente").count()
         inadimplentes = filter_by_status_visual(queryset, "inadimplente").count()
+        liquidados = filter_by_status_visual(queryset, "liquidado").count()
         concluidos = queryset.filter(
             status__in=[Contrato.Status.ATIVO, Contrato.Status.ENCERRADO]
         ).count()
@@ -236,6 +312,7 @@ class ContratoViewSet(ReadOnlyModelViewSet):
             "ativos": ativos,
             "pendentes": pendentes,
             "inadimplentes": inadimplentes,
+            "liquidados": liquidados,
         }
         return Response(ContratoResumoCardsSerializer(payload).data)
 

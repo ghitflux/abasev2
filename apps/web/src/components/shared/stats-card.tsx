@@ -11,6 +11,8 @@ type StatsCardProps = {
   delta: string;
   icon?: LucideIcon;
   tone?: "positive" | "warning" | "neutral";
+  onClick?: () => void;
+  active?: boolean;
 };
 
 const toneStyles = {
@@ -25,12 +27,33 @@ export default function StatsCard({
   delta,
   icon: Icon,
   tone = "neutral",
+  onClick,
+  active = false,
 }: StatsCardProps) {
   const DeltaIcon =
     tone === "positive" ? ArrowUpRightIcon : tone === "warning" ? ArrowDownRightIcon : MinusIcon;
 
   return (
-    <Card className="glass-panel rounded-[1.75rem] border-border/60 shadow-xl shadow-black/20">
+    <Card
+      className={cn(
+        "glass-panel rounded-[1.75rem] border-border/60 shadow-xl shadow-black/20",
+        active ? "border-primary/70 ring-1 ring-primary/30" : "",
+        onClick ? "cursor-pointer transition hover:border-primary/50" : "",
+      )}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+    >
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
         <div>
           <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>

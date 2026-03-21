@@ -5,9 +5,12 @@ const workspaceRoot = path.join(__dirname, "../..");
 
 const nextConfig: NextConfig = {
   output: process.env.NODE_ENV === "production" ? "standalone" : undefined,
-  turbopack: {
-    root: workspaceRoot,
-  },
+  turbopack:
+    process.env.NODE_ENV === "test"
+      ? undefined
+      : {
+          root: workspaceRoot,
+        },
   images: {
     remotePatterns: [
       {

@@ -3,13 +3,21 @@
 import Link from "next/link";
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeftIcon, SearchIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  ClipboardListIcon,
+  RotateCcwIcon,
+  SearchIcon,
+  ShieldAlertIcon,
+  UsersIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import type {
   AssociadoDetail,
   PaginatedResponse,
   PendenciaItem,
+  PendenciaResumo,
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { formatDate } from "@/lib/formatters";
@@ -21,7 +29,8 @@ import DataTable, {
   type DataTableColumn,
 } from "@/components/shared/data-table";
 import EmptyState from "@/components/shared/empty-state";
-import { DialogFormSkeleton } from "@/components/shared/page-skeletons";
+import { DialogFormSkeleton, MetricCardSkeleton } from "@/components/shared/page-skeletons";
+import StatsCard from "@/components/shared/stats-card";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -53,12 +62,27 @@ export default function EsteiraPendenciasPage() {
         },
       }),
   });
+  const pendenciasResumoQuery = useQuery({
+    queryKey: ["pendencias-agente-resumo", debouncedSearch],
+    queryFn: () =>
+      apiFetch<PendenciaResumo>("esteira/pendencias-resumo", {
+        query: {
+          search: debouncedSearch || undefined,
+        },
+      }),
+  });
 
   const rows = pendenciasQuery.data?.results ?? [];
   const totalPages = Math.max(
     1,
     Math.ceil((pendenciasQuery.data?.count ?? 0) / 5),
   );
+  const resumo = pendenciasResumoQuery.data ?? {
+    total: 0,
+    retornadas_agente: 0,
+    internas: 0,
+    associados_impactados: 0,
+  };
   const selectedAssociadoId = selectedPendencia?.associado_id;
   const associadoQuery = useQuery({
     queryKey: ["pendencias-agente-associado", selectedAssociadoId],
@@ -82,6 +106,7 @@ export default function EsteiraPendenciasPage() {
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["pendencias-agente"] }),
+        queryClient.invalidateQueries({ queryKey: ["pendencias-agente-resumo"] }),
         queryClient.invalidateQueries({
           queryKey: ["dashboard-pendencias-agente"],
         }),
@@ -160,6 +185,43 @@ export default function EsteiraPendenciasPage() {
 
   return (
     <div className="space-y-6">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {pendenciasResumoQuery.isLoading && !pendenciasResumoQuery.data ? (
+          Array.from({ length: 4 }).map((_, index) => <MetricCardSkeleton key={index} />)
+        ) : (
+          <>
+            <StatsCard
+              title="Pendências abertas"
+              value={String(resumo.total)}
+              delta={`${resumo.associados_impactados} cadastro(s) no recorte`}
+              icon={ShieldAlertIcon}
+              tone="warning"
+            />
+            <StatsCard
+              title="Retornadas ao agente"
+              value={String(resumo.retornadas_agente)}
+              delta="Demandam correção e novo envio"
+              icon={RotateCcwIcon}
+              tone="warning"
+            />
+            <StatsCard
+              title="Tratamento interno"
+              value={String(resumo.internas)}
+              delta="Aguardando ação das áreas internas"
+              icon={ClipboardListIcon}
+              tone="neutral"
+            />
+            <StatsCard
+              title="Associados impactados"
+              value={String(resumo.associados_impactados)}
+              delta={`${resumo.total} pendência(s) aberta(s)`}
+              icon={UsersIcon}
+              tone="neutral"
+            />
+          </>
+        )}
+      </section>
+
       <section className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="relative flex-1">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />

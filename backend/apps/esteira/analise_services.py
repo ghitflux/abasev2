@@ -15,6 +15,7 @@ from django.db.models import (
     OuterRef,
     Prefetch,
     Q,
+    Subquery,
     Sum,
     Value,
     When,
@@ -33,13 +34,13 @@ from .models import DocIssue, DocReupload, EsteiraItem, Pendencia
 
 class AnaliseService:
     FILA_SECOES = (
-        "ativos",
-        "todos",
-        "recebidos",
-        "recebida",
-        "reenvio",
-        "incompleta",
-        "pendente",
+        "ver_todos",
+        "pendencias",
+        "pendencias_corrigidas",
+        "enviado_tesouraria",
+        "enviado_coordenacao",
+        "efetivados",
+        "cancelados",
     )
 
     @staticmethod
@@ -83,6 +84,9 @@ class AnaliseService:
 
     @staticmethod
     def _esteira_base_queryset(user, search: str | None = None):
+        latest_contract = Contrato.objects.filter(
+            associado_id=OuterRef("associado_id")
+        ).order_by("-created_at", "-id")
         queryset = (
             EsteiraItem.objects.select_related(
                 "associado",
@@ -97,7 +101,6 @@ class AnaliseService:
                 Prefetch("pendencias"),
                 Prefetch("transicoes__realizado_por"),
             )
-            .filter(etapa_atual__in=[EsteiraItem.Etapa.CADASTRO, EsteiraItem.Etapa.ANALISE])
             .annotate(
                 has_documents=Exists(
                     Documento.objects.filter(associado_id=OuterRef("associado_id"))
@@ -137,6 +140,7 @@ class AnaliseService:
                 has_payment=Exists(
                     Pagamento.objects.filter(cadastro_id=OuterRef("associado_id"))
                 ),
+                latest_contract_status=Subquery(latest_contract.values("status")[:1]),
                 resolved_pendencias_count=Count(
                     "pendencias",
                     filter=Q(pendencias__status=Pendencia.Status.RESOLVIDA),
@@ -170,50 +174,44 @@ class AnaliseService:
 
         queryset = AnaliseService._esteira_base_queryset(user, search)
 
-        if secao == "ativos":
+        if secao == "ver_todos":
+            return queryset.order_by("-updated_at", "-created_at")
+
+        if secao == "pendencias":
             return queryset.filter(
+                etapa_atual__in=[EsteiraItem.Etapa.CADASTRO, EsteiraItem.Etapa.ANALISE]
+            ).filter(
                 Q(has_open_pendencia=True)
                 | Q(has_open_doc_issue=True)
                 | (Q(has_documents=False) & Q(has_any_reupload=False))
-            )
+            ).order_by("-updated_at", "-created_at")
 
-        if secao == "todos":
-            return queryset
-
-        if secao == "recebidos":
-            return queryset.filter(
-                etapa_atual=EsteiraItem.Etapa.ANALISE,
-                status=EsteiraItem.Situacao.AGUARDANDO,
-                has_documents=True,
-                has_open_pendencia=False,
-                has_open_doc_issue=False,
-                has_received_reupload=False,
-                has_payment=False,
-            ).order_by("created_at", "id")
-
-        if secao == "recebida":
-            return queryset.filter(
-                etapa_atual=EsteiraItem.Etapa.ANALISE,
-                status=EsteiraItem.Situacao.EM_ANDAMENTO,
-                has_documents=True,
-                has_open_pendencia=False,
-                has_open_doc_issue=False,
-            ).order_by("-assumido_em", "-created_at")
-
-        if secao == "reenvio":
+        if secao == "pendencias_corrigidas":
             return queryset.filter(
                 etapa_atual=EsteiraItem.Etapa.ANALISE
             ).filter(
                 Q(has_received_reupload=True) | Q(resolved_pendencias_count__gt=0)
             ).order_by("-updated_at", "-created_at")
 
-        if secao == "incompleta":
+        if secao == "enviado_tesouraria":
             return queryset.filter(
-                Q(has_open_pendencia=True) | Q(has_open_doc_issue=True)
+                etapa_atual=EsteiraItem.Etapa.TESOURARIA
             ).order_by("-updated_at", "-created_at")
 
+        if secao == "enviado_coordenacao":
+            return queryset.filter(
+                etapa_atual=EsteiraItem.Etapa.COORDENACAO
+            ).order_by("-updated_at", "-created_at")
+
+        if secao == "efetivados":
+            return queryset.filter(
+                etapa_atual=EsteiraItem.Etapa.CONCLUIDO
+            ).exclude(
+                latest_contract_status=Contrato.Status.CANCELADO
+            ).order_by("-concluido_em", "-updated_at", "-created_at")
+
         return queryset.filter(
-            Q(has_documents=False) & Q(has_any_reupload=False)
+            latest_contract_status=Contrato.Status.CANCELADO
         ).order_by("-created_at")
 
     @staticmethod

@@ -2,10 +2,21 @@
 
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { EyeIcon, FileTextIcon, PlayIcon, SlidersHorizontalIcon } from "lucide-react";
+import {
+  BadgeCheckIcon,
+  EyeIcon,
+  FileTextIcon,
+  PlayIcon,
+  ShieldCheckIcon,
+  SlidersHorizontalIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
-import type { PaginatedResponse, RefinanciamentoItem } from "@/lib/api/types";
+import type {
+  PaginatedResponse,
+  RefinanciamentoItem,
+  RefinanciamentoResumo,
+} from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { formatMonthYear } from "@/lib/formatters";
 import { RefinanciamentoDetalhesDialog } from "@/components/refinanciamento/refinanciamento-detalhes-dialog";
@@ -15,6 +26,8 @@ import SearchableSelect, { type SelectOption } from "@/components/custom/searcha
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import { MetricCardSkeleton } from "@/components/shared/page-skeletons";
+import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -51,6 +64,8 @@ type AnaliseAdvancedFilters = {
   assignment: string;
 };
 
+type KpiFilterKey = "total" | "em_analise" | "assumidos" | "aprovados";
+
 const STATUS_OPTIONS: SelectOption[] = [
   { value: "em_analise_renovacao", label: "Em análise para renovação" },
   { value: "aprovado_para_renovacao", label: "Aprovado para renovação" },
@@ -65,6 +80,7 @@ const ASSIGNMENT_OPTIONS: SelectOption[] = [
   { value: "todas", label: "Todas" },
   { value: "minhas", label: "Minhas" },
   { value: "nao_assumidas", label: "Não assumidas" },
+  { value: "assumidas", label: "Assumidas" },
 ];
 
 const INITIAL_FILTERS: AnaliseAdvancedFilters = {
@@ -91,6 +107,27 @@ function toCompetenciaDate(value: string) {
   return value ? `${value}-01` : undefined;
 }
 
+const EMPTY_RESUMO: RefinanciamentoResumo = {
+  total: 0,
+  em_analise: 0,
+  assumidos: 0,
+  aprovados: 0,
+  efetivados: 0,
+  concluidos: 0,
+  bloqueados: 0,
+  revertidos: 0,
+  em_fluxo: 0,
+  com_anexo_agente: 0,
+  repasse_total: "0.00",
+};
+
+function getKpiLabel(value: KpiFilterKey) {
+  if (value === "em_analise") return "Em análise";
+  if (value === "assumidos") return "Assumidos";
+  if (value === "aprovados") return "Aprovados";
+  return "Total";
+}
+
 export default function AnaliseAptosPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = React.useState(1);
@@ -102,6 +139,24 @@ export default function AnaliseAptosPage() {
   const [detailItem, setDetailItem] = React.useState<RefinanciamentoItem | null>(null);
   const [termo, setTermo] = React.useState<File | null>(null);
   const [observacao, setObservacao] = React.useState("");
+  const [activeKpi, setActiveKpi] = React.useState<KpiFilterKey>("total");
+
+  const resolvedStatuses = React.useMemo(() => {
+    if (activeKpi === "em_analise") {
+      return ["em_analise_renovacao"];
+    }
+    if (activeKpi === "aprovados") {
+      return ["aprovado_para_renovacao"];
+    }
+    return filters.statuses;
+  }, [activeKpi, filters.statuses]);
+
+  const resolvedAssignment = React.useMemo(() => {
+    if (activeKpi === "assumidos") {
+      return "assumidas";
+    }
+    return filters.assignment;
+  }, [activeKpi, filters.assignment]);
 
   const refinanciamentosQuery = useQuery({
     queryKey: [
@@ -111,15 +166,41 @@ export default function AnaliseAptosPage() {
       filters.competenciaStart,
       filters.competenciaEnd,
       filters.agent,
-      filters.statuses.join(","),
+      resolvedStatuses.join(","),
       filters.origins.join(","),
-      filters.assignment,
+      resolvedAssignment,
+      activeKpi,
     ],
     queryFn: () =>
       apiFetch<PaginatedResponse<RefinanciamentoItem>>("analise/refinanciamentos", {
         query: {
           page,
           page_size: 20,
+          search: search || undefined,
+          competencia_start: toCompetenciaDate(filters.competenciaStart),
+          competencia_end: toCompetenciaDate(filters.competenciaEnd),
+          agent: filters.agent || undefined,
+          status: resolvedStatuses,
+          origem: filters.origins,
+          assignment: resolvedAssignment !== "todas" ? resolvedAssignment : undefined,
+        },
+      }),
+  });
+
+  const resumoQuery = useQuery({
+    queryKey: [
+      "analise-refinanciamentos-resumo",
+      search,
+      filters.competenciaStart,
+      filters.competenciaEnd,
+      filters.agent,
+      filters.statuses.join(","),
+      filters.origins.join(","),
+      filters.assignment,
+    ],
+    queryFn: () =>
+      apiFetch<RefinanciamentoResumo>("analise/refinanciamentos/resumo", {
+        query: {
           search: search || undefined,
           competencia_start: toCompetenciaDate(filters.competenciaStart),
           competencia_end: toCompetenciaDate(filters.competenciaEnd),
@@ -139,6 +220,9 @@ export default function AnaliseAptosPage() {
     onSuccess: () => {
       toast.success("Renovação assumida na análise.");
       void queryClient.invalidateQueries({ queryKey: ["analise-refinanciamentos"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["analise-refinanciamentos-resumo"],
+      });
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Falha ao assumir renovação.");
@@ -169,6 +253,9 @@ export default function AnaliseAptosPage() {
       setTermo(null);
       setObservacao("");
       void queryClient.invalidateQueries({ queryKey: ["analise-refinanciamentos"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["analise-refinanciamentos-resumo"],
+      });
       void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos"] });
     },
     onError: (error) => {
@@ -179,6 +266,7 @@ export default function AnaliseAptosPage() {
   const rows = refinanciamentosQuery.data?.results ?? [];
   const totalCount = refinanciamentosQuery.data?.count ?? 0;
   const activeAdvancedFiltersCount = countActiveFilters(filters);
+  const resumo = resumoQuery.data ?? EMPTY_RESUMO;
 
   const columns = React.useMemo<DataTableColumn<RefinanciamentoItem>[]>(
     () => [
@@ -271,12 +359,69 @@ export default function AnaliseAptosPage() {
           <p className="text-sm uppercase tracking-[0.28em] text-muted-foreground">
             Análise
           </p>
-          <h1 className="text-3xl font-semibold">Aptos para renovação</h1>
+          <h1 className="text-3xl font-semibold">Contratos para Renovação</h1>
           <p className="text-sm text-muted-foreground">
-            Fila do analista para revisar dados, detalhar contratos e anexar o termo de antecipação.
-            Total: {totalCount}
+            Fila do analista para revisar contratos aptos, assumir a análise e encaminhar a
+            renovação para a tesouraria. Total filtrado: {resumo.total}
           </p>
         </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {resumoQuery.isLoading && !resumoQuery.data ? (
+          Array.from({ length: 4 }).map((_, index) => <MetricCardSkeleton key={index} />)
+        ) : (
+          <>
+            <StatsCard
+              title="Total"
+              value={String(resumo.total)}
+              delta={`${resumo.em_analise} em análise no recorte`}
+              icon={EyeIcon}
+              tone="neutral"
+              active={activeKpi === "total"}
+              onClick={() => {
+                setActiveKpi("total");
+                setPage(1);
+              }}
+            />
+            <StatsCard
+              title="Em análise"
+              value={String(resumo.em_analise)}
+              delta={`${resumo.assumidos} já assumidos na fila`}
+              icon={ShieldCheckIcon}
+              tone="warning"
+              active={activeKpi === "em_analise"}
+              onClick={() => {
+                setActiveKpi("em_analise");
+                setPage(1);
+              }}
+            />
+            <StatsCard
+              title="Assumidos"
+              value={String(resumo.assumidos)}
+              delta={`${resumo.aprovados} já aprovados para tesouraria`}
+              icon={PlayIcon}
+              tone="neutral"
+              active={activeKpi === "assumidos"}
+              onClick={() => {
+                setActiveKpi("assumidos");
+                setPage(1);
+              }}
+            />
+            <StatsCard
+              title="Aprovados"
+              value={String(resumo.aprovados)}
+              delta="Prontos para seguir ao financeiro"
+              icon={BadgeCheckIcon}
+              tone="positive"
+              active={activeKpi === "aprovados"}
+              onClick={() => {
+                setActiveKpi("aprovados");
+                setPage(1);
+              }}
+            />
+          </>
+        )}
       </section>
 
       <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
@@ -412,6 +557,28 @@ export default function AnaliseAptosPage() {
           </SheetContent>
         </Sheet>
       </section>
+
+      {activeKpi !== "total" ? (
+        <section className="flex flex-wrap items-center gap-3 rounded-[1.5rem] border border-primary/20 bg-primary/5 px-4 py-3">
+          <Badge className="rounded-full bg-primary/15 text-primary">
+            Filtro rápido: {getKpiLabel(activeKpi)}
+          </Badge>
+          <p className="text-sm text-muted-foreground">
+            A tabela abaixo está recortada pelo card KPI selecionado.
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto"
+            onClick={() => {
+              setActiveKpi("total");
+              setPage(1);
+            }}
+          >
+            Limpar filtro rápido
+          </Button>
+        </section>
+      ) : null}
 
       <DataTable
         data={rows}

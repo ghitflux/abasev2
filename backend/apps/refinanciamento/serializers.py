@@ -78,12 +78,14 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
         source="associado.nome_completo", read_only=True
     )
     cpf_cnpj = serializers.CharField(source="associado.cpf_cnpj", read_only=True)
+    matricula = serializers.CharField(source="associado.matricula", read_only=True)
+    matricula_display = serializers.SerializerMethodField()
     agente = SimpleUserSerializer(source="contrato_origem.agente", read_only=True)
     solicitado_por = SimpleUserSerializer(read_only=True)
     aprovado_por = SimpleUserSerializer(read_only=True)
     bloqueado_por = SimpleUserSerializer(read_only=True)
     efetivado_por = SimpleUserSerializer(read_only=True)
-    comprovantes = ComprovanteResumoSerializer(many=True, read_only=True)
+    comprovantes = serializers.SerializerMethodField()
     ciclo_key = serializers.SerializerMethodField()
     referencias = serializers.SerializerMethodField()
     itens = serializers.SerializerMethodField()
@@ -113,6 +115,8 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
             "associado_id",
             "associado_nome",
             "cpf_cnpj",
+            "matricula",
+            "matricula_display",
             "agente",
             "solicitado_por",
             "aprovado_por",
@@ -200,6 +204,30 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
             return get_contract_cycle_size(obj.contrato_origem)
         itens = self._itens_refinanciamento(obj)
         return max(len(itens), 3)
+
+    def get_matricula_display(self, obj: Refinanciamento) -> str:
+        return obj.associado.matricula_display
+
+    def get_comprovantes(self, obj: Refinanciamento):
+        prefetched = getattr(obj, "_prefetched_objects_cache", {})
+        comprovantes = list(prefetched.get("comprovantes", []))
+        if not comprovantes:
+            comprovantes = list(obj.comprovantes.all())
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user and user.is_authenticated and user.has_role("AGENTE") and not user.has_role("ADMIN"):
+            comprovantes = [
+                comprovante
+                for comprovante in comprovantes
+                if comprovante.papel == Comprovante.Papel.AGENTE
+            ]
+
+        return ComprovanteResumoSerializer(
+            comprovantes,
+            many=True,
+            context=self.context,
+        ).data
 
     def get_refinanciamento_numero(self, obj: Refinanciamento) -> int:
         return (

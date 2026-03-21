@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from typing import Iterable
 
 from django.utils import timezone
 
 from apps.contratos.models import Contrato
-from apps.refinanciamento.models import Comprovante
+from apps.refinanciamento.models import Comprovante, Refinanciamento
 from apps.tesouraria.models import Pagamento
 from core.file_references import build_filefield_reference, build_storage_reference
 
@@ -128,19 +129,116 @@ def _contract_comprovantes(contrato: Contrato) -> Iterable[Comprovante]:
             comprovante
             for comprovante in related.all()
             if comprovante.refinanciamento_id is None
-            and comprovante.origem == Comprovante.Origem.EFETIVACAO_CONTRATO
+            and (
+                comprovante.origem == Comprovante.Origem.EFETIVACAO_CONTRATO
+                or (
+                    comprovante.origem == Comprovante.Origem.LEGADO
+                    and comprovante.tipo
+                    in {
+                        Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+                        Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+                    }
+                )
+            )
         ]
     else:
         comprovantes = list(
             Comprovante.all_objects.filter(
                 contrato=contrato,
                 refinanciamento__isnull=True,
-                origem=Comprovante.Origem.EFETIVACAO_CONTRATO,
+            )
+            .filter(
+                tipo__in=[
+                    Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+                    Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+                ]
+            )
+            .filter(
+                origem__in=[
+                    Comprovante.Origem.EFETIVACAO_CONTRATO,
+                    Comprovante.Origem.LEGADO,
+                ]
             )
             .select_related("enviado_por")
             .order_by("created_at", "id")
         )
     return comprovantes
+
+
+def _candidate_refinanciamentos_for_payment(
+    contrato: Contrato,
+    *,
+    pagamento: Pagamento | None,
+) -> list[Refinanciamento]:
+    related = getattr(contrato.associado, "refinanciamentos", None)
+    if related is not None:
+        refinanciamentos = [
+            refinanciamento
+            for refinanciamento in related.all()
+            if refinanciamento.contrato_origem_id == contrato.id
+            and refinanciamento.status
+            in {
+                Refinanciamento.Status.EFETIVADO,
+                Refinanciamento.Status.CONCLUIDO,
+                Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            }
+        ]
+    else:
+        refinanciamentos = list(
+            Refinanciamento.all_objects.filter(
+                associado=contrato.associado,
+                contrato_origem=contrato,
+                status__in=[
+                    Refinanciamento.Status.EFETIVADO,
+                    Refinanciamento.Status.CONCLUIDO,
+                    Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+                ],
+            )
+            .prefetch_related("comprovantes")
+            .order_by("-executado_em", "-data_ativacao_ciclo", "-created_at", "-id")
+        )
+
+    def sort_key(refinanciamento: Refinanciamento):
+        reference_at = (
+            refinanciamento.executado_em
+            or refinanciamento.data_ativacao_ciclo
+            or refinanciamento.created_at
+        )
+        if pagamento is not None and pagamento.paid_at is not None and reference_at is not None:
+            delta = abs((reference_at - pagamento.paid_at).total_seconds())
+        else:
+            delta = float("inf")
+        return (
+            delta,
+            -(reference_at.timestamp() if reference_at is not None else 0),
+            -refinanciamento.id,
+        )
+
+    return sorted(refinanciamentos, key=sort_key)
+
+
+def _payment_refinanciamento_comprovantes(
+    contrato: Contrato,
+    *,
+    pagamento: Pagamento | None,
+) -> list[Comprovante]:
+    for refinanciamento in _candidate_refinanciamentos_for_payment(
+        contrato,
+        pagamento=pagamento,
+    ):
+        comprovantes = [
+            comprovante
+            for comprovante in refinanciamento.comprovantes.all()
+            if comprovante.tipo
+            in {
+                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+            }
+        ]
+        if comprovantes:
+            comprovantes.sort(key=lambda item: (item.created_at, item.id))
+            return comprovantes
+    return []
 
 
 def _comprovante_reference_timestamp(
@@ -171,6 +269,11 @@ def build_initial_payment_evidences(
         ),
     }
     comprovantes = list(_contract_comprovantes(contrato))
+    if not comprovantes:
+        comprovantes = _payment_refinanciamento_comprovantes(
+            contrato,
+            pagamento=pagamento,
+        )
     if comprovantes:
         evidence_rows: list[dict[str, object]] = []
         for comprovante in comprovantes:
@@ -191,10 +294,14 @@ def build_initial_payment_evidences(
                     "arquivo_referencia": comprovante.arquivo_referencia,
                     "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
                     "tipo_referencia": reference.tipo_referencia,
-                    "origem": "efetivacao_contrato",
+                    "origem": comprovante.origem or "efetivacao_contrato",
                     "papel": comprovante.papel,
                     "tipo": comprovante.tipo,
-                    "status": pagamento.status if pagamento else "",
+                    "status": (
+                        pagamento.status
+                        if pagamento
+                        else Pagamento.Status.PAGO
+                    ),
                     "competencia": None,
                     "created_at": _comprovante_reference_timestamp(
                         comprovante,
@@ -302,11 +409,33 @@ def build_initial_payment_payload(
             evidencia_status = "placeholder_recebido"
         else:
             evidencia_status = "referencia_legado"
+    paid_at = pagamento.paid_at if pagamento else None
+    status = pagamento.status if pagamento else "sem_pagamento_inicial"
+    status_label = _payment_status_label(pagamento)
+    if pagamento is None and (evidencias or contrato.auxilio_liberado_em is not None):
+        status = Pagamento.Status.PAGO
+        status_label = Pagamento.Status.PAGO.label
+        if evidencias:
+            paid_at = next(
+                (
+                    item["created_at"]
+                    for item in evidencias
+                    if item.get("created_at") is not None
+                ),
+                None,
+            )
+        if paid_at is None and contrato.auxilio_liberado_em is not None:
+            paid_at = timezone.make_aware(
+                datetime.combine(
+                    contrato.auxilio_liberado_em,
+                    datetime.min.time(),
+                )
+            )
     return InitialPaymentPayload(
-        status=pagamento.status if pagamento else "sem_pagamento_inicial",
-        status_label=_payment_status_label(pagamento),
+        status=status,
+        status_label=status_label,
         valor=_payment_display_value(pagamento),
-        paid_at=pagamento.paid_at if pagamento else None,
+        paid_at=paid_at,
         evidencia_status=evidencia_status,
         evidencias=evidencias,
     )

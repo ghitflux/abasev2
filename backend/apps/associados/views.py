@@ -7,6 +7,7 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
+from apps.accounts.models import User
 from apps.accounts.permissions import IsAdmin, IsAgenteOrAdmin, IsOperacionalOrAdmin
 from apps.contratos.parcela_detail import build_parcela_detail_payload
 from apps.contratos.cycle_projection import build_contract_cycle_projection
@@ -101,6 +102,8 @@ class AssociadoViewSet(ModelViewSet):
             "partial_update",
         }:
             return [permissions.IsAuthenticated(), IsAgenteOrAdmin()]
+        if self.action == "agentes":
+            return [permissions.IsAuthenticated(), IsOperacionalOrAdmin()]
         if self.action in {"retrieve", "ciclos", "parcela_detalhe"}:
             return [permissions.IsAuthenticated(), IsOperacionalOrAdmin()]
         return [permissions.IsAuthenticated(), IsAdmin()]
@@ -112,8 +115,25 @@ class AssociadoViewSet(ModelViewSet):
 
     @action(detail=False, methods=["get"])
     def metricas(self, request):
-        data = AssociadoService.calcular_metricas()
+        data = AssociadoService.calcular_metricas(
+            self.filter_queryset(self.get_queryset())
+        )
         return Response(AssociadoMetricasSerializer(data).data)
+
+    @action(detail=False, methods=["get"], url_path="agentes")
+    def agentes(self, request):
+        agentes = (
+            User.objects.filter(
+                is_active=True,
+                user_roles__deleted_at__isnull=True,
+                user_roles__role__codigo="AGENTE",
+            )
+            .distinct()
+            .order_by("first_name", "last_name", "email")
+        )
+        return Response(
+            [{"id": agente.id, "full_name": agente.full_name} for agente in agentes]
+        )
 
     @action(detail=False, methods=["get"], url_path="validar-documento")
     def validar_documento(self, request):
@@ -203,6 +223,16 @@ class AssociadoViewSet(ModelViewSet):
                 {"detail": str(exc)},
                 status=status.HTTP_404_NOT_FOUND,
             )
+
+        user = request.user
+        if user.has_role("AGENTE") and not user.has_role("ADMIN"):
+            payload["competencia_evidencias"] = []
+            payload["termo_antecipacao"] = None
+            payload["documentos_ciclo"] = [
+                evidence
+                for evidence in payload["documentos_ciclo"]
+                if str(evidence.get("papel", "")).lower() == "agente"
+            ]
 
         serializer = ParcelaDetailSerializer(payload)
         return Response(serializer.data)

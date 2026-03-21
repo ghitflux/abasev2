@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "jest --runInBand",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc --noEmit -p tsconfig.typecheck.json",
     "generate:api": "kubb --config kubb.config.js"
   },
   "dependencies": {

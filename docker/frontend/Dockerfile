@@ -1,11 +1,14 @@
 FROM node:22-alpine
 
 ENV PNPM_HOME="/pnpm" \
-    PATH="/pnpm:$PATH"
+    PATH="/pnpm:$PATH" \
+    TZ="America/Fortaleza"
 
 WORKDIR /workspace
 
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+RUN apk add --no-cache tzdata \
+ && corepack enable \
+ && corepack prepare pnpm@9.15.0 --activate
 
 COPY package.json pnpm-workspace.yaml .npmrc ./
 COPY apps/web/package.json apps/web/package.json

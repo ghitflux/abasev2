@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Building2Icon, CreditCardIcon, FileTextIcon, MapPinIcon, UserIcon, WorkflowIcon } from "lucide-react";
+import { Building2Icon, CreditCardIcon, FileTextIcon, MapPinIcon, SmartphoneIcon, UserIcon, WorkflowIcon } from "lucide-react";
 
 import type { AssociadoDetail } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
@@ -34,7 +34,13 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
     React.useState<ParcelaDetailTarget | null>(null);
   const { hasRole } = usePermissions();
   const isAdmin = hasRole("ADMIN");
-  const backHref = isAdmin ? "/associados" : "/agentes/meus-contratos";
+  const isAnalyst = hasRole("ANALISTA") && !isAdmin;
+  const isAgent = hasRole("AGENTE") && !isAdmin;
+  const backHref = isAdmin
+    ? "/associados"
+    : isAnalyst
+      ? "/analise"
+      : "/agentes/meus-contratos";
 
   const associadoQuery = useQuery({
     queryKey: ["associado", associadoId],
@@ -63,6 +69,12 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
               status={associado.status_visual_slug}
               label={associado.status_visual_label}
             />
+            {(associado.mobile_sessions ?? []).some((s) => s.is_active) && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400">
+                <SmartphoneIcon className="h-3 w-3" />
+                App ativo
+              </span>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -77,65 +89,69 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
         </div>
       </section>
 
-      <Accordion type="multiple" defaultValue={["dados", "contratos"]} className="space-y-4">
-        <AccordionItem value="dados" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
-          <AccordionTrigger className="text-base">
-            <span className="inline-flex items-center gap-2">
-              <UserIcon className="size-4 text-primary" />
-              Dados Pessoais
-            </span>
-          </AccordionTrigger>
-          <AccordionContent>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <DetailItem label="Tipo documento" value={associado.tipo_documento} />
-              <DetailItem label="CPF/CNPJ" value={associado.cpf_cnpj} />
-              <DetailItem label="RG" value={associado.rg} />
-              <DetailItem label="Órgão expedidor" value={associado.orgao_expedidor} />
-              <DetailItem label="Data de nascimento" value={formatDate(associado.data_nascimento)} />
-              <DetailItem label="Profissão" value={associado.profissao} />
-              <DetailItem label="Estado civil" value={associado.estado_civil} />
-              <DetailItem label="Agente" value={associado.agente?.full_name} />
-            </div>
-          </AccordionContent>
-        </AccordionItem>
+      <Accordion type="multiple" defaultValue={["contato", "contratos"]} className="space-y-4">
+        {isAgent ? null : (
+          <>
+            <AccordionItem value="dados" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
+              <AccordionTrigger className="text-base">
+                <span className="inline-flex items-center gap-2">
+                  <UserIcon className="size-4 text-primary" />
+                  Dados Pessoais
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <DetailItem label="Tipo documento" value={associado.tipo_documento} />
+                  <DetailItem label="CPF/CNPJ" value={associado.cpf_cnpj} />
+                  <DetailItem label="RG" value={associado.rg} />
+                  <DetailItem label="Órgão expedidor" value={associado.orgao_expedidor} />
+                  <DetailItem label="Data de nascimento" value={formatDate(associado.data_nascimento)} />
+                  <DetailItem label="Profissão" value={associado.profissao} />
+                  <DetailItem label="Estado civil" value={associado.estado_civil} />
+                  <DetailItem label="Agente" value={associado.agente?.full_name} />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
 
-        <AccordionItem value="endereco" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
-          <AccordionTrigger className="text-base">
-            <span className="inline-flex items-center gap-2">
-              <MapPinIcon className="size-4 text-primary" />
-              Endereço
-            </span>
-          </AccordionTrigger>
-          <AccordionContent>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <DetailItem label="CEP" value={associado.endereco?.cep} />
-              <DetailItem label="Endereço" value={associado.endereco?.endereco} />
-              <DetailItem label="Número" value={associado.endereco?.numero} />
-              <DetailItem label="Complemento" value={associado.endereco?.complemento} />
-              <DetailItem label="Bairro" value={associado.endereco?.bairro} />
-              <DetailItem label="Cidade" value={associado.endereco?.cidade} />
-              <DetailItem label="UF" value={associado.endereco?.uf} />
-            </div>
-          </AccordionContent>
-        </AccordionItem>
+            <AccordionItem value="endereco" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
+              <AccordionTrigger className="text-base">
+                <span className="inline-flex items-center gap-2">
+                  <MapPinIcon className="size-4 text-primary" />
+                  Endereço
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <DetailItem label="CEP" value={associado.endereco?.cep} />
+                  <DetailItem label="Endereço" value={associado.endereco?.endereco} />
+                  <DetailItem label="Número" value={associado.endereco?.numero} />
+                  <DetailItem label="Complemento" value={associado.endereco?.complemento} />
+                  <DetailItem label="Bairro" value={associado.endereco?.bairro} />
+                  <DetailItem label="Cidade" value={associado.endereco?.cidade} />
+                  <DetailItem label="UF" value={associado.endereco?.uf} />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
 
-        <AccordionItem value="banco" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
-          <AccordionTrigger className="text-base">
-            <span className="inline-flex items-center gap-2">
-              <CreditCardIcon className="size-4 text-primary" />
-              Dados Bancários
-            </span>
-          </AccordionTrigger>
-          <AccordionContent>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <DetailItem label="Banco" value={associado.dados_bancarios?.banco} />
-              <DetailItem label="Agência" value={associado.dados_bancarios?.agencia} />
-              <DetailItem label="Conta" value={associado.dados_bancarios?.conta} />
-              <DetailItem label="Tipo de conta" value={associado.dados_bancarios?.tipo_conta} />
-              <DetailItem label="Chave PIX" value={associado.dados_bancarios?.chave_pix} />
-            </div>
-          </AccordionContent>
-        </AccordionItem>
+            <AccordionItem value="banco" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
+              <AccordionTrigger className="text-base">
+                <span className="inline-flex items-center gap-2">
+                  <CreditCardIcon className="size-4 text-primary" />
+                  Dados Bancários
+                </span>
+              </AccordionTrigger>
+              <AccordionContent>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <DetailItem label="Banco" value={associado.dados_bancarios?.banco} />
+                  <DetailItem label="Agência" value={associado.dados_bancarios?.agencia} />
+                  <DetailItem label="Conta" value={associado.dados_bancarios?.conta} />
+                  <DetailItem label="Tipo de conta" value={associado.dados_bancarios?.tipo_conta} />
+                  <DetailItem label="Chave PIX" value={associado.dados_bancarios?.chave_pix} />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </>
+        )}
 
         <AccordionItem value="contato" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
           <AccordionTrigger className="text-base">
@@ -167,18 +183,22 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
               associado={associado}
               onParcelaClick={setSelectedTarget}
               showDocuments={false}
+              agentRestricted={isAgent}
             />
           </AccordionContent>
         </AccordionItem>
 
-        <AccordionItem value="documentos" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
+        {isAgent ? null : (
+          <AccordionItem value="documentos" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
           <AccordionTrigger className="text-base">Documentos</AccordionTrigger>
           <AccordionContent>
             <AssociadoDocumentsGrid associado={associado} />
           </AccordionContent>
         </AccordionItem>
+        )}
 
-        <AccordionItem value="esteira" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
+        {isAgent ? null : (
+          <AccordionItem value="esteira" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
           <AccordionTrigger className="text-base">
             <span className="inline-flex items-center gap-2">
               <WorkflowIcon className="size-4 text-primary" />
@@ -209,6 +229,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             </div>
           </AccordionContent>
         </AccordionItem>
+        )}
       </Accordion>
       <ParcelaDetalheDialog
         associadoId={associadoId}
@@ -225,7 +246,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
 
 export default function AssociadoPage(props: AssociadoPageProps) {
   return (
-    <RoleGuard allow={["ADMIN", "AGENTE"]}>
+    <RoleGuard allow={["ADMIN", "AGENTE", "ANALISTA"]}>
       <AssociadoPageContent {...props} />
     </RoleGuard>
   );

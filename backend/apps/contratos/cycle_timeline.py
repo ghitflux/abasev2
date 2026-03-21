@@ -192,10 +192,14 @@ def _select_initial_tesouraria_payment(ciclo: Ciclo) -> Pagamento | None:
 def get_destination_refinanciamento(ciclo: Ciclo) -> Refinanciamento | None:
     try:
         return ciclo.refinanciamento_destino
-    except Refinanciamento.DoesNotExist:
+    except (
+        Refinanciamento.DoesNotExist,
+        Refinanciamento.MultipleObjectsReturned,
+    ):
         return (
             Refinanciamento.objects.select_related("contrato_origem", "ciclo_destino")
             .filter(ciclo_destino=ciclo)
+            .order_by("created_at", "id")
             .first()
         )
 

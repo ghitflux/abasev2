@@ -23,6 +23,8 @@ type AssociadoSnapshot = Pick<
   | "cpf_cnpj"
   | "status_visual_slug"
   | "status_visual_label"
+  | "possui_meses_nao_descontados"
+  | "meses_nao_descontados_count"
   | "agente"
   | "contratos"
   | "documentos"
@@ -33,6 +35,7 @@ type ContractsOverviewProps = {
   onParcelaClick?: (target: ParcelaDetailTarget) => void;
   defaultOpenContractId?: number | null;
   showDocuments?: boolean;
+  agentRestricted?: boolean;
 };
 
 function DetailItem({
@@ -208,6 +211,11 @@ export function AssociadoSnapshotSummary({
             status={associado.status_visual_slug}
             label={associado.status_visual_label}
           />
+          {associado.possui_meses_nao_descontados ? (
+            <p className="mt-2 text-xs text-amber-200">
+              {associado.meses_nao_descontados_count} mês(es) não descontado(s)
+            </p>
+          ) : null}
         </div>
       </div>
     </div>
@@ -219,6 +227,7 @@ export function AssociadoContractsOverview({
   onParcelaClick,
   defaultOpenContractId,
   showDocuments = true,
+  agentRestricted = false,
 }: ContractsOverviewProps) {
   const defaultValue = React.useMemo(() => {
     if (defaultOpenContractId) {
@@ -247,95 +256,106 @@ export function AssociadoContractsOverview({
                     {formatCurrency(contrato.valor_mensalidade)}
                   </p>
                 </div>
-                <StatusBadge
-                  status={contrato.status_visual_slug}
-                  label={contrato.status_visual_label}
-                />
+                <div className="text-right">
+                  <StatusBadge
+                    status={contrato.status_visual_slug}
+                    label={contrato.status_visual_label}
+                  />
+                  {contrato.possui_meses_nao_descontados ? (
+                    <p className="mt-2 text-xs text-amber-200">
+                      {contrato.meses_nao_descontados_count} mês(es) não descontado(s)
+                    </p>
+                  ) : null}
+                </div>
               </div>
             </AccordionTrigger>
             <AccordionContent className="space-y-4 px-6">
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <DetailItem label="Valor bruto" value={formatCurrency(contrato.valor_bruto)} />
-                <DetailItem label="Valor líquido" value={formatCurrency(contrato.valor_liquido)} />
-                <DetailItem
-                  label="Mensalidade associativa"
-                  value={formatCurrency(contrato.valor_mensalidade)}
-                />
-                <DetailItem
-                  label="Taxa de antecipação"
-                  value={`${contrato.taxa_antecipacao}%`}
-                />
-                <DetailItem label="Disponível" value={formatCurrency(contrato.margem_disponivel)} />
-                <DetailItem
-                  label="Valor total antecipação"
-                  value={formatCurrency(contrato.valor_total_antecipacao)}
-                />
-                <DetailItem label="Prazo (meses)" value={String(contrato.prazo_meses)} />
-                <DetailItem
-                  label="Comissão do agente"
-                  value={formatCurrency(contrato.comissao_agente)}
-                />
-                <DetailItem label="Data de aprovação" value={formatDate(contrato.data_aprovacao)} />
-                <DetailItem
-                  label="Primeira mensalidade"
-                  value={formatDate(contrato.data_primeira_mensalidade)}
-                />
-                <DetailItem
-                  label="Mês de averbação"
-                  value={formatMonthYear(contrato.mes_averbacao)}
-                />
-                <DetailItem
-                  label="1º ciclo ativado em"
-                  value={formatDate(contrato.data_primeiro_ciclo_ativado)}
-                />
-              </div>
+              {agentRestricted ? null : (
+                <>
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <DetailItem label="Valor bruto" value={formatCurrency(contrato.valor_bruto)} />
+                    <DetailItem label="Valor líquido" value={formatCurrency(contrato.valor_liquido)} />
+                    <DetailItem
+                      label="Mensalidade associativa"
+                      value={formatCurrency(contrato.valor_mensalidade)}
+                    />
+                    <DetailItem
+                      label="Taxa de antecipação"
+                      value={`${contrato.taxa_antecipacao}%`}
+                    />
+                    <DetailItem label="Disponível" value={formatCurrency(contrato.margem_disponivel)} />
+                    <DetailItem
+                      label="Valor total antecipação"
+                      value={formatCurrency(contrato.valor_total_antecipacao)}
+                    />
+                    <DetailItem label="Prazo (meses)" value={String(contrato.prazo_meses)} />
+                    <DetailItem
+                      label="Comissão do agente"
+                      value={formatCurrency(contrato.comissao_agente)}
+                    />
+                    <DetailItem label="Data de aprovação" value={formatDate(contrato.data_aprovacao)} />
+                    <DetailItem
+                      label="Primeira mensalidade"
+                      value={formatDate(contrato.data_primeira_mensalidade)}
+                    />
+                    <DetailItem
+                      label="Mês de averbação"
+                      value={formatMonthYear(contrato.mes_averbacao)}
+                    />
+                    <DetailItem
+                      label="1º ciclo ativado em"
+                      value={formatDate(contrato.data_primeiro_ciclo_ativado)}
+                    />
+                  </div>
 
-              <Card className="rounded-[1.5rem] border-border/60 bg-card/60">
-                <CardHeader>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <CardTitle className="text-base">Pagamento da efetivação</CardTitle>
-                    <StatusBadge
-                      status={contrato.pagamento_inicial_status}
-                      label={contrato.pagamento_inicial_status_label}
-                    />
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <DetailItem
-                      label="Valor pago"
-                      value={
-                        contrato.pagamento_inicial_valor
-                          ? formatCurrency(contrato.pagamento_inicial_valor)
-                          : "Não informado"
-                      }
-                    />
-                    <DetailItem
-                      label="Recebido em"
-                      value={
-                        contrato.pagamento_inicial_paid_at
-                          ? formatDateTime(contrato.pagamento_inicial_paid_at)
-                          : "Aguardando tesouraria"
-                      }
-                    />
-                    <DetailItem
-                      label="Evidências"
-                      value={String(contrato.pagamento_inicial_evidencias.length)}
-                    />
-                  </div>
-                  {contrato.pagamento_inicial_evidencias.length ? (
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {contrato.pagamento_inicial_evidencias.map((arquivo) => (
-                        <InitialPaymentEvidenceCard key={arquivo.id} arquivo={arquivo} />
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      Nenhuma evidência de pagamento inicial disponível.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
+                  <Card className="rounded-[1.5rem] border-border/60 bg-card/60">
+                    <CardHeader>
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <CardTitle className="text-base">Pagamento da efetivação</CardTitle>
+                        <StatusBadge
+                          status={contrato.pagamento_inicial_status}
+                          label={contrato.pagamento_inicial_status_label}
+                        />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid gap-4 md:grid-cols-3">
+                        <DetailItem
+                          label="Valor pago"
+                          value={
+                            contrato.pagamento_inicial_valor
+                              ? formatCurrency(contrato.pagamento_inicial_valor)
+                              : "Não informado"
+                          }
+                        />
+                        <DetailItem
+                          label="Recebido em"
+                          value={
+                            contrato.pagamento_inicial_paid_at
+                              ? formatDateTime(contrato.pagamento_inicial_paid_at)
+                              : "Aguardando tesouraria"
+                          }
+                        />
+                        <DetailItem
+                          label="Evidências"
+                          value={String(contrato.pagamento_inicial_evidencias.length)}
+                        />
+                      </div>
+                      {contrato.pagamento_inicial_evidencias.length ? (
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {contrato.pagamento_inicial_evidencias.map((arquivo) => (
+                            <InitialPaymentEvidenceCard key={arquivo.id} arquivo={arquivo} />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          Nenhuma evidência de pagamento inicial disponível.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </>
+              )}
 
               <div className="grid gap-4 xl:grid-cols-3">
                 {contrato.ciclos.map((ciclo) => (
@@ -349,7 +369,7 @@ export function AssociadoContractsOverview({
                         />
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-3">
+                    <CardContent className="space-y-4">
                       <div className="rounded-2xl border border-border/60 bg-background/60 p-4 text-sm">
                         <p className="font-medium">
                           Ativado em {formatDate(ciclo.data_ativacao_ciclo)}
@@ -374,41 +394,43 @@ export function AssociadoContractsOverview({
                           </p>
                         ) : null}
                       </div>
-                      {ciclo.parcelas.map((parcela) => (
-                        <button
-                          key={parcela.id}
-                          type="button"
-                          onClick={() =>
-                            onParcelaClick?.({
-                              contratoId: contrato.id,
-                              referenciaMes: parcela.referencia_mes,
-                              kind: "cycle",
-                            })
-                          }
-                          className="rounded-2xl border border-border/60 bg-background/60 p-4 text-left transition hover:border-primary/50"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="font-medium">
-                              Parcela {parcela.numero}/{ciclo.parcelas.length}
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {ciclo.parcelas.map((parcela) => (
+                          <button
+                            key={parcela.id}
+                            type="button"
+                            onClick={() =>
+                              onParcelaClick?.({
+                                contratoId: contrato.id,
+                                referenciaMes: parcela.referencia_mes,
+                                kind: "cycle",
+                              })
+                            }
+                            className="rounded-2xl border border-border/60 bg-background/60 p-4 text-left transition hover:border-primary/50"
+                          >
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="font-medium">
+                                Parcela {parcela.numero}/{ciclo.parcelas.length}
+                              </p>
+                              <StatusBadge status={parcela.status} />
+                            </div>
+                            <p className="mt-2 text-sm text-muted-foreground">
+                              {formatMonthYear(parcela.referencia_mes)} ·{" "}
+                              {formatCurrency(parcela.valor)}
                             </p>
-                            <StatusBadge status={parcela.status} />
-                          </div>
-                          <p className="mt-2 text-sm text-muted-foreground">
-                            {formatMonthYear(parcela.referencia_mes)} ·{" "}
-                            {formatCurrency(parcela.valor)}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            Vencimento {formatDate(parcela.data_vencimento)}
-                          </p>
-                        </button>
-                      ))}
+                            <p className="text-sm text-muted-foreground">
+                              Vencimento {formatDate(parcela.data_vencimento)}
+                            </p>
+                          </button>
+                        ))}
+                      </div>
                       {ciclo.termo_antecipacao || ciclo.comprovantes_ciclo.length ? (
-                        <div className="space-y-3">
+                        <div className="space-y-3 pt-1">
                           <p className="text-sm font-medium text-foreground">
-                            Documentos do ciclo
+                            {agentRestricted ? "Comprovantes do agente" : "Documentos do ciclo"}
                           </p>
                           <div className="grid gap-3">
-                            {ciclo.termo_antecipacao ? (
+                            {!agentRestricted && ciclo.termo_antecipacao ? (
                               <CycleDocumentLink
                                 label="Termo de antecipação"
                                 arquivo={ciclo.termo_antecipacao}
@@ -431,7 +453,7 @@ export function AssociadoContractsOverview({
 
               {contrato.meses_nao_pagos.length ? (
                 <div className="space-y-3">
-                  <p className="text-sm font-medium text-foreground">Meses não pagos</p>
+                  <p className="text-sm font-medium text-foreground">Parcelas não descontadas</p>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {contrato.meses_nao_pagos.map((mes) => (
                       <button
@@ -464,7 +486,7 @@ export function AssociadoContractsOverview({
                 </div>
               ) : null}
 
-              {contrato.movimentos_financeiros_avulsos.length ? (
+              {!agentRestricted && contrato.movimentos_financeiros_avulsos.length ? (
                 <div className="space-y-3">
                   <p className="text-sm font-medium text-foreground">
                     Movimentos financeiros fora do ciclo
@@ -499,7 +521,7 @@ export function AssociadoContractsOverview({
         ))}
       </Accordion>
 
-      {showDocuments ? (
+      {showDocuments && !agentRestricted ? (
         <section className="space-y-3">
           <p className="text-sm font-medium text-foreground">Documentos do associado</p>
           <AssociadoDocumentsGrid associado={associado} />

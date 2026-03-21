@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from datetime import datetime, timedelta, timezone as dt_timezone
+from decimal import Decimal
 from pathlib import Path
 from uuid import uuid4
 
@@ -14,7 +15,15 @@ from django.utils import timezone
 from django.utils.text import get_valid_filename
 from rest_framework.exceptions import ValidationError
 
+from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
+from apps.contratos.models import Contrato
+
 from .legacy import LegacyPagamentoSnapshot, list_legacy_pagamento_snapshots
+from .manual_return_conflicts import (
+    promote_pagamento_to_return,
+    should_promote_manual_pagamento_to_return,
+    should_skip_legacy_manual_snapshot,
+)
 from .matching import find_associado
 from .models import ArquivoRetorno, ArquivoRetornoItem, ImportacaoLog, PagamentoMensalidade
 from .parsers import ETIPITxtRetornoParser, normalize_lines
@@ -254,6 +263,21 @@ class ArquivoRetornoService:
                     dados=warning,
                 )
 
+            resumo_pm = self._upsert_pagamentos_mensalidade(
+                arquivo_retorno=arquivo_retorno,
+                items=items,
+                import_uuid=import_uuid,
+                user=arquivo_retorno.uploaded_by,
+            )
+            contract_ids_to_rebuild = resumo_pm.pop("pm_contract_ids_to_rebuild", [])
+            if contract_ids_to_rebuild:
+                for contrato in (
+                    Contrato.objects.select_related("associado")
+                    .filter(id__in=sorted(set(contract_ids_to_rebuild)))
+                    .order_by("id")
+                ):
+                    rebuild_contract_cycle_state(contrato, execute=True)
+
             resumo = MotorReconciliacao(arquivo_retorno).reconciliar()
             resumo.update(
                 {
@@ -266,14 +290,6 @@ class ArquivoRetornoService:
             resumo["cpfs_duplicados_arquivo"] = len(duplicate_cpfs)
             resumo["linhas_duplicadas_ignoradas"] = sum(
                 len(group["ignoradas"]) for group in duplicate_cpfs.values()
-            )
-
-            # Upsert PagamentoMensalidade (equivalente ao baixaUpload do PHP)
-            resumo_pm = self._upsert_pagamentos_mensalidade(
-                arquivo_retorno=arquivo_retorno,
-                items=items,
-                import_uuid=import_uuid,
-                user=arquivo_retorno.uploaded_by,
             )
             resumo_pm["pm_cpfs_duplicados_arquivo"] = len(duplicate_cpfs)
             resumo_pm["pm_linhas_duplicadas_ignoradas"] = resumo["linhas_duplicadas_ignoradas"]
@@ -353,6 +369,8 @@ class ArquivoRetornoService:
         criados = 0
         duplicados = 0
         vinculados = 0
+        promovidos_automatico = 0
+        contract_ids_to_rebuild: set[int] = set()
         nao_encontrados_list: list[dict] = []
         erros_list: list[dict] = []
 
@@ -407,12 +425,32 @@ class ArquivoRetornoService:
                         existing.associado = assoc
                         update_fields.append("associado")
                         vinculados += 1
-                    update_fields.extend(
-                        _apply_legacy_snapshot_to_pagamento(
-                            existing,
-                            legacy_snapshots.get(cpf),
+                    if should_promote_manual_pagamento_to_return(
+                        existing,
+                        return_status_code=status,
+                        return_valor=Decimal(str(valor)) if valor is not None else None,
+                    ):
+                        update_fields.extend(
+                            promote_pagamento_to_return(
+                                existing,
+                                source_file_path=source_path,
+                                import_uuid=import_uuid,
+                            )
                         )
-                    )
+                        promovidos_automatico += 1
+                        if existing.associado_id:
+                            contract_ids_to_rebuild.update(
+                                Contrato.objects.filter(associado_id=existing.associado_id).values_list(
+                                    "id", flat=True
+                                )
+                            )
+                    elif not should_skip_legacy_manual_snapshot(return_status_code=status):
+                        update_fields.extend(
+                            _apply_legacy_snapshot_to_pagamento(
+                                existing,
+                                legacy_snapshots.get(cpf),
+                            )
+                        )
                     if update_fields:
                         existing.save(update_fields=[*sorted(set(update_fields)), "updated_at"])
                     continue
@@ -431,10 +469,11 @@ class ArquivoRetornoService:
                     source_file_path=source_path,
                     associado=assoc,
                 )
-                _apply_legacy_snapshot_to_pagamento(
-                    pagamento,
-                    legacy_snapshots.get(cpf),
-                )
+                if not should_skip_legacy_manual_snapshot(return_status_code=status):
+                    _apply_legacy_snapshot_to_pagamento(
+                        pagamento,
+                        legacy_snapshots.get(cpf),
+                    )
                 pagamento.save()
                 criados += 1
                 if assoc:
@@ -455,10 +494,12 @@ class ArquivoRetornoService:
             "pm_criados": criados,
             "pm_duplicados": duplicados,
             "pm_vinculados": vinculados,
+            "pm_promovidos_automatico": promovidos_automatico,
             "pm_nao_encontrados": len(nao_encontrados_list),
             "pm_erros": len(erros_list),
             "pm_cpfs_duplicados_arquivo": 0,
             "pm_linhas_duplicadas_ignoradas": 0,
+            "pm_contract_ids_to_rebuild": sorted(contract_ids_to_rebuild),
         }
         logger.info(
             "[RETORNO] upsert PagamentoMensalidade concluído: %s",

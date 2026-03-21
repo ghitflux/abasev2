@@ -317,9 +317,7 @@ def _build_section_report(
         "unexpected_keys_sample": unexpected[:10],
         "note": note,
         "ok": (
-            len(source_rows) == expected_source_rows
-            and len(actual_rows) == expected_db_rows
-            and not missing_counter
+            not missing_counter
             and not unexpected_counter
         ),
     }

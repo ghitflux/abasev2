@@ -10,6 +10,7 @@ from rest_framework.exceptions import ValidationError
 from apps.importacao.financeiro import build_financeiro_resumo
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem
 
+from .cycle_projection import build_contract_cycle_projection
 from .cycle_timeline import (
     get_contract_activation_payload,
     get_cycle_activation_info,
@@ -100,12 +101,13 @@ class RenovacaoCicloService:
             if proximo_ciclo
             else None
         )
+        projection = build_contract_cycle_projection(ciclo.contrato)
 
         # Ciclo ainda não foi ativado — em previsão
         if ciclo.status == Ciclo.Status.FUTURO and ativacao_atual.activated_at is None:
             return "em_previsao"
 
-        if parcela.status == Parcela.Status.NAO_DESCONTADO:
+        if projection["possui_meses_nao_descontados"]:
             return "inadimplente"
         if ciclo.status == Ciclo.Status.CICLO_RENOVADO:
             return "ciclo_renovado"
@@ -116,6 +118,8 @@ class RenovacaoCicloService:
             return "ciclo_iniciado"
         if parcelas_total > 0 and parcelas_pagas >= parcelas_minimas_para_renovar:
             return "apto_a_renovar"
+        if parcela.status == Parcela.Status.EM_PREVISAO:
+            return "em_aberto"
         if parcela.status in [Parcela.Status.EM_ABERTO]:
             return "em_aberto"
         return parcela.status

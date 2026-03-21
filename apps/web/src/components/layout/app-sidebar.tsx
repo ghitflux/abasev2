@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { startTransition } from "react";
@@ -8,6 +9,8 @@ import Image from "next/image";
 import { ChevronRightIcon, LogOutIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import type { PagamentoAgenteNotificacoes } from "@/lib/api/types";
+import { apiFetch } from "@/lib/api/client";
 import { getNavigationForRole } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/use-permissions";
@@ -27,6 +30,7 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSub,
@@ -61,6 +65,26 @@ export default function AppSidebar() {
   const isCollapsed = state === "collapsed";
 
   const sections = React.useMemo(() => getNavigationForRole(role), [role]);
+  const pagamentoNotificacoesQuery = useQuery({
+    queryKey: ["agente-pagamentos-notificacoes"],
+    enabled: role === "AGENTE",
+    refetchInterval: 30000,
+    queryFn: () =>
+      apiFetch<PagamentoAgenteNotificacoes>("agente/pagamentos/notificacoes"),
+  });
+  const routeBadges = React.useMemo<Record<string, number>>(
+    () => {
+      const badges: Record<string, number> = {};
+
+      if (role === "AGENTE") {
+        badges["/agentes/pagamentos"] =
+          pagamentoNotificacoesQuery.data?.unread_count ?? 0;
+      }
+
+      return badges;
+    },
+    [pagamentoNotificacoesQuery.data?.unread_count, role],
+  );
 
   // Track which collapsible sections are open (controlled)
   const [openItems, setOpenItems] = React.useState<Record<string, boolean>>(() => {
@@ -199,6 +223,9 @@ export default function AppSidebar() {
                             <SidebarMenuSub>
                               {item.children.map((child) => {
                                 const isChildActive = isPathActive(pathname, child.href);
+                                const childBadgeCount = child.href
+                                  ? routeBadges[child.href] ?? 0
+                                  : 0;
 
                                 return (
                                   <SidebarMenuSubItem key={child.href}>
@@ -216,6 +243,11 @@ export default function AppSidebar() {
                                         </span>
                                       </Link>
                                     </SidebarMenuSubButton>
+                                    {childBadgeCount > 0 ? (
+                                      <SidebarMenuBadge className="rounded-full bg-rose-500/15 px-2 text-rose-200">
+                                        {childBadgeCount > 99 ? "99+" : childBadgeCount}
+                                      </SidebarMenuBadge>
+                                    ) : null}
                                   </SidebarMenuSubItem>
                                 );
                               })}
@@ -230,6 +262,10 @@ export default function AppSidebar() {
 
                   return (
                     <SidebarMenuItem key={item.href}>
+                      {/*
+                        Route badges are currently used only for direct links like
+                        "Meus Pagamentos" when rendered outside submenus.
+                      */}
                       <SidebarMenuButton
                         asChild
                         tooltip={item.title}
@@ -248,6 +284,13 @@ export default function AppSidebar() {
                           ) : null}
                         </Link>
                       </SidebarMenuButton>
+                      {item.href && (routeBadges[item.href] ?? 0) > 0 ? (
+                        <SidebarMenuBadge className="rounded-full bg-rose-500/15 px-2 text-rose-200">
+                          {(routeBadges[item.href] ?? 0) > 99
+                            ? "99+"
+                            : routeBadges[item.href]}
+                        </SidebarMenuBadge>
+                      ) : null}
                     </SidebarMenuItem>
                   );
                 })}

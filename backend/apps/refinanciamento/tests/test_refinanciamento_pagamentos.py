@@ -12,7 +12,7 @@ from apps.accounts.models import Role, User
 from apps.associados.models import Associado
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.importacao.models import PagamentoMensalidade
-from apps.refinanciamento.models import Refinanciamento
+from apps.refinanciamento.models import Comprovante, Refinanciamento
 from apps.tesouraria.models import Pagamento
 
 
@@ -27,6 +27,9 @@ class RefinanciamentoPagamentosTestCase(TestCase):
 
         cls.admin = cls._create_user("admin@abase.local", cls.role_admin, "Admin")
         cls.agente = cls._create_user("agente@abase.local", cls.role_agente, "Agente")
+        cls.outro_agente = cls._create_user(
+            "outro-agente@abase.local", cls.role_agente, "Outro"
+        )
         cls.coordenador = cls._create_user(
             "coord@abase.local", cls.role_coord, "Coord"
         )
@@ -65,7 +68,13 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         self.tes_client = APIClient()
         self.tes_client.force_authenticate(self.tesoureiro)
 
-    def _create_contrato(self, cpf: str = "12345678901") -> Contrato:
+    def _create_contrato(
+        self,
+        cpf: str = "12345678901",
+        *,
+        agente: User | None = None,
+    ) -> Contrato:
+        agente_responsavel = agente or self.agente
         associado = Associado.objects.create(
             nome_completo="Associado Refinanciamento",
             cpf_cnpj=cpf,
@@ -74,11 +83,11 @@ class RefinanciamentoPagamentosTestCase(TestCase):
             orgao_publico="SEFAZ",
             matricula_orgao=f"MAT-{cpf[-4:]}",
             status=Associado.Status.ATIVO,
-            agente_responsavel=self.agente,
+            agente_responsavel=agente_responsavel,
         )
         contrato = Contrato.objects.create(
             associado=associado,
-            agente=self.agente,
+            agente=agente_responsavel,
             valor_bruto=Decimal("1500.00"),
             valor_liquido=Decimal("1200.00"),
             valor_mensalidade=Decimal("500.00"),
@@ -312,6 +321,76 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         self.assertEqual(minhas.status_code, 200, minhas.json())
         self.assertEqual(minhas.json()["count"], 1)
 
+        assumidas = self.analyst_client.get(
+            "/api/v1/analise/refinanciamentos/",
+            {"assignment": "assumidas"},
+        )
+        self.assertEqual(assumidas.status_code, 200, assumidas.json())
+        self.assertEqual(assumidas.json()["count"], 1)
+
+    def test_analise_resumo_refinanciamentos_retorna_cards_operacionais(self):
+        contrato_liberado = self._create_contrato("83345678901")
+        contrato_assumido = self._create_contrato("84345678901")
+        contrato_aprovado = self._create_contrato("85345678901")
+        for contrato in [contrato_liberado, contrato_assumido, contrato_aprovado]:
+            self._create_pagamento(contrato, date(2026, 1, 1))
+            self._create_pagamento(contrato, date(2026, 2, 1))
+
+        liberado_id = self.agent_client.post(
+            f"/api/v1/refinanciamentos/{contrato_liberado.id}/solicitar/"
+        ).json()["id"]
+        assumido_id = self.agent_client.post(
+            f"/api/v1/refinanciamentos/{contrato_assumido.id}/solicitar/"
+        ).json()["id"]
+        aprovado_id = self.agent_client.post(
+            f"/api/v1/refinanciamentos/{contrato_aprovado.id}/solicitar/"
+        ).json()["id"]
+
+        for refinanciamento_id in [liberado_id, assumido_id, aprovado_id]:
+            approval = self.coord_client.post(
+                f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar/"
+            )
+            self.assertEqual(approval.status_code, 200, approval.json())
+
+        assumir = self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{assumido_id}/assumir_analise/"
+        )
+        self.assertEqual(assumir.status_code, 200, assumir.json())
+
+        self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{aprovado_id}/assumir_analise/"
+        )
+        aprovar = self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{aprovado_id}/aprovar_analise/",
+            {
+                "termo_antecipacao": SimpleUploadedFile(
+                    "termo.pdf",
+                    b"arquivo termo",
+                    content_type="application/pdf",
+                ),
+                "observacao": "Termo ok",
+            },
+            format="multipart",
+        )
+        self.assertEqual(aprovar.status_code, 200, aprovar.json())
+
+        response = self.analyst_client.get("/api/v1/analise/refinanciamentos/resumo/")
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["total"], 3)
+        self.assertEqual(response.json()["em_analise"], 2)
+        self.assertEqual(response.json()["assumidos"], 1)
+        self.assertEqual(response.json()["aprovados"], 1)
+
+        filtered = self.analyst_client.get(
+            "/api/v1/analise/refinanciamentos/resumo/",
+            {"assignment": "assumidas"},
+        )
+        self.assertEqual(filtered.status_code, 200, filtered.json())
+        self.assertEqual(filtered.json()["total"], 1)
+        self.assertEqual(filtered.json()["em_analise"], 1)
+        self.assertEqual(filtered.json()["assumidos"], 1)
+        self.assertEqual(filtered.json()["aprovados"], 0)
+
     def test_coordenacao_aprova_em_massa_com_confirmacao(self):
         primeiro = self._create_contrato("92345678901")
         segundo = self._create_contrato("93345678901")
@@ -425,3 +504,138 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         self.assertEqual(row["mensalidades"]["pagas"], 2)
         self.assertTrue(row["mensalidades"]["apto_refinanciamento"])
         self.assertFalse(row["pode_solicitar_refinanciamento"])
+
+    def test_agente_resumo_refinanciamentos_respeita_filtros(self):
+        contrato_finalizado = self._create_contrato("84345678901")
+        contrato_bloqueado = self._create_contrato("85345678901")
+        contrato_revertido = self._create_contrato("86345678901")
+        contrato_em_fluxo = self._create_contrato("87345678901")
+        contrato_outro_agente = self._create_contrato(
+            "88345678901", agente=self.outro_agente
+        )
+
+        Refinanciamento.objects.create(
+            associado=contrato_finalizado.associado,
+            contrato_origem=contrato_finalizado,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 3, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            cycle_key="2026-01|2026-02|2026-03",
+        )
+        Refinanciamento.objects.create(
+            associado=contrato_bloqueado.associado,
+            contrato_origem=contrato_bloqueado,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.BLOQUEADO,
+            cycle_key="2026-02|2026-03|2026-04",
+        )
+        Refinanciamento.objects.create(
+            associado=contrato_revertido.associado,
+            contrato_origem=contrato_revertido,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 5, 1),
+            status=Refinanciamento.Status.REVERTIDO,
+            cycle_key="2026-03|2026-04|2026-05",
+        )
+        Refinanciamento.objects.create(
+            associado=contrato_em_fluxo.associado,
+            contrato_origem=contrato_em_fluxo,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 6, 1),
+            status=Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            cycle_key="2026-04|2026-05|2026-06",
+        )
+        Refinanciamento.objects.create(
+            associado=contrato_outro_agente.associado,
+            contrato_origem=contrato_outro_agente,
+            solicitado_por=self.outro_agente,
+            competencia_solicitada=date(2026, 7, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            cycle_key="2026-05|2026-06|2026-07",
+        )
+
+        response = self.agent_client.get("/api/v1/refinanciamentos/resumo/")
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["total"], 4)
+        self.assertEqual(response.json()["concluidos"], 1)
+        self.assertEqual(response.json()["bloqueados"], 1)
+        self.assertEqual(response.json()["revertidos"], 1)
+        self.assertEqual(response.json()["em_fluxo"], 1)
+
+        filtered = self.agent_client.get(
+            "/api/v1/refinanciamentos/resumo/",
+            {"cycle_key": "2026-04", "search": "85345678901"},
+        )
+        self.assertEqual(filtered.status_code, 200, filtered.json())
+        self.assertEqual(filtered.json()["total"], 1)
+        self.assertEqual(filtered.json()["bloqueados"], 1)
+        self.assertEqual(filtered.json()["concluidos"], 0)
+
+    def test_lista_refinanciamentos_do_agente_retorna_matricula_e_so_anexo_do_agente(self):
+        contrato = self._create_contrato("89345678901")
+        refinanciamento = Refinanciamento.objects.create(
+            associado=contrato.associado,
+            contrato_origem=contrato,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 8, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            cycle_key="2026-06|2026-07|2026-08",
+        )
+        Comprovante.objects.create(
+            refinanciamento=refinanciamento,
+            contrato=contrato,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+            papel=Comprovante.Papel.ASSOCIADO,
+            arquivo=SimpleUploadedFile(
+                "associado.pdf",
+                b"arquivo associado",
+                content_type="application/pdf",
+            ),
+            enviado_por=self.admin,
+        )
+        Comprovante.objects.create(
+            refinanciamento=refinanciamento,
+            contrato=contrato,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+            papel=Comprovante.Papel.AGENTE,
+            arquivo=SimpleUploadedFile(
+                "agente.pdf",
+                b"arquivo agente",
+                content_type="application/pdf",
+            ),
+            enviado_por=self.agente,
+        )
+
+        response = self.agent_client.get(
+            "/api/v1/refinanciamentos/",
+            {"status": "efetivado"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        row = next(
+            item
+            for item in response.json()["results"]
+            if item["id"] == refinanciamento.id
+        )
+        self.assertEqual(row["matricula"], contrato.associado.matricula)
+        self.assertEqual(row["matricula_display"], contrato.associado.matricula_display)
+        self.assertEqual(len(row["comprovantes"]), 1)
+        self.assertEqual(row["comprovantes"][0]["papel"], Comprovante.Papel.AGENTE)
+
+    def test_contratos_podem_ser_filtrados_por_status_renovacao_apto(self):
+        contrato_apto = self._create_contrato("90345678901")
+        self._create_pagamento(contrato_apto, date(2026, 1, 1))
+        self._create_pagamento(contrato_apto, date(2026, 2, 1))
+        self._create_pagamento(contrato_apto, date(2026, 5, 1))
+
+        contrato_sem_apto = self._create_contrato("91345678901")
+        self._create_pagamento(contrato_sem_apto, date(2026, 1, 1))
+
+        response = self.agent_client.get(
+            "/api/v1/contratos/",
+            {"status_renovacao": Refinanciamento.Status.APTO_A_RENOVAR},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        ids = {item["id"] for item in response.json()["results"]}
+        self.assertIn(contrato_apto.id, ids)
+        self.assertNotIn(contrato_sem_apto.id, ids)

@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
 import {
@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import type { AssociadoDetail } from "@/lib/api/types";
+import type { AssociadoDetail, SimpleUser } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
 import {
@@ -26,6 +26,7 @@ import {
 } from "@/lib/formatters";
 import { onlyDigits } from "@/lib/masks";
 import { useAuth } from "@/hooks/use-auth";
+import { usePermissions } from "@/hooks/use-permissions";
 import { useRouteTransition } from "@/providers/route-transition-provider";
 import DatePicker from "@/components/custom/date-picker";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
@@ -110,7 +111,6 @@ const documentFields = [
   { key: "documento_frente", label: "Documento (frente)" },
   { key: "documento_verso", label: "Documento (verso)" },
   { key: "comprovante_residencia", label: "Comprovante de residência" },
-  { key: "divulgacao", label: "Divulgação" },
   { key: "contracheque", label: "Contracheque atual" },
   { key: "termo_adesao", label: "Termo de adesão" },
   { key: "termo_antecipacao", label: "Termo de antecipação" },
@@ -185,6 +185,11 @@ const schema = z
         .refine((value) => (value ?? 0) > 0, "Informe a mensalidade."),
       data_aprovacao: z.date().optional(),
     }),
+    agente_responsavel_id: z.number().nullable().optional(),
+    percentual_repasse: z
+      .number()
+      .min(0, "Percentual inválido.")
+      .max(100, "Percentual inválido."),
   })
   .superRefine((values, context) => {
     const digits = onlyDigits(values.cpf_cnpj);
@@ -332,6 +337,9 @@ function defaultValues(
         parseIsoDate(contrato?.data_aprovacao) ??
         (mode === "create" ? today : undefined),
     },
+    agente_responsavel_id: initialData?.agente?.id ?? null,
+    percentual_repasse:
+      Number.parseFloat(initialData?.percentual_repasse ?? "10") || 10,
   };
 }
 
@@ -361,6 +369,12 @@ export default function AssociadoForm({
   const router = useRouter();
   const { startRouteTransition } = useRouteTransition();
   const { user } = useAuth();
+  const { hasRole } = usePermissions();
+  const canManageAgentAssignment =
+    hasRole("ADMIN") ||
+    hasRole("ANALISTA") ||
+    hasRole("COORDENADOR") ||
+    hasRole("TESOUREIRO");
   const [step, setStep] = React.useState(0);
   const [documentos, setDocumentos] = React.useState<
     Record<string, File | null>
@@ -411,15 +425,18 @@ export default function AssociadoForm({
     watch("contrato.taxa_antecipacao") ?? TAXA_ANTECIPACAO_PADRAO;
   const dataAprovacao = watch("contrato.data_aprovacao");
   const tipoDocumento = watch("tipo_documento") ?? "CPF";
+  const agenteResponsavelId = watch("agente_responsavel_id");
+  const percentualRepasse = watch("percentual_repasse") ?? 10;
 
   const bruto30 = Math.round(valorBruto * 0.3);
   const valorTotalAntecipacao = mensalidade * prazoMeses;
   const margemLiquido = Math.max(0, valorLiquido - bruto30);
   const margemDisponivel = Math.round(valorTotalAntecipacao * 0.7);
   const doacaoAssociado = valorTotalAntecipacao - margemDisponivel;
+  const comissaoAgente = Math.round(
+    (mensalidade * (Number(percentualRepasse) || 0)) / 100,
+  );
   const contratoAtual = initialData?.contratos?.[0];
-  const agenteResponsavelNome =
-    user?.full_name || initialData?.agente?.full_name || "Agente responsÃ¡vel";
   const currentDocumentsByType = React.useMemo(
     () =>
       new Map(
@@ -440,6 +457,29 @@ export default function AssociadoForm({
   const resolvedSubmitLabel =
     submitLabel ??
     (mode === "create" ? "Enviar Cadastro" : "Salvar Alterações");
+  const agentesQuery = useQuery({
+    queryKey: ["associado-form-agentes"],
+    enabled: canManageAgentAssignment,
+    queryFn: () => apiFetch<SimpleUser[]>("associados/agentes"),
+  });
+  const agentes = agentesQuery.data ?? [];
+  const agenteResponsavelNome = React.useMemo(() => {
+    if (canManageAgentAssignment) {
+      const agenteSelecionado = agentes.find(
+        (item) => item.id === agenteResponsavelId,
+      );
+      if (agenteSelecionado) {
+        return agenteSelecionado.full_name;
+      }
+    }
+    return user?.full_name || initialData?.agente?.full_name || "Agente responsável";
+  }, [
+    agenteResponsavelId,
+    agentes,
+    canManageAgentAssignment,
+    initialData?.agente?.full_name,
+    user?.full_name,
+  ]);
   const contratoDates = React.useMemo(() => {
     if (mode === "create") {
       return calculateContratoDates(dataAprovacao, todayRef.current);
@@ -562,6 +602,12 @@ export default function AssociadoForm({
               ),
               mes_averbacao: toIsoDate(contratoDates.mesAverbacao),
               doacao_associado: centsToDecimal(doacaoAssociado),
+            }
+          : {}),
+        ...(canManageAgentAssignment
+          ? {
+              agente_responsavel_id: values.agente_responsavel_id,
+              percentual_repasse: values.percentual_repasse.toFixed(2),
             }
           : {}),
       };
@@ -690,6 +736,10 @@ export default function AssociadoForm({
       onSubmit={handleSubmit(async (values) => {
         // Guard: só processa o submit quando estiver na última etapa
         if (step !== stepTitles.length - 1) return;
+        if (canManageAgentAssignment && !values.agente_responsavel_id) {
+          toast.error("Selecione o agente responsável antes de enviar o cadastro.");
+          return;
+        }
         try {
           const associado = await mutation.mutateAsync(values);
           setIsCompletingFlow(true);
@@ -1515,20 +1565,100 @@ export default function AssociadoForm({
 
                 <Card className="rounded-[1.5rem] border-border/60 bg-card/50">
                   <CardHeader className="space-y-2">
-                    <CardTitle className="text-base">Agente / Filial</CardTitle>
+                    <CardTitle className="text-base">Agente e Repasse</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <Field>
-                      <FieldLabel>Agente responsável</FieldLabel>
-                      <FieldContent>
-                        <Input
-                          readOnly
-                          aria-readonly="true"
-                          value={agenteResponsavelNome}
-                          className="rounded-xl bg-card/60"
-                        />
-                      </FieldContent>
-                    </Field>
+                    <FieldGroup className="grid gap-5 md:grid-cols-2">
+                      <Field>
+                        <FieldLabel>Agente responsável</FieldLabel>
+                        <FieldContent>
+                          {canManageAgentAssignment ? (
+                            <Controller
+                              control={control}
+                              name="agente_responsavel_id"
+                              render={({ field }) => (
+                                <Select
+                                  value={field.value ? String(field.value) : ""}
+                                  onValueChange={(value) =>
+                                    field.onChange(
+                                      value ? Number.parseInt(value, 10) : null,
+                                    )
+                                  }
+                                >
+                                  <SelectTrigger className="w-full rounded-xl bg-card/60">
+                                    <SelectValue
+                                      placeholder={
+                                        agentesQuery.isLoading
+                                          ? "Carregando agentes..."
+                                          : "Selecione o agente"
+                                      }
+                                    />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {agentes.map((agente) => (
+                                      <SelectItem key={agente.id} value={String(agente.id)}>
+                                        {agente.full_name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                            />
+                          ) : (
+                            <Input
+                              readOnly
+                              aria-readonly="true"
+                              value={agenteResponsavelNome}
+                              className="rounded-xl bg-card/60"
+                            />
+                          )}
+                        </FieldContent>
+                      </Field>
+                      <Field>
+                        <FieldLabel>% de repasse</FieldLabel>
+                        <FieldContent>
+                          {canManageAgentAssignment ? (
+                            <Controller
+                              control={control}
+                              name="percentual_repasse"
+                              render={({ field }) => (
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  step="0.01"
+                                  value={String(field.value ?? 10)}
+                                  onChange={(event) =>
+                                    field.onChange(
+                                      Number.parseFloat(event.target.value || "0"),
+                                    )
+                                  }
+                                  className="rounded-xl bg-card/60"
+                                />
+                              )}
+                            />
+                          ) : (
+                            <Input
+                              readOnly
+                              aria-readonly="true"
+                              value={`${Number(percentualRepasse).toFixed(2)}%`}
+                              className="rounded-xl bg-card/60"
+                            />
+                          )}
+                        </FieldContent>
+                      </Field>
+                      <Field className="md:col-span-2">
+                        <FieldLabel>Comissão recalculada do agente</FieldLabel>
+                        <FieldContent>
+                          <Input
+                            readOnly
+                            aria-readonly="true"
+                            value={formatCurrency(comissaoAgente / 100)}
+                            className="rounded-xl bg-card/60"
+                          />
+                        </FieldContent>
+                      </Field>
+                    </FieldGroup>
                   </CardContent>
                 </Card>
 

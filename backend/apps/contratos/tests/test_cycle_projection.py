@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from unittest import mock
 
 from django.test import TestCase
 from django.utils import timezone
@@ -44,6 +45,15 @@ class CycleProjectionTestCase(TestCase):
             agente_responsavel=self.agente,
         )
 
+    def setUp(self):
+        super().setUp()
+        self._localdate_patcher = mock.patch(
+            "apps.contratos.cycle_projection.timezone.localdate",
+            return_value=date(2026, 3, 21),
+        )
+        self._localdate_patcher.start()
+        self.addCleanup(self._localdate_patcher.stop)
+
     def _create_contrato(
         self,
         *,
@@ -72,6 +82,8 @@ class CycleProjectionTestCase(TestCase):
         *,
         status_code: str,
         manual_status: str | None = None,
+        manual_paid_at: datetime | None = None,
+        recebido_manual: Decimal | None = None,
     ) -> PagamentoMensalidade:
         return PagamentoMensalidade.objects.create(
             created_by=self.agente,
@@ -85,6 +97,8 @@ class CycleProjectionTestCase(TestCase):
             associado=contrato.associado,
             valor=contrato.valor_mensalidade,
             manual_status=manual_status,
+            manual_paid_at=manual_paid_at,
+            recebido_manual=recebido_manual,
             source_file_path=f"retornos/{referencia.strftime('%Y-%m')}.txt",
         )
 
@@ -137,20 +151,20 @@ class CycleProjectionTestCase(TestCase):
         self.assertEqual(len(cycles), 2)
         self.assertEqual(
             [parcela["referencia_mes"] for parcela in cycles[0]["parcelas"]],
-            [date(2025, 10, 1), date(2025, 11, 1), date(2025, 12, 1)],
+            [date(2025, 10, 1), date(2025, 12, 1), date(2026, 2, 1)],
         )
         self.assertEqual(
             [parcela["status"] for parcela in cycles[0]["parcelas"]],
             [
                 Parcela.Status.DESCONTADO,
-                Parcela.Status.NAO_DESCONTADO,
+                Parcela.Status.DESCONTADO,
                 Parcela.Status.DESCONTADO,
             ],
         )
         self.assertEqual(cycles[0]["status"], Ciclo.Status.CICLO_RENOVADO)
         self.assertEqual(
             cycles[0]["status_visual_label"],
-            "Renovado com Pendência",
+            "Renovado",
         )
         self.assertEqual(
             cycles[0]["data_solicitacao_renovacao"].date(),
@@ -159,14 +173,14 @@ class CycleProjectionTestCase(TestCase):
         self.assertEqual(cycles[1]["data_renovacao"].date(), date(2026, 1, 19))
         self.assertEqual(
             [parcela["referencia_mes"] for parcela in cycles[1]["parcelas"]],
-            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)],
+            [date(2026, 3, 1), date(2026, 4, 1), date(2026, 5, 1)],
         )
         self.assertEqual(
             [parcela["status"] for parcela in cycles[1]["parcelas"]],
             [
-                Parcela.Status.NAO_DESCONTADO,
-                Parcela.Status.DESCONTADO,
-                Parcela.Status.EM_ABERTO,
+                Parcela.Status.EM_PREVISAO,
+                Parcela.Status.EM_PREVISAO,
+                Parcela.Status.EM_PREVISAO,
             ],
         )
 
@@ -180,11 +194,69 @@ class CycleProjectionTestCase(TestCase):
             get_contract_visual_status_payload(contrato, projection=projection)[
                 "status_visual_label"
             ],
-            "Ativo com Pendência",
+            "Ativo",
         )
         self.assertEqual(
             get_associado_visual_status_payload(associado)["status_visual_label"],
-            "Ativo com Pendência",
+            "Ativo",
+        )
+
+    def test_projection_infers_missing_overdue_month_without_explicit_return_row(self):
+        associado = self._create_associado("22808922353", "JOAQUIM VIEIRA FILHO")
+        contrato = self._create_contrato(
+            associado=associado,
+            data_primeira_mensalidade=date(2025, 10, 1),
+        )
+        self._create_financial_row(contrato, date(2025, 10, 1), status_code="1")
+        self._create_financial_row(contrato, date(2025, 12, 1), status_code="1")
+        self._create_financial_row(contrato, date(2026, 1, 1), status_code="2")
+        self._create_financial_row(contrato, date(2026, 2, 1), status_code="1")
+
+        Refinanciamento.objects.create(
+            associado=associado,
+            contrato_origem=contrato,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 2, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            origem=Refinanciamento.Origem.LEGADO,
+            legacy_refinanciamento_id=74,
+            data_ativacao_ciclo=timezone.make_aware(
+                datetime(2026, 1, 19, 16, 40, 21)
+            ),
+            executado_em=timezone.make_aware(
+                datetime(2026, 1, 19, 16, 40, 21)
+            ),
+            cycle_key="2025-10|2025-11|2025-12",
+            ref1=date(2025, 10, 1),
+            ref2=date(2025, 11, 1),
+            ref3=date(2025, 12, 1),
+            cpf_cnpj_snapshot=associado.cpf_cnpj,
+            nome_snapshot=associado.nome_completo,
+            contrato_codigo_origem=contrato.codigo,
+        )
+
+        projection = build_contract_cycle_projection(contrato)
+        cycles = sorted(projection["cycles"], key=lambda item: item["numero"])
+        unpaid_months = sorted(
+            projection["unpaid_months"],
+            key=lambda item: item["referencia_mes"],
+        )
+
+        self.assertEqual(
+            [parcela["referencia_mes"] for parcela in cycles[0]["parcelas"]],
+            [date(2025, 10, 1), date(2025, 12, 1), date(2026, 2, 1)],
+        )
+        self.assertEqual(
+            [item["referencia_mes"] for item in unpaid_months],
+            [date(2025, 11, 1), date(2026, 1, 1)],
+        )
+        self.assertEqual(
+            [item["source"] for item in unpaid_months],
+            ["implicit_gap", "pagamento_mensalidade"],
+        )
+        self.assertEqual(
+            [parcela["referencia_mes"] for parcela in cycles[1]["parcelas"]],
+            [date(2026, 3, 1), date(2026, 4, 1), date(2026, 5, 1)],
         )
 
     def test_projection_prefers_mes_averbacao_as_cycle_one_seed(self):
@@ -205,7 +277,7 @@ class CycleProjectionTestCase(TestCase):
 
         self.assertEqual(
             [parcela["referencia_mes"] for parcela in cycle["parcelas"]],
-            [date(2025, 10, 1), date(2025, 11, 1), date(2025, 12, 1)],
+            [date(2025, 10, 1), date(2025, 12, 1), date(2026, 1, 1)],
         )
 
     def test_projection_uses_earliest_financial_reference_when_it_precedes_mes_averbacao(self):
@@ -271,11 +343,11 @@ class CycleProjectionTestCase(TestCase):
 
         self.assertEqual(
             [parcela["referencia_mes"] for parcela in cycles[0]["parcelas"]],
-            [date(2025, 10, 1), date(2025, 11, 1), date(2025, 12, 1)],
+            [date(2025, 10, 1), date(2025, 12, 1), date(2026, 1, 1)],
         )
         self.assertEqual(
             [parcela["referencia_mes"] for parcela in cycles[1]["parcelas"]],
-            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)],
+            [date(2026, 2, 1), date(2026, 3, 1), date(2026, 4, 1)],
         )
 
     def test_projection_ignores_orphan_legacy_renewal_incompatible_with_contract_start(self):
@@ -340,7 +412,7 @@ class CycleProjectionTestCase(TestCase):
         self.assertEqual(len(cycles), 1)
         self.assertEqual(
             [parcela["referencia_mes"] for parcela in cycles[0]["parcelas"]],
-            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)],
+            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 4, 1)],
         )
 
     def test_projection_restores_treasury_backed_legacy_renewal_without_overlapping_cycle_one(self):
@@ -403,14 +475,14 @@ class CycleProjectionTestCase(TestCase):
         self.assertEqual(len(cycles), 2)
         self.assertEqual(
             [parcela["referencia_mes"] for parcela in cycles[0]["parcelas"]],
-            [date(2025, 11, 1), date(2025, 12, 1), date(2026, 1, 1)],
+            [date(2025, 12, 1), date(2026, 1, 1), date(2026, 2, 1)],
         )
         self.assertEqual(
             [parcela["referencia_mes"] for parcela in cycles[1]["parcelas"]],
-            [date(2026, 2, 1), date(2026, 3, 1), date(2026, 4, 1)],
+            [date(2026, 3, 1), date(2026, 4, 1), date(2026, 5, 1)],
         )
         self.assertEqual(cycles[0]["status"], Ciclo.Status.CICLO_RENOVADO)
-        self.assertEqual(cycles[1]["parcelas"][0]["status"], Parcela.Status.DESCONTADO)
+        self.assertEqual(cycles[1]["parcelas"][0]["status"], Parcela.Status.EM_PREVISAO)
 
     def test_projection_clamps_renewed_cycle_start_after_previous_cycle_window(self):
         associado = self._create_associado("78268630310", "NUBIA MARIA BATISTA MARTINS")
@@ -471,11 +543,11 @@ class CycleProjectionTestCase(TestCase):
 
         self.assertEqual(
             [parcela["referencia_mes"] for parcela in cycles[0]["parcelas"]],
-            [date(2025, 11, 1), date(2025, 12, 1), date(2026, 1, 1)],
+            [date(2025, 12, 1), date(2026, 1, 1), date(2026, 2, 1)],
         )
         self.assertEqual(
             [parcela["referencia_mes"] for parcela in cycles[1]["parcelas"]],
-            [date(2026, 2, 1), date(2026, 3, 1), date(2026, 4, 1)],
+            [date(2026, 3, 1), date(2026, 4, 1), date(2026, 5, 1)],
         )
 
     def test_projection_for_four_month_contract_keeps_last_slot_in_previsao(self):
@@ -555,5 +627,111 @@ class CycleProjectionTestCase(TestCase):
         payload = get_associado_visual_status_payload(associado)
         self.assertEqual(
             payload["status_visual_label"],
-            "Ativo com Pendência",
+            "Apto para Renovação",
+        )
+
+    def test_regularized_overdue_month_stays_outside_cycles(self):
+        associado = self._create_associado("11199922233", "Regularizacao Fora Do Ciclo")
+        contrato = self._create_contrato(
+            associado=associado,
+            data_primeira_mensalidade=date(2025, 10, 1),
+        )
+        self._create_financial_row(contrato, date(2025, 10, 1), status_code="1")
+        self._create_financial_row(contrato, date(2025, 11, 1), status_code="2")
+        self._create_financial_row(contrato, date(2025, 12, 1), status_code="1")
+        self._create_financial_row(
+            contrato,
+            date(2025, 11, 1),
+            status_code="M",
+            manual_status=PagamentoMensalidade.ManualStatus.PAGO,
+            manual_paid_at=timezone.make_aware(datetime(2025, 12, 18, 9, 0, 0)),
+            recebido_manual=Decimal("300.00"),
+        )
+
+        projection = build_contract_cycle_projection(contrato)
+        cycle = sorted(projection["cycles"], key=lambda item: item["numero"])[0]
+
+        self.assertEqual(
+            [parcela["referencia_mes"] for parcela in cycle["parcelas"]],
+            [date(2025, 10, 1), date(2025, 12, 1), date(2026, 1, 1)],
+        )
+        self.assertEqual(
+            [parcela["status"] for parcela in cycle["parcelas"]],
+            [
+                Parcela.Status.DESCONTADO,
+                Parcela.Status.DESCONTADO,
+                Parcela.Status.EM_PREVISAO,
+            ],
+        )
+        self.assertEqual(
+            [
+                (item["referencia_mes"], item["status"])
+                for item in projection["unpaid_months"]
+            ],
+            [(date(2025, 11, 1), "quitada")],
+        )
+        self.assertEqual(projection["movimentos_financeiros_avulsos"], [])
+
+    def test_manual_settlement_after_renewal_never_reenters_previous_cycle(self):
+        associado = self._create_associado("11199922244", "Manual Após Renovação")
+        contrato = self._create_contrato(
+            associado=associado,
+            data_primeira_mensalidade=date(2025, 10, 1),
+        )
+        self._create_financial_row(contrato, date(2025, 10, 1), status_code="1")
+        self._create_financial_row(contrato, date(2025, 11, 1), status_code="2")
+        self._create_financial_row(contrato, date(2025, 12, 1), status_code="1")
+        self._create_financial_row(contrato, date(2026, 2, 1), status_code="1")
+        self._create_financial_row(
+            contrato,
+            date(2025, 11, 1),
+            status_code="M",
+            manual_status=PagamentoMensalidade.ManualStatus.PAGO,
+            manual_paid_at=timezone.make_aware(datetime(2026, 2, 7, 15, 30, 0)),
+            recebido_manual=Decimal("300.00"),
+        )
+
+        Refinanciamento.objects.create(
+            associado=associado,
+            contrato_origem=contrato,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 2, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            origem=Refinanciamento.Origem.LEGADO,
+            legacy_refinanciamento_id=173,
+            data_ativacao_ciclo=timezone.make_aware(
+                datetime(2026, 1, 19, 16, 40, 21)
+            ),
+            executado_em=timezone.make_aware(
+                datetime(2026, 1, 19, 16, 40, 21)
+            ),
+            cycle_key="2025-10|2025-11|2025-12",
+            ref1=date(2025, 10, 1),
+            ref2=date(2025, 11, 1),
+            ref3=date(2025, 12, 1),
+            cpf_cnpj_snapshot=associado.cpf_cnpj,
+            nome_snapshot=associado.nome_completo,
+            contrato_codigo_origem=contrato.codigo,
+        )
+
+        projection = build_contract_cycle_projection(contrato)
+        cycles = sorted(projection["cycles"], key=lambda item: item["numero"])
+
+        self.assertEqual(
+            [parcela["referencia_mes"] for parcela in cycles[0]["parcelas"]],
+            [date(2025, 10, 1), date(2025, 12, 1), date(2026, 2, 1)],
+        )
+        self.assertEqual(
+            [
+                (item["referencia_mes"], item["status"])
+                for item in sorted(
+                    projection["unpaid_months"],
+                    key=lambda item: item["referencia_mes"],
+                )
+            ],
+            [(date(2025, 11, 1), "quitada"), (date(2026, 1, 1), "nao_descontado")],
+        )
+        self.assertEqual(
+            [parcela["referencia_mes"] for parcela in cycles[1]["parcelas"]],
+            [date(2026, 3, 1), date(2026, 4, 1), date(2026, 5, 1)],
         )

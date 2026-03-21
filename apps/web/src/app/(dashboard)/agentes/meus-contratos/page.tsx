@@ -9,6 +9,7 @@ import {
   ChevronRightIcon,
   EyeIcon,
   FilterIcon,
+  HandCoinsIcon,
   TriangleAlertIcon,
   WalletIcon,
 } from "lucide-react";
@@ -18,6 +19,7 @@ import type {
   ContratoListItem,
   ContratoResumoCards,
   PaginatedResponse,
+  SimpleUser,
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import {
@@ -38,6 +40,7 @@ import {
 import DatePicker from "@/components/custom/date-picker";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
+import DashboardDetailDialog from "@/components/shared/dashboard-detail-dialog";
 import DataTable, {
   type DataTableColumn,
 } from "@/components/shared/data-table";
@@ -77,6 +80,7 @@ const STATUS_FILTER_OPTIONS = [
   { value: "ativo", label: "Ativo" },
   { value: "desativado", label: "Desativado" },
   { value: "inadimplente", label: "Inadimplente" },
+  { value: "liquidado", label: "Liquidado" },
 ];
 
 const ETAPA_FILTER_OPTIONS = [
@@ -93,6 +97,79 @@ const PAGE_SIZE_OPTIONS = [
   { value: "100", label: "100 por página" },
   { value: "all", label: "Todos" },
 ];
+
+const PERFIL_CICLO_OPTIONS = [
+  { value: "todos", label: "Todos os perfis" },
+  { value: "novo", label: "Novos" },
+  { value: "renovado", label: "Renovados" },
+];
+
+const CICLO_OPTIONS = [
+  { value: "todos", label: "Todos os ciclos" },
+  { value: "1", label: "1 ciclo" },
+  { value: "2", label: "2 ciclos" },
+  { value: "3", label: "3 ciclos" },
+  { value: "4", label: "4 ciclos" },
+  { value: "5", label: "5 ciclos" },
+];
+
+const ALL_AGENTS_VALUE = "todos";
+
+type ContratoMetricKey =
+  | "total"
+  | "ativos"
+  | "pendentes"
+  | "inadimplentes"
+  | "liquidados";
+
+const METRIC_STATUS_QUERY: Record<ContratoMetricKey, string | undefined> = {
+  total: undefined,
+  ativos: "ativo",
+  pendentes: "pendente",
+  inadimplentes: "inadimplente",
+  liquidados: "liquidado",
+};
+
+const METRIC_META: Record<
+  ContratoMetricKey,
+  {
+    title: string;
+    tone: "positive" | "warning" | "neutral";
+    icon: typeof BriefcaseBusiness;
+    delta: (resumo: ContratoResumoCards | undefined) => string;
+  }
+> = {
+  total: {
+    title: "Contratos cadastrados",
+    tone: "neutral",
+    icon: BriefcaseBusiness,
+    delta: (resumo) => `${resumo?.pendentes ?? 0} pendentes no recorte atual`,
+  },
+  ativos: {
+    title: "Contratos ativos",
+    tone: "positive",
+    icon: WalletIcon,
+    delta: () => "Liberados para acompanhamento mensal",
+  },
+  pendentes: {
+    title: "Contratos pendentes",
+    tone: "warning",
+    icon: BellRingIcon,
+    delta: () => "Aguardando análise ou tesouraria",
+  },
+  inadimplentes: {
+    title: "Contratos inadimplentes",
+    tone: "warning",
+    icon: TriangleAlertIcon,
+    delta: () => "Associados com pendência de desconto",
+  },
+  liquidados: {
+    title: "Liquidados",
+    tone: "positive",
+    icon: HandCoinsIcon,
+    delta: () => "Regra temporária: contratos encerrados",
+  },
+};
 
 function normalizeEtapaFluxo(stage: string) {
   if (stage === "tesouraria") return "tesouraria";
@@ -138,7 +215,7 @@ function ContratoCiclosPanel({ associadoId }: { associadoId: number }) {
           {mesesNaoPagos.length ? (
             <TabsTrigger value="nao-pagos">
               <div className="flex flex-col items-start">
-                <span>Meses não pagos</span>
+                <span>Parcelas não descontadas</span>
                 <span className="text-[10px] font-mono text-muted-foreground">
                   {mesesNaoPagos.length} registro(s)
                 </span>
@@ -238,93 +315,116 @@ export default function MeusContratosPage() {
   const { hasRole } = usePermissions();
   const isAdmin = hasRole("ADMIN");
   const [associadoFilter, setAssociadoFilter] = React.useState("");
-  const [agenteFilter, setAgenteFilter] = React.useState("");
+  const [agenteFilter, setAgenteFilter] = React.useState(ALL_AGENTS_VALUE);
   const [statusFilter, setStatusFilter] = React.useState("todos");
   const [etapaFilter, setEtapaFilter] = React.useState("todas");
   const [competenciaFilter, setCompetenciaFilter] = React.useState("");
   const [dataInicio, setDataInicio] = React.useState("");
   const [dataFim, setDataFim] = React.useState("");
+  const [numeroCiclosFilter, setNumeroCiclosFilter] = React.useState("todos");
+  const [perfilCicloFilter, setPerfilCicloFilter] = React.useState("todos");
+  const [detailMetric, setDetailMetric] =
+    React.useState<ContratoMetricKey | null>(null);
   const [page, setPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState("10");
   const [mensalidadesFilter, setMensalidadesFilter] = React.useState("todas");
   const debouncedAssociadoFilter = useDebouncedValue(associadoFilter, 300);
-  const debouncedAgenteFilter = useDebouncedValue(agenteFilter, 300);
   const isAllPageSize = pageSize === "all";
 
+  const agentesQuery = useQuery({
+    queryKey: ["contratos-agentes", isAdmin],
+    enabled: isAdmin,
+    queryFn: () => apiFetch<SimpleUser[]>("associados/agentes"),
+  });
+
   const resetAdvancedFilters = React.useCallback(() => {
-    setAgenteFilter("");
+    setAgenteFilter(ALL_AGENTS_VALUE);
     setStatusFilter("todos");
     setEtapaFilter("todas");
     setCompetenciaFilter("");
     setDataInicio("");
     setDataFim("");
+    setNumeroCiclosFilter("todos");
+    setPerfilCicloFilter("todos");
     setMensalidadesFilter("todas");
     setPageSize("10");
     setPage(1);
   }, []);
 
+  const baseQueryFilters = React.useMemo(
+    () => ({
+      associado: debouncedAssociadoFilter || undefined,
+      agente:
+        isAdmin && agenteFilter !== ALL_AGENTS_VALUE ? agenteFilter : undefined,
+      status_visual: statusFilter === "todos" ? undefined : statusFilter,
+      etapa_fluxo: etapaFilter === "todas" ? undefined : etapaFilter,
+      competencia: competenciaFilter || undefined,
+      data_inicio: dataInicio || undefined,
+      data_fim: dataFim || undefined,
+      mensalidades:
+        mensalidadesFilter === "todas"
+          ? undefined
+          : Number(mensalidadesFilter),
+      numero_ciclos:
+        numeroCiclosFilter === "todos"
+          ? undefined
+          : Number(numeroCiclosFilter),
+      perfil_ciclo:
+        perfilCicloFilter === "todos" ? undefined : perfilCicloFilter,
+    }),
+    [
+      agenteFilter,
+      competenciaFilter,
+      dataFim,
+      dataInicio,
+      debouncedAssociadoFilter,
+      etapaFilter,
+      isAdmin,
+      mensalidadesFilter,
+      numeroCiclosFilter,
+      perfilCicloFilter,
+      statusFilter,
+    ],
+  );
+
   const resumoQuery = useQuery({
     queryKey: [
       "contratos-resumo",
-      isAdmin,
-      debouncedAssociadoFilter,
-      debouncedAgenteFilter,
-      statusFilter,
-      etapaFilter,
-      competenciaFilter,
-      dataInicio,
-      dataFim,
-      mensalidadesFilter,
+      baseQueryFilters,
     ],
     queryFn: () =>
       apiFetch<ContratoResumoCards>("contratos/resumo", {
-        query: {
-          associado: debouncedAssociadoFilter || undefined,
-          agente: isAdmin ? debouncedAgenteFilter || undefined : undefined,
-          status_visual: statusFilter === "todos" ? undefined : statusFilter,
-          etapa_fluxo: etapaFilter === "todas" ? undefined : etapaFilter,
-          competencia: competenciaFilter || undefined,
-          data_inicio: dataInicio || undefined,
-          data_fim: dataFim || undefined,
-          mensalidades:
-            mensalidadesFilter === "todas"
-              ? undefined
-              : Number(mensalidadesFilter),
-        },
+        query: baseQueryFilters,
       }),
   });
 
   const contratosQuery = useQuery({
     queryKey: [
       "contratos-lista",
-      isAdmin,
       page,
       pageSize,
-      debouncedAssociadoFilter,
-      debouncedAgenteFilter,
-      statusFilter,
-      etapaFilter,
-      competenciaFilter,
-      dataInicio,
-      dataFim,
-      mensalidadesFilter,
+      baseQueryFilters,
     ],
     queryFn: () =>
       apiFetch<PaginatedResponse<ContratoListItem>>("contratos", {
         query: {
           page,
           page_size: isAllPageSize ? "all" : Number(pageSize),
-          associado: debouncedAssociadoFilter || undefined,
-          agente: isAdmin ? debouncedAgenteFilter || undefined : undefined,
-          status_visual: statusFilter === "todos" ? undefined : statusFilter,
-          etapa_fluxo: etapaFilter === "todas" ? undefined : etapaFilter,
-          competencia: competenciaFilter || undefined,
-          data_inicio: dataInicio || undefined,
-          data_fim: dataFim || undefined,
-          mensalidades:
-            mensalidadesFilter === "todas"
-              ? undefined
-              : Number(mensalidadesFilter),
+          ...baseQueryFilters,
+        },
+      }),
+  });
+
+  const detailRowsQuery = useQuery({
+    queryKey: ["contratos-detail-metric", detailMetric, baseQueryFilters],
+    enabled: detailMetric !== null,
+    queryFn: () =>
+      apiFetch<PaginatedResponse<ContratoListItem>>("contratos", {
+        query: {
+          page: 1,
+          page_size: "all",
+          ...baseQueryFilters,
+          status_visual: detailMetric ? METRIC_STATUS_QUERY[detailMetric] : undefined,
         },
       }),
   });
@@ -338,12 +438,14 @@ export default function MeusContratosPage() {
   const activeAdvancedFiltersCount = React.useMemo(
     () =>
       [
-        Boolean(agenteFilter.trim()),
+        isAdmin && agenteFilter !== ALL_AGENTS_VALUE,
         statusFilter !== "todos",
         etapaFilter !== "todas",
         Boolean(competenciaFilter),
         Boolean(dataInicio),
         Boolean(dataFim),
+        numeroCiclosFilter !== "todos",
+        perfilCicloFilter !== "todos",
         mensalidadesFilter !== "todas",
         pageSize !== "10",
       ].filter(Boolean).length,
@@ -354,6 +456,9 @@ export default function MeusContratosPage() {
       competenciaFilter,
       dataInicio,
       dataFim,
+      isAdmin,
+      numeroCiclosFilter,
+      perfilCicloFilter,
       mensalidadesFilter,
       pageSize,
     ],
@@ -418,15 +523,20 @@ export default function MeusContratosPage() {
         headerClassName: "w-[14%] whitespace-normal leading-5",
         cellClassName: "whitespace-normal",
         cell: (row) => (
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                Status do contrato
-              </p>
-              <StatusBadge
-                status={row.status_visual_slug}
-                label={row.status_visual_label}
-              />
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                  Status do contrato
+                </p>
+                <StatusBadge
+                  status={row.status_visual_slug}
+                  label={row.status_visual_label}
+                />
+                {row.possui_meses_nao_descontados ? (
+                  <p className="text-xs text-amber-200">
+                    {row.meses_nao_descontados_count} mês(es) não descontado(s)
+                  </p>
+                ) : null}
             </div>
             <div className="space-y-1">
               <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
@@ -457,7 +567,7 @@ export default function MeusContratosPage() {
         cell: (row) => (
           <div>
             <p>{formatCurrency(row.comissao_agente)}</p>
-            <p className="text-xs text-muted-foreground">10% da margem</p>
+            <p className="text-xs text-muted-foreground">Repasse configurado do agente</p>
           </div>
         ),
       },
@@ -516,42 +626,95 @@ export default function MeusContratosPage() {
     [isAdmin],
   );
 
+  const detailColumns = React.useMemo<DataTableColumn<ContratoListItem>[]>(
+    () => [
+      {
+        id: "associado",
+        header: "Associado",
+        cell: (row) => (
+          <div>
+            <p className="font-medium">{row.associado.nome_completo}</p>
+            <p className="text-xs text-muted-foreground">
+              {row.associado.matricula_orgao || row.associado.matricula}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "cpf",
+        header: "CPF",
+        cell: (row) => (
+          <CopySnippet label="CPF" value={row.associado.cpf_cnpj} mono inline />
+        ),
+      },
+      {
+        id: "agente",
+        header: "Agente",
+        cell: (row) => row.agente?.full_name ?? "Sem agente",
+      },
+      {
+        id: "referencia",
+        header: "Referência",
+        cell: (row) => (
+          <div>
+            <p className="font-medium">{row.codigo}</p>
+            <p className="text-xs text-muted-foreground">
+              {row.mensalidades.descricao}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        cell: (row) => (
+          <div className="space-y-2">
+            <StatusBadge status={row.status_visual_slug} label={row.status_visual_label} />
+            {row.possui_meses_nao_descontados ? (
+              <p className="text-xs text-amber-200">
+                {row.meses_nao_descontados_count} mês(es) não descontado(s)
+              </p>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        id: "abrir",
+        header: "Ação",
+        cell: (row) => (
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/associados/${row.associado.id}`}>Abrir</Link>
+          </Button>
+        ),
+      },
+    ],
+    [],
+  );
+
   return (
     <div className="min-w-0 space-y-6">
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {resumoQuery.isLoading && !resumoQuery.data ? (
-          Array.from({ length: 4 }).map((_, index) => <MetricCardSkeleton key={index} />)
+          Array.from({ length: 5 }).map((_, index) => <MetricCardSkeleton key={index} />)
         ) : (
-          <>
-            <StatsCard
-              title="Contratos cadastrados"
-              value={String(resumoQuery.data?.total ?? 0)}
-              delta={`${resumoQuery.data?.pendentes ?? 0} pendentes no recorte atual`}
-              tone="neutral"
-              icon={BriefcaseBusiness}
-            />
-            <StatsCard
-              title="Contratos ativos"
-              value={String(resumoQuery.data?.ativos ?? 0)}
-              delta="Liberados para acompanhamento mensal"
-              tone="positive"
-              icon={WalletIcon}
-            />
-            <StatsCard
-              title="Contratos pendentes"
-              value={String(resumoQuery.data?.pendentes ?? 0)}
-              delta="Aguardando análise ou tesouraria"
-              tone="warning"
-              icon={BellRingIcon}
-            />
-            <StatsCard
-              title="Contratos inadimplentes"
-              value={String(resumoQuery.data?.inadimplentes ?? 0)}
-              delta="Associados com pendência de desconto"
-              tone="warning"
-              icon={TriangleAlertIcon}
-            />
-          </>
+          (Object.keys(METRIC_META) as ContratoMetricKey[]).map((key) => {
+            const meta = METRIC_META[key];
+            const value =
+              key === "total"
+                ? resumoQuery.data?.total
+                : resumoQuery.data?.[key];
+            return (
+              <StatsCard
+                key={key}
+                title={meta.title}
+                value={String(value ?? 0)}
+                delta={meta.delta(resumoQuery.data)}
+                tone={meta.tone}
+                icon={meta.icon}
+                onClick={() => setDetailMetric(key)}
+              />
+            );
+          })
         )}
       </section>
 
@@ -611,15 +774,33 @@ export default function MeusContratosPage() {
                 <div className="space-y-5 overflow-y-auto px-4 pb-4">
                   {isAdmin ? (
                     <FilterField label="Agente">
-                      <Input
+                      <Select
                         value={agenteFilter}
-                        onChange={(event) => {
-                          setAgenteFilter(event.target.value);
+                        onValueChange={(value) => {
+                          setAgenteFilter(value);
                           setPage(1);
                         }}
-                        placeholder="Nome ou email do agente"
-                        className="w-full rounded-2xl border-border/60 bg-card/60"
-                      />
+                      >
+                        <SelectTrigger className="w-full rounded-2xl bg-card/60">
+                          <SelectValue
+                            placeholder={
+                              agentesQuery.isLoading
+                                ? "Carregando agentes..."
+                                : "Todos os agentes"
+                            }
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={ALL_AGENTS_VALUE}>
+                            Todos os agentes
+                          </SelectItem>
+                          {(agentesQuery.data ?? []).map((agente) => (
+                            <SelectItem key={agente.id} value={String(agente.id)}>
+                              {agente.full_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </FilterField>
                   ) : null}
 
@@ -691,6 +872,50 @@ export default function MeusContratosPage() {
                         </SelectTrigger>
                         <SelectContent>
                           {PAGE_SIZE_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FilterField>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FilterField label="Número de ciclos">
+                      <Select
+                        value={numeroCiclosFilter}
+                        onValueChange={(value) => {
+                          setNumeroCiclosFilter(value);
+                          setPage(1);
+                        }}
+                      >
+                        <SelectTrigger className="w-full rounded-2xl bg-card/60">
+                          <SelectValue placeholder="Todos os ciclos" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CICLO_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </FilterField>
+
+                    <FilterField label="Perfil do ciclo">
+                      <Select
+                        value={perfilCicloFilter}
+                        onValueChange={(value) => {
+                          setPerfilCicloFilter(value);
+                          setPage(1);
+                        }}
+                      >
+                        <SelectTrigger className="w-full rounded-2xl bg-card/60">
+                          <SelectValue placeholder="Todos os perfis" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PERFIL_CICLO_OPTIONS.map((option) => (
                             <SelectItem key={option.value} value={option.value}>
                               {option.label}
                             </SelectItem>
@@ -784,6 +1009,61 @@ export default function MeusContratosPage() {
         emptyMessage="Nenhum contrato encontrado para os filtros informados."
         loading={contratosQuery.isLoading}
         skeletonRows={6}
+      />
+
+      <DashboardDetailDialog
+        open={detailMetric !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailMetric(null);
+          }
+        }}
+        title={detailMetric ? METRIC_META[detailMetric].title : "Detalhamento"}
+        description="Tabela operacional com associado, agente, referência do contrato e acesso direto ao detalhe."
+        rows={detailRowsQuery.data?.results ?? []}
+        columns={detailColumns}
+        exportColumns={[
+          {
+            header: "Associado",
+            value: (row) => row.associado.nome_completo,
+          },
+          {
+            header: "CPF",
+            value: (row) => row.associado.cpf_cnpj,
+          },
+          {
+            header: "Matrícula",
+            value: (row) => row.associado.matricula_orgao || row.associado.matricula,
+          },
+          {
+            header: "Agente",
+            value: (row) => row.agente?.full_name ?? "",
+          },
+          {
+            header: "Referência",
+            value: (row) => row.codigo,
+          },
+          {
+            header: "Status",
+            value: (row) => row.status_visual_label,
+          },
+        ]}
+        exportTitle={detailMetric ? METRIC_META[detailMetric].title : "Contratos"}
+        exportFilename={`contratos-${detailMetric ?? "detalhe"}`}
+        emptyMessage="Nenhum contrato encontrado para o KPI selecionado."
+        isLoading={detailRowsQuery.isLoading}
+        matchesSearch={(row, normalized) =>
+          [
+            row.associado.nome_completo,
+            row.associado.cpf_cnpj,
+            row.associado.matricula,
+            row.associado.matricula_orgao,
+            row.agente?.full_name,
+            row.codigo,
+          ]
+            .filter(Boolean)
+            .some((value) => value!.toLowerCase().includes(normalized))
+        }
       />
     </div>
   );

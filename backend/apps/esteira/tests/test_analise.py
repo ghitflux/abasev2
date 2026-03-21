@@ -10,7 +10,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Role, User
 from apps.associados.models import Associado, Documento
 from apps.contratos.models import Contrato
-from apps.esteira.models import DocIssue, EsteiraItem, Pendencia
+from apps.esteira.models import DocIssue, DocReupload, EsteiraItem, Pendencia
 from apps.tesouraria.models import Pagamento
 
 
@@ -28,6 +28,11 @@ class AnaliseViewSetTestCase(TestCase):
             "analista@abase.local",
             cls.role_analista,
             "Analista",
+        )
+        cls.outro_agente = cls._create_user(
+            "agente2@abase.local",
+            cls.role_agente,
+            "Agente Dois",
         )
         cls.outro_analista = cls._create_user(
             "analista2@abase.local",
@@ -65,18 +70,22 @@ class AnaliseViewSetTestCase(TestCase):
         status: str = EsteiraItem.Situacao.AGUARDANDO,
         documentos: int = 0,
         analista: User | None = None,
+        agente: User | None = None,
+        contrato_status: str = Contrato.Status.EM_ANALISE,
+        associado_status: str = Associado.Status.EM_ANALISE,
     ) -> EsteiraItem:
+        agente_responsavel = agente or self.agente
         associado = Associado.objects.create(
             nome_completo=f"Associado {suffix}",
             cpf_cnpj=f"000000000{suffix}",
             matricula=f"MAT-{suffix}",
-            status=Associado.Status.EM_ANALISE,
-            agente_responsavel=self.agente,
+            status=associado_status,
+            agente_responsavel=agente_responsavel,
             orgao_publico="SEFAZ",
         )
         Contrato.objects.create(
             associado=associado,
-            agente=self.agente,
+            agente=agente_responsavel,
             codigo=f"CTR-{suffix}",
             valor_bruto="1500.00",
             valor_liquido="1200.00",
@@ -84,7 +93,7 @@ class AnaliseViewSetTestCase(TestCase):
             prazo_meses=3,
             margem_disponivel="900.00",
             valor_total_antecipacao="1500.00",
-            status=Contrato.Status.EM_ANALISE,
+            status=contrato_status,
         )
         esteira = EsteiraItem.objects.create(
             associado=associado,
@@ -107,48 +116,110 @@ class AnaliseViewSetTestCase(TestCase):
         return esteira
 
     def test_resumo_e_filas_principais(self):
-        pendente = self._create_item(suffix="101", documentos=0)
-        recebidos = self._create_item(suffix="102", documentos=2)
-        incompleta = self._create_item(suffix="103", documentos=1)
+        pendente_documentos = self._create_item(suffix="101", documentos=0)
+        pendencia_aberta = self._create_item(suffix="102", documentos=1)
         Pendencia.objects.create(
-            esteira_item=incompleta,
+            esteira_item=pendencia_aberta,
             tipo="documentacao",
             descricao="Documento faltando.",
         )
-        reenvio = self._create_item(suffix="104", documentos=1)
+        corrigida = self._create_item(suffix="103", documentos=1)
         Pendencia.objects.create(
-            esteira_item=reenvio,
+            esteira_item=corrigida,
             tipo="documentacao",
             descricao="Retorno do agente.",
             status=Pendencia.Status.RESOLVIDA,
             resolvida_em=timezone.now(),
             resolvida_por=self.analista,
         )
+        enviado_coord = self._create_item(
+            suffix="104",
+            etapa=EsteiraItem.Etapa.COORDENACAO,
+            status=EsteiraItem.Situacao.AGUARDANDO,
+            documentos=1,
+        )
+        enviado_tesouraria = self._create_item(
+            suffix="105",
+            etapa=EsteiraItem.Etapa.TESOURARIA,
+            status=EsteiraItem.Situacao.AGUARDANDO,
+            documentos=1,
+        )
+        efetivado = self._create_item(
+            suffix="106",
+            etapa=EsteiraItem.Etapa.CONCLUIDO,
+            status=EsteiraItem.Situacao.APROVADO,
+            documentos=1,
+            contrato_status=Contrato.Status.ATIVO,
+            associado_status=Associado.Status.ATIVO,
+        )
+        cancelado = self._create_item(
+            suffix="107",
+            etapa=EsteiraItem.Etapa.CONCLUIDO,
+            status=EsteiraItem.Situacao.APROVADO,
+            documentos=1,
+            contrato_status=Contrato.Status.CANCELADO,
+            associado_status=Associado.Status.INATIVO,
+        )
 
         response = self.analyst_client.get("/api/v1/analise/")
         self.assertEqual(response.status_code, 200, response.json())
         payload = response.json()
-        self.assertEqual(payload["filas"]["pendente"], 1)
-        self.assertEqual(payload["filas"]["recebidos"], 2)
-        self.assertEqual(payload["filas"]["incompleta"], 1)
-        self.assertEqual(payload["filas"]["reenvio"], 1)
+        self.assertEqual(payload["filas"]["ver_todos"], 7)
+        self.assertEqual(payload["filas"]["pendencias"], 2)
+        self.assertEqual(payload["filas"]["pendencias_corrigidas"], 1)
+        self.assertEqual(payload["filas"]["enviado_tesouraria"], 1)
+        self.assertEqual(payload["filas"]["enviado_coordenacao"], 1)
+        self.assertEqual(payload["filas"]["efetivados"], 1)
+        self.assertEqual(payload["filas"]["cancelados"], 1)
 
-        response = self.analyst_client.get("/api/v1/analise/filas/?secao=pendente")
+        response = self.analyst_client.get("/api/v1/analise/filas/?secao=ver_todos")
         self.assertEqual(response.status_code, 200, response.json())
-        self.assertEqual(response.json()["results"][0]["id"], pendente.id)
+        ids = {row["id"] for row in response.json()["results"]}
+        self.assertTrue(
+            {
+                pendente_documentos.id,
+                pendencia_aberta.id,
+                corrigida.id,
+                enviado_coord.id,
+                enviado_tesouraria.id,
+                efetivado.id,
+                cancelado.id,
+            }.issubset(ids)
+        )
 
-        response = self.analyst_client.get("/api/v1/analise/filas/?secao=incompleta")
+        response = self.analyst_client.get("/api/v1/analise/filas/?secao=pendencias")
         self.assertEqual(response.status_code, 200, response.json())
-        self.assertEqual(response.json()["results"][0]["id"], incompleta.id)
+        pendencias_rows = response.json()["results"]
+        ids = {row["id"] for row in pendencias_rows}
+        self.assertIn(pendente_documentos.id, ids)
+        self.assertIn(pendencia_aberta.id, ids)
+        pendente_documentos_row = next(
+            row for row in pendencias_rows if row["id"] == pendente_documentos.id
+        )
+        self.assertEqual(
+            pendente_documentos_row["associado_id"],
+            pendente_documentos.associado_id,
+        )
 
-        response = self.analyst_client.get("/api/v1/analise/filas/?secao=reenvio")
+        response = self.analyst_client.get("/api/v1/analise/filas/?secao=pendencias_corrigidas")
         self.assertEqual(response.status_code, 200, response.json())
-        self.assertEqual(response.json()["results"][0]["id"], reenvio.id)
+        self.assertEqual(response.json()["results"][0]["id"], corrigida.id)
 
-        response = self.analyst_client.get("/api/v1/analise/filas/?secao=recebidos")
+        response = self.analyst_client.get("/api/v1/analise/filas/?secao=enviado_coordenacao")
         self.assertEqual(response.status_code, 200, response.json())
-        received_ids = {row["id"] for row in response.json()["results"]}
-        self.assertIn(recebidos.id, received_ids)
+        self.assertEqual(response.json()["results"][0]["id"], enviado_coord.id)
+
+        response = self.analyst_client.get("/api/v1/analise/filas/?secao=enviado_tesouraria")
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["results"][0]["id"], enviado_tesouraria.id)
+
+        response = self.analyst_client.get("/api/v1/analise/filas/?secao=efetivados")
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["results"][0]["id"], efetivado.id)
+
+        response = self.analyst_client.get("/api/v1/analise/filas/?secao=cancelados")
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["results"][0]["id"], cancelado.id)
 
     def test_item_assumido_por_outro_analista_some_da_recebida(self):
         item_meu = self._create_item(
@@ -157,23 +228,24 @@ class AnaliseViewSetTestCase(TestCase):
             status=EsteiraItem.Situacao.EM_ANDAMENTO,
             analista=self.analista,
         )
-        self._create_item(
+        item_outro = self._create_item(
             suffix="202",
             documentos=1,
             status=EsteiraItem.Situacao.EM_ANDAMENTO,
             analista=self.outro_analista,
         )
 
-        response = self.analyst_client.get("/api/v1/analise/filas/?secao=recebida")
+        response = self.analyst_client.get("/api/v1/analise/filas/?secao=ver_todos")
         self.assertEqual(response.status_code, 200, response.json())
         ids = {row["id"] for row in response.json()["results"]}
         self.assertIn(item_meu.id, ids)
+        self.assertNotIn(item_outro.id, ids)
         self.assertEqual(len(ids), 1)
 
     def test_status_documentacao_fica_completa_quando_ha_anexos_sem_pendencia(self):
         item = self._create_item(suffix="250", documentos=2)
 
-        response = self.analyst_client.get("/api/v1/analise/filas/?secao=recebidos")
+        response = self.analyst_client.get("/api/v1/analise/filas/?secao=ver_todos")
         self.assertEqual(response.status_code, 200, response.json())
 
         row = next(
@@ -182,6 +254,50 @@ class AnaliseViewSetTestCase(TestCase):
             if registro["id"] == item.id
         )
         self.assertEqual(row["status_documentacao"], "completa")
+
+    def test_pendencias_inclui_doc_issue_aberta(self):
+        item = self._create_item(suffix="251", documentos=1)
+        DocIssue.objects.create(
+            associado=item.associado,
+            cpf_cnpj=item.associado.cpf_cnpj,
+            contrato_codigo=item.associado.contratos.get().codigo,
+            analista=self.analista,
+            mensagem="Documento inconsistente.",
+            status=DocIssue.Status.INCOMPLETO,
+        )
+
+        response = self.analyst_client.get("/api/v1/analise/filas/?secao=pendencias")
+        self.assertEqual(response.status_code, 200, response.json())
+        ids = {row["id"] for row in response.json()["results"]}
+        self.assertIn(item.id, ids)
+
+    def test_pendencias_corrigidas_inclui_reenvio_recebido(self):
+        item = self._create_item(suffix="252", documentos=1)
+        issue = DocIssue.objects.create(
+            associado=item.associado,
+            cpf_cnpj=item.associado.cpf_cnpj,
+            contrato_codigo=item.associado.contratos.get().codigo,
+            analista=self.analista,
+            mensagem="Atualizar comprovante.",
+            status=DocIssue.Status.INCOMPLETO,
+        )
+        DocReupload.objects.create(
+            doc_issue=issue,
+            associado=item.associado,
+            uploaded_by=self.agente,
+            cpf_cnpj=item.associado.cpf_cnpj,
+            contrato_codigo=item.associado.contratos.get().codigo,
+            file_original_name="doc.pdf",
+            file_stored_name="doc-252.pdf",
+            status=DocReupload.Status.RECEBIDO,
+        )
+
+        response = self.analyst_client.get(
+            "/api/v1/analise/filas/?secao=pendencias_corrigidas"
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        ids = {row["id"] for row in response.json()["results"]}
+        self.assertIn(item.id, ids)
 
     def test_atualiza_data_pagamento_legado(self):
         item = self._create_item(suffix="301", documentos=1)
@@ -205,11 +321,12 @@ class AnaliseViewSetTestCase(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
 
         pagamento.refresh_from_db()
-        self.assertEqual(pagamento.paid_at.year, 2026)
-        self.assertEqual(pagamento.paid_at.month, 3)
-        self.assertEqual(pagamento.paid_at.day, 10)
-        self.assertEqual(pagamento.paid_at.hour, 12)
-        self.assertEqual(pagamento.paid_at.minute, 30)
+        pagamento_local = timezone.localtime(pagamento.paid_at)
+        self.assertEqual(pagamento_local.year, 2026)
+        self.assertEqual(pagamento_local.month, 3)
+        self.assertEqual(pagamento_local.day, 10)
+        self.assertEqual(pagamento_local.hour, 12)
+        self.assertEqual(pagamento_local.minute, 30)
 
     def test_atualiza_nome_no_ajuste_de_dados(self):
         item = self._create_item(suffix="401", documentos=1)
@@ -229,6 +346,7 @@ class AnaliseViewSetTestCase(TestCase):
 
         response = self.analyst_client.get(f"/api/v1/esteira/{item.id}/")
         self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["associado_id"], item.associado_id)
         self.assertEqual(len(response.json()["documentos"]), 1)
         self.assertTrue(response.json()["documentos"][0]["arquivo"])
 
@@ -272,3 +390,57 @@ class AnaliseViewSetTestCase(TestCase):
     def test_agente_nao_tem_acesso_ao_modulo_analise(self):
         response = self.agent_client.get("/api/v1/analise/")
         self.assertEqual(response.status_code, 403)
+
+    def test_resumo_de_pendencias_da_esteira_respeita_recorte_do_agente(self):
+        item_retorno = self._create_item(
+            suffix="501",
+            etapa=EsteiraItem.Etapa.CADASTRO,
+            status=EsteiraItem.Situacao.PENDENCIADO,
+        )
+        Pendencia.objects.create(
+            esteira_item=item_retorno,
+            tipo="documentacao",
+            descricao="Corrigir comprovante.",
+            retornado_para_agente=True,
+        )
+
+        item_interno = self._create_item(
+            suffix="502",
+            etapa=EsteiraItem.Etapa.CADASTRO,
+            status=EsteiraItem.Situacao.PENDENCIADO,
+        )
+        Pendencia.objects.create(
+            esteira_item=item_interno,
+            tipo="cadastro",
+            descricao="Validação interna pendente.",
+            retornado_para_agente=False,
+        )
+
+        item_outro_agente = self._create_item(
+            suffix="503",
+            etapa=EsteiraItem.Etapa.CADASTRO,
+            status=EsteiraItem.Situacao.PENDENCIADO,
+            agente=self.outro_agente,
+        )
+        Pendencia.objects.create(
+            esteira_item=item_outro_agente,
+            tipo="documentacao",
+            descricao="Outro agente.",
+            retornado_para_agente=True,
+        )
+
+        response = self.agent_client.get("/api/v1/esteira/pendencias-resumo/")
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["total"], 2)
+        self.assertEqual(response.json()["retornadas_agente"], 1)
+        self.assertEqual(response.json()["internas"], 1)
+        self.assertEqual(response.json()["associados_impactados"], 2)
+
+        filtered_response = self.agent_client.get(
+            "/api/v1/esteira/pendencias-resumo/?search=502"
+        )
+        self.assertEqual(filtered_response.status_code, 200, filtered_response.json())
+        self.assertEqual(filtered_response.json()["total"], 1)
+        self.assertEqual(filtered_response.json()["retornadas_agente"], 0)
+        self.assertEqual(filtered_response.json()["internas"], 1)
+        self.assertEqual(filtered_response.json()["associados_impactados"], 1)

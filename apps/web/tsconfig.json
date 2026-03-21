@@ -4,7 +4,6 @@
     "allowImportingTsExtensions": true,
     "allowJs": false,
     "baseUrl": ".",
-    "ignoreDeprecations": "6.0",
     "incremental": false,
     "noEmit": true,
     "paths": {
@@ -12,10 +11,15 @@
     }
   },
   "include": [
-    "next-env.d.ts",
+    "next-env.typecheck.d.ts",
     "jest.setup.ts",
     "src/**/*.ts",
     "src/**/*.tsx"
   ],
-  "exclude": [".next", "coverage", "node_modules"]
+  "exclude": [
+    ".next",
+    "coverage",
+    "node_modules",
+    "src/gen/**/*"
+  ]
 }

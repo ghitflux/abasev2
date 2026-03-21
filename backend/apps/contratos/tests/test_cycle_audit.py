@@ -158,8 +158,14 @@ class AuditCycleTimelineCommandTestCase(TestCase):
         )
 
         report = self._run_command(associado.cpf_cnpj)
-        self.assertEqual(report["summary"]["classifications"], {"ok": 1})
-        self.assertEqual(report["associados"][0]["classifications"], ["ok"])
+        classifications = set(report["associados"][0]["classifications"])
+        self.assertIn("divergencia_materializado_canonico", classifications)
+        self.assertIn("parcela_vencida_materializada_no_ciclo", classifications)
+        self.assertIn("renovacao_com_ciclo_incompleto", classifications)
+        contrato_payload = report["associados"][0]["contratos"][0]
+        self.assertEqual(contrato_payload["cycle_size"], 3)
+        self.assertIn("divergencia_materializado_canonico", contrato_payload["scenario_tags"])
+        self.assertIn("renovacao_com_ciclo_incompleto", contrato_payload["scenario_tags"])
 
     def test_command_reports_inferred_tesouraria_and_missing_future_cycle(self):
         associado, contrato, ciclo_1 = self._create_contract("22808922353", date(2025, 10, 1))

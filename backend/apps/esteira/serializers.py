@@ -128,6 +128,7 @@ class TransicaoSerializer(serializers.ModelSerializer):
 
 
 class EsteiraListSerializer(serializers.ModelSerializer):
+    associado_id = serializers.IntegerField(source="associado.id", read_only=True)
     ordem = serializers.IntegerField(source="prioridade", read_only=True)
     contrato = serializers.SerializerMethodField()
     data_assinatura = serializers.SerializerMethodField()
@@ -148,6 +149,7 @@ class EsteiraListSerializer(serializers.ModelSerializer):
         model = EsteiraItem
         fields = [
             "id",
+            "associado_id",
             "ordem",
             "contrato",
             "data_assinatura",

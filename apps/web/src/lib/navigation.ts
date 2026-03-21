@@ -72,11 +72,22 @@ const ROUTE_SEARCH_ALIASES: Partial<Record<string, string[]>> = {
     "cadastrar associado",
   ],
   "/associados": ["lista de associados", "cadastro de associados"],
-  "/agentes/esteira-pendencias": ["esteira", "pendencias", "esteira de pendencias"],
+  "/agentes/esteira-pendencias": [
+    "esteira",
+    "pendencias",
+    "esteira de pendencias",
+    "esteira de pendências",
+  ],
   "/analise": ["dashboard analise", "analise"],
+  "/analise/aptos": [
+    "aptos",
+    "contratos para renovacao",
+    "contratos para renovação",
+    "renovacao analise",
+  ],
   "/coordenacao/refinanciamento": ["refinanciamento", "coordenacao refinanciamento"],
   "/coordenacao/refinanciados": ["coordenacao refinanciados", "refinanciados"],
-  "/agentes/pagamentos": ["pagamentos", "meus pagamentos", "financeiro"],
+  "/agentes/pagamentos": ["pagamentos", "meus pagamentos", "financeiro", "cadastros"],
   "/agentes/refinanciados": ["meus refinanciados", "refinanciados"],
   "/tesouraria": ["dashboard contratos", "tesouraria", "contratos"],
   "/tesouraria/confirmacoes": ["confirmacoes", "tesouraria confirmacoes"],
@@ -145,10 +156,22 @@ export const navigationSections: NavigationSection[] = [
             roles: ["ADMIN"],
           },
           {
-            title: "Esteira",
+            title: "Esteira de pendências",
             href: "/agentes/esteira-pendencias",
             icon: ClipboardCheck,
             roles: ["AGENTE", "ADMIN"],
+          },
+          {
+            title: "Refinanciados",
+            href: "/agentes/refinanciados",
+            icon: HandCoins,
+            roles: ["AGENTE", "ADMIN"],
+          },
+          {
+            title: "Meus Pagamentos",
+            href: "/agentes/pagamentos",
+            icon: ReceiptText,
+            roles: ["AGENTE"],
           },
         ],
       },
@@ -164,7 +187,7 @@ export const navigationSections: NavigationSection[] = [
             roles: ["ANALISTA", "ADMIN"],
           },
           {
-            title: "Aptos",
+            title: "Contratos para Renovação",
             href: "/analise/aptos",
             icon: RefreshCcw,
             roles: ["ANALISTA", "ADMIN"],
@@ -191,19 +214,13 @@ export const navigationSections: NavigationSection[] = [
       {
         title: "Tesouraria",
         icon: Wallet,
-        roles: ["TESOUREIRO", "ADMIN", "AGENTE", "COORDENADOR"],
+        roles: ["TESOUREIRO", "ADMIN", "COORDENADOR"],
         children: [
           {
             title: "Meus Pagamentos",
             href: "/agentes/pagamentos",
             icon: ReceiptText,
-            roles: ["AGENTE", "TESOUREIRO", "ADMIN"],
-          },
-          {
-            title: "Refinanciados",
-            href: "/agentes/refinanciados",
-            icon: HandCoins,
-            roles: ["AGENTE", "ADMIN"],
+            roles: ["TESOUREIRO", "ADMIN"],
           },
           {
             title: "Dashboard Contratos",
@@ -408,7 +425,10 @@ export function canAccessPath(path: string, roles: Role[] = []) {
     return true;
   }
 
-  if (roles.includes("AGENTE") && isAgentAssociadoDetailPath(pathname)) {
+  if (
+    (roles.includes("AGENTE") || roles.includes("ANALISTA")) &&
+    isAgentAssociadoDetailPath(pathname)
+  ) {
     return true;
   }
 
