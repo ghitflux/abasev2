@@ -8,7 +8,7 @@ import type { ArquivoRetornoList } from "./ArquivoRetornoList.ts";
 
 export type V1ImportacaoArquivoRetornoReprocessarCreatePathParams = {
   /**
-   * @description Um valor inteiro único que identifica este arquivo retorno.
+   * @description A unique integer value identifying this arquivo retorno.
    * @type integer
    */
   id: number;

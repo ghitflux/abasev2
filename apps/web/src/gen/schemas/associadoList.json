@@ -23,6 +23,8 @@
     "status_renovacao": { "type": "string", "readOnly": true },
     "status_visual_slug": { "type": "string", "readOnly": true },
     "status_visual_label": { "type": "string", "readOnly": true },
+    "possui_meses_nao_descontados": { "type": "boolean", "readOnly": true },
+    "meses_nao_descontados_count": { "type": "integer", "readOnly": true },
     "agente": {
       "allOf": [
         {
@@ -47,7 +49,9 @@
     "cpf_cnpj",
     "id",
     "matricula_display",
+    "meses_nao_descontados_count",
     "nome_completo",
+    "possui_meses_nao_descontados",
     "status_renovacao",
     "status_visual_label",
     "status_visual_slug"

@@ -147,14 +147,40 @@ export function RefinanciamentoDetalhesDialog({
                       value={`${refinanciamento.mensalidades_pagas}/${refinanciamento.mensalidades_total}`}
                     />
                     <SummaryItem
-                      label="Renovação ativada em"
+                      label="Solicitado em"
                       value={formatDateTime(refinanciamento.data_solicitacao_renovacao)}
                     />
                     <SummaryItem
                       label="Origem"
                       value={refinanciamento.origem.replaceAll("_", " ")}
                     />
+                    <SummaryItem
+                      label="Análise"
+                      value={
+                        refinanciamento.reviewed_at
+                          ? `Revisado em ${formatDateTime(refinanciamento.reviewed_at)}`
+                          : "Aguardando análise"
+                      }
+                    />
+                    <SummaryItem
+                      label="Coordenação"
+                      value={
+                        refinanciamento.coordenador_note?.trim()
+                          ? refinanciamento.coordenador_note
+                          : "Aguardando validação da coordenação"
+                      }
+                    />
                   </div>
+                  {refinanciamento.analista_note?.trim() ? (
+                    <div className="mt-4 rounded-2xl border border-border/60 bg-background/40 p-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                        Observação do analista
+                      </p>
+                      <p className="mt-2 text-sm text-foreground">
+                        {refinanciamento.analista_note}
+                      </p>
+                    </div>
+                  ) : null}
                 </section>
 
                 <AssociadoContractsOverview

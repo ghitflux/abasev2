@@ -9,6 +9,7 @@ import {
   SearchIcon,
   ShieldCheckIcon,
   UserCheckIcon,
+  UserPlusIcon,
   Users2Icon,
   UserXIcon,
 } from "lucide-react";
@@ -18,6 +19,7 @@ import type {
   AvailableRole,
   PaginatedMetaResponse,
   SystemUserAccessUpdatePayload,
+  SystemUserCreatePayload,
   SystemUserListItem,
   SystemUserPasswordResetPayload,
   SystemUserPasswordResetResult,
@@ -197,6 +199,237 @@ function AccessDialog({
   );
 }
 
+function CreateUserDialog({
+  open,
+  onOpenChange,
+  availableRoles,
+  isPending,
+  onCreate,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  availableRoles: AvailableRole[];
+  isPending: boolean;
+  onCreate: (payload: SystemUserCreatePayload) => void;
+}) {
+  const [firstName, setFirstName] = React.useState("");
+  const [lastName, setLastName] = React.useState("");
+  const [email, setEmail] = React.useState("");
+  const [selectedRoles, setSelectedRoles] = React.useState<Role[]>([]);
+  const [password, setPassword] = React.useState("");
+  const [passwordConfirm, setPasswordConfirm] = React.useState("");
+  const [isActive, setIsActive] = React.useState(true);
+  const [error, setError] = React.useState("");
+
+  React.useEffect(() => {
+    if (!open) {
+      setFirstName("");
+      setLastName("");
+      setEmail("");
+      setSelectedRoles([]);
+      setPassword("");
+      setPasswordConfirm("");
+      setIsActive(true);
+      setError("");
+    }
+  }, [open]);
+
+  const toggleRole = (role: Role, checked: boolean) => {
+    setError("");
+    setSelectedRoles((current) => {
+      if (checked) {
+        return current.includes(role) ? current : [...current, role];
+      }
+      return current.filter((item) => item !== role);
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Novo usuário interno</DialogTitle>
+          <DialogDescription>
+            Cadastre o acesso operacional e defina uma senha temporária com troca obrigatória no
+            primeiro login.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground" htmlFor="create-first-name">
+                Nome
+              </label>
+              <Input
+                id="create-first-name"
+                value={firstName}
+                onChange={(event) => {
+                  setFirstName(event.target.value);
+                  setError("");
+                }}
+                placeholder="Nome do usuário"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground" htmlFor="create-last-name">
+                Sobrenome
+              </label>
+              <Input
+                id="create-last-name"
+                value={lastName}
+                onChange={(event) => {
+                  setLastName(event.target.value);
+                  setError("");
+                }}
+                placeholder="Sobrenome do usuário"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground" htmlFor="create-email">
+              E-mail
+            </label>
+            <Input
+              id="create-email"
+              type="email"
+              value={email}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setError("");
+              }}
+              placeholder="email@abase.com"
+            />
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Perfis liberados</p>
+              <p className="text-xs text-muted-foreground">
+                Selecione ao menos um perfil permitido para o seu nível de acesso.
+              </p>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {availableRoles.map((roleOption) => {
+                const isChecked = selectedRoles.includes(roleOption.codigo);
+                return (
+                  <label
+                    key={roleOption.codigo}
+                    className="flex items-start gap-3 rounded-2xl border border-border/60 bg-card/60 px-4 py-3"
+                  >
+                    <Checkbox
+                      checked={isChecked}
+                      disabled={isPending}
+                      onCheckedChange={(checked) =>
+                        toggleRole(roleOption.codigo, Boolean(checked))
+                      }
+                    />
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-foreground">{roleOption.nome}</p>
+                      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                        {roleOption.codigo}
+                      </p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground" htmlFor="create-password">
+                Senha temporária
+              </label>
+              <Input
+                id="create-password"
+                type="password"
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                  setError("");
+                }}
+                placeholder="Digite a senha temporária"
+              />
+            </div>
+            <div className="space-y-2">
+              <label
+                className="text-sm font-medium text-foreground"
+                htmlFor="create-password-confirm"
+              >
+                Confirmar senha
+              </label>
+              <Input
+                id="create-password-confirm"
+                type="password"
+                value={passwordConfirm}
+                onChange={(event) => {
+                  setPasswordConfirm(event.target.value);
+                  setError("");
+                }}
+                placeholder="Repita a senha temporária"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-card/60 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Usuário ativo</p>
+              <p className="text-xs text-muted-foreground">
+                O acesso pode ser criado já desativado, se necessário.
+              </p>
+            </div>
+            <Switch checked={isActive} disabled={isPending} onCheckedChange={setIsActive} />
+          </div>
+
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button
+            disabled={isPending}
+            onClick={() => {
+              if (!firstName.trim() || !email.trim()) {
+                setError("Preencha nome e e-mail do usuário.");
+                return;
+              }
+              if (!selectedRoles.length) {
+                setError("Selecione ao menos um perfil para o novo usuário.");
+                return;
+              }
+              if (!password || !passwordConfirm) {
+                setError("Preencha a senha temporária e a confirmação.");
+                return;
+              }
+              if (password !== passwordConfirm) {
+                setError("A confirmação da senha não confere.");
+                return;
+              }
+
+              onCreate({
+                email,
+                first_name: firstName.trim(),
+                last_name: lastName.trim(),
+                roles: selectedRoles,
+                password,
+                password_confirm: passwordConfirm,
+                is_active: isActive,
+              });
+            }}
+          >
+            {isPending ? <Spinner /> : <UserPlusIcon className="size-4" />}
+            Criar usuário
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ResetPasswordDialog({
   open,
   onOpenChange,
@@ -324,6 +557,7 @@ function UsuariosConfiguracoesPageContent() {
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("todos");
   const [roleFilter, setRoleFilter] = React.useState<Role | "">("");
+  const [createDialogOpen, setCreateDialogOpen] = React.useState(false);
   const [selectedUser, setSelectedUser] = React.useState<SystemUserListItem | null>(null);
   const [passwordUser, setPasswordUser] = React.useState<SystemUserListItem | null>(null);
   const debouncedSearch = useDebouncedValue(search, 300);
@@ -367,6 +601,22 @@ function UsuariosConfiguracoesPageContent() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Falha ao atualizar acesso.");
+    },
+  });
+
+  const createUserMutation = useMutation({
+    mutationFn: (payload: SystemUserCreatePayload) =>
+      apiFetch<SystemUserListItem>("configuracoes/usuarios", {
+        method: "POST",
+        body: payload,
+      }),
+    onSuccess: async (createdUser) => {
+      toast.success(`Usuário ${createdUser.full_name} criado com sucesso.`);
+      setCreateDialogOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["configuracoes-usuarios"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Falha ao criar usuário.");
     },
   });
 
@@ -499,12 +749,18 @@ function UsuariosConfiguracoesPageContent() {
         <div className="space-y-2">
           <h1 className="text-3xl font-semibold text-foreground">Configurações de usuários</h1>
           <p className="max-w-3xl text-sm text-muted-foreground">
-            Gestão centralizada dos acessos internos do sistema, com atualização de perfis e
-            definição direta de novas senhas pelos administradores.
+            Gestão centralizada dos acessos internos do sistema, com criação de usuários,
+            atualização de perfis e definição direta de novas senhas.
           </p>
         </div>
-        <div className="rounded-[1.5rem] border border-border/60 bg-card/60 px-4 py-3 text-sm text-muted-foreground">
-          Admin em sessão: <span className="font-medium text-foreground">{user?.full_name}</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="rounded-[1.5rem] border border-border/60 bg-card/60 px-4 py-3 text-sm text-muted-foreground">
+            Usuário em sessão: <span className="font-medium text-foreground">{user?.full_name}</span>
+          </div>
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <UserPlusIcon className="size-4" />
+            Novo usuário
+          </Button>
         </div>
       </section>
 
@@ -658,6 +914,14 @@ function UsuariosConfiguracoesPageContent() {
         />
       )}
 
+      <CreateUserDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        availableRoles={roleOptions}
+        isPending={createUserMutation.isPending}
+        onCreate={(payload) => createUserMutation.mutate(payload)}
+      />
+
       <AccessDialog
         open={Boolean(selectedUser)}
         onOpenChange={(open) => {
@@ -700,7 +964,7 @@ function UsuariosConfiguracoesPageContent() {
 
 export default function UsuariosConfiguracoesPage() {
   return (
-    <RoleGuard allow={["ADMIN"]}>
+    <RoleGuard allow={["ADMIN", "COORDENADOR"]}>
       <UsuariosConfiguracoesPageContent />
     </RoleGuard>
   );

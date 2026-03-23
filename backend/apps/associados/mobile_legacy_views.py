@@ -7,6 +7,8 @@ from datetime import datetime
 from django.db import transaction
 from django.http import Http404, HttpResponseRedirect
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import permissions, serializers, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -57,9 +59,14 @@ MARITAL_STATUS_MAP = {
 }
 
 
+class LegacyNoopSerializer(serializers.Serializer):
+    pass
+
+
 class LegacyMobileAPIView(APIView):
     authentication_classes = [LegacyMobileTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = LegacyNoopSerializer
 
 
 def parse_date(value: str | None):
@@ -209,6 +216,7 @@ def _upsert_documento(*, associado: Associado, tipo: str, upload, observacao: st
 
 
 class LegacyAssociadoMeView(LegacyMobileAPIView):
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         associado = resolve_mobile_associado(request.user)
         return Response(
@@ -223,12 +231,14 @@ class LegacyAssociadoMeView(LegacyMobileAPIView):
 
 
 class LegacyAssociadoA2StatusView(LegacyMobileAPIView):
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         associado = resolve_mobile_associado(request.user)
         return Response(build_status_payload(associado, request=request), status=status.HTTP_200_OK)
 
 
 class LegacyAssociadoTermoAdesaoView(LegacyMobileAPIView):
+    @extend_schema(responses={302: OpenApiTypes.URI})
     def get(self, request):
         associado = resolve_mobile_associado(request.user)
         payload = build_termo_adesao_payload(associado, request=request)
@@ -238,6 +248,7 @@ class LegacyAssociadoTermoAdesaoView(LegacyMobileAPIView):
 
 
 class LegacyMensalidadesView(LegacyMobileAPIView):
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         associado = resolve_mobile_associado(request.user)
         return Response(
@@ -251,12 +262,22 @@ class LegacyMensalidadesView(LegacyMobileAPIView):
 
 
 class LegacyAntecipacaoHistoricoView(LegacyMobileAPIView):
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         associado = resolve_mobile_associado(request.user)
         return Response(build_antecipacao_payload(associado), status=status.HTTP_200_OK)
 
 
 class LegacyClientLogView(LegacyMobileAPIView):
+    @extend_schema(
+        request=OpenApiTypes.OBJECT,
+        responses={
+            200: inline_serializer(
+                name="LegacyClientLogResponse",
+                fields={"ok": serializers.BooleanField()},
+            )
+        },
+    )
     def post(self, request):
         logger.info(
             "mobile-client-log",
@@ -269,12 +290,14 @@ class LegacyClientLogView(LegacyMobileAPIView):
 
 
 class LegacyAssociadoDoisStatusView(LegacyMobileAPIView):
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         associado = resolve_mobile_associado(request.user)
         return Response(build_status_payload(associado, request=request), status=status.HTTP_200_OK)
 
 
 class LegacyAssociadoDoisCadastroView(LegacyMobileAPIView):
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         associado = resolve_mobile_associado(request.user)
         return Response(
@@ -287,6 +310,7 @@ class LegacyAssociadoDoisCadastroView(LegacyMobileAPIView):
 
 
 class LegacyAssociadoDoisCheckCpfView(LegacyMobileAPIView):
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         cpf = only_digits(request.query_params.get("cpf"))
         if not cpf:
@@ -315,6 +339,7 @@ class LegacyAssociadoDoisCheckCpfView(LegacyMobileAPIView):
 class LegacyAssociadoDoisAtualizarBasicoView(LegacyMobileAPIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
+    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT})
     @transaction.atomic
     def post(self, request):
         payload = _merged_payload(request.data)
@@ -342,6 +367,7 @@ class LegacyAssociadoDoisAtualizarBasicoView(LegacyMobileAPIView):
 
 
 class LegacyAssociadoDoisIssuesView(LegacyMobileAPIView):
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         associado = resolve_mobile_associado(request.user)
         return Response(build_issues_payload(associado), status=status.HTTP_200_OK)
@@ -350,6 +376,7 @@ class LegacyAssociadoDoisIssuesView(LegacyMobileAPIView):
 class LegacyAssociadoDoisReuploadsView(LegacyMobileAPIView):
     parser_classes = [MultiPartParser, FormParser]
 
+    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT})
     @transaction.atomic
     def post(self, request):
         associado = resolve_mobile_associado(request.user)
@@ -439,6 +466,17 @@ class LegacyAssociadoDoisReuploadsView(LegacyMobileAPIView):
 
 
 class LegacyAssociadoDoisAceiteTermosView(LegacyMobileAPIView):
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="LegacyAceiteTermosResponse",
+                fields={
+                    "ok": serializers.BooleanField(),
+                    "aceite_termos": serializers.BooleanField(),
+                },
+            )
+        }
+    )
     @transaction.atomic
     def post(self, request):
         associado = resolve_mobile_associado(request.user)
@@ -459,6 +497,17 @@ class LegacyAssociadoDoisAceiteTermosView(LegacyMobileAPIView):
 
 
 class LegacyAssociadoDoisContatoView(LegacyMobileAPIView):
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="LegacyContatoResponse",
+                fields={
+                    "ok": serializers.BooleanField(),
+                    "contato_status": serializers.CharField(),
+                },
+            )
+        }
+    )
     @transaction.atomic
     def post(self, request):
         associado = resolve_mobile_associado(request.user)
@@ -483,6 +532,7 @@ class LegacyAssociadoDoisContatoView(LegacyMobileAPIView):
 
 
 class LegacyAssociadoDoisAuxilio2StatusView(LegacyMobileAPIView):
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         associado = resolve_mobile_associado(request.user)
         return Response(
@@ -492,6 +542,7 @@ class LegacyAssociadoDoisAuxilio2StatusView(LegacyMobileAPIView):
 
 
 class LegacyAssociadoDoisAuxilio2ResumoView(LegacyMobileAPIView):
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         associado = resolve_mobile_associado(request.user)
         return Response(
@@ -501,6 +552,7 @@ class LegacyAssociadoDoisAuxilio2ResumoView(LegacyMobileAPIView):
 
 
 class LegacyAssociadoDoisAuxilio2ChargeView(LegacyMobileAPIView):
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     @transaction.atomic
     def post(self, request):
         associado = resolve_mobile_associado(request.user)

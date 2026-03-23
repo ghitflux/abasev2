@@ -7,7 +7,7 @@ import type { BaixaManualItem } from "./BaixaManualItem.ts";
 
 export type V1TesourariaBaixaManualDarBaixaCreatePathParams = {
   /**
-   * @description Um valor inteiro único que identifica este parcela.
+   * @description A unique integer value identifying this parcela.
    * @type integer
    */
   id: number;

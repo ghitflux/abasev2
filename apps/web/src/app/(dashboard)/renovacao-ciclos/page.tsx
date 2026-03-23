@@ -3015,7 +3015,7 @@ export default function RenovacaoCiclosPage() {
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-2">
             <h1 className="text-3xl font-semibold tracking-tight text-foreground md:text-[2.4rem]">
-              Renovação de Ciclos
+              Dashboard de Ciclos
             </h1>
             <p className="max-w-3xl text-sm text-muted-foreground">
               Gestão detalhada da competência, reconciliação por arquivo retorno e monitoramento contínuo dos ciclos.

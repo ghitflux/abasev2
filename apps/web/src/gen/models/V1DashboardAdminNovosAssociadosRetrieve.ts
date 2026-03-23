@@ -21,6 +21,10 @@ export type V1DashboardAdminNovosAssociadosRetrieveQueryParams = {
   /**
    * @type string | undefined
    */
+  day?: string;
+  /**
+   * @type string | undefined
+   */
   status?: string;
 };
 

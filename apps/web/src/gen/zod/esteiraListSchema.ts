@@ -10,6 +10,7 @@ import { simpleUserSchema } from "./simpleUserSchema.ts";
 
 export const esteiraListSchema = z.object({
   id: z.int(),
+  associado_id: z.int(),
   ordem: z.int(),
   contrato: z.string(),
   data_assinatura: z.string(),

@@ -111,4 +111,13 @@ export type AssociadoUpdate = {
    * @type string | undefined, decimal
    */
   margem_disponivel?: string;
+  /**
+   * @type integer
+   */
+  agente_responsavel_id?: number | null;
+  /**
+   * @pattern ^-?\d{0,4}(?:\.\d{0,2})?$
+   * @type string | undefined, decimal
+   */
+  percentual_repasse?: string;
 };

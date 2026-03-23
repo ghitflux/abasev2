@@ -2,15 +2,20 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2Icon, CreditCardIcon, FileTextIcon, MapPinIcon, SmartphoneIcon, UserIcon, WorkflowIcon } from "lucide-react";
 
-import type { AssociadoDetail } from "@/lib/api/types";
+import type { AdminAssociadoEditorPayload, AdminOverrideHistoryEvent, AssociadoDetail } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import {
   AssociadoContractsOverview,
   AssociadoDocumentsGrid,
 } from "@/components/associados/associado-contracts-overview";
+import AdminContractEditor from "@/components/associados/admin-contract-editor";
+import AdminEsteiraEditor from "@/components/associados/admin-esteira-editor";
+import AdminFileManager from "@/components/associados/admin-file-manager";
+import AdminOverrideHistory from "@/components/associados/admin-override-history";
 import { formatDate } from "@/lib/formatters";
 import { usePermissions } from "@/hooks/use-permissions";
 import RoleGuard from "@/components/auth/role-guard";
@@ -22,6 +27,7 @@ import { DetailRouteSkeleton } from "@/components/shared/page-skeletons";
 import StatusBadge from "@/components/custom/status-badge";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 
 type AssociadoPageProps = {
   params: Promise<{ id: string }>;
@@ -30,22 +36,56 @@ type AssociadoPageProps = {
 function AssociadoPageContent({ params }: AssociadoPageProps) {
   const { id } = React.use(params);
   const associadoId = Number(id);
+  const searchParams = useSearchParams();
   const [selectedTarget, setSelectedTarget] =
     React.useState<ParcelaDetailTarget | null>(null);
+  const [adminMode, setAdminMode] = React.useState(false);
+  const autoAdminEnabledRef = React.useRef(false);
   const { hasRole } = usePermissions();
+  const queryClient = useQueryClient();
   const isAdmin = hasRole("ADMIN");
   const isAnalyst = hasRole("ANALISTA") && !isAdmin;
+  const isCoordinator = hasRole("COORDENADOR") && !isAdmin;
   const isAgent = hasRole("AGENTE") && !isAdmin;
+  const isTreasurer = hasRole("TESOUREIRO") && !isAdmin;
   const backHref = isAdmin
     ? "/associados"
+    : isCoordinator
+      ? "/associados"
     : isAnalyst
       ? "/analise"
+      : isTreasurer
+        ? "/tesouraria"
       : "/agentes/meus-contratos";
 
   const associadoQuery = useQuery({
     queryKey: ["associado", associadoId],
     queryFn: () => apiFetch<AssociadoDetail>(`associados/${associadoId}`),
   });
+
+  const adminEditorQuery = useQuery({
+    queryKey: ["admin-associado-editor", associadoId],
+    queryFn: () =>
+      apiFetch<AdminAssociadoEditorPayload>(`admin-overrides/associados/${associadoId}/editor/`),
+    enabled: isAdmin && adminMode,
+  });
+
+  const adminHistoryQuery = useQuery({
+    queryKey: ["admin-associado-history", associadoId],
+    queryFn: () =>
+      apiFetch<AdminOverrideHistoryEvent[]>(`admin-overrides/associados/${associadoId}/history/`),
+    enabled: isAdmin && adminMode,
+  });
+
+  React.useEffect(() => {
+    if (!isAdmin || autoAdminEnabledRef.current) {
+      return;
+    }
+    if (searchParams.get("admin") === "1") {
+      setAdminMode(true);
+      autoAdminEnabledRef.current = true;
+    }
+  }, [isAdmin, searchParams]);
 
   if (associadoQuery.isLoading) {
     return <DetailRouteSkeleton />;
@@ -78,13 +118,21 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
+          {isAdmin ? (
+            <label className="inline-flex items-center gap-3 rounded-full border border-border/60 bg-card/60 px-4 py-2 text-sm">
+              <Switch checked={adminMode} onCheckedChange={setAdminMode} />
+              Modo edição admin
+            </label>
+          ) : null}
           <Button variant="outline" asChild>
             <Link href={backHref}>Voltar</Link>
           </Button>
           {isAdmin ? (
-            <Button asChild>
-              <Link href={`/associados/${associado.id}/editar`}>Editar</Link>
-            </Button>
+            <>
+              <Button variant="outline" asChild>
+                <Link href={`/associados-editar/${associado.id}`}>Editar cadastro</Link>
+              </Button>
+            </>
           ) : null}
         </div>
       </section>
@@ -179,6 +227,25 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             </span>
           </AccordionTrigger>
           <AccordionContent className="space-y-4">
+            {isAdmin && adminMode && adminEditorQuery.data?.contratos?.length ? (
+              <div className="space-y-4">
+                {adminEditorQuery.data.contratos.map((contract) => (
+                  <AdminContractEditor
+                    key={`admin-${contract.id}`}
+                    associadoId={associadoId}
+                    contract={contract}
+                    onPayloadRefresh={async (payload) => {
+                      if (payload) {
+                        queryClient.setQueryData(["admin-associado-editor", associadoId], payload);
+                      } else {
+                        await adminEditorQuery.refetch();
+                      }
+                      await Promise.all([associadoQuery.refetch(), adminHistoryQuery.refetch()]);
+                    }}
+                  />
+                ))}
+              </div>
+            ) : null}
             <AssociadoContractsOverview
               associado={associado}
               onParcelaClick={setSelectedTarget}
@@ -192,6 +259,11 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           <AccordionItem value="documentos" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
           <AccordionTrigger className="text-base">Documentos</AccordionTrigger>
           <AccordionContent>
+            {isAdmin && adminMode ? (
+              <div className="mb-4">
+                <AdminFileManager associadoId={associadoId} associado={associado} />
+              </div>
+            ) : null}
             <AssociadoDocumentsGrid associado={associado} />
           </AccordionContent>
         </AccordionItem>
@@ -206,6 +278,9 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             </span>
           </AccordionTrigger>
           <AccordionContent className="space-y-4">
+            {isAdmin && adminMode ? (
+              <AdminEsteiraEditor associadoId={associadoId} esteira={associado.esteira} />
+            ) : null}
             <div className="flex flex-wrap items-center gap-3">
               <StatusBadge status={associado.esteira?.etapa_atual ?? "pendente"} />
               <StatusBadge status={associado.esteira?.status ?? "aguardando"} />
@@ -230,6 +305,18 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           </AccordionContent>
         </AccordionItem>
         )}
+
+        {isAdmin && adminMode ? (
+          <AccordionItem value="historico-admin" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
+            <AccordionTrigger className="text-base">Histórico Administrativo</AccordionTrigger>
+            <AccordionContent>
+              <AdminOverrideHistory
+                associadoId={associadoId}
+                events={adminHistoryQuery.data ?? []}
+              />
+            </AccordionContent>
+          </AccordionItem>
+        ) : null}
       </Accordion>
       <ParcelaDetalheDialog
         associadoId={associadoId}
@@ -246,7 +333,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
 
 export default function AssociadoPage(props: AssociadoPageProps) {
   return (
-    <RoleGuard allow={["ADMIN", "AGENTE", "ANALISTA"]}>
+    <RoleGuard allow={["ADMIN", "AGENTE", "ANALISTA", "COORDENADOR", "TESOUREIRO"]}>
       <AssociadoPageContent {...props} />
     </RoleGuard>
   );

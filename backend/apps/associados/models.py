@@ -561,6 +561,115 @@ class Documento(BaseModel):
             return False
 
 
+class AdminOverrideEvent(BaseModel):
+    class Scope(models.TextChoices):
+        ASSOCIADO = "associado", "Associado"
+        CONTRATO = "contrato", "Contrato"
+        CICLOS = "ciclos", "Ciclos"
+        REFINANCIAMENTO = "refinanciamento", "Refinanciamento"
+        ESTEIRA = "esteira", "Esteira"
+        DOCUMENTO = "documento", "Documento"
+        COMPROVANTE = "comprovante", "Comprovante"
+
+    associado = models.ForeignKey(
+        Associado,
+        on_delete=models.CASCADE,
+        related_name="admin_override_events",
+    )
+    contrato = models.ForeignKey(
+        "contratos.Contrato",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="admin_override_events",
+    )
+    ciclo = models.ForeignKey(
+        "contratos.Ciclo",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="admin_override_events",
+    )
+    parcela = models.ForeignKey(
+        "contratos.Parcela",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="admin_override_events",
+    )
+    refinanciamento = models.ForeignKey(
+        "refinanciamento.Refinanciamento",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="admin_override_events",
+    )
+    documento = models.ForeignKey(
+        "associados.Documento",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="admin_override_events",
+    )
+    comprovante = models.ForeignKey(
+        "refinanciamento.Comprovante",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="admin_override_events",
+    )
+    realizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="admin_override_events",
+    )
+    revertida_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="admin_override_reversions",
+    )
+    escopo = models.CharField(max_length=32, choices=Scope.choices)
+    resumo = models.CharField(max_length=255)
+    motivo = models.TextField()
+    before_snapshot = models.JSONField(default=dict, blank=True)
+    after_snapshot = models.JSONField(default=dict, blank=True)
+    confirmacao_dupla = models.BooleanField(default=True)
+    revertida_em = models.DateTimeField(null=True, blank=True)
+    motivo_reversao = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+
+class AdminOverrideChange(BaseModel):
+    class EntityType(models.TextChoices):
+        ASSOCIADO = "associado", "Associado"
+        CONTRATO = "contrato", "Contrato"
+        CICLO = "ciclo", "Ciclo"
+        PARCELA = "parcela", "Parcela"
+        REFINANCIAMENTO = "refinanciamento", "Refinanciamento"
+        DOCUMENTO = "documento", "Documento"
+        COMPROVANTE = "comprovante", "Comprovante"
+        ESTEIRA = "esteira", "Esteira"
+
+    evento = models.ForeignKey(
+        AdminOverrideEvent,
+        on_delete=models.CASCADE,
+        related_name="changes",
+    )
+    entity_type = models.CharField(max_length=32, choices=EntityType.choices)
+    entity_id = models.PositiveIntegerField()
+    competencia_referencia = models.DateField(null=True, blank=True)
+    resumo = models.CharField(max_length=255)
+    before_snapshot = models.JSONField(default=dict, blank=True)
+    after_snapshot = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["id"]
+
+
 class Auxilio2Filiacao(BaseModel):
     class Status(models.TextChoices):
         PENDENTE = "pendente", "Pendente"

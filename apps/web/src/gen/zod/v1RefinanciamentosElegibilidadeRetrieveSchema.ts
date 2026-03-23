@@ -11,7 +11,7 @@ export const V1RefinanciamentosElegibilidadeRetrievePathParamsSchema = z.object(
     id: z.coerce
       .number()
       .int()
-      .describe("Um valor inteiro único que identifica este refinanciamento."),
+      .describe("A unique integer value identifying this refinanciamento."),
   },
 );
 

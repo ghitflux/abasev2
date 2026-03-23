@@ -18,8 +18,14 @@ from apps.importacao.models import ArquivoRetorno
 class ImportacaoBaseTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
+        cls.role_admin = Role.objects.create(codigo="ADMIN", nome="Administrador")
+        cls.role_coord = Role.objects.create(codigo="COORDENADOR", nome="Coordenador")
         cls.role_tes = Role.objects.create(codigo="TESOUREIRO", nome="Tesoureiro")
         cls.role_agente = Role.objects.create(codigo="AGENTE", nome="Agente")
+        cls.admin = cls._create_user("admin@abase.local", cls.role_admin, "Admin")
+        cls.coordenador = cls._create_user(
+            "coord@abase.local", cls.role_coord, "Coordenador"
+        )
         cls.tesoureiro = cls._create_user("tes@abase.local", cls.role_tes, "Tes")
         cls.agente = cls._create_user("agente@abase.local", cls.role_agente, "Agente")
 
@@ -36,6 +42,12 @@ class ImportacaoBaseTestCase(TestCase):
         return user
 
     def setUp(self):
+        self.admin_client = APIClient()
+        self.admin_client.force_authenticate(self.admin)
+
+        self.coord_client = APIClient()
+        self.coord_client.force_authenticate(self.coordenador)
+
         self.tes_client = APIClient()
         self.tes_client.force_authenticate(self.tesoureiro)
 

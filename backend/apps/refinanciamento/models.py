@@ -12,7 +12,15 @@ class Refinanciamento(BaseModel):
 
     class Status(models.TextChoices):
         APTO_A_RENOVAR = "apto_a_renovar", "Apto a renovar"
+        SOLICITADO_PARA_LIQUIDACAO = (
+            "solicitado_para_liquidacao",
+            "Solicitado para liquidação",
+        )
         EM_ANALISE_RENOVACAO = "em_analise_renovacao", "Em análise para renovação"
+        APROVADO_ANALISE_RENOVACAO = (
+            "aprovado_analise_renovacao",
+            "Aprovado pela análise para renovação",
+        )
         APROVADO_PARA_RENOVACAO = "aprovado_para_renovacao", "Aprovado para renovação"
         PENDENTE_APTO = "pendente_apto", "Pendente apto"
         BLOQUEADO = "bloqueado", "Bloqueado"
@@ -159,10 +167,17 @@ class Comprovante(BaseModel):
 
     class Origem(models.TextChoices):
         EFETIVACAO_CONTRATO = "efetivacao_contrato", "Efetivação do contrato"
+        SOLICITACAO_RENOVACAO = "solicitacao_renovacao", "Solicitação de renovação"
         ANALISE_RENOVACAO = "analise_renovacao", "Análise da renovação"
         TESOURARIA_RENOVACAO = "tesouraria_renovacao", "Tesouraria da renovação"
         LEGADO = "legado", "Legado"
         OUTRO = "outro", "Outro"
+
+    class StatusValidacao(models.TextChoices):
+        PENDENTE = "pendente", "Pendente"
+        APROVADO = "aprovado", "Aprovado"
+        REJEITADO = "rejeitado", "Rejeitado"
+        ARQUIVADO = "arquivado", "Arquivado"
 
     refinanciamento = models.ForeignKey(
         Refinanciamento,
@@ -195,6 +210,11 @@ class Comprovante(BaseModel):
     mime = models.CharField(max_length=120, blank=True)
     size_bytes = models.BigIntegerField(null=True, blank=True)
     data_pagamento = models.DateTimeField(null=True, blank=True)
+    status_validacao = models.CharField(
+        max_length=20,
+        choices=StatusValidacao.choices,
+        default=StatusValidacao.PENDENTE,
+    )
     legacy_comprovante_id = models.PositiveIntegerField(
         null=True,
         blank=True,

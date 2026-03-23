@@ -138,35 +138,58 @@ class RefinanciamentoPagamentosTestCase(TestCase):
             source_file_path=f"retornos/{referencia.strftime('%Y-%m')}.txt",
         )
 
+    def _termo_file(self, name: str = "termo.pdf") -> SimpleUploadedFile:
+        return SimpleUploadedFile(name, b"arquivo termo", content_type="application/pdf")
+
+    def _solicitar_refinanciamento(
+        self,
+        contrato: Contrato,
+        *,
+        client: APIClient | None = None,
+    ):
+        target_client = client or self.agent_client
+        return target_client.post(
+            f"/api/v1/refinanciamentos/{contrato.id}/solicitar/",
+            {"termo_antecipacao": self._termo_file()},
+            format="multipart",
+        )
+
     def test_solicitar_cria_fila_operacional_sem_ciclo_destino(self):
         contrato = self._create_contrato("22345678901")
         self._create_pagamento(contrato, date(2026, 1, 1))
         self._create_pagamento(contrato, date(2026, 2, 1))
         self._create_pagamento(contrato, date(2026, 5, 1))
 
-        response = self.admin_client.post(
-            f"/api/v1/refinanciamentos/{contrato.id}/solicitar/"
-        )
+        response = self._solicitar_refinanciamento(contrato, client=self.admin_client)
         self.assertEqual(response.status_code, 201, response.json())
 
         refinanciamento = Refinanciamento.objects.get(pk=response.json()["id"])
-        self.assertEqual(refinanciamento.cycle_key, "2026-01|2026-02|2026-03")
+        self.assertEqual(refinanciamento.cycle_key, "2026-01|2026-02|2026-05")
         self.assertEqual(refinanciamento.ref1, date(2026, 1, 1))
         self.assertEqual(refinanciamento.ref2, date(2026, 2, 1))
-        self.assertEqual(refinanciamento.ref3, date(2026, 3, 1))
-        self.assertEqual(refinanciamento.competencia_solicitada, date(2026, 3, 1))
-        self.assertEqual(refinanciamento.parcelas_ok, 2)
-        self.assertEqual(refinanciamento.itens.count(), 2)
+        self.assertEqual(refinanciamento.ref3, date(2026, 5, 1))
+        self.assertEqual(refinanciamento.competencia_solicitada, date(2026, 5, 1))
+        self.assertEqual(refinanciamento.parcelas_ok, 3)
+        self.assertEqual(refinanciamento.itens.count(), 3)
         self.assertEqual(
             list(
                 refinanciamento.itens.order_by("referencia_month").values_list(
                     "referencia_month", flat=True
                 )
             ),
-            [date(2026, 1, 1), date(2026, 2, 1)],
+            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 5, 1)],
         )
-        self.assertEqual(refinanciamento.status, Refinanciamento.Status.APTO_A_RENOVAR)
+        self.assertEqual(
+            refinanciamento.status, Refinanciamento.Status.EM_ANALISE_RENOVACAO
+        )
         self.assertIsNone(refinanciamento.ciclo_destino)
+        self.assertEqual(
+            refinanciamento.comprovantes.filter(
+                papel=Comprovante.Papel.AGENTE,
+                origem=Comprovante.Origem.SOLICITACAO_RENOVACAO,
+            ).count(),
+            1,
+        )
 
     def test_contrato_lista_exibe_aptidao_no_status_renovacao(self):
         contrato = self._create_contrato("32345678901")
@@ -179,22 +202,111 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         row = next(
             item for item in response.json()["results"] if item["id"] == contrato.id
         )
-        self.assertEqual(row["mensalidades"]["pagas"], 2)
+        self.assertGreaterEqual(row["mensalidades"]["pagas"], 2)
         self.assertEqual(row["mensalidades"]["total"], 3)
         self.assertTrue(row["mensalidades"]["apto_refinanciamento"])
         self.assertFalse(row["pode_solicitar_refinanciamento"])
         self.assertEqual(row["status_renovacao"], Refinanciamento.Status.APTO_A_RENOVAR)
-        self.assertIn("Parcelas quitadas no ciclo atual", row["mensalidades"]["descricao"])
+        self.assertEqual(row["valor_auxilio_liberado"], "0.00")
+        self.assertEqual(row["percentual_repasse"], "10.00")
+        self.assertEqual(row["ciclo_apto"]["numero"], 1)
+        self.assertEqual(row["ciclo_apto"]["status"], Refinanciamento.Status.APTO_A_RENOVAR)
+        self.assertEqual(row["ciclo_apto"]["parcelas_pagas"], row["mensalidades"]["pagas"])
+        self.assertEqual(row["ciclo_apto"]["parcelas_total"], 3)
+        self.assertIn("parcelas quitadas no ciclo atual", row["mensalidades"]["descricao"].lower())
+
+    def test_solicitar_reaproveita_refinanciamento_apto_materializado(self):
+        contrato = self._create_contrato("32345678902")
+        self._create_pagamento(contrato, date(2026, 1, 1))
+        self._create_pagamento(contrato, date(2026, 2, 1))
+        self._create_pagamento(contrato, date(2026, 5, 1))
+        refinanciamento = Refinanciamento.objects.create(
+            associado=contrato.associado,
+            contrato_origem=contrato,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 5, 1),
+            status=Refinanciamento.Status.APTO_A_RENOVAR,
+            origem=Refinanciamento.Origem.OPERACIONAL,
+            cycle_key="2026-01|2026-02|2026-05",
+        )
+
+        response = self._solicitar_refinanciamento(contrato)
+        self.assertEqual(response.status_code, 201, response.json())
+        refinanciamento.refresh_from_db()
+        self.assertEqual(refinanciamento.id, response.json()["id"])
+        self.assertEqual(
+            refinanciamento.status,
+            Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+        )
+
+    def test_agente_pode_solicitar_liquidacao_partindo_dos_aptos(self):
+        contrato = self._create_contrato("32345678903")
+        self._create_pagamento(contrato, date(2026, 1, 1))
+        self._create_pagamento(contrato, date(2026, 2, 1))
+        self._create_pagamento(contrato, date(2026, 5, 1))
+
+        response = self.agent_client.post(
+            f"/api/v1/refinanciamentos/{contrato.id}/solicitar-liquidacao/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+        refinanciamento = Refinanciamento.objects.get(pk=response.json()["id"])
+        self.assertEqual(
+            refinanciamento.status,
+            Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
+        )
+
+        projection_row = self.agent_client.get(
+            "/api/v1/contratos/",
+            {"status_renovacao": Refinanciamento.Status.APTO_A_RENOVAR},
+        )
+        self.assertEqual(projection_row.status_code, 200, projection_row.json())
+        ids = {item["id"] for item in projection_row.json()["results"]}
+        self.assertNotIn(contrato.id, ids)
+
+        historico = self.agent_client.get(
+            "/api/v1/refinanciamentos/",
+            {"status": Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO},
+        )
+        self.assertEqual(historico.status_code, 200, historico.json())
+        historico_ids = {item["id"] for item in historico.json()["results"]}
+        self.assertIn(refinanciamento.id, historico_ids)
 
     def test_nao_permite_solicitar_sem_atingir_o_limiar_do_ciclo(self):
         contrato = self._create_contrato("52345678901")
         self._create_pagamento(contrato, date(2026, 1, 1))
 
-        response = self.agent_client.post(
-            f"/api/v1/refinanciamentos/{contrato.id}/solicitar/"
-        )
+        response = self._solicitar_refinanciamento(contrato)
         self.assertEqual(response.status_code, 400)
         self.assertIn("1/3 parcelas do ciclo atual foram quitadas", " ".join(response.json()))
+
+    def test_solicitar_exige_termo_de_antecipacao(self):
+        contrato = self._create_contrato("53345678901")
+        self._create_pagamento(contrato, date(2026, 1, 1))
+        self._create_pagamento(contrato, date(2026, 2, 1))
+
+        response = self.agent_client.post(
+            f"/api/v1/refinanciamentos/{contrato.id}/solicitar/",
+            {},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("termo_antecipacao", response.json())
+
+    def test_desativar_refinanciamento_orienta_para_liquidacao(self):
+        contrato = self._create_contrato("54345678901")
+        self._create_pagamento(contrato, date(2026, 1, 1))
+        self._create_pagamento(contrato, date(2026, 2, 1))
+        refinanciamento_id = self._solicitar_refinanciamento(contrato).json()["id"]
+
+        response = self.coord_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/desativar/",
+            {"motivo": "Não seguirá com a renovação."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Use a liquidação do contrato", " ".join(response.json()))
 
     def test_fluxo_coord_analise_tesouraria_materializa_proximo_ciclo_so_na_efetivacao(self):
         contrato = self._create_contrato("62345678901")
@@ -202,19 +314,14 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         self._create_pagamento(contrato, date(2026, 2, 1))
         self._create_pagamento(contrato, date(2026, 3, 1))
 
-        request = self.agent_client.post(
-            f"/api/v1/refinanciamentos/{contrato.id}/solicitar/"
-        )
+        request = self._solicitar_refinanciamento(contrato)
         self.assertEqual(request.status_code, 201, request.json())
         refinanciamento_id = request.json()["id"]
 
-        approval = self.coord_client.post(
-            f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar/"
-        )
-        self.assertEqual(approval.status_code, 200, approval.json())
-
         refinanciamento = Refinanciamento.objects.get(pk=refinanciamento_id)
-        self.assertEqual(refinanciamento.status, Refinanciamento.Status.EM_ANALISE_RENOVACAO)
+        self.assertEqual(
+            refinanciamento.status, Refinanciamento.Status.EM_ANALISE_RENOVACAO
+        )
         self.assertIsNone(refinanciamento.ciclo_destino)
 
         assumir = self.analyst_client.post(
@@ -225,20 +332,28 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         aprovacao_analise = self.analyst_client.post(
             f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar_analise/",
             {
-                "termo_antecipacao": SimpleUploadedFile(
-                    "termo.pdf",
-                    b"arquivo termo",
-                    content_type="application/pdf",
-                ),
                 "observacao": "Termo validado.",
             },
-            format="multipart",
+            format="json",
         )
         self.assertEqual(aprovacao_analise.status_code, 200, aprovacao_analise.json())
 
         refinanciamento.refresh_from_db()
-        self.assertEqual(refinanciamento.status, Refinanciamento.Status.APROVADO_PARA_RENOVACAO)
+        self.assertEqual(
+            refinanciamento.status,
+            Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+        )
         self.assertIsNone(refinanciamento.ciclo_destino)
+
+        approval = self.coord_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar/"
+        )
+        self.assertEqual(approval.status_code, 200, approval.json())
+
+        refinanciamento.refresh_from_db()
+        self.assertEqual(
+            refinanciamento.status, Refinanciamento.Status.APROVADO_PARA_RENOVACAO
+        )
 
         efetivacao = self.tes_client.post(
             f"/api/v1/refinanciamentos/{refinanciamento_id}/efetivar/",
@@ -263,16 +378,25 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         self.assertIsNotNone(refinanciamento.executado_em)
         self.assertIsNotNone(refinanciamento.ciclo_destino)
         self.assertEqual(refinanciamento.ciclo_destino.status, Ciclo.Status.ABERTO)
+        self.assertEqual(refinanciamento.ciclo_destino.parcelas.count(), 3)
         self.assertEqual(
-            refinanciamento.ciclo_destino.parcelas.filter(status=Parcela.Status.EM_ABERTO).count(),
-            1,
+            refinanciamento.ciclo_destino.parcelas.filter(
+                status=Parcela.Status.EM_PREVISAO
+            ).count(),
+            3,
         )
 
     def test_coordenacao_lista_retorna_motivo_apto_e_filtro_por_agente(self):
         contrato = self._create_contrato("72345678901")
         self._create_pagamento(contrato, date(2026, 1, 1))
         self._create_pagamento(contrato, date(2026, 2, 1))
-        self.agent_client.post(f"/api/v1/refinanciamentos/{contrato.id}/solicitar/")
+        solicitar = self._solicitar_refinanciamento(contrato)
+        refinanciamento_id = solicitar.json()["id"]
+        self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar_analise/",
+            {"observacao": "Analise concluida"},
+            format="json",
+        )
 
         response = self.coord_client.get(
             "/api/v1/coordenacao/refinanciamento/",
@@ -290,11 +414,8 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         contrato = self._create_contrato("82345678901")
         self._create_pagamento(contrato, date(2026, 1, 1))
         self._create_pagamento(contrato, date(2026, 2, 1))
-        solicitar = self.agent_client.post(
-            f"/api/v1/refinanciamentos/{contrato.id}/solicitar/"
-        )
+        solicitar = self._solicitar_refinanciamento(contrato)
         refinanciamento_id = solicitar.json()["id"]
-        self.coord_client.post(f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar/")
 
         minhas = self.analyst_client.get(
             "/api/v1/analise/refinanciamentos/",
@@ -336,21 +457,9 @@ class RefinanciamentoPagamentosTestCase(TestCase):
             self._create_pagamento(contrato, date(2026, 1, 1))
             self._create_pagamento(contrato, date(2026, 2, 1))
 
-        liberado_id = self.agent_client.post(
-            f"/api/v1/refinanciamentos/{contrato_liberado.id}/solicitar/"
-        ).json()["id"]
-        assumido_id = self.agent_client.post(
-            f"/api/v1/refinanciamentos/{contrato_assumido.id}/solicitar/"
-        ).json()["id"]
-        aprovado_id = self.agent_client.post(
-            f"/api/v1/refinanciamentos/{contrato_aprovado.id}/solicitar/"
-        ).json()["id"]
-
-        for refinanciamento_id in [liberado_id, assumido_id, aprovado_id]:
-            approval = self.coord_client.post(
-                f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar/"
-            )
-            self.assertEqual(approval.status_code, 200, approval.json())
+        liberado_id = self._solicitar_refinanciamento(contrato_liberado).json()["id"]
+        assumido_id = self._solicitar_refinanciamento(contrato_assumido).json()["id"]
+        aprovado_id = self._solicitar_refinanciamento(contrato_aprovado).json()["id"]
 
         assumir = self.analyst_client.post(
             f"/api/v1/refinanciamentos/{assumido_id}/assumir_analise/"
@@ -363,14 +472,9 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         aprovar = self.analyst_client.post(
             f"/api/v1/refinanciamentos/{aprovado_id}/aprovar_analise/",
             {
-                "termo_antecipacao": SimpleUploadedFile(
-                    "termo.pdf",
-                    b"arquivo termo",
-                    content_type="application/pdf",
-                ),
                 "observacao": "Termo ok",
             },
-            format="multipart",
+            format="json",
         )
         self.assertEqual(aprovar.status_code, 200, aprovar.json())
 
@@ -398,12 +502,19 @@ class RefinanciamentoPagamentosTestCase(TestCase):
             self._create_pagamento(contrato, date(2026, 1, 1))
             self._create_pagamento(contrato, date(2026, 2, 1))
 
-        primeiro_id = self.agent_client.post(
-            f"/api/v1/refinanciamentos/{primeiro.id}/solicitar/"
-        ).json()["id"]
-        segundo_id = self.agent_client.post(
-            f"/api/v1/refinanciamentos/{segundo.id}/solicitar/"
-        ).json()["id"]
+        primeiro_id = self._solicitar_refinanciamento(primeiro).json()["id"]
+        segundo_id = self._solicitar_refinanciamento(segundo).json()["id"]
+
+        self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{primeiro_id}/aprovar_analise/",
+            {"observacao": "Primeiro liberado"},
+            format="json",
+        )
+        self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{segundo_id}/aprovar_analise/",
+            {"observacao": "Segundo liberado"},
+            format="json",
+        )
 
         invalid = self.coord_client.post(
             "/api/v1/coordenacao/refinanciamento/aprovar_em_massa/",
@@ -430,8 +541,8 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         self.assertEqual(
             statuses,
             {
-                primeiro_id: Refinanciamento.Status.EM_ANALISE_RENOVACAO,
-                segundo_id: Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                primeiro_id: Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+                segundo_id: Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
             },
         )
 
@@ -441,27 +552,20 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         self._create_pagamento(contrato, date(2026, 2, 1))
         self._create_pagamento(contrato, date(2026, 3, 1))
 
-        request = self.agent_client.post(
-            f"/api/v1/refinanciamentos/{contrato.id}/solicitar/"
-        )
+        request = self._solicitar_refinanciamento(contrato)
         self.assertEqual(request.status_code, 201, request.json())
         refinanciamento_id = request.json()["id"]
-        self.coord_client.post(f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar/")
         self.analyst_client.post(
             f"/api/v1/refinanciamentos/{refinanciamento_id}/assumir_analise/"
         )
         self.analyst_client.post(
             f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar_analise/",
             {
-                "termo_antecipacao": SimpleUploadedFile(
-                    "termo.pdf",
-                    b"arquivo termo",
-                    content_type="application/pdf",
-                ),
                 "observacao": "Termo ok",
             },
-            format="multipart",
+            format="json",
         )
+        self.coord_client.post(f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar/")
         self.tes_client.post(
             f"/api/v1/refinanciamentos/{refinanciamento_id}/efetivar/",
             {

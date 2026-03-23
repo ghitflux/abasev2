@@ -3,8 +3,12 @@ import { render, screen } from "@testing-library/react";
 
 import AppSidebar from "@/components/layout/app-sidebar";
 
+jest.mock("@tanstack/react-query", () => ({
+  useQuery: jest.fn(() => ({ data: undefined })),
+}));
+
 jest.mock("next/navigation", () => ({
-  usePathname: () => "/tesouraria/confirmacoes",
+  usePathname: () => "/tesouraria/refinanciamentos",
   useRouter: () => ({
     replace: jest.fn(),
     refresh: jest.fn(),
@@ -13,7 +17,12 @@ jest.mock("next/navigation", () => ({
 
 jest.mock("next/image", () => ({
   __esModule: true,
-  default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => <img {...props} alt={props.alt ?? ""} />,
+  default: ({
+    priority: _priority,
+    ...props
+  }: React.ImgHTMLAttributes<HTMLImageElement> & { priority?: boolean }) => (
+    <img {...props} alt={props.alt ?? ""} />
+  ),
 }));
 
 jest.mock("@/lib/navigation", () => ({
@@ -26,9 +35,9 @@ jest.mock("@/lib/navigation", () => ({
           icon: () => <svg data-testid="icon-tesouraria" />,
           children: [
             {
-              title: "Confirmações",
-              href: "/tesouraria/confirmacoes",
-              icon: () => <svg data-testid="icon-confirmacoes" />,
+              title: "Renovações",
+              href: "/tesouraria/refinanciamentos",
+              icon: () => <svg data-testid="icon-renovacoes" />,
             },
           ],
         },
@@ -40,6 +49,7 @@ jest.mock("@/lib/navigation", () => ({
 jest.mock("@/hooks/use-permissions", () => ({
   usePermissions: () => ({
     role: "TESOUREIRO",
+    roles: ["TESOUREIRO"],
     user: { full_name: "Maria Souza" },
   }),
 }));
@@ -90,6 +100,7 @@ jest.mock("@/components/ui/sidebar", () => {
     SidebarGroupLabel: ({ children }: React.PropsWithChildren) => <p>{children}</p>,
     SidebarHeader: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
     SidebarMenu: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
+    SidebarMenuBadge: ({ children }: React.PropsWithChildren) => <span>{children}</span>,
     SidebarMenuItem: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
     SidebarMenuSub: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
     SidebarMenuSubItem: ({ children }: React.PropsWithChildren) => <div>{children}</div>,
@@ -135,7 +146,7 @@ describe("AppSidebar", () => {
 
     const logo = screen.getByAltText("ABASE");
     const activeParent = screen.getByText("Tesouraria");
-    const activeChild = screen.getByText("Confirmações");
+    const activeChild = screen.getByText("Renovações");
 
     expect(logo).toHaveClass("w-auto");
     expect(logo).toHaveClass("object-contain");

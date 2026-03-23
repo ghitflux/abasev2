@@ -154,6 +154,33 @@ SPECTACULAR_SETTINGS = {
     "TITLE": "ABASE v2 API",
     "DESCRIPTION": "API REST do sistema de gestão de associados ABASE v2.",
     "VERSION": "1.0.0",
+    "ENUM_NAME_OVERRIDES": {
+        "AssociadoStatusEnum": "config.spectacular_enums.ASSOCIADO_STATUS",
+        "DocumentoTipoEnum": "config.spectacular_enums.DOCUMENTO_TIPO",
+        "DocumentoStatusEnum": "config.spectacular_enums.DOCUMENTO_STATUS",
+        "EsteiraEtapaEnum": "config.spectacular_enums.ESTEIRA_ETAPA",
+        "EsteiraSituacaoEnum": "config.spectacular_enums.ESTEIRA_SITUACAO",
+        "PendenciaStatusEnum": "config.spectacular_enums.PENDENCIA_STATUS",
+        "DocIssueStatusEnum": "config.spectacular_enums.DOC_ISSUE_STATUS",
+        "ContratoStatusEnum": "config.spectacular_enums.CONTRATO_STATUS",
+        "CicloStatusEnum": "config.spectacular_enums.CICLO_STATUS",
+        "ParcelaStatusEnum": "config.spectacular_enums.PARCELA_STATUS",
+        "RefinanciamentoStatusEnum": "config.spectacular_enums.REFINANCIAMENTO_STATUS",
+        "ComprovanteTipoEnum": "config.spectacular_enums.COMPROVANTE_TIPO",
+        "ComprovantePapelEnum": "config.spectacular_enums.COMPROVANTE_PAPEL",
+        "ComprovanteOrigemEnum": "config.spectacular_enums.COMPROVANTE_ORIGEM",
+        "ComprovanteStatusValidacaoEnum": (
+            "config.spectacular_enums.COMPROVANTE_STATUS_VALIDACAO"
+        ),
+        "DevolucaoAssociadoTipoEnum": "config.spectacular_enums.DEVOLUCAO_ASSOCIADO_TIPO",
+        "ConfirmacaoTipoEnum": "config.spectacular_enums.CONFIRMACAO_TIPO",
+        "ConfirmacaoStatusEnum": "config.spectacular_enums.CONFIRMACAO_STATUS",
+        "PagamentoStatusEnum": "config.spectacular_enums.PAGAMENTO_STATUS",
+        "DespesaStatusEnum": "config.spectacular_enums.DESPESA_STATUS",
+        "DespesaTipoEnum": "config.spectacular_enums.DESPESA_TIPO",
+        "ArquivoRetornoStatusEnum": "config.spectacular_enums.ARQUIVO_RETORNO_STATUS",
+        "ArquivoRetornoFormatoEnum": "config.spectacular_enums.ARQUIVO_RETORNO_FORMATO",
+    },
 }
 
 SIMPLE_JWT = {

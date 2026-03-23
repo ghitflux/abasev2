@@ -53,4 +53,6 @@ export const patchedAssociadoUpdateSchema = z.object({
   taxa_antecipacao: z.optional(z.string().regex(/^-?\d{0,3}(?:\.\d{0,2})?$/)),
   mensalidade: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
   margem_disponivel: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
+  agente_responsavel_id: z.int().nullish(),
+  percentual_repasse: z.optional(z.string().regex(/^-?\d{0,4}(?:\.\d{0,2})?$/)),
 });

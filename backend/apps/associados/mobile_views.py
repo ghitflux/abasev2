@@ -6,6 +6,7 @@ Cada view resolve o associado vinculado ao request.user via user.associado.
 """
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, serializers, status
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
@@ -84,6 +85,52 @@ class _PendenciaMobileSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
 
 
+class _ResumoFinanceiroMobileSerializer(serializers.Serializer):
+    parcelas_pagas = serializers.IntegerField()
+    parcelas_total = serializers.IntegerField()
+    valor_mensalidade = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        allow_null=True,
+    )
+    proximo_vencimento = serializers.DateField(allow_null=True)
+    em_atraso = serializers.IntegerField()
+
+
+class _AppMeResponseSerializer(serializers.Serializer):
+    associado = _AssociadoMobileSerializer()
+    contratos = _ContratoResumoSerializer(many=True)
+    resumo = _ResumoFinanceiroMobileSerializer()
+    pendencias = _PendenciaMobileSerializer(many=True)
+
+
+class _AppMensalidadesResponseSerializer(serializers.Serializer):
+    ciclos = _CicloMobileSerializer(many=True)
+
+
+class _AppAntecipacaoItemSerializer(serializers.Serializer):
+    referencia_mes = serializers.DateField()
+    valor = serializers.DecimalField(max_digits=10, decimal_places=2)
+    data_pagamento = serializers.DateField(allow_null=True)
+    numero_parcela = serializers.IntegerField()
+    ciclo_numero = serializers.IntegerField()
+
+
+class _AppAntecipacaoResponseSerializer(serializers.Serializer):
+    historico = _AppAntecipacaoItemSerializer(many=True)
+
+
+class _AppPendenciasResponseSerializer(serializers.Serializer):
+    pendencias = _PendenciaMobileSerializer(many=True)
+
+
+class _AppDocumentoUploadResponseSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    tipo = serializers.CharField()
+    status = serializers.CharField()
+    observacao = serializers.CharField()
+
+
 # ---------------------------------------------------------------------------
 # AppMeView — GET /api/v1/app/me/
 # ---------------------------------------------------------------------------
@@ -95,6 +142,7 @@ class AppMeView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
+    @extend_schema(responses={200: _AppMeResponseSerializer})
     def get(self, request):
         associado = _get_associado_or_404(request.user)
 
@@ -135,6 +183,7 @@ class AppMensalidadesView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
+    @extend_schema(responses={200: _AppMensalidadesResponseSerializer})
     def get(self, request):
         associado = _get_associado_or_404(request.user)
 
@@ -161,6 +210,7 @@ class AppAntecipacaoView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
+    @extend_schema(responses={200: _AppAntecipacaoResponseSerializer})
     def get(self, request):
         associado = _get_associado_or_404(request.user)
 
@@ -197,6 +247,7 @@ class AppPendenciasView(APIView):
     """
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
+    @extend_schema(responses={200: _AppPendenciasResponseSerializer})
     def get(self, request):
         associado = _get_associado_or_404(request.user)
         pendencias_data = _build_pendencias(associado)
@@ -215,6 +266,10 @@ class AppDocumentosView(APIView):
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
     parser_classes = [MultiPartParser]
 
+    @extend_schema(
+        request=DocumentoCreateSerializer,
+        responses={201: _AppDocumentoUploadResponseSerializer},
+    )
     def post(self, request):
         associado = _get_associado_or_404(request.user)
         serializer = DocumentoCreateSerializer(data=request.data)

@@ -9,9 +9,9 @@ import { renovacaoCicloMesSchema } from "./renovacaoCicloMesSchema.ts";
 export const V1RenovacaoCiclosMesesListQueryParamsSchema = z
   .object({
     ordering: z.optional(
-      z.string().describe("Qual campo usar ao ordenar os resultados."),
+      z.string().describe("Which field to use when ordering the results."),
     ),
-    search: z.optional(z.string().describe("Um termo de busca.")),
+    search: z.optional(z.string().describe("A search term.")),
   })
   .optional();
 

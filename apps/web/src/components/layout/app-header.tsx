@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { usePermissions } from "@/hooks/use-permissions";
+import { canAccessPath } from "@/lib/navigation";
 import { useRouteTransition } from "@/providers/route-transition-provider";
 import { useAuthStore } from "@/store/auth-store";
 import GlobalHeaderSearch from "@/components/layout/global-header-search";
@@ -20,9 +21,10 @@ import {
 
 export default function AppHeader() {
   const router = useRouter();
-  const { user, role } = usePermissions();
+  const { user, role, roles } = usePermissions();
   const { startRouteTransition } = useRouteTransition();
   const clear = useAuthStore((state) => state.clear);
+  const canSeeDashboard = canAccessPath("/dashboard", roles);
 
   return (
     <header className="sticky top-0 z-30 border-b border-sidebar-border bg-background/80 px-4 py-3 backdrop-blur md:px-6">
@@ -50,14 +52,16 @@ export default function AppHeader() {
             <DropdownMenuContent align="end" className="rounded-2xl">
               <DropdownMenuLabel>{user?.email}</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() => {
-                  startRouteTransition("/dashboard");
-                  router.push("/dashboard");
-                }}
-              >
-                Dashboard
-              </DropdownMenuItem>
+              {canSeeDashboard ? (
+                <DropdownMenuItem
+                  onClick={() => {
+                    startRouteTransition("/dashboard");
+                    router.push("/dashboard");
+                  }}
+                >
+                  Dashboard
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem
                 variant="destructive"
                 onClick={() => {

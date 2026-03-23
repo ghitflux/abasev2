@@ -7,7 +7,7 @@ import * as z from "zod";
 import { blankEnumSchema } from "./blankEnumSchema.ts";
 import { recorrenciaEnumSchema } from "./recorrenciaEnumSchema.ts";
 import { status7A5EnumSchema } from "./status7A5EnumSchema.ts";
-import { tipoC90EnumSchema } from "./tipoC90EnumSchema.ts";
+import { tipoEnumSchema } from "./tipoEnumSchema.ts";
 
 export const despesaWriteSchema = z.object({
   categoria: z.string().max(100),
@@ -21,7 +21,7 @@ export const despesaWriteSchema = z.object({
       .optional();
   },
   get tipo() {
-    return z.union([tipoC90EnumSchema, blankEnumSchema]).optional();
+    return z.union([tipoEnumSchema, blankEnumSchema]).optional();
   },
   get recorrencia() {
     return recorrenciaEnumSchema

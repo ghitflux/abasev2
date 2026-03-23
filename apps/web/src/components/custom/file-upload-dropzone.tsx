@@ -9,37 +9,48 @@ type FileUploadDropzoneProps = {
   accept?: Accept;
   maxSize?: number;
   onUpload?: (file: File) => void;
+  onUploadMany?: (files: File[]) => void;
   isProcessing?: boolean;
   disabled?: boolean;
   className?: string;
   emptyTitle?: string;
   emptyDescription?: string;
   file?: File | null;
+  files?: File[];
+  multiple?: boolean;
 };
 
 export default function FileUploadDropzone({
   accept,
   maxSize = 10 * 1024 * 1024,
   onUpload,
+  onUploadMany,
   isProcessing,
   disabled,
   className,
   emptyTitle = "Arraste um arquivo ou clique para selecionar",
   emptyDescription,
   file,
+  files,
+  multiple = false,
 }: FileUploadDropzoneProps) {
   const { acceptedFiles, getInputProps, getRootProps, isDragActive } = useDropzone({
     accept,
     maxSize,
-    multiple: false,
+    multiple,
     disabled: disabled || isProcessing,
     onDropAccepted: (files) => {
+      if (multiple) {
+        onUploadMany?.(files);
+        return;
+      }
       const [file] = files;
       if (file) onUpload?.(file);
     },
   });
 
-  const selectedFile = file ?? acceptedFiles[0];
+  const selectedFiles = files ?? (multiple ? acceptedFiles : []);
+  const selectedFile = file ?? (!multiple ? acceptedFiles[0] : undefined);
   const isTextUpload = Object.values(accept ?? {}).some((extensions) => extensions?.includes(".txt"));
 
   return (
@@ -54,7 +65,41 @@ export default function FileUploadDropzone({
       )}
     >
       <input {...getInputProps()} />
-      {selectedFile ? (
+      {multiple ? (
+        selectedFiles.length ? (
+          <>
+            {isTextUpload ? (
+              <FileTextIcon className="size-8 text-primary" />
+            ) : (
+              <FileIcon className="size-8 text-primary" />
+            )}
+            <div>
+              <p className="font-semibold text-foreground">
+                {selectedFiles.length} arquivo(s) selecionado(s)
+              </p>
+              <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                {selectedFiles.slice(0, 4).map((selected) => (
+                  <p key={`${selected.name}-${selected.size}`}>{selected.name}</p>
+                ))}
+                {selectedFiles.length > 4 ? (
+                  <p>+ {selectedFiles.length - 4} arquivo(s)</p>
+                ) : null}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <UploadCloudIcon className="size-8 text-primary" />
+            <div>
+              <p className="font-semibold text-foreground">{emptyTitle}</p>
+              <p className="text-sm text-muted-foreground">
+                {emptyDescription ??
+                  `Limite de ${(maxSize / 1024 / 1024).toFixed(0)} MB por arquivo`}
+              </p>
+            </div>
+          </>
+        )
+      ) : selectedFile ? (
         <>
           {isTextUpload ? (
             <FileTextIcon className="size-8 text-primary" />

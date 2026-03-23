@@ -13,11 +13,23 @@ export type V1DashboardAdminAgentesRetrieveQueryParams = {
   /**
    * @type string | undefined
    */
+  competencia?: string;
+  /**
+   * @type string | undefined
+   */
   date_end?: string;
   /**
    * @type string | undefined
    */
   date_start?: string;
+  /**
+   * @type string | undefined
+   */
+  day?: string;
+  /**
+   * @type string | undefined
+   */
+  status?: string;
 };
 
 export type V1DashboardAdminAgentesRetrieve200 = DashboardAgentes;

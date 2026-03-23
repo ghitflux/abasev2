@@ -17,9 +17,18 @@ class AssociadoPermissionsTestCase(TestCase):
     def setUpTestData(cls):
         cls.role_admin = Role.objects.create(codigo="ADMIN", nome="Administrador")
         cls.role_agente = Role.objects.create(codigo="AGENTE", nome="Agente")
+        cls.role_coordenador = Role.objects.create(
+            codigo="COORDENADOR",
+            nome="Coordenador",
+        )
 
         cls.admin = cls._create_user("admin@teste.local", cls.role_admin, "Admin")
         cls.agente = cls._create_user("agente@teste.local", cls.role_agente, "Agente")
+        cls.coordenador = cls._create_user(
+            "coord@teste.local",
+            cls.role_coordenador,
+            "Coord",
+        )
         cls.outro_agente = cls._create_user(
             "agente2@teste.local",
             cls.role_agente,
@@ -71,12 +80,60 @@ class AssociadoPermissionsTestCase(TestCase):
         self.agent_client = APIClient()
         self.agent_client.force_authenticate(self.agente)
 
+        self.coord_client = APIClient()
+        self.coord_client.force_authenticate(self.coordenador)
+
         self.other_agent_client = APIClient()
         self.other_agent_client.force_authenticate(self.outro_agente)
 
     def test_agente_nao_pode_listar_associados(self):
         response = self.agent_client.get("/api/v1/associados/")
         self.assertEqual(response.status_code, 403)
+
+    def test_coordenador_pode_listar_todos_os_associados(self):
+        response = self.coord_client.get("/api/v1/associados/")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        associados = {item["id"] for item in payload["results"]}
+        self.assertIn(self.associado.id, associados)
+        self.assertIn(self.associado_outro_agente.id, associados)
+
+    def test_coordenador_pode_visualizar_associado_de_qualquer_agente(self):
+        response = self.coord_client.get(
+            f"/api/v1/associados/{self.associado_outro_agente.id}/"
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["id"], self.associado_outro_agente.id)
+
+    def test_coordenador_pode_consultar_ciclos_do_associado(self):
+        response = self.coord_client.get(f"/api/v1/associados/{self.associado.id}/ciclos/")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertIn("ciclos", response.json())
+        self.assertIn("meses_nao_pagos", response.json())
+
+    def test_coordenador_nao_pode_editar_associado_nem_enviar_documentos(self):
+        update_response = self.coord_client.patch(
+            f"/api/v1/associados/{self.associado.id}/",
+            {"nome_completo": "Nao Deve Atualizar"},
+            format="json",
+        )
+        documentos_response = self.coord_client.post(
+            f"/api/v1/associados/{self.associado.id}/documentos/",
+            {
+                "tipo": Documento.Tipo.CPF,
+                "arquivo": SimpleUploadedFile(
+                    "coord.pdf",
+                    b"conteudo",
+                    content_type="application/pdf",
+                ),
+            },
+        )
+
+        self.assertEqual(update_response.status_code, 403)
+        self.assertEqual(documentos_response.status_code, 403)
 
     def test_agente_pode_visualizar_proprio_associado(self):
         response = self.agent_client.get(f"/api/v1/associados/{self.associado.id}/")

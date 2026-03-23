@@ -64,5 +64,12 @@ export const associadoCreateSchema = z.object({
       .regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)
       .default("0.00"),
   ),
+  agente_responsavel_id: z.int().nullish(),
+  percentual_repasse: z.optional(
+    z
+      .string()
+      .regex(/^-?\d{0,4}(?:\.\d{0,2})?$/)
+      .default("10.00"),
+  ),
   documentos_payload: z.optional(z.array(z.object({}).catchall(z.any()))),
 });

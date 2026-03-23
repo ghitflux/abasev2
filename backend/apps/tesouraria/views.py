@@ -4,9 +4,11 @@ from datetime import datetime
 
 from django.db.models import Prefetch, Q
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, permissions
 from rest_framework.decorators import action
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
@@ -21,7 +23,15 @@ from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.financeiro.models import Despesa
 from apps.importacao.models import ArquivoRetornoItem, PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante
-from apps.tesouraria.models import Confirmacao, Pagamento, PagamentoNotificacao
+from apps.tesouraria.models import (
+    Confirmacao,
+    DevolucaoAssociado,
+    LiquidacaoContrato,
+    Pagamento,
+    PagamentoNotificacao,
+)
+from apps.tesouraria.devolucao import DevolucaoAssociadoService
+from apps.tesouraria.liquidacao import LiquidacaoContratoService
 from core.pagination import StandardResultsSetPagination
 
 from .serializers import (
@@ -30,11 +40,21 @@ from .serializers import (
     ConfirmacaoLinkSerializer,
     ConfirmacaoListSerializer,
     CongelarContratoSerializer,
+    DevolucaoAssociadoListSerializer,
+    DevolucaoContratoListSerializer,
+    DevolucaoKpisSerializer,
     DespesaAnexarSerializer,
+    DespesaKpisSerializer,
     DespesaListSerializer,
     DespesaWriteSerializer,
     DarBaixaManualSerializer,
     EfetivarContratoSerializer,
+    LiquidacaoContratoListSerializer,
+    LiquidacaoKpisSerializer,
+    LiquidarContratoSerializer,
+    RegistrarDevolucaoSerializer,
+    ReverterLiquidacaoSerializer,
+    ReverterDevolucaoSerializer,
     TesourariaContratoListSerializer,
 )
 from .services import (
@@ -351,6 +371,220 @@ class BaixaManualViewSet(mixins.ListModelMixin, GenericViewSet):
         )
 
 
+class LiquidacaoContratoViewSet(mixins.ListModelMixin, GenericViewSet):
+    queryset = LiquidacaoContrato.objects.none()
+    serializer_class = LiquidacaoContratoListSerializer
+    permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrTesoureiroOrAdmin]
+    pagination_class = StandardResultsSetPagination
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def list(self, request, *args, **kwargs):  # noqa: A003
+        competencia = parse_month_filter(request.query_params.get("competencia"))
+        payload = LiquidacaoContratoService.listar(
+            listing_status=request.query_params.get("status") or "elegivel",
+            search=(request.query_params.get("search") or "").strip() or None,
+            competencia=competencia,
+            estado=(request.query_params.get("estado") or "").strip() or None,
+            contract_id=(
+                int(request.query_params["contract_id"])
+                if (request.query_params.get("contract_id") or "").isdigit()
+                else None
+            ),
+        )
+        page = self.paginate_queryset(payload.rows)
+        serializer = self.get_serializer(page if page is not None else payload.rows, many=True)
+        kpis = LiquidacaoKpisSerializer(payload.kpis).data
+        if page is not None:
+            response = self.get_paginated_response(serializer.data)
+            response.data["kpis"] = kpis
+            return response
+        return Response({"results": serializer.data, "kpis": kpis})
+
+    @action(detail=True, methods=["post"], url_path="liquidar")
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+            )
+        ]
+    )
+    def liquidar(self, request, pk=None):
+        payload = LiquidarContratoSerializer(
+            data=request.data,
+            context=self.get_serializer_context(),
+        )
+        payload.is_valid(raise_exception=True)
+        liquidacao = LiquidacaoContratoService.liquidar_contrato(
+            int(pk),
+            comprovantes=payload.validated_data["comprovantes"],
+            data_liquidacao=payload.validated_data["data_liquidacao"],
+            valor_total=payload.validated_data["valor_total"],
+            observacao=payload.validated_data["observacao"],
+            user=request.user,
+        )
+        row = LiquidacaoContratoService.listar(
+            listing_status="liquidado",
+            search=liquidacao.contrato.codigo,
+            contract_id=liquidacao.contrato_id,
+        ).rows
+        serialized = self.get_serializer(row[:1], many=True).data
+        return Response(serialized[0] if serialized else {"id": liquidacao.id}, status=201)
+
+    @action(detail=True, methods=["post"], url_path="reverter")
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+            )
+        ]
+    )
+    def reverter(self, request, pk=None):
+        payload = ReverterLiquidacaoSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        liquidacao = LiquidacaoContratoService.reverter_liquidacao(
+            int(pk),
+            motivo_reversao=payload.validated_data["motivo_reversao"],
+            user=request.user,
+        )
+        row = LiquidacaoContratoService.listar(
+            listing_status="liquidado",
+            search=liquidacao.contrato.codigo,
+            contract_id=liquidacao.contrato_id,
+        ).rows
+        serialized = self.get_serializer(row[:1], many=True).data
+        return Response(serialized[0] if serialized else {"id": liquidacao.id})
+
+
+class DevolucaoContratoViewSet(mixins.ListModelMixin, GenericViewSet):
+    queryset = Contrato.objects.none()
+    serializer_class = DevolucaoContratoListSerializer
+    permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrTesoureiroOrAdmin]
+    pagination_class = StandardResultsSetPagination
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def list(self, request, *args, **kwargs):  # noqa: A003
+        competencia = parse_month_filter(request.query_params.get("competencia"))
+        payload = DevolucaoAssociadoService.listar_contratos(
+            search=(request.query_params.get("search") or "").strip() or None,
+            estado=(request.query_params.get("estado") or "").strip() or None,
+            competencia=competencia,
+            contract_id=(
+                int(request.query_params["contract_id"])
+                if (request.query_params.get("contract_id") or "").isdigit()
+                else None
+            ),
+        )
+        page = self.paginate_queryset(payload.rows)
+        serializer = self.get_serializer(page if page is not None else payload.rows, many=True)
+        kpis = DevolucaoKpisSerializer(payload.kpis).data
+        if page is not None:
+            response = self.get_paginated_response(serializer.data)
+            response.data["kpis"] = kpis
+            return response
+        return Response({"results": serializer.data, "kpis": kpis})
+
+    @action(detail=True, methods=["post"], url_path="registrar")
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+            )
+        ]
+    )
+    def registrar(self, request, pk=None):
+        payload = RegistrarDevolucaoSerializer(
+            data=request.data,
+            context=self.get_serializer_context(),
+        )
+        payload.is_valid(raise_exception=True)
+        devolucao = DevolucaoAssociadoService.registrar(
+            int(pk),
+            tipo=payload.validated_data["tipo"],
+            data_devolucao=payload.validated_data["data_devolucao"],
+            quantidade_parcelas=payload.validated_data["quantidade_parcelas"],
+            valor=payload.validated_data["valor"],
+            motivo=payload.validated_data["motivo"],
+            comprovantes=payload.validated_data["comprovantes"],
+            competencia_referencia=payload.validated_data.get("competencia_referencia"),
+            user=request.user,
+        )
+        row = DevolucaoAssociadoService.listar_historico(
+            contract_id=devolucao.contrato_id,
+        ).rows
+        matched = [item for item in row if item["devolucao_id"] == devolucao.id]
+        serialized = DevolucaoAssociadoListSerializer(
+            matched[:1],
+            many=True,
+            context=self.get_serializer_context(),
+        ).data
+        return Response(serialized[0] if serialized else {"id": devolucao.id}, status=201)
+
+
+class DevolucaoAssociadoViewSet(mixins.ListModelMixin, GenericViewSet):
+    queryset = DevolucaoAssociado.objects.none()
+    serializer_class = DevolucaoAssociadoListSerializer
+    permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrTesoureiroOrAdmin]
+    pagination_class = StandardResultsSetPagination
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def list(self, request, *args, **kwargs):  # noqa: A003
+        competencia = parse_month_filter(request.query_params.get("competencia"))
+        payload = DevolucaoAssociadoService.listar_historico(
+            search=(request.query_params.get("search") or "").strip() or None,
+            tipo=(request.query_params.get("tipo") or "").strip() or None,
+            status=(request.query_params.get("status") or "").strip() or None,
+            competencia=competencia,
+            contract_id=(
+                int(request.query_params["contract_id"])
+                if (request.query_params.get("contract_id") or "").isdigit()
+                else None
+            ),
+        )
+        page = self.paginate_queryset(payload.rows)
+        serializer = self.get_serializer(page if page is not None else payload.rows, many=True)
+        kpis = DevolucaoKpisSerializer(payload.kpis).data
+        if page is not None:
+            response = self.get_paginated_response(serializer.data)
+            response.data["kpis"] = kpis
+            return response
+        return Response({"results": serializer.data, "kpis": kpis})
+
+    @action(detail=True, methods=["post"], url_path="reverter")
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+            )
+        ]
+    )
+    def reverter(self, request, pk=None):
+        payload = ReverterDevolucaoSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        devolucao = DevolucaoAssociadoService.reverter(
+            int(pk),
+            motivo_reversao=payload.validated_data["motivo_reversao"],
+            user=request.user,
+        )
+        row = DevolucaoAssociadoService.listar_historico(
+            contract_id=devolucao.contrato_id,
+        ).rows
+        matched = [item for item in row if item["devolucao_id"] == devolucao.id]
+        serialized = self.get_serializer(
+            matched[:1],
+            many=True,
+            context=self.get_serializer_context(),
+        ).data
+        return Response(serialized[0] if serialized else {"id": devolucao.id})
+
+
 class DespesaViewSet(ModelViewSet):
     queryset = Despesa.objects.none()
     permission_classes = [permissions.IsAuthenticated, IsTesoureiroOrAdmin]
@@ -380,7 +614,7 @@ class DespesaViewSet(ModelViewSet):
 
     def list(self, request, *args, **kwargs):  # noqa: A003
         queryset = self.filter_queryset(self.get_queryset())
-        kpis = DespesaService.kpis(queryset)
+        kpis = DespesaKpisSerializer(DespesaService.kpis(queryset)).data
         page = self.paginate_queryset(queryset)
         serializer = self.get_serializer(page if page is not None else queryset, many=True)
         if page is not None:
@@ -419,3 +653,7 @@ class DespesaViewSet(ModelViewSet):
         despesa = DespesaService.anexar(self.get_object(), payload.validated_data["anexo"])
         serializer = DespesaListSerializer(despesa, context=self.get_serializer_context())
         return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        DespesaService.excluir(self.get_object())
+        return Response(status=204)

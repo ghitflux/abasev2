@@ -7,7 +7,7 @@ import type { EsteiraList } from "./EsteiraList.ts";
 
 export type V1EsteiraTransicoesRetrievePathParams = {
   /**
-   * @description Um valor inteiro único que identifica este esteira item.
+   * @description A unique integer value identifying this esteira item.
    * @type integer
    */
   id: number;

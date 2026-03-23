@@ -140,11 +140,11 @@ describe("GlobalHeaderSearch", () => {
     const input = screen.getByPlaceholderText("Buscar rota, associado, CPF ou matrícula");
 
     await user.click(input);
-    await user.type(input, "baixa manual");
+    await user.type(input, "inadimplentes");
 
     expect(await screen.findByText("Rotas")).toBeInTheDocument();
 
-    const option = await screen.findByRole("button", { name: /Baixa Manual/i });
+    const option = await screen.findByRole("button", { name: /Inadimplentes/i });
     await user.click(option);
 
     await waitFor(() =>

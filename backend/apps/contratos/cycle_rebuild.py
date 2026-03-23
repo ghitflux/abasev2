@@ -25,8 +25,8 @@ def _normalize_status(status: str) -> str:
         Refinanciamento.Status.PENDENTE_APTO: Refinanciamento.Status.APTO_A_RENOVAR,
         Refinanciamento.Status.SOLICITADO: Refinanciamento.Status.APTO_A_RENOVAR,
         Refinanciamento.Status.EM_ANALISE: Refinanciamento.Status.EM_ANALISE_RENOVACAO,
-        Refinanciamento.Status.APROVADO: Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
-        Refinanciamento.Status.CONCLUIDO: Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+        Refinanciamento.Status.APROVADO: Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+        Refinanciamento.Status.CONCLUIDO: Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
     }
     return mapping.get(status, status)
 
@@ -45,7 +45,9 @@ def _active_operational_refis(contrato: Contrato) -> list[Refinanciamento]:
             origem=Refinanciamento.Origem.OPERACIONAL,
             status__in=[
                 Refinanciamento.Status.APTO_A_RENOVAR,
+                Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
                 Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
                 Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
                 Refinanciamento.Status.PENDENTE_APTO,
                 Refinanciamento.Status.SOLICITADO,
@@ -374,6 +376,12 @@ def _sync_refinanciamentos(
                 "status": (
                     Assumption.Status.ASSUMIDO
                     if chosen.status == Refinanciamento.Status.EM_ANALISE_RENOVACAO
+                    else Assumption.Status.FINALIZADO
+                    if chosen.status
+                    in {
+                        Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+                        Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+                    }
                     else Assumption.Status.LIBERADO
                 ),
                 "solicitado_em": chosen.created_at,
@@ -382,7 +390,11 @@ def _sync_refinanciamentos(
                 if chosen.status == Refinanciamento.Status.EM_ANALISE_RENOVACAO
                 else None,
                 "finalizado_em": chosen.reviewed_at
-                if chosen.status == Refinanciamento.Status.APROVADO_PARA_RENOVACAO
+                if chosen.status
+                in {
+                    Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+                    Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+                }
                 else None,
             },
         )
@@ -426,6 +438,11 @@ def rebuild_contract_cycle_state(
     )
 
     if not execute:
+        return report
+
+    if contrato.admin_manual_layout_enabled:
+        # Admin overrides write the canonical layout directly to Ciclo/Parcela.
+        # Rebuild must not rematerialize from the automatic engine and undo manual edits.
         return report
 
     existing_cycles: dict[int, Ciclo] = {}

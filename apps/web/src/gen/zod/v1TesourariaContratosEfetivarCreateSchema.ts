@@ -10,7 +10,7 @@ export const V1TesourariaContratosEfetivarCreatePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("Um valor inteiro único que identifica este contrato."),
+    .describe("A unique integer value identifying this contrato."),
 });
 
 export const V1TesourariaContratosEfetivarCreate200Schema = z.lazy(
@@ -25,12 +25,14 @@ export const V1TesourariaContratosEfetivarCreateMutationRequestSchema = z
     associado_id: true,
     nome: true,
     cpf_cnpj: true,
+    matricula: true,
     chave_pix: true,
     codigo: true,
     data_assinatura: true,
     status: true,
     agente: true,
     agente_nome: true,
+    percentual_repasse: true,
     comissao_agente: true,
     margem_disponivel: true,
     comprovantes: true,

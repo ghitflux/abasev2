@@ -9,145 +9,306 @@ paths:
       operationId: app_antecipacao_historico_retrieve
       tags:
       - app
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/app/client-log:
     post:
       operationId: app_client_log_create
       tags:
       - app
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegacyClientLogResponse'
+          description: ''
   /api/app/mensalidades:
     get:
       operationId: app_mensalidades_retrieve
       tags:
       - app
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/app/mensalidades/ciclo:
     get:
       operationId: app_mensalidades_ciclo_retrieve
       tags:
       - app
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/associado/a2/status:
     get:
       operationId: associado_a2_status_retrieve
       tags:
       - associado
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/associado/me:
     get:
       operationId: associado_me_retrieve
       tags:
       - associado
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/associado/termo-adesao:
     get:
       operationId: associado_termo_adesao_retrieve
       tags:
       - associado
+      security:
+      - LegacyMobileToken: []
       responses:
-        '200':
-          description: No response body
+        '302':
+          content:
+            application/json:
+              schema:
+                type: string
+                format: uri
+          description: ''
   /api/associadodois/aceite-termos:
     post:
       operationId: associadodois_aceite_termos_create
       tags:
       - associadodois
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegacyAceiteTermosResponse'
+          description: ''
   /api/associadodois/atualizar-basico:
     post:
       operationId: associadodois_atualizar_basico_create
       tags:
       - associadodois
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/associadodois/auxilio2/charge-30:
     post:
       operationId: associadodois_auxilio2_charge_30_create
       tags:
       - associadodois
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/associadodois/auxilio2/resumo:
     get:
       operationId: associadodois_auxilio2_resumo_retrieve
       tags:
       - associadodois
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/associadodois/auxilio2/status:
     get:
       operationId: associadodois_auxilio2_status_retrieve
       tags:
       - associadodois
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/associadodois/cadastro:
     get:
       operationId: associadodois_cadastro_retrieve
       tags:
       - associadodois
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/associadodois/check-cpf:
     get:
       operationId: associadodois_check_cpf_retrieve
       tags:
       - associadodois
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/associadodois/contato:
     post:
       operationId: associadodois_contato_create
       tags:
       - associadodois
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegacyContatoResponse'
+          description: ''
   /api/associadodois/issues/my:
     get:
       operationId: associadodois_issues_my_retrieve
       tags:
       - associadodois
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/associadodois/reuploads:
     post:
       operationId: associadodois_reuploads_create
       tags:
       - associadodois
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/associadodois/status:
     get:
       operationId: associadodois_status_retrieve
       tags:
       - associadodois
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/auth/check-email:
     get:
       operationId: auth_check_email_retrieve
@@ -157,71 +318,165 @@ paths:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/auth/forgot-password:
     post:
       operationId: auth_forgot_password_create
       tags:
       - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LegacyForgotPassword'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LegacyForgotPassword'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LegacyForgotPassword'
+        required: true
       security:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/auth/register:
     post:
       operationId: auth_register_create
       tags:
       - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LegacyRegister'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LegacyRegister'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LegacyRegister'
+        required: true
       security:
       - {}
       responses:
-        '200':
-          description: No response body
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/auth/reset-password:
     post:
       operationId: auth_reset_password_create
       tags:
       - auth
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LegacyResetPassword'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LegacyResetPassword'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LegacyResetPassword'
+        required: true
       security:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/home:
     get:
       operationId: home_retrieve
       tags:
       - home
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/login:
     post:
       operationId: login_create
       tags:
       - login
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LegacyLogin'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LegacyLogin'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LegacyLogin'
+        required: true
       security:
       - {}
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/logout:
     post:
       operationId: logout_create
       tags:
       - logout
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/me:
     get:
       operationId: me_retrieve
       tags:
       - me
+      security:
+      - LegacyMobileToken: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
   /api/schema/:
     get:
       operationId: schema_retrieve
@@ -367,6 +622,336 @@ paths:
                 type: object
                 additionalProperties: {}
           description: ''
+  /api/v1/admin-overrides/associados/{id}/core/:
+    post:
+      operationId: admin_override_associado_core
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Um valor inteiro único que identifica este associado.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssociadoCoreOverrideWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssociadoCoreOverrideWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssociadoCoreOverrideWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOverrideEditorPayload'
+          description: ''
+  /api/v1/admin-overrides/associados/{id}/editor/:
+    get:
+      operationId: admin_override_associado_editor
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Um valor inteiro único que identifica este associado.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOverrideEditorPayload'
+          description: ''
+  /api/v1/admin-overrides/associados/{id}/esteira/status/:
+    post:
+      operationId: admin_override_associado_esteira
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Um valor inteiro único que identifica este associado.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EsteiraOverrideWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/EsteiraOverrideWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/EsteiraOverrideWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOverrideEditorPayload'
+          description: ''
+  /api/v1/admin-overrides/associados/{id}/history/:
+    get:
+      operationId: admin_override_associado_history
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Um valor inteiro único que identifica este associado.
+        required: true
+      - name: ordering
+        required: false
+        in: query
+        description: Qual campo usar ao ordenar os resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Um número de página dentro do conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Número de resultados a serem retornados por página.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Um termo de busca.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminOverrideEventReadList'
+          description: ''
+  /api/v1/admin-overrides/comprovantes/{id}/versionar/:
+    post:
+      operationId: admin_override_comprovante_versionar
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Um valor inteiro único que identifica este comprovante.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ComprovanteVersionWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ComprovanteVersionWrite'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComprovanteVersionWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOverrideEditorPayload'
+          description: ''
+  /api/v1/admin-overrides/contratos/{id}/core/:
+    post:
+      operationId: admin_override_contrato_core
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Um valor inteiro único que identifica este contrato.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ContratoCoreOverrideWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ContratoCoreOverrideWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ContratoCoreOverrideWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOverrideEditorPayload'
+          description: ''
+  /api/v1/admin-overrides/contratos/{id}/cycles/layout/:
+    post:
+      operationId: admin_override_contrato_cycles_layout
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Um valor inteiro único que identifica este contrato.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CycleLayoutOverrideWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CycleLayoutOverrideWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CycleLayoutOverrideWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOverrideEditorPayload'
+          description: ''
+  /api/v1/admin-overrides/documentos/{id}/versionar/:
+    post:
+      operationId: admin_override_documento_versionar
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Um valor inteiro único que identifica este documento.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DocumentoVersionWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DocumentoVersionWrite'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DocumentoVersionWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Documento'
+          description: ''
+  /api/v1/admin-overrides/events/{id}/reverter/:
+    post:
+      operationId: admin_override_event_reverter
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Um valor inteiro único que identifica este admin override event.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminOverrideReverterWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminOverrideReverterWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminOverrideReverterWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOverrideEventRead'
+          description: ''
+  /api/v1/admin-overrides/refinanciamentos/{id}/core/:
+    post:
+      operationId: admin_override_refinanciamento_core
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Um valor inteiro único que identifica este refinanciamento.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefinanciamentoOverrideWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RefinanciamentoOverrideWrite'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RefinanciamentoOverrideWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOverrideEditorPayload'
+          description: ''
   /api/v1/agente/pagamentos/:
     get:
       operationId: v1_agente_pagamentos_list
@@ -405,6 +990,45 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaginatedAgentePagamentoContratoList'
+          description: ''
+  /api/v1/agente/pagamentos/notificacoes/:
+    get:
+      operationId: v1_agente_pagamentos_notificacoes_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentePagamentoContrato'
+          description: ''
+  /api/v1/agente/pagamentos/notificacoes/marcar-lidas/:
+    post:
+      operationId: v1_agente_pagamentos_notificacoes_marcar_lidas_create
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentePagamentoContrato'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AgentePagamentoContrato'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AgentePagamentoContrato'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentePagamentoContrato'
           description: ''
   /api/v1/analise/:
     get:
@@ -467,6 +1091,7 @@ paths:
         name: pagamento_id
         schema:
           type: string
+          pattern: ^\d+$
         required: true
       tags:
       - v1
@@ -483,6 +1108,7 @@ paths:
         name: pagamento_id
         schema:
           type: string
+          pattern: ^\d+$
         required: true
       tags:
       - v1
@@ -528,6 +1154,7 @@ paths:
         name: associado_id
         schema:
           type: string
+          pattern: ^\d+$
         required: true
       tags:
       - v1
@@ -639,6 +1266,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/RefinanciamentoDetail'
           description: ''
+  /api/v1/analise/refinanciamentos/resumo/:
+    get:
+      operationId: v1_analise_refinanciamentos_resumo_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefinanciamentoList'
+          description: ''
   /api/v1/app/antecipacao/:
     get:
       operationId: v1_app_antecipacao_retrieve
@@ -651,7 +1292,11 @@ paths:
       - jwtAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/_AppAntecipacaoResponse'
+          description: ''
   /api/v1/app/documentos/:
     post:
       operationId: v1_app_documentos_create
@@ -660,11 +1305,21 @@ paths:
         Multipart: tipo, arquivo, observacao (opcional).
       tags:
       - v1
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DocumentoCreate'
+        required: true
       security:
       - jwtAuth: []
       responses:
-        '200':
-          description: No response body
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/_AppDocumentoUploadResponse'
+          description: ''
   /api/v1/app/me/:
     get:
       operationId: v1_app_me_retrieve
@@ -677,7 +1332,11 @@ paths:
       - jwtAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/_AppMeResponse'
+          description: ''
   /api/v1/app/mensalidades/:
     get:
       operationId: v1_app_mensalidades_retrieve
@@ -688,7 +1347,11 @@ paths:
       - jwtAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/_AppMensalidadesResponse'
+          description: ''
   /api/v1/app/pendencias/:
     get:
       operationId: v1_app_pendencias_retrieve
@@ -699,7 +1362,11 @@ paths:
       - jwtAuth: []
       responses:
         '200':
-          description: No response body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/_AppPendenciasResponse'
+          description: ''
   /api/v1/associados/:
     get:
       operationId: v1_associados_list
@@ -733,6 +1400,11 @@ paths:
         schema:
           type: string
         description: Busca parcial por nome
+      - in: query
+        name: numero_ciclos
+        schema:
+          type: number
+        description: Filtrar pelo total exato de ciclos lógicos
       - name: ordering
         required: false
         in: query
@@ -756,6 +1428,11 @@ paths:
         description: Número de resultados a serem retornados por página.
         schema:
           type: integer
+      - in: query
+        name: perfil_ciclo
+        schema:
+          type: string
+        description: 'Filtrar por perfil de ciclo: novo ou renovado'
       - name: search
         required: false
         in: query
@@ -766,22 +1443,7 @@ paths:
         name: status
         schema:
           type: string
-          enum:
-          - ativo
-          - cadastrado
-          - em_analise
-          - inadimplente
-          - inativo
-          - pendente
-        description: |-
-          Filtrar por status do associado
-
-          * `cadastrado` - Cadastrado
-          * `em_analise` - Em análise
-          * `ativo` - Ativo
-          * `pendente` - Pendente
-          * `inativo` - Inativo
-          * `inadimplente` - Inadimplente
+        description: Filtrar por status do associado ou liquidado
       tags:
       - v1
       security:
@@ -987,6 +1649,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/AssociadoUpdate'
           description: ''
+  /api/v1/associados/agentes/:
+    get:
+      operationId: v1_associados_agentes_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssociadoUpdate'
+          description: ''
   /api/v1/associados/metricas/:
     get:
       operationId: v1_associados_metricas_retrieve
@@ -1142,6 +1818,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PaginatedAdminUserListList'
+          description: ''
+    post:
+      operationId: v1_configuracoes_usuarios_create
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminUserCreate'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminUserCreate'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminUserCreate'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminUserCreate'
           description: ''
   /api/v1/configuracoes/usuarios/{id}/:
     get:
@@ -1362,6 +2063,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/RefinanciamentoDetail'
           description: ''
+  /api/v1/coordenacao/refinanciados/resumo/:
+    get:
+      operationId: v1_coordenacao_refinanciados_resumo_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefinanciamentoList'
+          description: ''
   /api/v1/coordenacao/refinanciamento/:
     get:
       operationId: v1_coordenacao_refinanciamento_list
@@ -1448,6 +2163,20 @@ paths:
               schema:
                 $ref: '#/components/schemas/RefinanciamentoList'
           description: ''
+  /api/v1/coordenacao/refinanciamento/resumo/:
+    get:
+      operationId: v1_coordenacao_refinanciamento_resumo_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefinanciamentoList'
+          description: ''
   /api/v1/dashboard/admin/agentes/:
     get:
       operationId: v1_dashboard_admin_agentes_retrieve
@@ -1457,11 +2186,23 @@ paths:
         schema:
           type: integer
       - in: query
+        name: competencia
+        schema:
+          type: string
+      - in: query
         name: date_end
         schema:
           type: string
       - in: query
         name: date_start
+        schema:
+          type: string
+      - in: query
+        name: day
+        schema:
+          type: string
+      - in: query
+        name: status
         schema:
           type: string
       tags:
@@ -1493,6 +2234,10 @@ paths:
           type: string
       - in: query
         name: date_start
+        schema:
+          type: string
+      - in: query
+        name: day
         schema:
           type: string
       - in: query
@@ -1557,6 +2302,10 @@ paths:
         schema:
           type: string
       - in: query
+        name: day
+        schema:
+          type: string
+      - in: query
         name: status
         schema:
           type: string
@@ -1592,6 +2341,10 @@ paths:
         schema:
           type: string
       - in: query
+        name: day
+        schema:
+          type: string
+      - in: query
         name: status
         schema:
           type: string
@@ -1616,6 +2369,14 @@ paths:
           type: integer
       - in: query
         name: competencia
+        schema:
+          type: string
+      - in: query
+        name: day
+        schema:
+          type: string
+      - in: query
+        name: status
         schema:
           type: string
       tags:
@@ -1873,6 +2634,20 @@ paths:
   /api/v1/esteira/pendencias/:
     get:
       operationId: v1_esteira_pendencias_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EsteiraList'
+          description: ''
+  /api/v1/esteira/pendencias-resumo/:
+    get:
+      operationId: v1_esteira_pendencias_resumo_retrieve
       tags:
       - v1
       security:
@@ -2419,6 +3194,12 @@ paths:
       - v1
       requestBody:
         content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RefinanciamentoList'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefinanciamentoList'
           multipart/form-data:
             schema:
               $ref: '#/components/schemas/RefinanciamentoList'
@@ -2626,16 +3407,27 @@ paths:
       - v1
       requestBody:
         content:
-          application/json:
+          multipart/form-data:
             schema:
               $ref: '#/components/schemas/RefinanciamentoList'
           application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/RefinanciamentoList'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/RefinanciamentoList'
         required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefinanciamentoList'
+          description: ''
+  /api/v1/refinanciamentos/resumo/:
+    get:
+      operationId: v1_refinanciamentos_resumo_retrieve
+      tags:
+      - v1
       security:
       - jwtAuth: []
       responses:
@@ -3386,6 +4178,251 @@ paths:
               schema:
                 $ref: '#/components/schemas/DespesaList'
           description: ''
+  /api/v1/tesouraria/devolucoes/:
+    get:
+      operationId: v1_tesouraria_devolucoes_list
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Qual campo usar ao ordenar os resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Um número de página dentro do conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Número de resultados a serem retornados por página.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Um termo de busca.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDevolucaoAssociadoListList'
+          description: ''
+  /api/v1/tesouraria/devolucoes/{id}/reverter/:
+    post:
+      operationId: v1_tesouraria_devolucoes_reverter_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Um valor inteiro único que identifica este devolucao associado.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DevolucaoAssociadoList'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DevolucaoAssociadoList'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DevolucaoAssociadoList'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DevolucaoAssociadoList'
+          description: ''
+  /api/v1/tesouraria/devolucoes/contratos/:
+    get:
+      operationId: v1_tesouraria_devolucoes_contratos_list
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Qual campo usar ao ordenar os resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Um número de página dentro do conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Número de resultados a serem retornados por página.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Um termo de busca.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDevolucaoContratoListList'
+          description: ''
+  /api/v1/tesouraria/devolucoes/contratos/{id}/registrar/:
+    post:
+      operationId: v1_tesouraria_devolucoes_contratos_registrar_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Um valor inteiro único que identifica este contrato.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DevolucaoContratoList'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DevolucaoContratoList'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DevolucaoContratoList'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DevolucaoContratoList'
+          description: ''
+  /api/v1/tesouraria/liquidacoes/:
+    get:
+      operationId: v1_tesouraria_liquidacoes_list
+      parameters:
+      - name: ordering
+        required: false
+        in: query
+        description: Qual campo usar ao ordenar os resultados.
+        schema:
+          type: string
+      - name: page
+        required: false
+        in: query
+        description: Um número de página dentro do conjunto de resultados paginado.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Número de resultados a serem retornados por página.
+        schema:
+          type: integer
+      - name: search
+        required: false
+        in: query
+        description: Um termo de busca.
+        schema:
+          type: string
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedLiquidacaoContratoListList'
+          description: ''
+  /api/v1/tesouraria/liquidacoes/{id}/liquidar/:
+    post:
+      operationId: v1_tesouraria_liquidacoes_liquidar_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Um valor inteiro único que identifica este liquidacao contrato.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LiquidacaoContratoList'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LiquidacaoContratoList'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiquidacaoContratoList'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiquidacaoContratoList'
+          description: ''
+  /api/v1/tesouraria/liquidacoes/{id}/reverter/:
+    post:
+      operationId: v1_tesouraria_liquidacoes_reverter_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: Um valor inteiro único que identifica este liquidacao contrato.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LiquidacaoContratoList'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LiquidacaoContratoList'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiquidacaoContratoList'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiquidacaoContratoList'
+          description: ''
   /api/v1/tesouraria/refinanciamentos/:
     get:
       operationId: v1_tesouraria_refinanciamentos_list
@@ -3473,8 +4510,550 @@ paths:
               schema:
                 $ref: '#/components/schemas/RefinanciamentoList'
           description: ''
+  /api/v1/tesouraria/refinanciamentos/resumo/:
+    get:
+      operationId: v1_tesouraria_refinanciamentos_resumo_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefinanciamentoList'
+          description: ''
 components:
   schemas:
+    AdminOverrideChangeRead:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        entity_type:
+          type: string
+          readOnly: true
+        entity_id:
+          type: integer
+          readOnly: true
+        competencia_referencia:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        resumo:
+          type: string
+          readOnly: true
+        before_snapshot:
+          readOnly: true
+        after_snapshot:
+          readOnly: true
+      required:
+      - after_snapshot
+      - before_snapshot
+      - competencia_referencia
+      - entity_id
+      - entity_type
+      - id
+      - resumo
+    AdminOverrideCicloEditor:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+        numero:
+          type: integer
+        data_inicio:
+          type: string
+          format: date
+        data_fim:
+          type: string
+          format: date
+        status:
+          type: string
+        valor_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        parcelas:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOverrideParcelaEditor'
+      required:
+      - data_fim
+      - data_inicio
+      - id
+      - numero
+      - parcelas
+      - status
+      - updated_at
+      - valor_total
+    AdminOverrideContratoEditor:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        codigo:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        valor_bruto:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+        valor_liquido:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+        valor_mensalidade:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+        prazo_meses:
+          type: integer
+          readOnly: true
+        taxa_antecipacao:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+          readOnly: true
+        margem_disponivel:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+        valor_total_antecipacao:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+        doacao_associado:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+        comissao_agente:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+        data_contrato:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        data_aprovacao:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        data_primeira_mensalidade:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        mes_averbacao:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        auxilio_liberado_em:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        ciclos:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOverrideCicloEditor'
+          readOnly: true
+        meses_nao_pagos:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOverrideParcelaEditor'
+          readOnly: true
+        movimentos_financeiros_avulsos:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOverrideParcelaEditor'
+          readOnly: true
+        refinanciamento_ativo:
+          allOf:
+          - $ref: '#/components/schemas/AdminOverrideRefinanciamentoEditor'
+          readOnly: true
+          nullable: true
+      required:
+      - auxilio_liberado_em
+      - ciclos
+      - codigo
+      - comissao_agente
+      - data_aprovacao
+      - data_contrato
+      - data_primeira_mensalidade
+      - doacao_associado
+      - id
+      - margem_disponivel
+      - mes_averbacao
+      - meses_nao_pagos
+      - movimentos_financeiros_avulsos
+      - prazo_meses
+      - refinanciamento_ativo
+      - status
+      - taxa_antecipacao
+      - updated_at
+      - valor_bruto
+      - valor_liquido
+      - valor_mensalidade
+      - valor_total_antecipacao
+    AdminOverrideDocumentoRead:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        tipo:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        observacao:
+          type: string
+          readOnly: true
+        origem:
+          type: string
+          readOnly: true
+        nome_original:
+          type: string
+          readOnly: true
+        arquivo_referencia:
+          type: string
+          readOnly: true
+        arquivo_disponivel_localmente:
+          type: boolean
+          readOnly: true
+        tipo_referencia:
+          type: string
+          readOnly: true
+        url:
+          type: string
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        deleted_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - arquivo_disponivel_localmente
+      - arquivo_referencia
+      - created_at
+      - deleted_at
+      - id
+      - nome_original
+      - observacao
+      - origem
+      - status
+      - tipo
+      - tipo_referencia
+      - updated_at
+      - url
+    AdminOverrideEditorPayload:
+      type: object
+      properties:
+        associado:
+          allOf:
+          - $ref: '#/components/schemas/AssociadoAdminSnapshot'
+          readOnly: true
+        contratos:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOverrideContratoEditor'
+          readOnly: true
+        esteira:
+          allOf:
+          - $ref: '#/components/schemas/AdminOverrideEsteiraRead'
+          readOnly: true
+          nullable: true
+        documentos:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOverrideDocumentoRead'
+          readOnly: true
+      required:
+      - associado
+      - contratos
+      - documentos
+      - esteira
+    AdminOverrideEsteiraRead:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        etapa_atual:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        prioridade:
+          type: integer
+          readOnly: true
+        observacao:
+          type: string
+          readOnly: true
+        analista_responsavel_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        coordenador_responsavel_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        tesoureiro_responsavel_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - analista_responsavel_id
+      - coordenador_responsavel_id
+      - etapa_atual
+      - id
+      - observacao
+      - prioridade
+      - status
+      - tesoureiro_responsavel_id
+      - updated_at
+    AdminOverrideEventRead:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        escopo:
+          type: string
+          readOnly: true
+        resumo:
+          type: string
+          readOnly: true
+        motivo:
+          type: string
+          readOnly: true
+        confirmacao_dupla:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        realizado_por:
+          allOf:
+          - $ref: '#/components/schemas/SimpleUser'
+          readOnly: true
+        revertida_em:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        revertida_por:
+          allOf:
+          - $ref: '#/components/schemas/SimpleUser'
+          readOnly: true
+          nullable: true
+        motivo_reversao:
+          type: string
+          readOnly: true
+        before_snapshot:
+          readOnly: true
+        after_snapshot:
+          readOnly: true
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOverrideChangeRead'
+          readOnly: true
+      required:
+      - after_snapshot
+      - before_snapshot
+      - changes
+      - confirmacao_dupla
+      - created_at
+      - escopo
+      - id
+      - motivo
+      - motivo_reversao
+      - realizado_por
+      - resumo
+      - revertida_em
+      - revertida_por
+    AdminOverrideFinancialFlags:
+      type: object
+      properties:
+        tem_retorno:
+          type: boolean
+        tem_baixa_manual:
+          type: boolean
+        tem_liquidacao:
+          type: boolean
+      required:
+      - tem_baixa_manual
+      - tem_liquidacao
+      - tem_retorno
+    AdminOverrideParcelaEditor:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+        numero:
+          type: integer
+        referencia_mes:
+          type: string
+          format: date
+        valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        data_vencimento:
+          type: string
+          format: date
+        status:
+          type: string
+        data_pagamento:
+          type: string
+          format: date
+          nullable: true
+        observacao:
+          type: string
+        layout_bucket:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        financial_flags:
+          $ref: '#/components/schemas/AdminOverrideFinancialFlags'
+      required:
+      - data_pagamento
+      - data_vencimento
+      - financial_flags
+      - id
+      - layout_bucket
+      - numero
+      - observacao
+      - referencia_mes
+      - status
+      - updated_at
+      - valor
+    AdminOverrideRefinanciamentoEditor:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        competencia_solicitada:
+          type: string
+          format: date
+          readOnly: true
+        valor_refinanciamento:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+        repasse_agente:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+        executado_em:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        data_ativacao_ciclo:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        motivo_bloqueio:
+          type: string
+          readOnly: true
+        observacao:
+          type: string
+          readOnly: true
+        analista_note:
+          type: string
+          readOnly: true
+        coordenador_note:
+          type: string
+          readOnly: true
+        reviewed_by_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - analista_note
+      - competencia_solicitada
+      - coordenador_note
+      - data_ativacao_ciclo
+      - executado_em
+      - id
+      - motivo_bloqueio
+      - observacao
+      - repasse_agente
+      - reviewed_by_id
+      - status
+      - updated_at
+      - valor_refinanciamento
+    AdminOverrideReverterWrite:
+      type: object
+      properties:
+        motivo_reversao:
+          type: string
+      required:
+      - motivo_reversao
     AdminUserAccessUpdate:
       type: object
       properties:
@@ -3485,6 +5064,38 @@ components:
             maxLength: 30
         is_active:
           type: boolean
+    AdminUserCreate:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        roles:
+          type: array
+          items:
+            type: string
+            maxLength: 30
+        password:
+          type: string
+          writeOnly: true
+        password_confirm:
+          type: string
+          writeOnly: true
+        is_active:
+          type: boolean
+          default: true
+      required:
+      - email
+      - first_name
+      - password
+      - password_confirm
+      - roles
     AdminUserList:
       type: object
       properties:
@@ -3665,6 +5276,12 @@ components:
         status_visual_label:
           type: string
           readOnly: true
+        possui_meses_nao_descontados:
+          type: boolean
+          readOnly: true
+        meses_nao_descontados_count:
+          type: integer
+          readOnly: true
         data_contrato:
           type: string
           format: date
@@ -3680,9 +5297,12 @@ components:
           readOnly: true
         pagamento_inicial_valor:
           type: string
+          nullable: true
           readOnly: true
         pagamento_inicial_paid_at:
           type: string
+          format: date-time
+          nullable: true
           readOnly: true
         valor_mensalidade:
           type: string
@@ -3720,6 +5340,7 @@ components:
       - contrato_codigo
       - cpf_cnpj
       - id
+      - meses_nao_descontados_count
       - nome
       - pagamento_inicial_evidencias
       - pagamento_inicial_paid_at
@@ -3728,6 +5349,7 @@ components:
       - pagamento_inicial_valor
       - parcelas_pagas
       - parcelas_total
+      - possui_meses_nao_descontados
       - status_contrato
       - status_visual_label
       - status_visual_slug
@@ -3799,7 +5421,7 @@ components:
           readOnly: true
         agente:
           allOf:
-          - $ref: '#/components/schemas/SimpleUser'
+          - $ref: '#/components/schemas/EsteiraSimpleUser'
           readOnly: true
         contrato_codigo:
           type: string
@@ -3845,7 +5467,7 @@ components:
           readOnly: true
         agente:
           allOf:
-          - $ref: '#/components/schemas/SimpleUser'
+          - $ref: '#/components/schemas/EsteiraSimpleUser'
           readOnly: true
         valor_bruto:
           type: string
@@ -3941,6 +5563,8 @@ components:
           nullable: true
         referencia_at:
           type: string
+          format: date-time
+          nullable: true
           readOnly: true
         created_at:
           type: string
@@ -3983,7 +5607,7 @@ components:
           type: string
           maxLength: 255
         formato:
-          $ref: '#/components/schemas/FormatoEnum'
+          $ref: '#/components/schemas/ArquivoRetornoFormatoEnum'
         sistema_origem:
           type: string
           readOnly: true
@@ -4014,7 +5638,7 @@ components:
           minimum: 0
           format: int64
         status:
-          $ref: '#/components/schemas/Status200Enum'
+          $ref: '#/components/schemas/ArquivoRetornoStatusEnum'
         resumo:
           type: object
           additionalProperties: {}
@@ -4212,6 +5836,18 @@ components:
       - recebido
       - total
       - valores_30_50
+    ArquivoRetornoFormatoEnum:
+      enum:
+      - txt
+      - csv
+      - xlsx
+      - man
+      type: string
+      description: |-
+        * `txt` - TXT
+        * `csv` - CSV
+        * `xlsx` - XLSX
+        * `man` - Manual
     ArquivoRetornoItem:
       type: object
       properties:
@@ -4307,7 +5943,7 @@ components:
           type: string
           maxLength: 255
         formato:
-          $ref: '#/components/schemas/FormatoEnum'
+          $ref: '#/components/schemas/ArquivoRetornoFormatoEnum'
         sistema_origem:
           type: string
           readOnly: true
@@ -4338,7 +5974,7 @@ components:
           minimum: 0
           format: int64
         status:
-          $ref: '#/components/schemas/Status200Enum'
+          $ref: '#/components/schemas/ArquivoRetornoStatusEnum'
         resumo:
           type: object
           additionalProperties: {}
@@ -4369,6 +6005,18 @@ components:
       - resumo
       - sistema_origem
       - uploaded_by_nome
+    ArquivoRetornoStatusEnum:
+      enum:
+      - pendente
+      - processando
+      - concluido
+      - erro
+      type: string
+      description: |-
+        * `pendente` - Pendente
+        * `processando` - Processando
+        * `concluido` - Concluído
+        * `erro` - Erro
     ArquivoRetornoUpload:
       type: object
       properties:
@@ -4377,6 +6025,113 @@ components:
           format: uri
       required:
       - arquivo
+    AssociadoAdminSnapshot:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        matricula:
+          type: string
+          readOnly: true
+        tipo_documento:
+          type: string
+          readOnly: true
+        nome_completo:
+          type: string
+          readOnly: true
+        cpf_cnpj:
+          type: string
+          readOnly: true
+        rg:
+          type: string
+          readOnly: true
+        orgao_expedidor:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          readOnly: true
+        telefone:
+          type: string
+          readOnly: true
+        data_nascimento:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        profissao:
+          type: string
+          readOnly: true
+        estado_civil:
+          type: string
+          readOnly: true
+        orgao_publico:
+          type: string
+          readOnly: true
+        matricula_orgao:
+          type: string
+          readOnly: true
+        cargo:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        observacao:
+          type: string
+          readOnly: true
+        agente_responsavel_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        percentual_repasse:
+          type: string
+          readOnly: true
+        endereco:
+          allOf:
+          - $ref: '#/components/schemas/Endereco'
+          readOnly: true
+          nullable: true
+        dados_bancarios:
+          allOf:
+          - $ref: '#/components/schemas/DadosBancarios'
+          readOnly: true
+          nullable: true
+        contato:
+          allOf:
+          - $ref: '#/components/schemas/ContatoHistorico'
+          readOnly: true
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+      required:
+      - agente_responsavel_id
+      - cargo
+      - contato
+      - cpf_cnpj
+      - dados_bancarios
+      - data_nascimento
+      - email
+      - endereco
+      - estado_civil
+      - id
+      - matricula
+      - matricula_orgao
+      - nome_completo
+      - observacao
+      - orgao_expedidor
+      - orgao_publico
+      - percentual_repasse
+      - profissao
+      - rg
+      - status
+      - telefone
+      - tipo_documento
+      - updated_at
     AssociadoContrato:
       type: object
       properties:
@@ -4413,6 +6168,79 @@ components:
       - nome_completo
       - orgao_publico
       - status
+    AssociadoCoreOverrideWrite:
+      type: object
+      properties:
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        contrato_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        motivo:
+          type: string
+        nome_completo:
+          type: string
+        rg:
+          type: string
+        orgao_expedidor:
+          type: string
+        profissao:
+          type: string
+        estado_civil:
+          type: string
+        cargo:
+          type: string
+        status:
+          type: string
+        observacao:
+          type: string
+        data_nascimento:
+          type: string
+          format: date
+          nullable: true
+        agente_responsavel_id:
+          type: integer
+          nullable: true
+        percentual_repasse:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+        endereco:
+          $ref: '#/components/schemas/EnderecoAdminWrite'
+        dados_bancarios:
+          $ref: '#/components/schemas/DadosBancariosAdminWrite'
+        contato:
+          $ref: '#/components/schemas/ContatoAdminWrite'
+        valor_bruto_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        valor_liquido:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        prazo_meses:
+          type: integer
+          minimum: 1
+        taxa_antecipacao:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+        mensalidade:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        margem_disponivel:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        status_contrato:
+          type: string
+      required:
+      - motivo
     AssociadoCreate:
       type: object
       properties:
@@ -4501,6 +6329,15 @@ components:
           format: decimal
           pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
           default: '0.00'
+        agente_responsavel_id:
+          type: integer
+          writeOnly: true
+          nullable: true
+        percentual_repasse:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
+          default: '10.00'
         documentos_payload:
           type: array
           items:
@@ -4572,7 +6409,7 @@ components:
           type: string
           maxLength: 120
         status:
-          $ref: '#/components/schemas/Status427Enum'
+          $ref: '#/components/schemas/AssociadoStatusEnum'
         status_renovacao:
           type: string
           readOnly: true
@@ -4582,6 +6419,15 @@ components:
         status_visual_label:
           type: string
           readOnly: true
+        possui_meses_nao_descontados:
+          type: boolean
+          readOnly: true
+        meses_nao_descontados_count:
+          type: integer
+          readOnly: true
+        percentual_repasse:
+          type: string
+          readOnly: true
         observacao:
           type: string
         agente:
@@ -4589,13 +6435,19 @@ components:
           - $ref: '#/components/schemas/SimpleUser'
           readOnly: true
         endereco:
-          type: string
+          allOf:
+          - $ref: '#/components/schemas/Endereco'
+          nullable: true
           readOnly: true
         dados_bancarios:
-          type: string
+          allOf:
+          - $ref: '#/components/schemas/DadosBancarios'
+          nullable: true
           readOnly: true
         contato:
-          type: string
+          allOf:
+          - $ref: '#/components/schemas/ContatoHistorico'
+          nullable: true
           readOnly: true
         contratos:
           type: array
@@ -4619,7 +6471,16 @@ components:
           type: string
           format: date-time
           readOnly: true
+        mobile_sessions:
+          type: array
+          items: {}
+          readOnly: true
+        admin_history:
+          type: array
+          items: {}
+          readOnly: true
       required:
+      - admin_history
       - agente
       - contato
       - contratos
@@ -4631,7 +6492,11 @@ components:
       - esteira
       - id
       - matricula_display
+      - meses_nao_descontados_count
+      - mobile_sessions
       - nome_completo
+      - percentual_repasse
+      - possui_meses_nao_descontados
       - status_renovacao
       - status_visual_label
       - status_visual_slug
@@ -4658,7 +6523,7 @@ components:
           type: string
           maxLength: 18
         status:
-          $ref: '#/components/schemas/Status427Enum'
+          $ref: '#/components/schemas/AssociadoStatusEnum'
         status_renovacao:
           type: string
           readOnly: true
@@ -4667,6 +6532,12 @@ components:
           readOnly: true
         status_visual_label:
           type: string
+          readOnly: true
+        possui_meses_nao_descontados:
+          type: boolean
+          readOnly: true
+        meses_nao_descontados_count:
+          type: integer
           readOnly: true
         agente:
           allOf:
@@ -4685,10 +6556,28 @@ components:
       - cpf_cnpj
       - id
       - matricula_display
+      - meses_nao_descontados_count
       - nome_completo
+      - possui_meses_nao_descontados
       - status_renovacao
       - status_visual_label
       - status_visual_slug
+    AssociadoStatusEnum:
+      enum:
+      - cadastrado
+      - em_analise
+      - ativo
+      - pendente
+      - inativo
+      - inadimplente
+      type: string
+      description: |-
+        * `cadastrado` - Cadastrado
+        * `em_analise` - Em análise
+        * `ativo` - Ativo
+        * `pendente` - Pendente
+        * `inativo` - Inativo
+        * `inadimplente` - Inadimplente
     AssociadoUpdate:
       type: object
       properties:
@@ -4727,7 +6616,7 @@ components:
           type: string
           maxLength: 120
         status:
-          $ref: '#/components/schemas/Status427Enum'
+          $ref: '#/components/schemas/AssociadoStatusEnum'
         observacao:
           type: string
         endereco:
@@ -4760,6 +6649,13 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        agente_responsavel_id:
+          type: integer
+          nullable: true
+        percentual_repasse:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
       required:
       - cpf_cnpj
       - id
@@ -4828,6 +6724,60 @@ components:
     BlankEnum:
       enum:
       - ''
+    CicloLayoutWrite:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+        client_key:
+          type: string
+        numero:
+          type: integer
+        data_inicio:
+          type: string
+          format: date
+        data_fim:
+          type: string
+          format: date
+        status:
+          type: string
+        valor_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+      required:
+      - data_fim
+      - data_inicio
+      - numero
+      - status
+      - valor_total
+    ComprovanteOrigemEnum:
+      enum:
+      - efetivacao_contrato
+      - solicitacao_renovacao
+      - analise_renovacao
+      - tesouraria_renovacao
+      - legado
+      - outro
+      type: string
+      description: |-
+        * `efetivacao_contrato` - Efetivação do contrato
+        * `solicitacao_renovacao` - Solicitação de renovação
+        * `analise_renovacao` - Análise da renovação
+        * `tesouraria_renovacao` - Tesouraria da renovação
+        * `legado` - Legado
+        * `outro` - Outro
+    ComprovantePapelEnum:
+      enum:
+      - associado
+      - agente
+      - operacional
+      type: string
+      description: |-
+        * `associado` - Associado
+        * `agente` - Agente
+        * `operacional` - Operacional
     ComprovanteResumo:
       type: object
       properties:
@@ -4844,9 +6794,9 @@ components:
           type: integer
           nullable: true
         tipo:
-          $ref: '#/components/schemas/ComprovanteResumoTipoEnum'
+          $ref: '#/components/schemas/ComprovanteTipoEnum'
         papel:
-          $ref: '#/components/schemas/PapelEnum'
+          $ref: '#/components/schemas/ComprovantePapelEnum'
         arquivo:
           type: string
           format: uri
@@ -4876,7 +6826,7 @@ components:
           format: date-time
           nullable: true
         origem:
-          $ref: '#/components/schemas/ComprovanteResumoOrigemEnum'
+          $ref: '#/components/schemas/ComprovanteOrigemEnum'
         legacy_comprovante_id:
           type: integer
           maximum: 4294967295
@@ -4899,21 +6849,7 @@ components:
       - enviado_por
       - id
       - tipo_referencia
-    ComprovanteResumoOrigemEnum:
-      enum:
-      - efetivacao_contrato
-      - analise_renovacao
-      - tesouraria_renovacao
-      - legado
-      - outro
-      type: string
-      description: |-
-        * `efetivacao_contrato` - Efetivação do contrato
-        * `analise_renovacao` - Análise da renovação
-        * `tesouraria_renovacao` - Tesouraria da renovação
-        * `legado` - Legado
-        * `outro` - Outro
-    ComprovanteResumoTipoEnum:
+    ComprovanteTipoEnum:
       enum:
       - pix
       - contrato
@@ -4929,6 +6865,33 @@ components:
         * `comprovante_pagamento_associado` - Comprovante pagamento associado
         * `comprovante_pagamento_agente` - Comprovante pagamento agente
         * `outro` - Outro
+    ComprovanteVersionWrite:
+      type: object
+      properties:
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        motivo:
+          type: string
+        arquivo:
+          type: string
+          format: uri
+          nullable: true
+        tipo:
+          type: string
+        papel:
+          type: string
+        origem:
+          type: string
+        status_validacao:
+          type: string
+        data_pagamento:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - motivo
     ConfirmacaoList:
       type: object
       properties:
@@ -4967,6 +6930,58 @@ components:
       - link_chamada
       - nome
       - status_visual
+    ContatoAdminWrite:
+      type: object
+      properties:
+        celular:
+          type: string
+        email:
+          type: string
+        orgao_publico:
+          type: string
+        situacao_servidor:
+          type: string
+        matricula_servidor:
+          type: string
+    ContatoHistorico:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+        associado:
+          type: integer
+          nullable: true
+        celular:
+          type: string
+        email:
+          type: string
+        orgao_publico:
+          type: string
+        situacao_servidor:
+          type: string
+        matricula_servidor:
+          type: string
+        nome_contato:
+          type: string
+        parentesco:
+          type: string
+        telefone_contato:
+          type: string
+        ultima_interacao_em:
+          type: string
+          format: date-time
+          nullable: true
+        observacao:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
     ContatoHistoricoWrite:
       type: object
       properties:
@@ -4980,6 +6995,271 @@ components:
           type: string
         matricula_servidor:
           type: string
+    ContractDevolucao:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        tipo:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        data_devolucao:
+          type: string
+          format: date
+          readOnly: true
+        quantidade_parcelas:
+          type: integer
+          readOnly: true
+        valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          readOnly: true
+        motivo:
+          type: string
+          readOnly: true
+        competencia_referencia:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        nome:
+          type: string
+          readOnly: true
+        cpf_cnpj:
+          type: string
+          readOnly: true
+        matricula:
+          type: string
+          readOnly: true
+        agente_nome:
+          type: string
+          readOnly: true
+        contrato_codigo:
+          type: string
+          readOnly: true
+        realizado_por:
+          allOf:
+          - $ref: '#/components/schemas/ContractDevolucaoUser'
+          readOnly: true
+        revertida_em:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        revertida_por:
+          allOf:
+          - $ref: '#/components/schemas/ContractDevolucaoUser'
+          readOnly: true
+          nullable: true
+        motivo_reversao:
+          type: string
+          readOnly: true
+        comprovante:
+          allOf:
+          - $ref: '#/components/schemas/ContractDevolucaoComprovante'
+          readOnly: true
+          nullable: true
+        anexos:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContractDevolucaoComprovante'
+          readOnly: true
+      required:
+      - agente_nome
+      - anexos
+      - competencia_referencia
+      - comprovante
+      - contrato_codigo
+      - cpf_cnpj
+      - data_devolucao
+      - id
+      - matricula
+      - motivo
+      - motivo_reversao
+      - nome
+      - quantidade_parcelas
+      - realizado_por
+      - revertida_em
+      - revertida_por
+      - status
+      - tipo
+      - valor
+    ContractDevolucaoComprovante:
+      type: object
+      properties:
+        nome:
+          type: string
+          readOnly: true
+        url:
+          type: string
+          readOnly: true
+        arquivo_referencia:
+          type: string
+          readOnly: true
+        arquivo_disponivel_localmente:
+          type: boolean
+          readOnly: true
+        tipo_referencia:
+          type: string
+          readOnly: true
+      required:
+      - arquivo_disponivel_localmente
+      - arquivo_referencia
+      - nome
+      - tipo_referencia
+      - url
+    ContractDevolucaoUser:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        full_name:
+          type: string
+          readOnly: true
+      required:
+      - full_name
+      - id
+    ContractLiquidacao:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        data_liquidacao:
+          type: string
+          format: date
+          readOnly: true
+        valor_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          readOnly: true
+        observacao:
+          type: string
+          readOnly: true
+        realizado_por:
+          allOf:
+          - $ref: '#/components/schemas/ContractLiquidacaoUser'
+          readOnly: true
+        revertida_em:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        revertida_por:
+          allOf:
+          - $ref: '#/components/schemas/ContractLiquidacaoUser'
+          readOnly: true
+          nullable: true
+        motivo_reversao:
+          type: string
+          readOnly: true
+        comprovante:
+          allOf:
+          - $ref: '#/components/schemas/ContractLiquidacaoComprovante'
+          readOnly: true
+          nullable: true
+        parcelas:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContractLiquidacaoParcela'
+          readOnly: true
+      required:
+      - comprovante
+      - data_liquidacao
+      - id
+      - motivo_reversao
+      - observacao
+      - parcelas
+      - realizado_por
+      - revertida_em
+      - revertida_por
+      - status
+      - valor_total
+    ContractLiquidacaoComprovante:
+      type: object
+      properties:
+        nome:
+          type: string
+          readOnly: true
+        url:
+          type: string
+          readOnly: true
+        arquivo_referencia:
+          type: string
+          readOnly: true
+        arquivo_disponivel_localmente:
+          type: boolean
+          readOnly: true
+        tipo_referencia:
+          type: string
+          readOnly: true
+      required:
+      - arquivo_disponivel_localmente
+      - arquivo_referencia
+      - nome
+      - tipo_referencia
+      - url
+    ContractLiquidacaoParcela:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        numero:
+          type: integer
+          readOnly: true
+        referencia_mes:
+          type: string
+          format: date
+          readOnly: true
+        valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        data_vencimento:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        data_pagamento:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+      required:
+      - data_pagamento
+      - data_vencimento
+      - id
+      - numero
+      - referencia_mes
+      - status
+      - valor
+    ContractLiquidacaoUser:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        full_name:
+          type: string
+          readOnly: true
+      required:
+      - full_name
+      - id
     ContratoAgente:
       type: object
       properties:
@@ -4992,6 +7272,102 @@ components:
       required:
       - full_name
       - id
+    ContratoCoreOverrideWrite:
+      type: object
+      properties:
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        motivo:
+          type: string
+        status:
+          type: string
+        contato_web:
+          type: boolean
+        termos_web:
+          type: boolean
+        agente_id:
+          type: integer
+          nullable: true
+        valor_bruto:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        valor_liquido:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        valor_mensalidade:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        taxa_antecipacao:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,2})?$
+        margem_disponivel:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        valor_total_antecipacao:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        doacao_associado:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        comissao_agente:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        data_contrato:
+          type: string
+          format: date
+          nullable: true
+        data_aprovacao:
+          type: string
+          format: date
+          nullable: true
+        data_primeira_mensalidade:
+          type: string
+          format: date
+          nullable: true
+        mes_averbacao:
+          type: string
+          format: date
+          nullable: true
+        auxilio_liberado_em:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - motivo
+    ContratoEsteira:
+      type: object
+      properties:
+        codigo:
+          type: string
+          readOnly: true
+        associado_nome:
+          type: string
+          readOnly: true
+        cpf_cnpj:
+          type: string
+          readOnly: true
+        matricula:
+          type: string
+          readOnly: true
+        matricula_display:
+          type: string
+          readOnly: true
+      required:
+      - associado_nome
+      - codigo
+      - cpf_cnpj
+      - matricula
+      - matricula_display
     ContratoList:
       type: object
       properties:
@@ -5010,7 +7386,7 @@ components:
           - $ref: '#/components/schemas/ContratoAgente'
           readOnly: true
         status:
-          $ref: '#/components/schemas/Status1d4Enum'
+          $ref: '#/components/schemas/ContratoStatusEnum'
         status_resumido:
           type: string
           readOnly: true
@@ -5038,7 +7414,8 @@ components:
           format: decimal
           pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
         mensalidades:
-          type: string
+          allOf:
+          - $ref: '#/components/schemas/MensalidadesResumo'
           readOnly: true
         auxilio_liberado_em:
           type: string
@@ -5051,7 +7428,14 @@ components:
           type: string
           readOnly: true
         refinanciamento_id:
-          type: string
+          type: integer
+          nullable: true
+          readOnly: true
+        possui_meses_nao_descontados:
+          type: boolean
+          readOnly: true
+        meses_nao_descontados_count:
+          type: integer
           readOnly: true
       required:
       - agente
@@ -5059,7 +7443,9 @@ components:
       - etapa_fluxo
       - id
       - mensalidades
+      - meses_nao_descontados_count
       - pode_solicitar_refinanciamento
+      - possui_meses_nao_descontados
       - refinanciamento_id
       - status_contrato_visual
       - status_renovacao
@@ -5112,7 +7498,7 @@ components:
           format: decimal
           pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
         status:
-          $ref: '#/components/schemas/Status1d4Enum'
+          $ref: '#/components/schemas/ContratoStatusEnum'
         data_contrato:
           type: string
           format: date
@@ -5138,6 +7524,8 @@ components:
           nullable: true
         data_primeiro_ciclo_ativado:
           type: string
+          format: date-time
+          nullable: true
           readOnly: true
         origem_data_primeiro_ciclo:
           type: string
@@ -5159,32 +7547,63 @@ components:
           readOnly: true
         pagamento_inicial_valor:
           type: string
+          nullable: true
           readOnly: true
         pagamento_inicial_paid_at:
           type: string
+          format: date-time
+          nullable: true
           readOnly: true
         pagamento_inicial_evidencias:
-          type: string
+          type: array
+          items:
+            $ref: '#/components/schemas/InitialPaymentEvidence'
+          readOnly: true
+        liquidacao_contrato:
+          allOf:
+          - $ref: '#/components/schemas/ContractLiquidacao'
+          nullable: true
+          readOnly: true
+        devolucoes_associado:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContractDevolucao'
           readOnly: true
         status_renovacao:
           type: string
           readOnly: true
         refinanciamento_id:
-          type: string
+          type: integer
+          nullable: true
+          readOnly: true
+        possui_meses_nao_descontados:
+          type: boolean
+          readOnly: true
+        meses_nao_descontados_count:
+          type: integer
           readOnly: true
         meses_nao_pagos:
-          type: string
+          type: array
+          items:
+            $ref: '#/components/schemas/MesNaoPago'
           readOnly: true
         movimentos_financeiros_avulsos:
-          type: string
+          type: array
+          items:
+            $ref: '#/components/schemas/MovimentoFinanceiroAvulso'
           readOnly: true
         ciclos:
-          type: string
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectedCiclo'
           readOnly: true
       required:
       - ciclos
       - data_primeiro_ciclo_ativado
+      - devolucoes_associado
       - id
+      - liquidacao_contrato
+      - meses_nao_descontados_count
       - meses_nao_pagos
       - movimentos_financeiros_avulsos
       - origem_data_primeiro_ciclo
@@ -5193,11 +7612,87 @@ components:
       - pagamento_inicial_status
       - pagamento_inicial_status_label
       - pagamento_inicial_valor
+      - possui_meses_nao_descontados
       - primeiro_ciclo_ativacao_inferida
       - refinanciamento_id
       - status_renovacao
       - status_visual_label
       - status_visual_slug
+    ContratoStatusEnum:
+      enum:
+      - rascunho
+      - em_analise
+      - ativo
+      - encerrado
+      - cancelado
+      type: string
+      description: |-
+        * `rascunho` - Rascunho
+        * `em_analise` - Em análise
+        * `ativo` - Ativo
+        * `encerrado` - Encerrado
+        * `cancelado` - Cancelado
+    CycleLayoutOverrideWrite:
+      type: object
+      properties:
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        motivo:
+          type: string
+        cycles:
+          type: array
+          items:
+            $ref: '#/components/schemas/CicloLayoutWrite'
+        parcelas:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParcelaLayoutWrite'
+      required:
+      - cycles
+      - motivo
+      - parcelas
+    DadosBancarios:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+        associado:
+          type: integer
+          nullable: true
+        banco:
+          type: string
+        agencia:
+          type: string
+        conta:
+          type: string
+        tipo_conta:
+          type: string
+        chave_pix:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    DadosBancariosAdminWrite:
+      type: object
+      properties:
+        banco:
+          type: string
+        agencia:
+          type: string
+        conta:
+          type: string
+        tipo_conta:
+          type: string
+        chave_pix:
+          type: string
     DadosBancariosWrite:
       type: object
       properties:
@@ -5218,6 +7713,12 @@ components:
           type: integer
         agent_name:
           type: string
+        volume_financeiro:
+          type: number
+          format: double
+        participacao_volume:
+          type: number
+          format: double
         efetivados:
           type: integer
         cadastros:
@@ -5226,7 +7727,23 @@ components:
           type: integer
         renovados:
           type: integer
+        aptos_renovar:
+          type: integer
         inadimplentes:
+          type: integer
+        devolvidos:
+          type: integer
+        cadastrado:
+          type: integer
+        em_analise:
+          type: integer
+        pendente:
+          type: integer
+        ativo:
+          type: integer
+        inadimplente:
+          type: integer
+        inativo:
           type: integer
         participacao:
           type: number
@@ -5236,16 +7753,28 @@ components:
       required:
       - agent_id
       - agent_name
+      - aptos_renovar
+      - ativo
+      - cadastrado
       - cadastros
       - detail_metric
+      - devolvidos
       - efetivados
+      - em_analise
       - em_processo
+      - inadimplente
       - inadimplentes
+      - inativo
       - participacao
+      - participacao_volume
+      - pendente
       - renovados
+      - volume_financeiro
     DashboardAgentes:
       type: object
       properties:
+        competencia:
+          type: string
         date_start:
           type: string
           format: date
@@ -5262,6 +7791,7 @@ components:
             $ref: '#/components/schemas/DashboardAgentRanking'
       required:
       - cards
+      - competencia
       - date_end
       - date_start
       - ranking
@@ -5568,10 +8098,10 @@ components:
           format: date
           nullable: true
         status:
-          $ref: '#/components/schemas/Status7a5Enum'
+          $ref: '#/components/schemas/DespesaStatusEnum'
         tipo:
           oneOf:
-          - $ref: '#/components/schemas/TipoC90Enum'
+          - $ref: '#/components/schemas/DespesaTipoEnum'
           - $ref: '#/components/schemas/BlankEnum'
         recorrencia:
           $ref: '#/components/schemas/RecorrenciaEnum'
@@ -5608,6 +8138,22 @@ components:
       - lancado_por
       - updated_at
       - valor
+    DespesaStatusEnum:
+      enum:
+      - pendente
+      - pago
+      type: string
+      description: |-
+        * `pendente` - Pendente
+        * `pago` - Pago
+    DespesaTipoEnum:
+      enum:
+      - fixa
+      - variavel
+      type: string
+      description: |-
+        * `fixa` - Fixa
+        * `variavel` - Variável
     DespesaWrite:
       type: object
       properties:
@@ -5629,10 +8175,10 @@ components:
           format: date
           nullable: true
         status:
-          $ref: '#/components/schemas/Status7a5Enum'
+          $ref: '#/components/schemas/DespesaStatusEnum'
         tipo:
           oneOf:
-          - $ref: '#/components/schemas/TipoC90Enum'
+          - $ref: '#/components/schemas/DespesaTipoEnum'
           - $ref: '#/components/schemas/BlankEnum'
         recorrencia:
           $ref: '#/components/schemas/RecorrenciaEnum'
@@ -5649,6 +8195,220 @@ components:
       - data_despesa
       - descricao
       - valor
+    DevolucaoAnexo:
+      type: object
+      properties:
+        nome:
+          type: string
+          readOnly: true
+        url:
+          type: string
+          readOnly: true
+        arquivo_referencia:
+          type: string
+          readOnly: true
+        arquivo_disponivel_localmente:
+          type: boolean
+          readOnly: true
+        tipo_referencia:
+          type: string
+          readOnly: true
+      required:
+      - arquivo_disponivel_localmente
+      - arquivo_referencia
+      - nome
+      - tipo_referencia
+      - url
+    DevolucaoAssociadoList:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        devolucao_id:
+          type: integer
+          readOnly: true
+        contrato_id:
+          type: integer
+          readOnly: true
+        associado_id:
+          type: integer
+          readOnly: true
+        tipo:
+          type: string
+          readOnly: true
+        status_devolucao:
+          type: string
+          readOnly: true
+        data_devolucao:
+          type: string
+          format: date
+          readOnly: true
+        quantidade_parcelas:
+          type: integer
+          readOnly: true
+        valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          readOnly: true
+        motivo:
+          type: string
+          readOnly: true
+        competencia_referencia:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        nome:
+          type: string
+          readOnly: true
+        cpf_cnpj:
+          type: string
+          readOnly: true
+        matricula:
+          type: string
+          readOnly: true
+        agente_nome:
+          type: string
+          readOnly: true
+        contrato_codigo:
+          type: string
+          readOnly: true
+        status_contrato:
+          type: string
+          readOnly: true
+        realizado_por:
+          allOf:
+          - $ref: '#/components/schemas/SimpleUser'
+          readOnly: true
+          nullable: true
+        revertida_em:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        revertida_por:
+          allOf:
+          - $ref: '#/components/schemas/SimpleUser'
+          readOnly: true
+          nullable: true
+        motivo_reversao:
+          type: string
+          readOnly: true
+        comprovante:
+          allOf:
+          - $ref: '#/components/schemas/DevolucaoComprovante'
+          nullable: true
+          readOnly: true
+        anexos:
+          type: array
+          items:
+            $ref: '#/components/schemas/DevolucaoAnexo'
+          readOnly: true
+        pode_reverter:
+          type: boolean
+          readOnly: true
+      required:
+      - agente_nome
+      - anexos
+      - associado_id
+      - competencia_referencia
+      - comprovante
+      - contrato_codigo
+      - contrato_id
+      - cpf_cnpj
+      - data_devolucao
+      - devolucao_id
+      - id
+      - matricula
+      - motivo
+      - motivo_reversao
+      - nome
+      - pode_reverter
+      - quantidade_parcelas
+      - realizado_por
+      - revertida_em
+      - revertida_por
+      - status_contrato
+      - status_devolucao
+      - tipo
+      - valor
+    DevolucaoComprovante:
+      type: object
+      properties:
+        nome:
+          type: string
+          readOnly: true
+        url:
+          type: string
+          readOnly: true
+        arquivo_referencia:
+          type: string
+          readOnly: true
+        arquivo_disponivel_localmente:
+          type: boolean
+          readOnly: true
+        tipo_referencia:
+          type: string
+          readOnly: true
+      required:
+      - arquivo_disponivel_localmente
+      - arquivo_referencia
+      - nome
+      - tipo_referencia
+      - url
+    DevolucaoContratoList:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        contrato_id:
+          type: integer
+          readOnly: true
+        associado_id:
+          type: integer
+          readOnly: true
+        nome:
+          type: string
+          readOnly: true
+        cpf_cnpj:
+          type: string
+          readOnly: true
+        matricula:
+          type: string
+          readOnly: true
+        agente_nome:
+          type: string
+          readOnly: true
+        contrato_codigo:
+          type: string
+          readOnly: true
+        status_contrato:
+          type: string
+          readOnly: true
+        data_contrato:
+          type: string
+          format: date
+          readOnly: true
+        mes_averbacao:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+      required:
+      - agente_nome
+      - associado_id
+      - contrato_codigo
+      - contrato_id
+      - cpf_cnpj
+      - data_contrato
+      - id
+      - matricula
+      - mes_averbacao
+      - nome
+      - status_contrato
     Documento:
       type: object
       properties:
@@ -5701,6 +8461,68 @@ components:
       - tipo
       - tipo_referencia
       - updated_at
+    DocumentoCreate:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        tipo:
+          $ref: '#/components/schemas/DocumentoTipoEnum'
+        arquivo:
+          type: string
+          format: uri
+        status:
+          allOf:
+          - $ref: '#/components/schemas/DocumentoStatusEnum'
+          readOnly: true
+        observacao:
+          type: string
+      required:
+      - arquivo
+      - id
+      - status
+      - tipo
+    DocumentoEsteira:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        tipo:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        arquivo:
+          type: string
+          readOnly: true
+        arquivo_referencia:
+          type: string
+          readOnly: true
+        arquivo_disponivel_localmente:
+          type: boolean
+          readOnly: true
+        tipo_referencia:
+          type: string
+          readOnly: true
+        observacao:
+          type: string
+          readOnly: true
+        nome_original:
+          type: string
+          readOnly: true
+      required:
+      - arquivo
+      - arquivo_disponivel_localmente
+      - arquivo_referencia
+      - id
+      - nome_original
+      - observacao
+      - status
+      - tipo
+      - tipo_referencia
     DocumentoOrigemEnum:
       enum:
       - operacional
@@ -5745,6 +8567,72 @@ components:
         * `termo_adesao` - Termo de adesão
         * `termo_antecipacao` - Termo de antecipação
         * `outro` - Outro
+    DocumentoVersionWrite:
+      type: object
+      properties:
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        motivo:
+          type: string
+        arquivo:
+          type: string
+          format: uri
+          nullable: true
+        status:
+          type: string
+        observacao:
+          type: string
+      required:
+      - motivo
+    Endereco:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+        cep:
+          type: string
+        endereco:
+          type: string
+        numero:
+          type: string
+        complemento:
+          type: string
+        bairro:
+          type: string
+        cidade:
+          type: string
+        uf:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+    EnderecoAdminWrite:
+      type: object
+      properties:
+        cep:
+          type: string
+        logradouro:
+          type: string
+        endereco:
+          type: string
+        numero:
+          type: string
+        complemento:
+          type: string
+        bairro:
+          type: string
+        cidade:
+          type: string
+        uf:
+          type: string
     EnderecoWrite:
       type: object
       properties:
@@ -5785,62 +8673,82 @@ components:
         id:
           type: integer
           readOnly: true
+        associado_id:
+          type: integer
+          readOnly: true
         ordem:
           type: integer
           readOnly: true
         contrato:
-          type: string
+          allOf:
+          - $ref: '#/components/schemas/ContratoEsteira'
+          nullable: true
           readOnly: true
         data_assinatura:
           type: string
+          format: date
+          nullable: true
           readOnly: true
         valor_disponivel:
           type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
           readOnly: true
         comissao_agente:
           type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
           readOnly: true
         status_contrato:
           type: string
+          nullable: true
           readOnly: true
         status_contrato_visual_slug:
           type: string
+          nullable: true
           readOnly: true
         status_contrato_visual_label:
           type: string
+          nullable: true
           readOnly: true
         status_documentacao:
           type: string
           readOnly: true
         contato_web:
-          type: string
+          type: boolean
           readOnly: true
         termos_web:
-          type: string
+          type: boolean
           readOnly: true
         agente:
           allOf:
-          - $ref: '#/components/schemas/SimpleUser'
+          - $ref: '#/components/schemas/EsteiraSimpleUser'
           readOnly: true
         orgao_publico:
           type: string
           readOnly: true
         documentos_count:
-          type: string
+          type: integer
           readOnly: true
         acoes_disponiveis:
-          type: string
+          type: array
+          items:
+            type: string
           readOnly: true
         etapa_atual:
-          $ref: '#/components/schemas/ParaStatusEnum'
+          $ref: '#/components/schemas/EsteiraEtapaEnum'
         status:
-          $ref: '#/components/schemas/ParaSituacaoEnum'
+          $ref: '#/components/schemas/EsteiraSituacaoEnum'
         assumido_em:
           type: string
           format: date-time
           nullable: true
         documentos:
-          type: string
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentoEsteira'
           readOnly: true
         pendencias:
           type: array
@@ -5855,6 +8763,7 @@ components:
       required:
       - acoes_disponiveis
       - agente
+      - associado_id
       - comissao_agente
       - contato_web
       - contrato
@@ -5872,6 +8781,20 @@ components:
       - termos_web
       - transicoes
       - valor_disponivel
+    EsteiraEtapaEnum:
+      enum:
+      - cadastro
+      - analise
+      - coordenacao
+      - tesouraria
+      - concluido
+      type: string
+      description: |-
+        * `cadastro` - Cadastro
+        * `analise` - Análise
+        * `coordenacao` - Coordenação
+        * `tesouraria` - Tesouraria
+        * `concluido` - Concluído
     EsteiraItemResumo:
       type: object
       properties:
@@ -5925,56 +8848,74 @@ components:
         id:
           type: integer
           readOnly: true
+        associado_id:
+          type: integer
+          readOnly: true
         ordem:
           type: integer
           readOnly: true
         contrato:
-          type: string
+          allOf:
+          - $ref: '#/components/schemas/ContratoEsteira'
+          nullable: true
           readOnly: true
         data_assinatura:
           type: string
+          format: date
+          nullable: true
           readOnly: true
         valor_disponivel:
           type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
           readOnly: true
         comissao_agente:
           type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          nullable: true
           readOnly: true
         status_contrato:
           type: string
+          nullable: true
           readOnly: true
         status_contrato_visual_slug:
           type: string
+          nullable: true
           readOnly: true
         status_contrato_visual_label:
           type: string
+          nullable: true
           readOnly: true
         status_documentacao:
           type: string
           readOnly: true
         contato_web:
-          type: string
+          type: boolean
           readOnly: true
         termos_web:
-          type: string
+          type: boolean
           readOnly: true
         agente:
           allOf:
-          - $ref: '#/components/schemas/SimpleUser'
+          - $ref: '#/components/schemas/EsteiraSimpleUser'
           readOnly: true
         orgao_publico:
           type: string
           readOnly: true
         documentos_count:
-          type: string
+          type: integer
           readOnly: true
         acoes_disponiveis:
-          type: string
+          type: array
+          items:
+            type: string
           readOnly: true
         etapa_atual:
-          $ref: '#/components/schemas/ParaStatusEnum'
+          $ref: '#/components/schemas/EsteiraEtapaEnum'
         status:
-          $ref: '#/components/schemas/ParaSituacaoEnum'
+          $ref: '#/components/schemas/EsteiraSituacaoEnum'
         assumido_em:
           type: string
           format: date-time
@@ -5982,6 +8923,7 @@ components:
       required:
       - acoes_disponiveis
       - agente
+      - associado_id
       - comissao_agente
       - contato_web
       - contrato
@@ -5996,6 +8938,51 @@ components:
       - status_documentacao
       - termos_web
       - valor_disponivel
+    EsteiraOverrideWrite:
+      type: object
+      properties:
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        motivo:
+          type: string
+        etapa_atual:
+          type: string
+        status:
+          type: string
+        prioridade:
+          type: integer
+        observacao:
+          type: string
+      required:
+      - motivo
+    EsteiraSimpleUser:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        full_name:
+          type: string
+          readOnly: true
+      required:
+      - full_name
+      - id
+    EsteiraSituacaoEnum:
+      enum:
+      - aguardando
+      - em_andamento
+      - pendenciado
+      - aprovado
+      - rejeitado
+      type: string
+      description: |-
+        * `aguardando` - Aguardando
+        * `em_andamento` - Em andamento
+        * `pendenciado` - Pendenciado
+        * `aprovado` - Aprovado
+        * `rejeitado` - Rejeitado
     FormatEnum:
       enum:
       - integer
@@ -6004,18 +8991,325 @@ components:
       description: |-
         * `integer` - integer
         * `currency` - currency
-    FormatoEnum:
-      enum:
-      - txt
-      - csv
-      - xlsx
-      - man
-      type: string
-      description: |-
-        * `txt` - TXT
-        * `csv` - CSV
-        * `xlsx` - XLSX
-        * `man` - Manual
+    InitialPaymentEvidence:
+      type: object
+      properties:
+        id:
+          type: string
+        nome:
+          type: string
+        url:
+          type: string
+        arquivo_referencia:
+          type: string
+        arquivo_disponivel_localmente:
+          type: boolean
+        tipo_referencia:
+          type: string
+        origem:
+          type: string
+        papel:
+          type: string
+        tipo:
+          type: string
+        status:
+          type: string
+        competencia:
+          type: string
+          format: date
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - arquivo_disponivel_localmente
+      - arquivo_referencia
+      - competencia
+      - created_at
+      - id
+      - nome
+      - origem
+      - papel
+      - status
+      - tipo
+      - tipo_referencia
+      - url
+    LegacyAceiteTermosResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        aceite_termos:
+          type: boolean
+      required:
+      - aceite_termos
+      - ok
+    LegacyClientLogResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+      required:
+      - ok
+    LegacyContatoResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        contato_status:
+          type: string
+      required:
+      - contato_status
+      - ok
+    LegacyForgotPassword:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+      required:
+      - email
+    LegacyLogin:
+      type: object
+      properties:
+        login:
+          type: string
+        password:
+          type: string
+      required:
+      - login
+      - password
+    LegacyRegister:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          writeOnly: true
+        password_confirmation:
+          type: string
+          writeOnly: true
+        terms:
+          type: boolean
+          default: false
+        terms_version:
+          type: string
+      required:
+      - email
+      - name
+      - password
+      - password_confirmation
+    LegacyResetPassword:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        token:
+          type: string
+        password:
+          type: string
+          writeOnly: true
+        password_confirmation:
+          type: string
+          writeOnly: true
+      required:
+      - email
+      - password
+      - password_confirmation
+      - token
+    LiquidacaoComprovante:
+      type: object
+      properties:
+        nome:
+          type: string
+          readOnly: true
+        url:
+          type: string
+          readOnly: true
+        arquivo_referencia:
+          type: string
+          readOnly: true
+        arquivo_disponivel_localmente:
+          type: boolean
+          readOnly: true
+        tipo_referencia:
+          type: string
+          readOnly: true
+      required:
+      - arquivo_disponivel_localmente
+      - arquivo_referencia
+      - nome
+      - tipo_referencia
+      - url
+    LiquidacaoContratoList:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        contrato_id:
+          type: integer
+          readOnly: true
+        liquidacao_id:
+          type: integer
+          readOnly: true
+          nullable: true
+        associado_id:
+          type: integer
+          readOnly: true
+        nome:
+          type: string
+          readOnly: true
+        cpf_cnpj:
+          type: string
+          readOnly: true
+        matricula:
+          type: string
+          readOnly: true
+        agente_nome:
+          type: string
+          readOnly: true
+        contrato_codigo:
+          type: string
+          readOnly: true
+        quantidade_parcelas:
+          type: integer
+          readOnly: true
+        valor_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+          readOnly: true
+        referencia_inicial:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        referencia_final:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        status_liquidacao:
+          type: string
+          readOnly: true
+        status_contrato:
+          type: string
+          readOnly: true
+        data_liquidacao:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        observacao:
+          type: string
+          readOnly: true
+        realizado_por:
+          allOf:
+          - $ref: '#/components/schemas/SimpleUser'
+          readOnly: true
+          nullable: true
+        revertida_em:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
+        revertida_por:
+          allOf:
+          - $ref: '#/components/schemas/SimpleUser'
+          readOnly: true
+          nullable: true
+        motivo_reversao:
+          type: string
+          readOnly: true
+        comprovante:
+          allOf:
+          - $ref: '#/components/schemas/LiquidacaoComprovante'
+          nullable: true
+          readOnly: true
+        parcelas:
+          type: array
+          items:
+            $ref: '#/components/schemas/LiquidacaoParcela'
+          readOnly: true
+        pode_reverter:
+          type: boolean
+          readOnly: true
+      required:
+      - agente_nome
+      - associado_id
+      - comprovante
+      - contrato_codigo
+      - contrato_id
+      - cpf_cnpj
+      - data_liquidacao
+      - id
+      - liquidacao_id
+      - matricula
+      - motivo_reversao
+      - nome
+      - observacao
+      - parcelas
+      - pode_reverter
+      - quantidade_parcelas
+      - realizado_por
+      - referencia_final
+      - referencia_inicial
+      - revertida_em
+      - revertida_por
+      - status_contrato
+      - status_liquidacao
+      - valor_total
+    LiquidacaoParcela:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        numero:
+          type: integer
+          readOnly: true
+        referencia_mes:
+          type: string
+          format: date
+          readOnly: true
+        valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        data_vencimento:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        data_pagamento:
+          type: string
+          format: date
+          readOnly: true
+          nullable: true
+        observacao:
+          type: string
+          readOnly: true
+      required:
+      - data_pagamento
+      - data_vencimento
+      - id
+      - numero
+      - observacao
+      - referencia_mes
+      - status
+      - valor
     Login:
       type: object
       properties:
@@ -6033,6 +9327,118 @@ components:
       properties:
         refresh:
           type: string
+    MensalidadesResumo:
+      type: object
+      properties:
+        pagas:
+          type: integer
+        total:
+          type: integer
+        descricao:
+          type: string
+        apto_refinanciamento:
+          type: boolean
+        refinanciamento_ativo:
+          type: boolean
+      required:
+      - apto_refinanciamento
+      - descricao
+      - pagas
+      - refinanciamento_ativo
+      - total
+    MesNaoPago:
+      type: object
+      properties:
+        id:
+          type: integer
+        contrato_id:
+          type: integer
+        contrato_codigo:
+          type: string
+        referencia_mes:
+          type: string
+          format: date
+        valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        status:
+          type: string
+        data_pagamento:
+          type: string
+          format: date
+          nullable: true
+        observacao:
+          type: string
+        source:
+          type: string
+      required:
+      - contrato_codigo
+      - contrato_id
+      - data_pagamento
+      - id
+      - observacao
+      - referencia_mes
+      - status
+      - valor
+    MovimentoFinanceiroAvulso:
+      type: object
+      properties:
+        id:
+          type: integer
+        contrato_id:
+          type: integer
+        contrato_codigo:
+          type: string
+        referencia_mes:
+          type: string
+          format: date
+        valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        status:
+          type: string
+        data_pagamento:
+          type: string
+          format: date
+          nullable: true
+        observacao:
+          type: string
+        source:
+          type: string
+      required:
+      - contrato_codigo
+      - contrato_id
+      - data_pagamento
+      - id
+      - observacao
+      - referencia_mes
+      - status
+      - valor
+    PaginatedAdminOverrideEventReadList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminOverrideEventRead'
     PaginatedAdminUserListList:
       type: object
       required:
@@ -6286,6 +9692,52 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/DespesaList'
+    PaginatedDevolucaoAssociadoListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DevolucaoAssociadoList'
+    PaginatedDevolucaoContratoListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/DevolucaoContratoList'
     PaginatedEsteiraListList:
       type: object
       required:
@@ -6309,6 +9761,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/EsteiraList'
+    PaginatedLiquidacaoContratoListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/LiquidacaoContratoList'
     PaginatedRefinanciamentoListList:
       type: object
       required:
@@ -6378,44 +9853,45 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/TesourariaContratoList'
-    PapelEnum:
-      enum:
-      - associado
-      - agente
-      - operacional
-      type: string
-      description: |-
-        * `associado` - Associado
-        * `agente` - Agente
-        * `operacional` - Operacional
-    ParaSituacaoEnum:
-      enum:
-      - aguardando
-      - em_andamento
-      - pendenciado
-      - aprovado
-      - rejeitado
-      type: string
-      description: |-
-        * `aguardando` - Aguardando
-        * `em_andamento` - Em andamento
-        * `pendenciado` - Pendenciado
-        * `aprovado` - Aprovado
-        * `rejeitado` - Rejeitado
-    ParaStatusEnum:
-      enum:
-      - cadastro
-      - analise
-      - coordenacao
-      - tesouraria
-      - concluido
-      type: string
-      description: |-
-        * `cadastro` - Cadastro
-        * `analise` - Análise
-        * `coordenacao` - Coordenação
-        * `tesouraria` - Tesouraria
-        * `concluido` - Concluído
+    ParcelaLayoutWrite:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+        cycle_ref:
+          type: string
+        cycle_id:
+          type: integer
+          nullable: true
+        numero:
+          type: integer
+        referencia_mes:
+          type: string
+          format: date
+        valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        data_vencimento:
+          type: string
+          format: date
+        status:
+          type: string
+        data_pagamento:
+          type: string
+          format: date
+          nullable: true
+        observacao:
+          type: string
+        layout_bucket:
+          type: string
+      required:
+      - data_vencimento
+      - numero
+      - referencia_mes
+      - status
+      - valor
     PasswordResetRequest:
       type: object
       properties:
@@ -6497,7 +9973,7 @@ components:
           type: string
           maxLength: 120
         status:
-          $ref: '#/components/schemas/Status427Enum'
+          $ref: '#/components/schemas/AssociadoStatusEnum'
         observacao:
           type: string
         endereco:
@@ -6530,6 +10006,13 @@ components:
           type: string
           format: decimal
           pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        agente_responsavel_id:
+          type: integer
+          nullable: true
+        percentual_repasse:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,4}(?:\.\d{0,2})?$
     PatchedDespesaWrite:
       type: object
       properties:
@@ -6551,10 +10034,10 @@ components:
           format: date
           nullable: true
         status:
-          $ref: '#/components/schemas/Status7a5Enum'
+          $ref: '#/components/schemas/DespesaStatusEnum'
         tipo:
           oneOf:
-          - $ref: '#/components/schemas/TipoC90Enum'
+          - $ref: '#/components/schemas/DespesaTipoEnum'
           - $ref: '#/components/schemas/BlankEnum'
         recorrencia:
           $ref: '#/components/schemas/RecorrenciaEnum'
@@ -6598,6 +10081,7 @@ components:
           readOnly: true
         contrato_codigo:
           type: string
+          nullable: true
           readOnly: true
         created_at:
           type: string
@@ -6652,6 +10136,200 @@ components:
         * `aberta` - Aberta
         * `resolvida` - Resolvida
         * `cancelada` - Cancelada
+    ProjectedCiclo:
+      type: object
+      properties:
+        id:
+          type: integer
+        contrato_id:
+          type: integer
+        contrato_codigo:
+          type: string
+        contrato_status:
+          type: string
+        numero:
+          type: integer
+        data_inicio:
+          type: string
+          format: date
+        data_fim:
+          type: string
+          format: date
+        status:
+          type: string
+        fase_ciclo:
+          type: string
+        situacao_financeira:
+          type: string
+        status_visual_slug:
+          type: string
+        status_visual_label:
+          type: string
+        valor_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        data_ativacao_ciclo:
+          type: string
+          format: date-time
+          nullable: true
+        origem_data_ativacao:
+          type: string
+        ativacao_inferida:
+          type: boolean
+        data_solicitacao_renovacao:
+          type: string
+          format: date-time
+          nullable: true
+        data_renovacao:
+          type: string
+          format: date-time
+          nullable: true
+        origem_renovacao:
+          type: string
+        primeira_competencia_ciclo:
+          type: string
+          format: date
+        ultima_competencia_ciclo:
+          type: string
+          format: date
+        resumo_referencias:
+          type: string
+        refinanciamento_id:
+          type: integer
+          nullable: true
+        legacy_refinanciamento_id:
+          type: integer
+          nullable: true
+        comprovantes_ciclo:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectedComprovante'
+        termo_antecipacao:
+          allOf:
+          - $ref: '#/components/schemas/ProjectedComprovante'
+          nullable: true
+        parcelas:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectedParcela'
+      required:
+      - ativacao_inferida
+      - comprovantes_ciclo
+      - contrato_codigo
+      - contrato_id
+      - contrato_status
+      - data_ativacao_ciclo
+      - data_fim
+      - data_inicio
+      - data_renovacao
+      - data_solicitacao_renovacao
+      - fase_ciclo
+      - id
+      - legacy_refinanciamento_id
+      - numero
+      - origem_data_ativacao
+      - origem_renovacao
+      - parcelas
+      - primeira_competencia_ciclo
+      - refinanciamento_id
+      - resumo_referencias
+      - situacao_financeira
+      - status
+      - status_visual_label
+      - status_visual_slug
+      - termo_antecipacao
+      - ultima_competencia_ciclo
+      - valor_total
+    ProjectedComprovante:
+      type: object
+      properties:
+        id:
+          type: integer
+          nullable: true
+        tipo:
+          type: string
+        papel:
+          type: string
+        arquivo:
+          type: string
+        arquivo_referencia:
+          type: string
+        arquivo_disponivel_localmente:
+          type: boolean
+        tipo_referencia:
+          type: string
+        nome_original:
+          type: string
+        mime:
+          type: string
+        size_bytes:
+          type: integer
+          nullable: true
+        data_pagamento:
+          type: string
+          format: date-time
+          nullable: true
+        origem:
+          type: string
+        status_validacao:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        legacy_comprovante_id:
+          type: integer
+          nullable: true
+      required:
+      - arquivo
+      - arquivo_disponivel_localmente
+      - arquivo_referencia
+      - created_at
+      - data_pagamento
+      - id
+      - legacy_comprovante_id
+      - mime
+      - nome_original
+      - origem
+      - papel
+      - size_bytes
+      - tipo
+      - tipo_referencia
+    ProjectedParcela:
+      type: object
+      properties:
+        id:
+          type: integer
+        numero:
+          type: integer
+        referencia_mes:
+          type: string
+          format: date
+        valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        data_vencimento:
+          type: string
+          format: date
+        status:
+          type: string
+        data_pagamento:
+          type: string
+          format: date
+          nullable: true
+        observacao:
+          type: string
+      required:
+      - data_pagamento
+      - data_vencimento
+      - id
+      - numero
+      - observacao
+      - referencia_mes
+      - status
+      - valor
     RecorrenciaEnum:
       enum:
       - nenhuma
@@ -6664,6 +10342,56 @@ components:
         * `mensal` - Mensal
         * `trimestral` - Trimestral
         * `anual` - Anual
+    RefinanciamentoAuditoria:
+      type: object
+      properties:
+        solicitado_por:
+          allOf:
+          - $ref: '#/components/schemas/SimpleUser'
+          nullable: true
+        aprovado_por:
+          allOf:
+          - $ref: '#/components/schemas/SimpleUser'
+          nullable: true
+        bloqueado_por:
+          allOf:
+          - $ref: '#/components/schemas/SimpleUser'
+          nullable: true
+        efetivado_por:
+          allOf:
+          - $ref: '#/components/schemas/SimpleUser'
+          nullable: true
+        reviewed_by:
+          allOf:
+          - $ref: '#/components/schemas/SimpleUser'
+          nullable: true
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
+        analista_note:
+          type: string
+          nullable: true
+        coordenador_note:
+          type: string
+          nullable: true
+        observacao:
+          type: string
+          nullable: true
+        motivo_bloqueio:
+          type: string
+          nullable: true
+      required:
+      - analista_note
+      - aprovado_por
+      - bloqueado_por
+      - coordenador_note
+      - efetivado_por
+      - motivo_bloqueio
+      - observacao
+      - reviewed_at
+      - reviewed_by
+      - solicitado_por
     RefinanciamentoDetail:
       type: object
       properties:
@@ -6685,6 +10413,12 @@ components:
         cpf_cnpj:
           type: string
           readOnly: true
+        matricula:
+          type: string
+          readOnly: true
+        matricula_display:
+          type: string
+          readOnly: true
         agente:
           allOf:
           - $ref: '#/components/schemas/SimpleUser'
@@ -6705,11 +10439,15 @@ components:
           allOf:
           - $ref: '#/components/schemas/SimpleUser'
           readOnly: true
+        reviewed_by:
+          allOf:
+          - $ref: '#/components/schemas/SimpleUser'
+          readOnly: true
         competencia_solicitada:
           type: string
           format: date
         status:
-          $ref: '#/components/schemas/Status707Enum'
+          $ref: '#/components/schemas/RefinanciamentoStatusEnum'
         valor_refinanciamento:
           type: string
           format: decimal
@@ -6727,7 +10465,9 @@ components:
             type: string
           readOnly: true
         itens:
-          type: string
+          type: array
+          items:
+            $ref: '#/components/schemas/RefinanciamentoItemResumo'
           readOnly: true
         mensalidades_pagas:
           type: integer
@@ -6749,6 +10489,8 @@ components:
           readOnly: true
         data_renovacao:
           type: string
+          format: date-time
+          nullable: true
           readOnly: true
         origem_renovacao:
           type: string
@@ -6758,15 +10500,21 @@ components:
           readOnly: true
         data_primeiro_ciclo_ativado:
           type: string
+          format: date-time
+          nullable: true
           readOnly: true
         data_ativacao_ciclo:
           type: string
+          format: date-time
+          nullable: true
           readOnly: true
         origem_data_ativacao:
           type: string
           readOnly: true
         data_solicitacao_renovacao:
           type: string
+          format: date-time
+          nullable: true
           readOnly: true
         ativacao_inferida:
           type: boolean
@@ -6778,6 +10526,14 @@ components:
           type: string
         observacao:
           type: string
+        analista_note:
+          type: string
+        coordenador_note:
+          type: string
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
         executado_em:
           type: string
           format: date-time
@@ -6791,7 +10547,8 @@ components:
           format: date-time
           readOnly: true
         auditoria:
-          type: string
+          allOf:
+          - $ref: '#/components/schemas/RefinanciamentoAuditoria'
           readOnly: true
         comprovantes:
           type: array
@@ -6822,6 +10579,8 @@ components:
       - id
       - itens
       - legacy_refinanciamento_id
+      - matricula
+      - matricula_display
       - mensalidades_pagas
       - mensalidades_total
       - motivo_apto_renovacao
@@ -6831,8 +10590,35 @@ components:
       - pagamento_status
       - referencias
       - refinanciamento_numero
+      - reviewed_by
       - solicitado_por
       - updated_at
+    RefinanciamentoItemResumo:
+      type: object
+      properties:
+        id:
+          type: integer
+        numero:
+          type: integer
+        pagamento_mensalidade_id:
+          type: integer
+          nullable: true
+        referencia_mes:
+          type: string
+          format: date
+        valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        status:
+          type: string
+      required:
+      - id
+      - numero
+      - pagamento_mensalidade_id
+      - referencia_mes
+      - status
+      - valor
     RefinanciamentoList:
       type: object
       properties:
@@ -6854,6 +10640,12 @@ components:
         cpf_cnpj:
           type: string
           readOnly: true
+        matricula:
+          type: string
+          readOnly: true
+        matricula_display:
+          type: string
+          readOnly: true
         agente:
           allOf:
           - $ref: '#/components/schemas/SimpleUser'
@@ -6874,11 +10666,15 @@ components:
           allOf:
           - $ref: '#/components/schemas/SimpleUser'
           readOnly: true
+        reviewed_by:
+          allOf:
+          - $ref: '#/components/schemas/SimpleUser'
+          readOnly: true
         competencia_solicitada:
           type: string
           format: date
         status:
-          $ref: '#/components/schemas/Status707Enum'
+          $ref: '#/components/schemas/RefinanciamentoStatusEnum'
         valor_refinanciamento:
           type: string
           format: decimal
@@ -6896,7 +10692,9 @@ components:
             type: string
           readOnly: true
         itens:
-          type: string
+          type: array
+          items:
+            $ref: '#/components/schemas/RefinanciamentoItemResumo'
           readOnly: true
         mensalidades_pagas:
           type: integer
@@ -6918,6 +10716,8 @@ components:
           readOnly: true
         data_renovacao:
           type: string
+          format: date-time
+          nullable: true
           readOnly: true
         origem_renovacao:
           type: string
@@ -6927,15 +10727,21 @@ components:
           readOnly: true
         data_primeiro_ciclo_ativado:
           type: string
+          format: date-time
+          nullable: true
           readOnly: true
         data_ativacao_ciclo:
           type: string
+          format: date-time
+          nullable: true
           readOnly: true
         origem_data_ativacao:
           type: string
           readOnly: true
         data_solicitacao_renovacao:
           type: string
+          format: date-time
+          nullable: true
           readOnly: true
         ativacao_inferida:
           type: boolean
@@ -6947,6 +10753,14 @@ components:
           type: string
         observacao:
           type: string
+        analista_note:
+          type: string
+        coordenador_note:
+          type: string
+        reviewed_at:
+          type: string
+          format: date-time
+          nullable: true
         executado_em:
           type: string
           format: date-time
@@ -6960,7 +10774,8 @@ components:
           format: date-time
           readOnly: true
         auditoria:
-          type: string
+          allOf:
+          - $ref: '#/components/schemas/RefinanciamentoAuditoria'
           readOnly: true
         comprovantes:
           type: array
@@ -6991,6 +10806,8 @@ components:
       - id
       - itens
       - legacy_refinanciamento_id
+      - matricula
+      - matricula_display
       - mensalidades_pagas
       - mensalidades_total
       - motivo_apto_renovacao
@@ -7000,8 +10817,85 @@ components:
       - pagamento_status
       - referencias
       - refinanciamento_numero
+      - reviewed_by
       - solicitado_por
       - updated_at
+    RefinanciamentoOverrideWrite:
+      type: object
+      properties:
+        updated_at:
+          type: string
+          format: date-time
+          nullable: true
+        motivo:
+          type: string
+        status:
+          type: string
+        competencia_solicitada:
+          type: string
+          format: date
+          nullable: true
+        valor_refinanciamento:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        repasse_agente:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        executado_em:
+          type: string
+          format: date-time
+          nullable: true
+        data_ativacao_ciclo:
+          type: string
+          format: date-time
+          nullable: true
+        motivo_bloqueio:
+          type: string
+        observacao:
+          type: string
+        analista_note:
+          type: string
+        coordenador_note:
+          type: string
+        reviewed_by_id:
+          type: integer
+          nullable: true
+      required:
+      - motivo
+    RefinanciamentoStatusEnum:
+      enum:
+      - apto_a_renovar
+      - em_analise_renovacao
+      - aprovado_analise_renovacao
+      - aprovado_para_renovacao
+      - pendente_apto
+      - bloqueado
+      - concluido
+      - desativado
+      - revertido
+      - efetivado
+      - solicitado
+      - em_analise
+      - aprovado
+      - rejeitado
+      type: string
+      description: |-
+        * `apto_a_renovar` - Apto a renovar
+        * `em_analise_renovacao` - Em análise para renovação
+        * `aprovado_analise_renovacao` - Aprovado pela análise para renovação
+        * `aprovado_para_renovacao` - Aprovado para renovação
+        * `pendente_apto` - Pendente apto
+        * `bloqueado` - Bloqueado
+        * `concluido` - Concluído
+        * `desativado` - Desativado
+        * `revertido` - Revertido
+        * `efetivado` - Efetivado
+        * `solicitado` - Solicitado
+        * `em_analise` - Em análise
+        * `aprovado` - Aprovado
+        * `rejeitado` - Rejeitado
     Refresh:
       type: object
       properties:
@@ -7232,86 +11126,6 @@ components:
       required:
       - full_name
       - id
-    Status1d4Enum:
-      enum:
-      - rascunho
-      - em_analise
-      - ativo
-      - encerrado
-      - cancelado
-      type: string
-      description: |-
-        * `rascunho` - Rascunho
-        * `em_analise` - Em análise
-        * `ativo` - Ativo
-        * `encerrado` - Encerrado
-        * `cancelado` - Cancelado
-    Status200Enum:
-      enum:
-      - pendente
-      - processando
-      - concluido
-      - erro
-      type: string
-      description: |-
-        * `pendente` - Pendente
-        * `processando` - Processando
-        * `concluido` - Concluído
-        * `erro` - Erro
-    Status427Enum:
-      enum:
-      - cadastrado
-      - em_analise
-      - ativo
-      - pendente
-      - inativo
-      - inadimplente
-      type: string
-      description: |-
-        * `cadastrado` - Cadastrado
-        * `em_analise` - Em análise
-        * `ativo` - Ativo
-        * `pendente` - Pendente
-        * `inativo` - Inativo
-        * `inadimplente` - Inadimplente
-    Status707Enum:
-      enum:
-      - apto_a_renovar
-      - em_analise_renovacao
-      - aprovado_para_renovacao
-      - pendente_apto
-      - bloqueado
-      - concluido
-      - desativado
-      - revertido
-      - efetivado
-      - solicitado
-      - em_analise
-      - aprovado
-      - rejeitado
-      type: string
-      description: |-
-        * `apto_a_renovar` - Apto a renovar
-        * `em_analise_renovacao` - Em análise para renovação
-        * `aprovado_para_renovacao` - Aprovado para renovação
-        * `pendente_apto` - Pendente apto
-        * `bloqueado` - Bloqueado
-        * `concluido` - Concluído
-        * `desativado` - Desativado
-        * `revertido` - Revertido
-        * `efetivado` - Efetivado
-        * `solicitado` - Solicitado
-        * `em_analise` - Em análise
-        * `aprovado` - Aprovado
-        * `rejeitado` - Rejeitado
-    Status7a5Enum:
-      enum:
-      - pendente
-      - pago
-      type: string
-      description: |-
-        * `pendente` - Pendente
-        * `pago` - Pago
     StatusAnexoEnum:
       enum:
       - pendente
@@ -7347,6 +11161,9 @@ components:
         cpf_cnpj:
           type: string
           readOnly: true
+        matricula:
+          type: string
+          readOnly: true
         chave_pix:
           type: string
           readOnly: true
@@ -7367,6 +11184,9 @@ components:
         agente_nome:
           type: string
           readOnly: true
+        percentual_repasse:
+          type: string
+          readOnly: true
         comissao_agente:
           type: string
           format: decimal
@@ -7378,10 +11198,14 @@ components:
           pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
           readOnly: true
         comprovantes:
-          type: string
+          type: array
+          items:
+            $ref: '#/components/schemas/ComprovanteResumo'
           readOnly: true
         dados_bancarios:
-          type: string
+          allOf:
+          - $ref: '#/components/schemas/DadosBancarios'
+          nullable: true
           readOnly: true
         observacao_tesouraria:
           type: string
@@ -7406,18 +11230,12 @@ components:
       - etapa_atual
       - id
       - margem_disponivel
+      - matricula
       - nome
       - observacao_tesouraria
+      - percentual_repasse
       - situacao_esteira
       - status
-    TipoC90Enum:
-      enum:
-      - fixa
-      - variavel
-      type: string
-      description: |-
-        * `fixa` - Fixa
-        * `variavel` - Variável
     TipoDocumentoEnum:
       enum:
       - CPF
@@ -7448,16 +11266,16 @@ components:
           type: string
           maxLength: 40
         de_status:
-          $ref: '#/components/schemas/ParaStatusEnum'
+          $ref: '#/components/schemas/EsteiraEtapaEnum'
         para_status:
-          $ref: '#/components/schemas/ParaStatusEnum'
+          $ref: '#/components/schemas/EsteiraEtapaEnum'
         de_situacao:
           oneOf:
-          - $ref: '#/components/schemas/ParaSituacaoEnum'
+          - $ref: '#/components/schemas/EsteiraSituacaoEnum'
           - $ref: '#/components/schemas/BlankEnum'
         para_situacao:
           oneOf:
-          - $ref: '#/components/schemas/ParaSituacaoEnum'
+          - $ref: '#/components/schemas/EsteiraSituacaoEnum'
           - $ref: '#/components/schemas/BlankEnum'
         observacao:
           type: string
@@ -7466,7 +11284,7 @@ components:
           format: date-time
         realizado_por:
           allOf:
-          - $ref: '#/components/schemas/SimpleUser'
+          - $ref: '#/components/schemas/EsteiraSimpleUser'
           readOnly: true
       required:
       - de_status
@@ -7545,7 +11363,260 @@ components:
       - id
       - primary_role
       - roles
+    _AppAntecipacaoItem:
+      type: object
+      properties:
+        referencia_mes:
+          type: string
+          format: date
+        valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        data_pagamento:
+          type: string
+          format: date
+          nullable: true
+        numero_parcela:
+          type: integer
+        ciclo_numero:
+          type: integer
+      required:
+      - ciclo_numero
+      - data_pagamento
+      - numero_parcela
+      - referencia_mes
+      - valor
+    _AppAntecipacaoResponse:
+      type: object
+      properties:
+        historico:
+          type: array
+          items:
+            $ref: '#/components/schemas/_AppAntecipacaoItem'
+      required:
+      - historico
+    _AppDocumentoUploadResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+        tipo:
+          type: string
+        status:
+          type: string
+        observacao:
+          type: string
+      required:
+      - id
+      - observacao
+      - status
+      - tipo
+    _AppMeResponse:
+      type: object
+      properties:
+        associado:
+          $ref: '#/components/schemas/_AssociadoMobile'
+        contratos:
+          type: array
+          items:
+            $ref: '#/components/schemas/_ContratoResumo'
+        resumo:
+          $ref: '#/components/schemas/_ResumoFinanceiroMobile'
+        pendencias:
+          type: array
+          items:
+            $ref: '#/components/schemas/_PendenciaMobile'
+      required:
+      - associado
+      - contratos
+      - pendencias
+      - resumo
+    _AppMensalidadesResponse:
+      type: object
+      properties:
+        ciclos:
+          type: array
+          items:
+            $ref: '#/components/schemas/_CicloMobile'
+      required:
+      - ciclos
+    _AppPendenciasResponse:
+      type: object
+      properties:
+        pendencias:
+          type: array
+          items:
+            $ref: '#/components/schemas/_PendenciaMobile'
+      required:
+      - pendencias
+    _AssociadoMobile:
+      type: object
+      properties:
+        id:
+          type: integer
+        nome_completo:
+          type: string
+        cpf_cnpj:
+          type: string
+        matricula:
+          type: string
+        email:
+          type: string
+        telefone:
+          type: string
+        status:
+          type: string
+        orgao_publico:
+          type: string
+        cargo:
+          type: string
+      required:
+      - cargo
+      - cpf_cnpj
+      - email
+      - id
+      - matricula
+      - nome_completo
+      - orgao_publico
+      - status
+      - telefone
+    _CicloMobile:
+      type: object
+      properties:
+        id:
+          type: integer
+        numero:
+          type: integer
+        data_inicio:
+          type: string
+          format: date
+        data_fim:
+          type: string
+          format: date
+        status:
+          type: string
+        valor_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        parcelas:
+          type: array
+          items:
+            $ref: '#/components/schemas/_ParcelaMobile'
+      required:
+      - data_fim
+      - data_inicio
+      - id
+      - numero
+      - parcelas
+      - status
+      - valor_total
+    _ContratoResumo:
+      type: object
+      properties:
+        id:
+          type: integer
+        codigo:
+          type: string
+        status:
+          type: string
+        prazo_meses:
+          type: integer
+        valor_mensalidade:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        data_primeira_mensalidade:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - codigo
+      - data_primeira_mensalidade
+      - id
+      - prazo_meses
+      - status
+      - valor_mensalidade
+    _ParcelaMobile:
+      type: object
+      properties:
+        numero:
+          type: integer
+        referencia_mes:
+          type: string
+          format: date
+        valor:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        data_vencimento:
+          type: string
+          format: date
+        status:
+          type: string
+        data_pagamento:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - data_pagamento
+      - data_vencimento
+      - numero
+      - referencia_mes
+      - status
+      - valor
+    _PendenciaMobile:
+      type: object
+      properties:
+        id:
+          type: integer
+        tipo:
+          type: string
+        descricao:
+          type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+      required:
+      - created_at
+      - descricao
+      - id
+      - status
+      - tipo
+    _ResumoFinanceiroMobile:
+      type: object
+      properties:
+        parcelas_pagas:
+          type: integer
+        parcelas_total:
+          type: integer
+        valor_mensalidade:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        proximo_vencimento:
+          type: string
+          format: date
+          nullable: true
+        em_atraso:
+          type: integer
+      required:
+      - em_atraso
+      - parcelas_pagas
+      - parcelas_total
+      - proximo_vencimento
+      - valor_mensalidade
   securitySchemes:
+    LegacyMobileToken:
+      type: http
+      scheme: bearer
+      bearerFormat: LegacyMobileToken
+      description: Bearer token do mobile legado. O backend também aceita ?token=<chave>
+        para compatibilidade.
     jwtAuth:
       type: http
       scheme: bearer

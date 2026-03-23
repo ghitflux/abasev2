@@ -7,7 +7,7 @@ import type { RefinanciamentoList } from "./RefinanciamentoList.ts";
 
 export type V1RefinanciamentosDesativarCreatePathParams = {
   /**
-   * @description Um valor inteiro único que identifica este refinanciamento.
+   * @description A unique integer value identifying this refinanciamento.
    * @type integer
    */
   id: number;
@@ -23,11 +23,14 @@ export type V1RefinanciamentosDesativarCreateMutationRequest = Omit<
   | "associado_id"
   | "associado_nome"
   | "cpf_cnpj"
+  | "matricula"
+  | "matricula_display"
   | "agente"
   | "solicitado_por"
   | "aprovado_por"
   | "bloqueado_por"
   | "efetivado_por"
+  | "reviewed_by"
   | "ciclo_key"
   | "referencias"
   | "itens"

@@ -11,7 +11,7 @@ export const V1TesourariaDespesasPartialUpdatePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("Um valor inteiro único que identifica este despesa."),
+    .describe("A unique integer value identifying this despesa."),
 });
 
 export const V1TesourariaDespesasPartialUpdate200Schema = z.lazy(

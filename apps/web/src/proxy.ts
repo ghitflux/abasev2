@@ -22,8 +22,24 @@ export function proxy(request: NextRequest) {
     return NextResponse.next({ request: { headers } });
   }
 
+  const legacyAssociadoEditMatch = pathname.match(/^\/associados\/([^/]+)\/editar$/);
+  if (legacyAssociadoEditMatch) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = `/associados-editar/${legacyAssociadoEditMatch[1]}`;
+    return NextResponse.redirect(redirectUrl);
+  }
+
+  const transitionalAssociadoEditMatch = pathname.match(/^\/associados\/editar\/([^/]+)$/);
+  if (transitionalAssociadoEditMatch) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = `/associados-editar/${transitionalAssociadoEditMatch[1]}`;
+    return NextResponse.redirect(redirectUrl);
+  }
+
   if (!hasSession && !isAuthPage) {
-    return NextResponse.redirect(new URL("/login", request.url));
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("next", pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
   return NextResponse.next();

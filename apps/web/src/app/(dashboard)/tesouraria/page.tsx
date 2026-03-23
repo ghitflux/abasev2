@@ -8,9 +8,10 @@ import {
   CalendarDaysIcon,
   EyeIcon,
   FileDownIcon,
+  PaperclipIcon,
   LockIcon,
-  PrinterIcon,
   Trash2Icon,
+  UploadIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -24,9 +25,8 @@ import {
 } from "@/lib/formatters";
 import { maskCPFCNPJ } from "@/lib/masks";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
-import DatePicker from "@/components/custom/date-picker";
-import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import StatusBadge from "@/components/custom/status-badge";
+import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,19 +58,21 @@ function toIsoDate(value?: Date) {
   return format(value, "yyyy-MM-dd");
 }
 
+function compactFileName(name?: string, maxLength = 26) {
+  if (!name) return "Arquivo disponível";
+  if (name.length <= maxLength) return name;
+  return `${name.slice(0, maxLength - 3)}...`;
+}
+
 function useTesourariaQuery({
   page,
   competencia,
   search,
-  dataInicio,
-  dataFim,
   pagamento,
 }: {
   page: number;
   competencia: Date;
   search: string;
-  dataInicio?: Date;
-  dataFim?: Date;
   pagamento: TesourariaPagamentoFilter;
 }) {
   return useQuery({
@@ -80,8 +82,6 @@ function useTesourariaQuery({
       page,
       competencia.toISOString(),
       search,
-      dataInicio?.toISOString(),
-      dataFim?.toISOString(),
     ],
     queryFn: () =>
       apiFetch<PaginatedResponse<TesourariaContratoItem>>("tesouraria/contratos", {
@@ -91,8 +91,6 @@ function useTesourariaQuery({
           competencia: format(competencia, "yyyy-MM"),
           pagamento,
           search: search || undefined,
-          data_inicio: toIsoDate(dataInicio),
-          data_fim: toIsoDate(dataFim),
         },
       }),
   });
@@ -102,8 +100,6 @@ export default function TesourariaPage() {
   const queryClient = useQueryClient();
   const [competencia, setCompetencia] = React.useState(() => new Date());
   const [search, setSearch] = React.useState("");
-  const [dataInicio, setDataInicio] = React.useState<Date>();
-  const [dataFim, setDataFim] = React.useState<Date>();
   const [pagePending, setPagePending] = React.useState(1);
   const [pagePaid, setPagePaid] = React.useState(1);
   const [pageCanceled, setPageCanceled] = React.useState(1);
@@ -117,24 +113,18 @@ export default function TesourariaPage() {
     page: pagePending,
     competencia,
     search,
-    dataInicio,
-    dataFim,
     pagamento: "pendente",
   });
   const paidQuery = useTesourariaQuery({
     page: pagePaid,
     competencia,
     search,
-    dataInicio,
-    dataFim,
     pagamento: "concluido",
   });
   const canceledQuery = useTesourariaQuery({
     page: pageCanceled,
     competencia,
     search,
-    dataInicio,
-    dataFim,
     pagamento: "cancelado",
   });
 
@@ -192,130 +182,57 @@ export default function TesourariaPage() {
       {
         id: "nome",
         header: "Nome",
+        cell: (row) => <p className="font-medium">{row.nome}</p>,
+      },
+      {
+        id: "matricula",
+        header: "Matrícula do Servidor",
+        cell: (row) =>
+          row.matricula ? (
+            <CopySnippet label="Matrícula do Servidor" value={row.matricula} mono inline />
+          ) : (
+            "—"
+          ),
+      },
+      {
+        id: "cpf",
+        header: "CPF",
         cell: (row) => (
-          <div>
-            <p className="font-medium">{row.nome}</p>
-            <p className="text-xs text-muted-foreground">
-              {maskCPFCNPJ(row.cpf_cnpj)}
-            </p>
-          </div>
+          <CopySnippet
+            label="CPF"
+            value={maskCPFCNPJ(row.cpf_cnpj)}
+            mono
+            inline
+          />
         ),
       },
       {
         id: "agente",
-        header: "Agente / Comissão",
+        header: "Agente",
         cell: (row) => (
           <div>
             <p className="font-medium">{row.agente_nome || "Sem agente"}</p>
             <p className="text-xs text-muted-foreground">
-              Comissão: {formatCurrency(row.comissao_agente)}
+              Repasse: {row.percentual_repasse}%
             </p>
           </div>
         ),
       },
       {
-        id: "comprovante",
-        header: "Comprovantes",
-        cell: (row) => {
-          const associados = row.comprovantes.find((item) => item.papel === "associado");
-          const agente = row.comprovantes.find((item) => item.papel === "agente");
-          const draft = drafts[row.id] ?? {};
-          const canUpload = row.status === "pendente" || row.status === "congelado";
-          const isEfetivando =
-            efetivarMutation.isPending && efetivarMutation.variables?.contratoId === row.id;
-
-          return (
-            <div className="grid min-w-72 gap-3">
-              <ComprovanteSlot
-                label="Associado"
-                existingUrl={associados?.arquivo_disponivel_localmente ? associados.arquivo : undefined}
-                existingName={associados?.nome_original}
-                draftFile={draft.associado}
-                disabled={!canUpload || isEfetivando}
-                isProcessing={isEfetivando}
-                onSelect={(file) =>
-                  setDrafts((current) => ({
-                    ...current,
-                    [row.id]: { ...current[row.id], associado: file },
-                  }))
-                }
-                onClear={() =>
-                  setDrafts((current) => ({
-                    ...current,
-                    [row.id]: { ...current[row.id], associado: undefined },
-                  }))
-                }
-              />
-              <ComprovanteSlot
-                label="Agente"
-                existingUrl={agente?.arquivo_disponivel_localmente ? agente.arquivo : undefined}
-                existingName={agente?.nome_original}
-                draftFile={draft.agente}
-                disabled={!canUpload || isEfetivando}
-                isProcessing={isEfetivando}
-                onSelect={(file) =>
-                  setDrafts((current) => ({
-                    ...current,
-                    [row.id]: { ...current[row.id], agente: file },
-                  }))
-                }
-                onClear={() =>
-                  setDrafts((current) => ({
-                    ...current,
-                    [row.id]: { ...current[row.id], agente: undefined },
-                  }))
-                }
-              />
-              {draft.associado && draft.agente ? (
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    efetivarMutation.mutate({
-                      contratoId: row.id,
-                      associado: draft.associado!,
-                      agente: draft.agente!,
-                    })
-                  }
-                  disabled={efetivarMutation.isPending}
-                >
-                  Efetivar agora
-                </Button>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Envie os dois comprovantes para liberar a efetivação.
-                </p>
-              )}
+        id: "valores",
+        header: "Valor Aux. Liberado / Comissão",
+        cell: (row) => (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-muted-foreground">Aux. liberado</span>
+              <span className="font-medium">{formatCurrency(row.margem_disponivel)}</span>
             </div>
-          );
-        },
-      },
-      {
-        id: "acao",
-        header: "Ação",
-        cell: (row) => {
-          const canFreeze = row.status === "pendente" || row.status === "congelado";
-
-          return (
-            <div className="flex min-w-52 flex-wrap gap-2">
-              <Button asChild size="sm" variant="outline">
-                <Link href={`/associados/${row.associado_id}`}>
-                  <EyeIcon className="size-4" />
-                  Ver cadastro
-                </Link>
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-amber-500/40 text-amber-200"
-                onClick={() => setFreezeTarget(row)}
-                disabled={!canFreeze}
-              >
-                <LockIcon className="size-4" />
-                Congelar
-              </Button>
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-muted-foreground">Comissão</span>
+              <span className="font-medium">{formatCurrency(row.comissao_agente)}</span>
             </div>
-          );
-        },
+          </div>
+        ),
       },
       {
         id: "pix",
@@ -333,11 +250,6 @@ export default function TesourariaPage() {
         cell: (row) => <StatusBadge status={row.status} />,
       },
       {
-        id: "margem",
-        header: "Margem",
-        cell: (row) => formatCurrency(row.margem_disponivel),
-      },
-      {
         id: "dados_bancarios",
         header: "Dados bancários",
         cell: (row) => (
@@ -346,6 +258,117 @@ export default function TesourariaPage() {
             Ver dados
           </Button>
         ),
+      },
+      {
+        id: "acao",
+        header: "Ação",
+        cell: (row) => {
+          const canFreeze = row.status === "pendente" || row.status === "congelado";
+
+          return (
+            <div className="flex min-w-52 flex-wrap gap-2">
+              <Button asChild size="sm" variant="outline">
+                <Link href={`/associados/${row.associado_id}`}>
+                  <EyeIcon className="size-4" />
+                  Ver detalhes
+                </Link>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-amber-500/40 text-amber-200"
+                onClick={() => setFreezeTarget(row)}
+                disabled={!canFreeze}
+              >
+                <LockIcon className="size-4" />
+                Congelar
+              </Button>
+            </div>
+          );
+        },
+      },
+      {
+        id: "anexos",
+        header: "Anexos",
+        cell: (row) => {
+          const associados = row.comprovantes.find((item) => item.papel === "associado");
+          const agente = row.comprovantes.find((item) => item.papel === "agente");
+          const draft = drafts[row.id] ?? {};
+          const canUpload = row.status === "pendente" || row.status === "congelado";
+          const isEfetivando =
+            efetivarMutation.isPending && efetivarMutation.variables?.contratoId === row.id;
+
+          return (
+            <div className="flex min-w-[18rem] flex-col gap-2">
+              <div className="grid gap-2 xl:grid-cols-2">
+                <ComprovanteSlot
+                  compact
+                  label="Associado"
+                  existingUrl={
+                    associados?.arquivo_disponivel_localmente ? associados.arquivo : undefined
+                  }
+                  existingName={associados?.nome_original}
+                  draftFile={draft.associado}
+                  disabled={!canUpload || isEfetivando}
+                  isProcessing={isEfetivando}
+                  onSelect={(file) =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [row.id]: { ...current[row.id], associado: file },
+                    }))
+                  }
+                  onClear={() =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [row.id]: { ...current[row.id], associado: undefined },
+                    }))
+                  }
+                />
+                <ComprovanteSlot
+                  compact
+                  label="Agente"
+                  existingUrl={agente?.arquivo_disponivel_localmente ? agente.arquivo : undefined}
+                  existingName={agente?.nome_original}
+                  draftFile={draft.agente}
+                  disabled={!canUpload || isEfetivando}
+                  isProcessing={isEfetivando}
+                  onSelect={(file) =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [row.id]: { ...current[row.id], agente: file },
+                    }))
+                  }
+                  onClear={() =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [row.id]: { ...current[row.id], agente: undefined },
+                    }))
+                  }
+                />
+              </div>
+              {draft.associado && draft.agente ? (
+                <Button
+                  size="sm"
+                  className="self-start"
+                  onClick={() =>
+                    efetivarMutation.mutate({
+                      contratoId: row.id,
+                      associado: draft.associado!,
+                      agente: draft.agente!,
+                    })
+                  }
+                  disabled={efetivarMutation.isPending}
+                >
+                  Efetivar agora
+                </Button>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Envie os dois anexos para efetivar.
+                </p>
+              )}
+            </div>
+          );
+        },
       },
     ],
     [drafts, efetivarMutation, setBankTarget],
@@ -377,9 +400,9 @@ export default function TesourariaPage() {
               <p className="text-sm uppercase tracking-[0.28em] text-muted-foreground">
                 Tesouraria
               </p>
-              <h1 className="text-3xl font-semibold">Dashboard de contratos</h1>
+              <h1 className="text-3xl font-semibold">Novos Contratos</h1>
               <p className="text-sm text-muted-foreground">
-                Competência ativa: {formatLongMonthYear(competencia)}
+                Fluxo padrão de novos contratos na competência ativa: {formatLongMonthYear(competencia)}
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -396,10 +419,6 @@ export default function TesourariaPage() {
               <Button variant="outline" onClick={() => window.print()}>
                 <FileDownIcon className="size-4" />
                 Baixar PDF
-              </Button>
-              <Button variant="outline" onClick={() => window.print()}>
-                <PrinterIcon className="size-4" />
-                Impressão digitada
               </Button>
             </div>
           </CardContent>
@@ -423,13 +442,11 @@ export default function TesourariaPage() {
         </Card>
       </section>
 
-      <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 lg:grid-cols-[180px_180px_minmax(0,1fr)_auto]">
-        <DatePicker value={dataInicio} onChange={setDataInicio} placeholder="Início" />
-        <DatePicker value={dataFim} onChange={setDataFim} placeholder="Fim" />
+      <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Buscar por nome, CPF/CNPJ ou código do contrato"
+          placeholder="Buscar por nome, CPF/CNPJ, matrícula ou código do contrato"
           className="rounded-2xl border-border/60 bg-card/60"
         />
         <Button onClick={handleRefresh}>Aplicar</Button>
@@ -576,6 +593,7 @@ function ComprovanteSlot({
   draftFile,
   disabled,
   isProcessing,
+  compact,
   onSelect,
   onClear,
 }: {
@@ -585,49 +603,97 @@ function ComprovanteSlot({
   draftFile?: File;
   disabled?: boolean;
   isProcessing?: boolean;
+  compact?: boolean;
   onSelect: (file: File) => void;
   onClear: () => void;
 }) {
+  const inputRef = React.useRef<HTMLInputElement | null>(null);
+  const accept = React.useMemo(
+    () => Object.values(comprovanteAccept).flat().join(","),
+    [],
+  );
+  const canReplace = !disabled && !isProcessing;
+  const handleFileSelection = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    onSelect(file);
+    event.target.value = "";
+  };
+
+  const openPicker = () => {
+    if (!canReplace) {
+      return;
+    }
+    inputRef.current?.click();
+  };
+
+  const displayName = draftFile?.name || existingName;
+  const displayUrl = draftFile ? undefined : existingUrl;
+
   return (
-    <div className="rounded-2xl border border-border/60 bg-background/40 p-3">
+    <div
+      className={compact
+        ? "rounded-xl border border-border/60 bg-background/40 p-2.5"
+        : "rounded-2xl border border-border/60 bg-background/40 p-3"}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        className="hidden"
+        accept={accept}
+        disabled={!canReplace}
+        onChange={handleFileSelection}
+      />
       <div className="mb-2 flex items-center justify-between gap-3">
         <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
           {label}
         </p>
-        {draftFile || existingUrl ? (
-          <Button size="icon-sm" variant="ghost" onClick={onClear} disabled={!!existingUrl}>
+        {draftFile ? (
+          <Button size="icon-sm" variant="ghost" onClick={onClear}>
             <Trash2Icon className="size-4" />
           </Button>
         ) : null}
       </div>
-      {existingUrl ? (
-        <a
-          href={buildBackendFileUrl(existingUrl)}
-          target="_blank"
-          rel="noreferrer"
-          className="text-sm text-primary underline-offset-4 hover:underline"
-        >
-          Ver comprovante {existingName ? `(${existingName})` : ""}
-        </a>
-      ) : draftFile ? (
-        <div className="space-y-1 text-sm">
-          <p className="font-medium">{draftFile.name}</p>
-          <p className="text-xs text-muted-foreground">
-            {(draftFile.size / 1024 / 1024).toFixed(2)} MB preparado para envio.
-          </p>
+      <div className="space-y-2">
+        {displayName ? (
+          <div className="space-y-1 text-sm">
+            <p className="font-medium" title={displayName}>
+              {compact ? compactFileName(displayName) : displayName}
+            </p>
+            {draftFile ? (
+              <p className="text-xs text-muted-foreground">
+                {(draftFile.size / 1024 / 1024).toFixed(2)} MB pronto para envio.
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Arquivo já anexado.</p>
+            )}
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">Nenhum arquivo enviado.</p>
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          {displayUrl ? (
+            <Button asChild size="sm" variant="outline">
+              <a
+                href={buildBackendFileUrl(displayUrl)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <PaperclipIcon className="size-4" />
+                Ver arquivo
+              </a>
+            </Button>
+          ) : null}
+          <Button size="sm" variant="outline" onClick={openPicker} disabled={!canReplace}>
+            <UploadIcon className="size-4" />
+            {draftFile ? "Trocar" : displayUrl ? "Substituir" : "Enviar"}
+          </Button>
         </div>
-      ) : (
-        <FileUploadDropzone
-          accept={comprovanteAccept}
-          maxSize={5 * 1024 * 1024}
-          onUpload={onSelect}
-          disabled={disabled}
-          isProcessing={isProcessing}
-          className="rounded-2xl px-3 py-5"
-          emptyTitle={`Enviar comprovante do ${label.toLowerCase()}`}
-          emptyDescription="PDF, JPG ou PNG até 5 MB"
-        />
-      )}
+        <p className="text-[11px] text-muted-foreground">PDF, JPG ou PNG até 5 MB.</p>
+      </div>
     </div>
   );
 }

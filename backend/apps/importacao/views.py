@@ -11,7 +11,7 @@ from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.viewsets import GenericViewSet
 
-from apps.accounts.permissions import IsTesoureiroOrAdmin
+from apps.accounts.permissions import IsCoordenadorOrAdmin
 from core.pagination import StandardResultsSetPagination
 
 from .models import ArquivoRetorno, ArquivoRetornoItem
@@ -57,7 +57,7 @@ class ArquivoRetornoViewSet(
     mixins.RetrieveModelMixin,
     GenericViewSet,
 ):
-    permission_classes = [permissions.IsAuthenticated, IsTesoureiroOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrAdmin]
     pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):

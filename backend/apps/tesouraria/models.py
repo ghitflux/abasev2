@@ -31,6 +31,159 @@ class BaixaManual(BaseModel):
         return f"BaixaManual Parcela#{self.parcela_id} - {self.data_baixa}"
 
 
+class LiquidacaoContrato(BaseModel):
+    contrato = models.ForeignKey(
+        "contratos.Contrato",
+        on_delete=models.PROTECT,
+        related_name="liquidacoes",
+    )
+    realizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="liquidacoes_realizadas",
+    )
+    data_liquidacao = models.DateField()
+    valor_total = models.DecimalField(max_digits=12, decimal_places=2)
+    comprovante = models.FileField(upload_to="liquidacoes_contrato/")
+    nome_comprovante = models.CharField(max_length=255, blank=True)
+    observacao = models.TextField(blank=True)
+    contrato_status_anterior = models.CharField(max_length=20, blank=True)
+    associado_status_anterior = models.CharField(max_length=20, blank=True)
+    revertida_em = models.DateTimeField(null=True, blank=True)
+    revertida_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="liquidacoes_revertidas",
+    )
+    motivo_reversao = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    @property
+    def status(self) -> str:
+        return "revertida" if self.revertida_em else "ativa"
+
+    def __str__(self) -> str:
+        return f"Liquidacao contrato#{self.contrato_id} em {self.data_liquidacao}"
+
+
+class LiquidacaoContratoAnexo(BaseModel):
+    liquidacao = models.ForeignKey(
+        "tesouraria.LiquidacaoContrato",
+        on_delete=models.CASCADE,
+        related_name="anexos",
+    )
+    arquivo = models.FileField(upload_to="liquidacoes_contrato/")
+    nome_arquivo = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self) -> str:
+        return f"Anexo liquidacao#{self.liquidacao_id}"
+
+
+class LiquidacaoContratoItem(BaseModel):
+    liquidacao = models.ForeignKey(
+        "tesouraria.LiquidacaoContrato",
+        on_delete=models.CASCADE,
+        related_name="itens",
+    )
+    parcela = models.ForeignKey(
+        "contratos.Parcela",
+        on_delete=models.PROTECT,
+        related_name="liquidacao_itens",
+    )
+    numero_parcela = models.PositiveSmallIntegerField()
+    referencia_mes = models.DateField()
+    status_anterior = models.CharField(max_length=20)
+    data_pagamento_anterior = models.DateField(null=True, blank=True)
+    observacao_anterior = models.TextField(blank=True)
+    valor = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        ordering = ["referencia_mes", "numero_parcela", "id"]
+
+    def __str__(self) -> str:
+        return (
+            f"Liquidacao#{self.liquidacao_id} Parcela#{self.parcela_id} "
+            f"{self.referencia_mes}"
+        )
+
+
+class DevolucaoAssociado(BaseModel):
+    class Tipo(models.TextChoices):
+        PAGAMENTO_INDEVIDO = "pagamento_indevido", "Pagamento indevido"
+        DESCONTO_INDEVIDO = "desconto_indevido", "Desconto indevido"
+
+    contrato = models.ForeignKey(
+        "contratos.Contrato",
+        on_delete=models.PROTECT,
+        related_name="devolucoes_associado",
+    )
+    associado = models.ForeignKey(
+        "associados.Associado",
+        on_delete=models.PROTECT,
+        related_name="devolucoes_associado",
+    )
+    tipo = models.CharField(max_length=30, choices=Tipo.choices)
+    data_devolucao = models.DateField()
+    quantidade_parcelas = models.PositiveSmallIntegerField(default=1)
+    valor = models.DecimalField(max_digits=12, decimal_places=2)
+    motivo = models.TextField()
+    comprovante = models.FileField(upload_to="devolucoes_associado/")
+    nome_comprovante = models.CharField(max_length=255, blank=True)
+    competencia_referencia = models.DateField(null=True, blank=True)
+    nome_snapshot = models.CharField(max_length=255)
+    cpf_cnpj_snapshot = models.CharField(max_length=20)
+    matricula_snapshot = models.CharField(max_length=60, blank=True)
+    agente_snapshot = models.CharField(max_length=255, blank=True)
+    contrato_codigo_snapshot = models.CharField(max_length=80)
+    realizado_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="devolucoes_associado_realizadas",
+    )
+    revertida_em = models.DateTimeField(null=True, blank=True)
+    revertida_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="devolucoes_associado_revertidas",
+    )
+    motivo_reversao = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-data_devolucao", "-created_at", "-id"]
+
+    @property
+    def status(self) -> str:
+        return "revertida" if self.revertida_em else "registrada"
+
+    def __str__(self) -> str:
+        return f"Devolucao contrato#{self.contrato_id} em {self.data_devolucao}"
+
+
+class DevolucaoAssociadoAnexo(BaseModel):
+    devolucao = models.ForeignKey(
+        "tesouraria.DevolucaoAssociado",
+        on_delete=models.CASCADE,
+        related_name="anexos",
+    )
+    arquivo = models.FileField(upload_to="devolucoes_associado/")
+    nome_arquivo = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self) -> str:
+        return f"Anexo devolucao#{self.devolucao_id}"
+
+
 class Confirmacao(BaseModel):
     class Tipo(models.TextChoices):
         LIGACAO = "ligacao", "Ligação"

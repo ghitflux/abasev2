@@ -487,7 +487,7 @@ describe("RenovacaoCiclosPage", () => {
   it("renderiza as novas seções da rota com cards mensais e detalhamento mensal", async () => {
     renderPage();
 
-    expect(screen.getByText("Renovação de Ciclos")).toBeInTheDocument();
+    expect(screen.getByText("Dashboard de Ciclos")).toBeInTheDocument();
     expect(screen.getByText("Gestão detalhada por mês")).toBeInTheDocument();
     expect(screen.getByText("Detalhamento mensal já conciliado")).toBeInTheDocument();
     expect(screen.getByText("Arquivos retorno")).toBeInTheDocument();

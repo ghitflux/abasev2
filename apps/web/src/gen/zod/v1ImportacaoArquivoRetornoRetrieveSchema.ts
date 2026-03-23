@@ -10,7 +10,7 @@ export const V1ImportacaoArquivoRetornoRetrievePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("Um valor inteiro único que identifica este arquivo retorno."),
+    .describe("A unique integer value identifying this arquivo retorno."),
 });
 
 export const V1ImportacaoArquivoRetornoRetrieve200Schema = z.lazy(

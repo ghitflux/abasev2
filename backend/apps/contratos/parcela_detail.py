@@ -14,7 +14,7 @@ from apps.tesouraria.payment_evidence import (
     build_competencia_evidence_payload,
     get_pagamento_for_reference,
 )
-from apps.tesouraria.models import BaixaManual
+from apps.tesouraria.models import BaixaManual, LiquidacaoContratoItem
 from core.file_references import build_storage_reference
 
 
@@ -127,6 +127,26 @@ def _query_baixa_manual(
     return queryset.order_by("-data_baixa", "-id").first()
 
 
+def _query_liquidacao_item(
+    *,
+    contrato: Contrato,
+    referencia_mes: date,
+    parcela: Parcela | None,
+) -> LiquidacaoContratoItem | None:
+    queryset = LiquidacaoContratoItem.objects.select_related(
+        "liquidacao",
+        "parcela",
+    ).filter(
+        parcela__associado=contrato.associado,
+        referencia_mes=referencia_mes,
+    )
+    if parcela is not None:
+        preferred = queryset.filter(parcela=parcela).order_by("-created_at", "-id").first()
+        if preferred is not None:
+            return preferred
+    return queryset.order_by("-created_at", "-id").first()
+
+
 def _resolve_target(
     projection: dict[str, object],
     *,
@@ -206,6 +226,11 @@ def build_parcela_detail_payload(
         referencia_mes=referencia_mes,
         parcela=actual_parcela,
     )
+    liquidacao_item = _query_liquidacao_item(
+        contrato=contrato,
+        referencia_mes=referencia_mes,
+        parcela=actual_parcela,
+    )
     evidence_payload = build_competencia_evidence_payload(
         referencia_mes=referencia_mes,
         arquivo_items=_query_retorno_items(
@@ -215,6 +240,7 @@ def build_parcela_detail_payload(
         ),
         pagamento_mensalidade=pagamento_mensalidade,
         baixa_manual=baixa_manual,
+        liquidacao_item=liquidacao_item,
         request=request,
     )
 

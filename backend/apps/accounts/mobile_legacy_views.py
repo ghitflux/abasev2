@@ -3,6 +3,8 @@ from __future__ import annotations
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, serializers, status
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.response import Response
@@ -78,6 +80,10 @@ class LegacyResetPasswordSerializer(serializers.Serializer):
         return attrs
 
 
+class LegacyNoopSerializer(serializers.Serializer):
+    pass
+
+
 def _split_name(full_name: str) -> tuple[str, str]:
     normalized = " ".join((full_name or "").split()).strip()
     if not normalized:
@@ -101,6 +107,7 @@ def _roles_for_response(user: User, *, include_associado_alias: bool) -> list[st
 class LegacyMobileAuthenticatedAPIView(APIView):
     authentication_classes = [LegacyMobileTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = LegacyNoopSerializer
 
 
 class LegacyLoginView(APIView):
@@ -108,6 +115,7 @@ class LegacyLoginView(APIView):
     permission_classes = [permissions.AllowAny]
     throttle_classes = [LoginRateThrottle]
 
+    @extend_schema(request=LegacyLoginSerializer, responses={200: OpenApiTypes.OBJECT})
     def post(self, request):
         serializer = LegacyLoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -139,6 +147,7 @@ class LegacyLoginView(APIView):
 
 
 class LegacyLogoutView(LegacyMobileAuthenticatedAPIView):
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def post(self, request):
         legacy_token = getattr(request, "legacy_mobile_token", None)
         if legacy_token is not None:
@@ -147,6 +156,7 @@ class LegacyLogoutView(LegacyMobileAuthenticatedAPIView):
 
 
 class LegacyHomeView(LegacyMobileAuthenticatedAPIView):
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         associado = resolve_mobile_associado(request.user)
         return Response(
@@ -156,6 +166,7 @@ class LegacyHomeView(LegacyMobileAuthenticatedAPIView):
 
 
 class LegacyMeView(LegacyMobileAuthenticatedAPIView):
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         associado = resolve_mobile_associado(request.user)
         return Response(
@@ -168,6 +179,7 @@ class LegacyRegisterView(APIView):
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(request=LegacyRegisterSerializer, responses={201: OpenApiTypes.OBJECT})
     @transaction.atomic
     def post(self, request):
         serializer = LegacyRegisterSerializer(data=request.data)
@@ -225,6 +237,7 @@ class LegacyCheckEmailView(APIView):
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
         email = (request.query_params.get("email") or "").strip().lower()
         if not email:
@@ -260,6 +273,10 @@ class LegacyForgotPasswordView(APIView):
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(
+        request=LegacyForgotPasswordSerializer,
+        responses={200: OpenApiTypes.OBJECT},
+    )
     def post(self, request):
         serializer = LegacyForgotPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -284,6 +301,10 @@ class LegacyResetPasswordView(APIView):
     authentication_classes = []
     permission_classes = [permissions.AllowAny]
 
+    @extend_schema(
+        request=LegacyResetPasswordSerializer,
+        responses={200: OpenApiTypes.OBJECT},
+    )
     @transaction.atomic
     def post(self, request):
         serializer = LegacyResetPasswordSerializer(data=request.data)

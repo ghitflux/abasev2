@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -11,15 +12,19 @@ from apps.accounts.models import Role, User
 from apps.associados.models import Associado
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.models import EsteiraItem
+from apps.financeiro.models import Despesa
 from apps.importacao.models import PagamentoMensalidade
+from apps.tesouraria.models import DevolucaoAssociado, Pagamento
 
 
 class AdminDashboardViewSetTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.role_admin = Role.objects.create(codigo="ADMIN", nome="Administrador")
+        cls.role_coord = Role.objects.create(codigo="COORDENADOR", nome="Coordenador")
         cls.role_agente = Role.objects.create(codigo="AGENTE", nome="Agente")
         cls.admin = cls._create_user("admin@abase.local", cls.role_admin, "Admin")
+        cls.coordenador = cls._create_user("coord@abase.local", cls.role_coord, "Coord")
         cls.agente_a = cls._create_user("agente.a@abase.local", cls.role_agente, "Alice")
         cls.agente_b = cls._create_user("agente.b@abase.local", cls.role_agente, "Bruno")
 
@@ -41,6 +46,9 @@ class AdminDashboardViewSetTestCase(TestCase):
 
         self.agent_client = APIClient()
         self.agent_client.force_authenticate(self.agente_a)
+
+        self.coord_client = APIClient()
+        self.coord_client.force_authenticate(self.coordenador)
 
         self._seed_dashboard_data()
 
@@ -288,7 +296,53 @@ class AdminDashboardViewSetTestCase(TestCase):
             manual_paid_at=self._aware_datetime(2026, 3, 11, 12, 0),
         )
 
-    def test_endpoints_negam_acesso_para_nao_admin(self):
+        Pagamento.objects.create(
+            cadastro=self.active_effective,
+            created_by=self.admin,
+            contrato_codigo=self.active_effective_contract.codigo,
+            cpf_cnpj=self.active_effective.cpf_cnpj,
+            full_name=self.active_effective.nome_completo,
+            agente_responsavel=self.agente_a.full_name,
+            status=Pagamento.Status.PAGO,
+            valor_pago=Decimal("25.00"),
+            paid_at=self._aware_datetime(2026, 3, 12, 10, 30),
+            forma_pagamento="pix",
+        )
+
+        DevolucaoAssociado.objects.create(
+            contrato=self.inadimplent_contract,
+            associado=self.inadimplent,
+            tipo=DevolucaoAssociado.Tipo.DESCONTO_INDEVIDO,
+            data_devolucao=date(2026, 3, 12),
+            quantidade_parcelas=1,
+            valor=Decimal("15.00"),
+            motivo="Ajuste de desconto indevido",
+            comprovante=SimpleUploadedFile(
+                "devolucao.pdf",
+                b"pdf",
+                content_type="application/pdf",
+            ),
+            nome_comprovante="devolucao.pdf",
+            competencia_referencia=date(2026, 3, 1),
+            nome_snapshot=self.inadimplent.nome_completo,
+            cpf_cnpj_snapshot=self.inadimplent.cpf_cnpj,
+            matricula_snapshot=self.inadimplent.matricula_orgao,
+            agente_snapshot=self.agente_b.full_name,
+            contrato_codigo_snapshot=self.inadimplent_contract.codigo,
+            realizado_por=self.admin,
+        )
+
+        Despesa.objects.create(
+            categoria="Operacional",
+            descricao="Servidor cloud",
+            valor=Decimal("12.50"),
+            data_despesa=date(2026, 3, 10),
+            data_pagamento=date(2026, 3, 12),
+            status=Despesa.Status.PAGO,
+            user=self.admin,
+        )
+
+    def test_endpoints_permitem_coordenador_e_negam_agente(self):
         urls = [
             "/api/v1/dashboard/admin/resumo-geral/",
             "/api/v1/dashboard/admin/tesouraria/",
@@ -299,6 +353,8 @@ class AdminDashboardViewSetTestCase(TestCase):
 
         for url in urls:
             with self.subTest(url=url):
+                coord_response = self.coord_client.get(url)
+                self.assertEqual(coord_response.status_code, 200)
                 response = self.agent_client.get(url)
                 self.assertEqual(response.status_code, 403)
 
@@ -368,8 +424,28 @@ class AdminDashboardViewSetTestCase(TestCase):
         self.assertEqual(cards["baixas_manuais"]["numeric_value"], 1.0)
         self.assertEqual(cards["inadimplentes_quitados"]["numeric_value"], 1.0)
         self.assertEqual(cards["contratos_novos"]["numeric_value"], 4.0)
+        self.assertEqual(cards["saidas_agentes_associados"]["value"], "40.00")
+        self.assertEqual(cards["despesas"]["value"], "12.50")
+        self.assertEqual(cards["receita_liquida_associacao"]["value"], "52.50")
         self.assertEqual(len(payload["projection_area"]), 3)
         self.assertGreater(cards["projecao_total"]["numeric_value"], 0)
+
+    def test_tesouraria_respeita_day_e_valida_conflito_com_competencia(self):
+        response = self.client.get(
+            "/api/v1/dashboard/admin/tesouraria/",
+            {"competencia": "2026-03", "day": "2026-03-12"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        cards = {item["key"]: item for item in response.json()["cards"]}
+        self.assertEqual(cards["valores_recebidos"]["value"], "0.00")
+        self.assertEqual(cards["saidas_agentes_associados"]["value"], "40.00")
+        self.assertEqual(cards["despesas"]["value"], "12.50")
+
+        invalid = self.client.get(
+            "/api/v1/dashboard/admin/tesouraria/",
+            {"competencia": "2026-03", "day": "2026-04-12"},
+        )
+        self.assertEqual(invalid.status_code, 400)
 
     def test_novos_associados_retorna_cards_e_distribuicao(self):
         response = self.client.get(
@@ -386,17 +462,28 @@ class AdminDashboardViewSetTestCase(TestCase):
         self.assertEqual(cards["novos_inadimplentes"]["numeric_value"], 1.0)
         self.assertEqual(payload["status_pie"][0]["detail_metric"].startswith("status:"), True)
 
-    def test_agentes_retorna_ranking_por_efetivacao(self):
+    def test_agentes_retorna_ranking_por_volume_e_novas_metricas(self):
         response = self.client.get(
             "/api/v1/dashboard/admin/agentes/",
-            {"date_start": "2026-03-01", "date_end": "2026-03-31"},
+            {
+                "competencia": "2026-03",
+                "date_start": "2026-03-01",
+                "date_end": "2026-03-31",
+            },
         )
         self.assertEqual(response.status_code, 200, response.json())
         payload = response.json()
 
+        cards = {item["key"]: item for item in payload["cards"]}
+        self.assertEqual(cards["volume_total"]["value"], "270.00")
+        self.assertEqual(cards["com_devolucao"]["numeric_value"], 1.0)
+        self.assertEqual(cards["renovados"]["numeric_value"], 1.0)
+        self.assertEqual(cards["aptos_renovar"]["numeric_value"], 1.0)
         self.assertEqual(payload["ranking"][0]["agent_name"], self.agente_a.full_name)
+        self.assertEqual(payload["ranking"][0]["volume_financeiro"], 180.0)
         self.assertEqual(payload["ranking"][0]["efetivados"], 2)
         self.assertEqual(payload["ranking"][1]["agent_name"], self.agente_b.full_name)
+        self.assertEqual(payload["ranking"][1]["volume_financeiro"], 90.0)
         self.assertEqual(payload["ranking"][1]["efetivados"], 1)
 
     def test_detalhes_respeita_metricas_paginacao_e_page_size_all(self):
@@ -446,7 +533,8 @@ class AdminDashboardViewSetTestCase(TestCase):
             "/api/v1/dashboard/admin/detalhes/",
             {
                 "section": "agentes",
-                "metric": f"agente:{self.agente_a.id}:efetivados",
+                "metric": f"agente:{self.agente_a.id}:volume",
+                "competencia": "2026-03",
                 "date_start": "2026-03-01",
                 "date_end": "2026-03-31",
                 "page_size": "all",

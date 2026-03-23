@@ -8,7 +8,7 @@ import type { PatchedAdminUserAccessUpdate } from "./PatchedAdminUserAccessUpdat
 
 export type V1ConfiguracoesUsuariosPartialUpdatePathParams = {
   /**
-   * @description Um valor inteiro único que identifica este user.
+   * @description A unique integer value identifying this user.
    * @type integer
    */
   id: number;

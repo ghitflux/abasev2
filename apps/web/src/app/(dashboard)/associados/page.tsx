@@ -27,6 +27,7 @@ import { apiFetch } from "@/lib/api/client";
 import { formatDateValue, parseDateValue } from "@/lib/date-value";
 import { formatCurrency, formatMetricDelta, formatMonthYear } from "@/lib/formatters";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { usePermissions } from "@/hooks/use-permissions";
 import RoleGuard from "@/components/auth/role-guard";
 import {
   ParcelaDetalheDialog,
@@ -254,6 +255,8 @@ function AssociadoCiclosPanel({ associadoId }: { associadoId: number }) {
 }
 
 function AssociadosPageContent() {
+  const { hasRole } = usePermissions();
+  const isAdmin = hasRole("ADMIN");
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
   const [detailMetric, setDetailMetric] = React.useState<AssociadoMetricKey | null>(null);
@@ -412,11 +415,13 @@ function AssociadosPageContent() {
                 <EyeIcon className="size-4" />
               </Link>
             </Button>
-            <Button variant="outline" size="icon-sm" asChild>
-              <Link href={`/associados/${row.id}/editar`}>
-                <PencilIcon className="size-4" />
-              </Link>
-            </Button>
+            {isAdmin ? (
+              <Button variant="outline" size="icon-sm" asChild>
+                <Link href={`/associados-editar/${row.id}`}>
+                  <PencilIcon className="size-4" />
+                </Link>
+              </Button>
+            ) : null}
           </div>
         ),
       },
@@ -775,7 +780,7 @@ function AssociadosPageContent() {
 
 export default function AssociadosPage() {
   return (
-    <RoleGuard allow={["ADMIN"]}>
+    <RoleGuard allow={["ADMIN", "COORDENADOR"]}>
       <AssociadosPageContent />
     </RoleGuard>
   );

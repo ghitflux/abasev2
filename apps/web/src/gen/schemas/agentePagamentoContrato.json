@@ -9,6 +9,8 @@
     "status_contrato": { "type": "string", "readOnly": true },
     "status_visual_slug": { "type": "string", "readOnly": true },
     "status_visual_label": { "type": "string", "readOnly": true },
+    "possui_meses_nao_descontados": { "type": "boolean", "readOnly": true },
+    "meses_nao_descontados_count": { "type": "integer", "readOnly": true },
     "data_contrato": { "type": "string", "format": "date" },
     "auxilio_liberado_em": {
       "type": "string",
@@ -274,6 +276,7 @@
     "contrato_codigo",
     "cpf_cnpj",
     "id",
+    "meses_nao_descontados_count",
     "nome",
     "pagamento_inicial_evidencias",
     "pagamento_inicial_paid_at",
@@ -282,6 +285,7 @@
     "pagamento_inicial_valor",
     "parcelas_pagas",
     "parcelas_total",
+    "possui_meses_nao_descontados",
     "status_contrato",
     "status_visual_label",
     "status_visual_slug"

@@ -21,7 +21,7 @@ from apps.tesouraria.payment_evidence import (
     build_competencia_evidence_payload,
     canonicalize_pagamentos,
 )
-from apps.tesouraria.models import BaixaManual
+from apps.tesouraria.models import BaixaManual, DevolucaoAssociado
 from core.file_references import build_filefield_reference, build_storage_reference
 
 
@@ -30,6 +30,8 @@ def _is_agent_restricted(context: dict) -> bool:
     if not request or not getattr(request, "user", None):
         return False
     user = request.user
+    if not getattr(user, "is_authenticated", False) or not hasattr(user, "has_role"):
+        return False
     return user.has_role("AGENTE") and not user.has_role("ADMIN")
 
 
@@ -62,12 +64,14 @@ class TesourariaContratoListSerializer(serializers.Serializer):
     associado_id = serializers.IntegerField(source="associado.id", read_only=True)
     nome = serializers.CharField(source="associado.nome_completo", read_only=True)
     cpf_cnpj = serializers.CharField(source="associado.cpf_cnpj", read_only=True)
+    matricula = serializers.SerializerMethodField()
     chave_pix = serializers.SerializerMethodField()
     codigo = serializers.CharField(read_only=True)
     data_assinatura = serializers.DateField(source="data_contrato", read_only=True)
     status = serializers.SerializerMethodField()
     agente = SimpleUserSerializer(read_only=True)
     agente_nome = serializers.CharField(source="agente.full_name", read_only=True)
+    percentual_repasse = serializers.SerializerMethodField()
     comissao_agente = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True
     )
@@ -96,6 +100,15 @@ class TesourariaContratoListSerializer(serializers.Serializer):
             return "congelado"
         return "pendente"
 
+    def get_matricula(self, obj) -> str:
+        associado = obj.associado
+        return associado.matricula_orgao or associado.matricula or ""
+
+    def get_percentual_repasse(self, obj) -> str:
+        associado = obj.associado
+        return f"{associado.auxilio_taxa:.2f}"
+
+    @extend_schema_field(ComprovanteResumoSerializer(many=True))
     def get_comprovantes(self, obj):
         comprovantes = obj.comprovantes.filter(refinanciamento__isnull=True)
         return ComprovanteResumoSerializer(comprovantes, many=True).data
@@ -104,6 +117,7 @@ class TesourariaContratoListSerializer(serializers.Serializer):
         payload = obj.associado.build_dados_bancarios_payload() or {}
         return payload.get("chave_pix", "")
 
+    @extend_schema_field(DadosBancariosSerializer(allow_null=True))
     def get_dados_bancarios(self, obj):
         payload = obj.associado.build_dados_bancarios_payload()
         if not payload:
@@ -329,10 +343,12 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
     def get_pagamento_inicial_status_label(self, obj: Contrato) -> str:
         return str(self._initial_payment_payload(obj).status_label)
 
-    def get_pagamento_inicial_valor(self, obj: Contrato):
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_pagamento_inicial_valor(self, obj: Contrato) -> str | None:
         valor = self._initial_payment_payload(obj).valor
         return f"{valor:.2f}" if valor is not None else None
 
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
     def get_pagamento_inicial_paid_at(self, obj: Contrato):
         return self._initial_payment_payload(obj).paid_at
 
@@ -480,6 +496,280 @@ class DarBaixaManualSerializer(serializers.Serializer):
     observacao = serializers.CharField(required=False, allow_blank=True, default="")
 
 
+class LiquidacaoParcelaSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    numero = serializers.IntegerField(read_only=True)
+    referencia_mes = serializers.DateField(read_only=True)
+    valor = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    status = serializers.CharField(read_only=True)
+    data_vencimento = serializers.DateField(read_only=True, allow_null=True)
+    data_pagamento = serializers.DateField(read_only=True, allow_null=True)
+    observacao = serializers.CharField(read_only=True)
+
+
+class LiquidacaoComprovanteSerializer(serializers.Serializer):
+    nome = serializers.CharField(read_only=True)
+    url = serializers.CharField(read_only=True)
+    arquivo_referencia = serializers.CharField(read_only=True)
+    arquivo_disponivel_localmente = serializers.BooleanField(read_only=True)
+    tipo_referencia = serializers.CharField(read_only=True)
+
+
+class LiquidacaoAnexoSerializer(LiquidacaoComprovanteSerializer):
+    pass
+
+
+class LiquidacaoContratoListSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    contrato_id = serializers.IntegerField(read_only=True)
+    liquidacao_id = serializers.IntegerField(read_only=True, allow_null=True)
+    associado_id = serializers.IntegerField(read_only=True)
+    nome = serializers.CharField(read_only=True)
+    cpf_cnpj = serializers.CharField(read_only=True)
+    matricula = serializers.CharField(read_only=True)
+    agente_nome = serializers.CharField(read_only=True, allow_blank=True)
+    contrato_codigo = serializers.CharField(read_only=True)
+    quantidade_parcelas = serializers.IntegerField(read_only=True)
+    valor_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    referencia_inicial = serializers.DateField(read_only=True, allow_null=True)
+    referencia_final = serializers.DateField(read_only=True, allow_null=True)
+    status_liquidacao = serializers.CharField(read_only=True)
+    status_contrato = serializers.CharField(read_only=True)
+    status_renovacao = serializers.CharField(read_only=True, allow_blank=True)
+    origem_solicitacao = serializers.CharField(read_only=True, allow_blank=True)
+    data_liquidacao = serializers.DateField(read_only=True, allow_null=True)
+    observacao = serializers.CharField(read_only=True, allow_blank=True)
+    realizado_por = SimpleUserSerializer(read_only=True, allow_null=True)
+    revertida_em = serializers.DateTimeField(read_only=True, allow_null=True)
+    revertida_por = SimpleUserSerializer(read_only=True, allow_null=True)
+    motivo_reversao = serializers.CharField(read_only=True, allow_blank=True)
+    comprovante = serializers.SerializerMethodField()
+    anexos = serializers.SerializerMethodField()
+    parcelas = LiquidacaoParcelaSerializer(many=True, read_only=True)
+    pode_reverter = serializers.SerializerMethodField()
+
+    @extend_schema_field(LiquidacaoComprovanteSerializer(allow_null=True))
+    def get_comprovante(self, obj: dict[str, Any]) -> dict[str, object] | None:
+        comprovante = obj.get("comprovante_obj")
+        if not comprovante:
+            return None
+        reference = build_filefield_reference(
+            comprovante,
+            request=self.context.get("request"),
+            missing_type="legado_sem_arquivo",
+        )
+        return {
+            "nome": obj.get("nome_comprovante") or comprovante.name.rsplit("/", 1)[-1],
+            "url": reference.url,
+            "arquivo_referencia": reference.arquivo_referencia,
+            "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
+            "tipo_referencia": reference.tipo_referencia,
+        }
+
+    @extend_schema_field(LiquidacaoAnexoSerializer(many=True))
+    def get_anexos(self, obj: dict[str, Any]) -> list[dict[str, object]]:
+        anexos: list[dict[str, object]] = []
+        comprovante = self.get_comprovante(obj)
+        if comprovante:
+            anexos.append(comprovante)
+
+        request = self.context.get("request")
+        for anexo in obj.get("anexos_obj", []):
+            reference = build_filefield_reference(
+                anexo.arquivo,
+                request=request,
+                missing_type="legado_sem_arquivo",
+            )
+            anexos.append(
+                {
+                    "nome": anexo.nome_arquivo or anexo.arquivo.name.rsplit("/", 1)[-1],
+                    "url": reference.url,
+                    "arquivo_referencia": reference.arquivo_referencia,
+                    "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
+                    "tipo_referencia": reference.tipo_referencia,
+                }
+            )
+        return anexos
+
+    def get_pode_reverter(self, obj: dict[str, Any]) -> bool:
+        return obj.get("status_liquidacao") == "liquidado"
+
+
+class LiquidacaoKpisSerializer(serializers.Serializer):
+    total_contratos = serializers.IntegerField(read_only=True)
+    total_parcelas = serializers.IntegerField(read_only=True)
+    valor_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    associados_impactados = serializers.IntegerField(read_only=True)
+    revertidas = serializers.IntegerField(read_only=True)
+    ativas = serializers.IntegerField(read_only=True)
+
+
+class LiquidarContratoSerializer(serializers.Serializer):
+    data_liquidacao = serializers.DateField(required=True)
+    valor_total = serializers.DecimalField(max_digits=12, decimal_places=2, required=True)
+    observacao = serializers.CharField(required=True, allow_blank=False)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        request = self.context.get("request")
+        files = []
+        if request is not None:
+            files.extend(request.FILES.getlist("comprovantes"))
+            single = request.FILES.get("comprovante")
+            if single is not None and single not in files:
+                files.append(single)
+        if not files:
+            raise serializers.ValidationError(
+                {"comprovantes": "Envie pelo menos um comprovante."}
+            )
+        attrs["comprovantes"] = files
+        return attrs
+
+
+class ReverterLiquidacaoSerializer(serializers.Serializer):
+    motivo_reversao = serializers.CharField(required=True, allow_blank=False)
+
+
+class DevolucaoContratoListSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    contrato_id = serializers.IntegerField(read_only=True)
+    associado_id = serializers.IntegerField(read_only=True)
+    nome = serializers.CharField(read_only=True)
+    cpf_cnpj = serializers.CharField(read_only=True)
+    matricula = serializers.CharField(read_only=True, allow_blank=True)
+    agente_nome = serializers.CharField(read_only=True, allow_blank=True)
+    contrato_codigo = serializers.CharField(read_only=True)
+    status_contrato = serializers.CharField(read_only=True)
+    data_contrato = serializers.DateField(read_only=True)
+    mes_averbacao = serializers.DateField(read_only=True, allow_null=True)
+
+
+class DevolucaoComprovanteSerializer(serializers.Serializer):
+    nome = serializers.CharField(read_only=True)
+    url = serializers.CharField(read_only=True)
+    arquivo_referencia = serializers.CharField(read_only=True)
+    arquivo_disponivel_localmente = serializers.BooleanField(read_only=True)
+    tipo_referencia = serializers.CharField(read_only=True)
+
+
+class DevolucaoAnexoSerializer(DevolucaoComprovanteSerializer):
+    pass
+
+
+class DevolucaoAssociadoListSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    devolucao_id = serializers.IntegerField(read_only=True)
+    contrato_id = serializers.IntegerField(read_only=True)
+    associado_id = serializers.IntegerField(read_only=True)
+    tipo = serializers.CharField(read_only=True)
+    status_devolucao = serializers.CharField(read_only=True)
+    data_devolucao = serializers.DateField(read_only=True)
+    quantidade_parcelas = serializers.IntegerField(read_only=True)
+    valor = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    motivo = serializers.CharField(read_only=True)
+    competencia_referencia = serializers.DateField(read_only=True, allow_null=True)
+    nome = serializers.CharField(read_only=True)
+    cpf_cnpj = serializers.CharField(read_only=True)
+    matricula = serializers.CharField(read_only=True, allow_blank=True)
+    agente_nome = serializers.CharField(read_only=True, allow_blank=True)
+    contrato_codigo = serializers.CharField(read_only=True)
+    status_contrato = serializers.CharField(read_only=True)
+    realizado_por = SimpleUserSerializer(read_only=True, allow_null=True)
+    revertida_em = serializers.DateTimeField(read_only=True, allow_null=True)
+    revertida_por = SimpleUserSerializer(read_only=True, allow_null=True)
+    motivo_reversao = serializers.CharField(read_only=True, allow_blank=True)
+    comprovante = serializers.SerializerMethodField()
+    anexos = serializers.SerializerMethodField()
+    pode_reverter = serializers.SerializerMethodField()
+
+    @extend_schema_field(DevolucaoComprovanteSerializer(allow_null=True))
+    def get_comprovante(self, obj: dict[str, Any]) -> dict[str, object] | None:
+        comprovante = obj.get("comprovante_obj")
+        if not comprovante:
+            return None
+        reference = build_filefield_reference(
+            comprovante,
+            request=self.context.get("request"),
+            missing_type="legado_sem_arquivo",
+        )
+        return {
+            "nome": obj.get("nome_comprovante") or comprovante.name.rsplit("/", 1)[-1],
+            "url": reference.url,
+            "arquivo_referencia": reference.arquivo_referencia,
+            "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
+            "tipo_referencia": reference.tipo_referencia,
+        }
+
+    @extend_schema_field(DevolucaoAnexoSerializer(many=True))
+    def get_anexos(self, obj: dict[str, Any]) -> list[dict[str, object]]:
+        anexos: list[dict[str, object]] = []
+        comprovante = self.get_comprovante(obj)
+        if comprovante:
+            anexos.append(comprovante)
+
+        request = self.context.get("request")
+        for anexo in obj.get("anexos_obj", []):
+            reference = build_filefield_reference(
+                anexo.arquivo,
+                request=request,
+                missing_type="legado_sem_arquivo",
+            )
+            anexos.append(
+                {
+                    "nome": anexo.nome_arquivo or anexo.arquivo.name.rsplit("/", 1)[-1],
+                    "url": reference.url,
+                    "arquivo_referencia": reference.arquivo_referencia,
+                    "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
+                    "tipo_referencia": reference.tipo_referencia,
+                }
+            )
+        return anexos
+
+    def get_pode_reverter(self, obj: dict[str, Any]) -> bool:
+        return obj.get("status_devolucao") == "registrada"
+
+
+class DevolucaoKpisSerializer(serializers.Serializer):
+    total_contratos = serializers.IntegerField(read_only=True)
+    associados_impactados = serializers.IntegerField(read_only=True)
+    ativos = serializers.IntegerField(read_only=True)
+    encerrados = serializers.IntegerField(read_only=True)
+    cancelados = serializers.IntegerField(read_only=True)
+    total_registros = serializers.IntegerField(read_only=True)
+    valor_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    registradas = serializers.IntegerField(read_only=True)
+    revertidas = serializers.IntegerField(read_only=True)
+
+
+class RegistrarDevolucaoSerializer(serializers.Serializer):
+    tipo = serializers.ChoiceField(choices=DevolucaoAssociado.Tipo.choices, required=True)
+    data_devolucao = serializers.DateField(required=True)
+    quantidade_parcelas = serializers.IntegerField(required=True, min_value=1)
+    valor = serializers.DecimalField(max_digits=12, decimal_places=2, required=True)
+    motivo = serializers.CharField(required=True, allow_blank=False)
+    competencia_referencia = serializers.DateField(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        request = self.context.get("request")
+        files = []
+        if request is not None:
+            files.extend(request.FILES.getlist("comprovantes"))
+            single = request.FILES.get("comprovante")
+            if single is not None and single not in files:
+                files.append(single)
+        if not files:
+            raise serializers.ValidationError(
+                {"comprovantes": "Envie pelo menos um anexo."}
+            )
+        attrs["comprovantes"] = files
+        return attrs
+
+
+class ReverterDevolucaoSerializer(serializers.Serializer):
+    motivo_reversao = serializers.CharField(required=True, allow_blank=False)
+
+
 class DespesaAnexoSerializer(serializers.Serializer):
     nome = serializers.CharField(read_only=True)
     url = serializers.CharField(read_only=True)
@@ -530,6 +820,14 @@ class DespesaListSerializer(serializers.ModelSerializer):
             "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
             "tipo_referencia": reference.tipo_referencia,
         }
+
+
+class DespesaKpisSerializer(serializers.Serializer):
+    total_despesas = serializers.IntegerField(read_only=True)
+    valor_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    valor_pago = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    valor_pendente = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    pendentes_anexo = serializers.IntegerField(read_only=True)
 
 
 class DespesaWriteSerializer(serializers.ModelSerializer):

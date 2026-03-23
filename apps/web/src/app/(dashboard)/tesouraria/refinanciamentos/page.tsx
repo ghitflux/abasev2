@@ -3,33 +3,51 @@
 import * as React from "react";
 import { format } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileDownIcon, ListIcon, PrinterIcon, Trash2Icon } from "lucide-react";
+import {
+  CheckCircle2Icon,
+  Clock3Icon,
+  HandCoinsIcon,
+  SlidersHorizontalIcon,
+  Trash2Icon,
+  XCircleIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
-import type { PaginatedResponse, RefinanciamentoItem } from "@/lib/api/types";
+import type {
+  PaginatedResponse,
+  RefinanciamentoItem,
+  RefinanciamentoResumo,
+} from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
 import { formatCurrency, formatDateTime, formatMonthYear } from "@/lib/formatters";
 import DatePicker from "@/components/custom/date-picker";
-import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-const comprovanteAccept = {
-  "application/pdf": [".pdf"],
-  "image/png": [".png"],
-  "image/jpeg": [".jpg", ".jpeg"],
+type ListingTab = "pendentes" | "efetuadas" | "canceladas";
+type DraftMap = Record<number, { associado?: File; agente?: File }>;
+
+const TAB_STATUS_MAP: Record<ListingTab, string[]> = {
+  pendentes: ["aprovado_para_renovacao"],
+  efetuadas: ["efetivado"],
+  canceladas: ["bloqueado", "revertido", "desativado"],
 };
 
 function toIsoDate(value?: Date) {
@@ -37,7 +55,77 @@ function toIsoDate(value?: Date) {
   return format(value, "yyyy-MM-dd");
 }
 
-type DraftMap = Record<number, { associado?: File; agente?: File }>;
+function CompactUploadButton({
+  id,
+  label,
+  existingUrl,
+  existingReference,
+  existingName,
+  draftFile,
+  onSelect,
+  onClear,
+  disabled = false,
+}: {
+  id: string;
+  label: string;
+  existingUrl?: string;
+  existingReference?: string;
+  existingName?: string;
+  draftFile?: File;
+  onSelect?: (file: File) => void;
+  onClear?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex min-w-[14rem] items-center gap-2 rounded-xl border border-border/60 bg-background/40 p-2.5">
+      <div className="min-w-0 flex-1">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+          {label}
+        </p>
+        <p className="truncate text-xs text-foreground">
+          {draftFile?.name ||
+            existingName ||
+            (existingReference ? "Arquivo legado vinculado" : "Sem anexo")}
+        </p>
+      </div>
+      {existingUrl ? (
+        <Button asChild size="sm" variant="outline">
+          <a href={buildBackendFileUrl(existingUrl)} target="_blank" rel="noreferrer">
+            Ver
+          </a>
+        </Button>
+      ) : existingReference ? (
+        <Badge className="rounded-full bg-amber-500/15 text-amber-200">Legado</Badge>
+      ) : null}
+      {onSelect ? (
+        <label className="cursor-pointer">
+          <input
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg"
+            className="hidden"
+            disabled={disabled}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) {
+                onSelect(file);
+              }
+              event.currentTarget.value = "";
+            }}
+            id={id}
+          />
+          <Button asChild size="sm" variant={draftFile || existingName ? "outline" : "secondary"}>
+            <span>{draftFile || existingName || existingReference ? "Trocar" : "Anexar"}</span>
+          </Button>
+        </label>
+      ) : null}
+      {draftFile && onClear ? (
+        <Button size="icon-sm" variant="ghost" onClick={onClear}>
+          <Trash2Icon className="size-4" />
+        </Button>
+      ) : null}
+    </div>
+  );
+}
 
 export default function TesourariaRefinanciamentosPage() {
   const queryClient = useQueryClient();
@@ -45,12 +133,23 @@ export default function TesourariaRefinanciamentosPage() {
   const [search, setSearch] = React.useState("");
   const [dataInicio, setDataInicio] = React.useState<Date>();
   const [dataFim, setDataFim] = React.useState<Date>();
+  const [draftDataInicio, setDraftDataInicio] = React.useState<Date>();
+  const [draftDataFim, setDraftDataFim] = React.useState<Date>();
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const [tab, setTab] = React.useState<ListingTab>("pendentes");
   const [drafts, setDrafts] = React.useState<DraftMap>({});
-  const [itemsTarget, setItemsTarget] = React.useState<RefinanciamentoItem | null>(null);
+
+  const statusFilter = TAB_STATUS_MAP[tab];
+  const activeFiltersCount = Number(Boolean(dataInicio)) + Number(Boolean(dataFim));
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [search, dataInicio, dataFim, tab]);
 
   const refinanciamentosQuery = useQuery({
     queryKey: [
       "tesouraria-refinanciamentos",
+      tab,
       page,
       search,
       dataInicio?.toISOString(),
@@ -64,6 +163,26 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
+          status: statusFilter,
+        },
+      }),
+  });
+
+  const resumoQuery = useQuery({
+    queryKey: [
+      "tesouraria-refinanciamentos-resumo",
+      tab,
+      search,
+      dataInicio?.toISOString(),
+      dataFim?.toISOString(),
+    ],
+    queryFn: () =>
+      apiFetch<RefinanciamentoResumo>("tesouraria/refinanciamentos/resumo", {
+        query: {
+          search: search || undefined,
+          data_inicio: toIsoDate(dataInicio),
+          data_fim: toIsoDate(dataFim),
+          status: statusFilter,
         },
       }),
   });
@@ -95,131 +214,164 @@ export default function TesourariaRefinanciamentosPage() {
         delete next[variables.refinanciamentoId];
         return next;
       });
-      toast.success("Refinanciamento efetivado.");
+      toast.success("Renovação efetivada com sucesso.");
       void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos-resumo"] });
       void queryClient.invalidateQueries({ queryKey: ["agente-refinanciados"] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao efetivar refinanciamento.");
+      toast.error(error instanceof Error ? error.message : "Falha ao efetivar renovação.");
     },
   });
 
   const rows = refinanciamentosQuery.data?.results ?? [];
   const totalCount = refinanciamentosQuery.data?.count ?? 0;
+  const resumo = resumoQuery.data;
+  const canceladasTotal =
+    (resumo?.bloqueados ?? 0) + (resumo?.revertidos ?? 0) + (resumo?.desativados ?? 0);
 
   const columns = React.useMemo<DataTableColumn<RefinanciamentoItem>[]>(
     () => [
       {
-        id: "valor",
-        header: "Valor Refinanciamento",
+        id: "associado",
+        header: "Associado",
         cell: (row) => (
-          <div>
-            <p className="font-semibold">{formatCurrency(row.valor_refinanciamento)}</p>
-            <p className="text-xs text-muted-foreground">{row.associado_nome}</p>
+          <div className="space-y-2">
+            <CopySnippet label="Nome" value={row.associado_nome} inline className="max-w-[17rem]" />
+            <div className="flex flex-wrap gap-2">
+              <CopySnippet label="CPF" value={row.cpf_cnpj} mono inline />
+              <CopySnippet
+                label="Matrícula"
+                value={row.matricula_display || row.matricula}
+                mono
+                inline
+              />
+            </div>
           </div>
         ),
+        headerClassName: "w-[24%]",
       },
       {
-        id: "repasse",
-        header: "Agente (Repasse)",
-        cell: (row) => (
-          <div>
-            <p>{formatCurrency(row.repasse_agente)}</p>
-            <p className="text-xs text-muted-foreground">10% do valor</p>
-          </div>
-        ),
-      },
-      {
-        id: "pagamento",
-        header: "Ativação do ciclo",
+        id: "ciclo",
+        header: "Contrato / Ciclo",
         cell: (row) => (
           <div className="space-y-1">
+            <CopySnippet label="Contrato" value={row.contrato_codigo} mono inline />
+            <p className="text-xs text-muted-foreground">
+              Competência solicitada {formatMonthYear(row.competencia_solicitada)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Parcelas pagas no ciclo: {row.mensalidades_pagas}/{row.mensalidades_total}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {row.referencias.length
+                ? row.referencias.map((referencia) => formatMonthYear(referencia)).join(" · ")
+                : "Sem referências detalhadas"}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "financeiro",
+        header: "Financeiro",
+        cell: (row) => (
+          <div className="space-y-1">
+            <p className="font-semibold">{formatCurrency(row.valor_refinanciamento)}</p>
+            <p className="text-xs text-muted-foreground">
+              Repasse do agente: {formatCurrency(row.repasse_agente)}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "etapa",
+        header: "Etapa / Ativação",
+        cell: (row) => (
+          <div className="space-y-2">
+            <StatusBadge status={row.etapa_operacional || row.status} />
             <StatusBadge status={row.pagamento_status} />
             <p className="text-xs text-muted-foreground">
               {row.data_ativacao_ciclo
-                ? `Ativado em: ${formatDateTime(row.data_ativacao_ciclo)}`
-                : "Aguardando anexação / conferência"}
+                ? `Ativado em ${formatDateTime(row.data_ativacao_ciclo)}`
+                : "Aguardando efetivação da tesouraria"}
             </p>
             {row.ativacao_inferida ? (
               <Badge className="rounded-full bg-amber-500/15 text-amber-200">
-                Data inferida pela tesouraria
+                Data inferida
               </Badge>
             ) : null}
           </div>
         ),
       },
       {
-        id: "itens",
-        header: "Itens",
-        cell: (row) => (
-          <Button size="sm" variant="outline" onClick={() => setItemsTarget(row)}>
-            <ListIcon className="size-4" />
-            Itens ({row.itens.length})
-          </Button>
-        ),
-      },
-      {
-        id: "solicitacao",
-        header: "Etapa da renovação",
-        cell: (row) => (
-          <div className="space-y-1">
-            <StatusBadge status={row.etapa_operacional || row.status} />
-            <p className="text-xs text-muted-foreground">
-              Solicitado em: {formatDateTime(row.data_solicitacao_renovacao ?? row.created_at)}
-            </p>
-            <CopySnippet label="CPF" value={row.cpf_cnpj} mono inline />
-          </div>
-        ),
-      },
-      {
-        id: "comprovantes",
-        header: "Comprovantes",
+        id: "anexos",
+        header: "Anexos / Ação",
+        cellClassName: "min-w-[26rem]",
         cell: (row) => {
           const associado = row.comprovantes.find((item) => item.papel === "associado");
           const agente = row.comprovantes.find((item) => item.papel === "agente");
           const draft = drafts[row.id] ?? {};
+          const canEfetivar = tab === "pendentes" && draft.associado && draft.agente;
 
           return (
-            <div className="grid min-w-72 gap-3">
-              <UploadTile
-                label="Associado"
-                existingUrl={associado?.arquivo_disponivel_localmente ? associado.arquivo : undefined}
-                existingReference={associado?.arquivo_referencia}
-                existingName={associado?.nome_original}
-                draftFile={draft.associado}
-                onSelect={(file) =>
-                  setDrafts((current) => ({
-                    ...current,
-                    [row.id]: { ...current[row.id], associado: file },
-                  }))
-                }
-                onClear={() =>
-                  setDrafts((current) => ({
-                    ...current,
-                    [row.id]: { ...current[row.id], associado: undefined },
-                  }))
-                }
-              />
-              <UploadTile
-                label="Agente"
-                existingUrl={agente?.arquivo_disponivel_localmente ? agente.arquivo : undefined}
-                existingReference={agente?.arquivo_referencia}
-                existingName={agente?.nome_original}
-                draftFile={draft.agente}
-                onSelect={(file) =>
-                  setDrafts((current) => ({
-                    ...current,
-                    [row.id]: { ...current[row.id], agente: file },
-                  }))
-                }
-                onClear={() =>
-                  setDrafts((current) => ({
-                    ...current,
-                    [row.id]: { ...current[row.id], agente: undefined },
-                  }))
-                }
-              />
-              {row.status !== "efetivado" && draft.associado && draft.agente ? (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <CompactUploadButton
+                  id={`ref-${row.id}-associado`}
+                  label="Associado"
+                  existingUrl={associado?.arquivo_disponivel_localmente ? associado.arquivo : undefined}
+                  existingReference={associado?.arquivo_referencia}
+                  existingName={associado?.nome_original}
+                  draftFile={draft.associado}
+                  disabled={tab !== "pendentes"}
+                  onSelect={
+                    tab === "pendentes"
+                      ? (file) =>
+                          setDrafts((current) => ({
+                            ...current,
+                            [row.id]: { ...current[row.id], associado: file },
+                          }))
+                      : undefined
+                  }
+                  onClear={
+                    tab === "pendentes"
+                      ? () =>
+                          setDrafts((current) => ({
+                            ...current,
+                            [row.id]: { ...current[row.id], associado: undefined },
+                          }))
+                      : undefined
+                  }
+                />
+                <CompactUploadButton
+                  id={`ref-${row.id}-agente`}
+                  label="Agente"
+                  existingUrl={agente?.arquivo_disponivel_localmente ? agente.arquivo : undefined}
+                  existingReference={agente?.arquivo_referencia}
+                  existingName={agente?.nome_original}
+                  draftFile={draft.agente}
+                  disabled={tab !== "pendentes"}
+                  onSelect={
+                    tab === "pendentes"
+                      ? (file) =>
+                          setDrafts((current) => ({
+                            ...current,
+                            [row.id]: { ...current[row.id], agente: file },
+                          }))
+                      : undefined
+                  }
+                  onClear={
+                    tab === "pendentes"
+                      ? () =>
+                          setDrafts((current) => ({
+                            ...current,
+                            [row.id]: { ...current[row.id], agente: undefined },
+                          }))
+                      : undefined
+                  }
+                />
+              </div>
+              {canEfetivar ? (
                 <Button
                   size="sm"
                   onClick={() =>
@@ -230,58 +382,163 @@ export default function TesourariaRefinanciamentosPage() {
                     })
                   }
                 >
-                  Efetivar refinanciamento
+                  Efetivar renovação
                 </Button>
+              ) : tab === "pendentes" ? (
+                <p className="text-xs text-muted-foreground">
+                  Envie os dois anexos para efetivar a renovação.
+                </p>
               ) : null}
             </div>
           );
         },
       },
     ],
-    [drafts, efetivarMutation],
+    [drafts, efetivarMutation, tab],
   );
 
   return (
     <div className="space-y-6">
       <section className="rounded-[1.75rem] border border-border/60 bg-card/70 p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-sm uppercase tracking-[0.28em] text-muted-foreground">
-              Tesouraria
-            </p>
-            <h1 className="text-3xl font-semibold">Renovações aprovadas</h1>
-            <p className="text-sm text-muted-foreground">
-              Conferência final, anexação de comprovantes e materialização do próximo ciclo.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Button variant="outline" onClick={() => window.print()}>
-              <FileDownIcon className="size-4" />
-              PDF do dia
-            </Button>
-            <Button variant="outline" onClick={() => window.print()}>
-              <PrinterIcon className="size-4" />
-              Impressão digitada
-            </Button>
-          </div>
+        <div className="space-y-1">
+          <p className="text-sm uppercase tracking-[0.28em] text-muted-foreground">
+            Tesouraria
+          </p>
+          <h1 className="text-3xl font-semibold">Renovações</h1>
+          <p className="text-sm text-muted-foreground">
+            Renovações validadas pela coordenação, com efetivação e histórico financeiro por
+            status.
+          </p>
         </div>
       </section>
 
-      <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 xl:grid-cols-[180px_minmax(0,1fr)_180px_180px_auto]">
-        <Input
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            setPage(1);
-          }}
-          placeholder="CPF ou nome..."
-          className="rounded-2xl border-border/60 bg-card/60"
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatsCard
+          title={
+            tab === "pendentes"
+              ? "Renovações Pendentes"
+              : tab === "efetuadas"
+                ? "Renovações Efetuadas"
+                : "Renovações Canceladas"
+          }
+          value={String(resumo?.total ?? 0)}
+          delta="Itens no recorte filtrado"
+          icon={tab === "pendentes" ? Clock3Icon : tab === "efetuadas" ? CheckCircle2Icon : XCircleIcon}
+          tone={tab === "canceladas" ? "warning" : tab === "efetuadas" ? "positive" : "neutral"}
         />
-        <div />
-        <DatePicker value={dataInicio} onChange={setDataInicio} placeholder="Início" />
-        <DatePicker value={dataFim} onChange={setDataFim} placeholder="Fim" />
-        <Button onClick={() => setPage(1)}>Aplicar</Button>
+        <StatsCard
+          title="Efetivadas"
+          value={String(resumo?.efetivados ?? 0)}
+          delta="Renovações concluídas pela tesouraria"
+          icon={CheckCircle2Icon}
+          tone="positive"
+        />
+        <StatsCard
+          title="Canceladas"
+          value={String(canceladasTotal)}
+          delta="Bloqueadas, revertidas ou desativadas"
+          icon={XCircleIcon}
+          tone="warning"
+        />
+        <StatsCard
+          title="Repasse Total"
+          value={formatCurrency(resumo?.repasse_total ?? "0")}
+          delta="Soma do repasse no filtro atual"
+          icon={HandCoinsIcon}
+          tone="neutral"
+        />
       </section>
+
+      <Tabs value={tab} onValueChange={(value) => setTab(value as ListingTab)} className="space-y-4">
+        <TabsList variant="line" className="justify-start">
+          <TabsTrigger value="pendentes">Renovações Pendentes</TabsTrigger>
+          <TabsTrigger value="efetuadas">Renovações Efetuadas</TabsTrigger>
+          <TabsTrigger value="canceladas">Renovações Canceladas</TabsTrigger>
+        </TabsList>
+
+        <section className="grid gap-4 rounded-[1.75rem] border border-border/60 bg-card/70 p-5 lg:grid-cols-[minmax(0,1fr)_auto]">
+          <Input
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
+            placeholder="Buscar por associado, CPF, matrícula ou contrato..."
+            className="h-11 rounded-2xl border-border/60 bg-background/60"
+          />
+          <div className="flex justify-end">
+            <Sheet
+              open={filtersOpen}
+              onOpenChange={(open) => {
+                if (open) {
+                  setDraftDataInicio(dataInicio);
+                  setDraftDataFim(dataFim);
+                }
+                setFiltersOpen(open);
+              }}
+            >
+              <SheetTrigger asChild>
+                <Button variant="outline" className="h-11 rounded-2xl">
+                  <SlidersHorizontalIcon className="size-4" />
+                  Filtros avançados
+                  {activeFiltersCount ? (
+                    <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-primary">
+                      {activeFiltersCount}
+                    </Badge>
+                  ) : null}
+                </Button>
+              </SheetTrigger>
+              <SheetContent className="w-full border-l border-border/60 sm:max-w-xl">
+                <SheetHeader>
+                  <SheetTitle>Filtros avançados</SheetTitle>
+                  <SheetDescription>
+                    Refine o recorte da tesouraria por datas de solicitação da renovação.
+                  </SheetDescription>
+                </SheetHeader>
+
+                <div className="space-y-5 overflow-y-auto px-4 pb-4">
+                  <div className="space-y-2">
+                    <Label>Data inicial</Label>
+                    <DatePicker
+                      value={draftDataInicio}
+                      onChange={setDraftDataInicio}
+                      placeholder="Início"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Data final</Label>
+                    <DatePicker value={draftDataFim} onChange={setDraftDataFim} placeholder="Fim" />
+                  </div>
+                </div>
+
+                <SheetFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setDraftDataInicio(undefined);
+                      setDraftDataFim(undefined);
+                      setDataInicio(undefined);
+                      setDataFim(undefined);
+                      setFiltersOpen(false);
+                    }}
+                  >
+                    Limpar
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setDataInicio(draftDataInicio);
+                      setDataFim(draftDataFim);
+                      setFiltersOpen(false);
+                    }}
+                  >
+                    Aplicar
+                  </Button>
+                </SheetFooter>
+              </SheetContent>
+            </Sheet>
+          </div>
+        </section>
+      </Tabs>
 
       <DataTable
         data={rows}
@@ -289,105 +546,16 @@ export default function TesourariaRefinanciamentosPage() {
         currentPage={page}
         totalPages={Math.max(1, Math.ceil(totalCount / 15))}
         onPageChange={setPage}
-        emptyMessage="Nenhum refinanciamento disponível para tesouraria."
+        emptyMessage={
+          tab === "pendentes"
+            ? "Nenhuma renovação pendente para a tesouraria."
+            : tab === "efetuadas"
+              ? "Nenhuma renovação efetuada no recorte."
+              : "Nenhuma renovação cancelada no recorte."
+        }
         loading={refinanciamentosQuery.isLoading}
         skeletonRows={6}
       />
-
-      <Dialog open={!!itemsTarget} onOpenChange={(open) => !open && setItemsTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Itens do refinanciamento</DialogTitle>
-            <DialogDescription>
-              Parcelas geradas para o ciclo {itemsTarget?.ciclo_key || "N/I"}.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            {itemsTarget?.itens.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center justify-between rounded-2xl border border-border/60 bg-card/60 p-4"
-              >
-                <div>
-                  <p className="font-medium">Parcela {item.numero}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {formatMonthYear(item.referencia_mes)}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="font-medium">{formatCurrency(item.valor)}</p>
-                  <StatusBadge status={item.status} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-function UploadTile({
-  label,
-  existingUrl,
-  existingReference,
-  existingName,
-  draftFile,
-  onSelect,
-  onClear,
-}: {
-  label: string;
-  existingUrl?: string;
-  existingReference?: string;
-  existingName?: string;
-  draftFile?: File;
-  onSelect: (file: File) => void;
-  onClear: () => void;
-}) {
-  return (
-    <div className="rounded-2xl border border-border/60 bg-background/40 p-3">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-          {label}
-        </p>
-        {draftFile ? (
-          <Button size="icon-sm" variant="ghost" onClick={onClear}>
-            <Trash2Icon className="size-4" />
-          </Button>
-        ) : null}
-      </div>
-      {existingUrl ? (
-        <a
-          href={buildBackendFileUrl(existingUrl)}
-          target="_blank"
-          rel="noreferrer"
-          className="text-sm text-primary underline-offset-4 hover:underline"
-        >
-          Ver comprovante {existingName ? `(${existingName})` : ""}
-        </a>
-      ) : existingReference ? (
-        <div className="space-y-1 text-sm">
-          <p className="font-medium">{existingName || label}</p>
-          <p className="text-xs text-muted-foreground break-all">{existingReference}</p>
-          <p className="text-[11px] text-amber-200">Referência de arquivo legado</p>
-        </div>
-      ) : draftFile ? (
-        <div className="space-y-1 text-sm">
-          <p className="font-medium">{draftFile.name}</p>
-          <p className="text-xs text-muted-foreground">
-            {(draftFile.size / 1024 / 1024).toFixed(2)} MB pronto para envio.
-          </p>
-        </div>
-      ) : (
-        <FileUploadDropzone
-          accept={comprovanteAccept}
-          maxSize={5 * 1024 * 1024}
-          onUpload={onSelect}
-          className="rounded-2xl px-3 py-5"
-          emptyTitle={`Enviar comprovante do ${label.toLowerCase()}`}
-          emptyDescription="PDF, JPG ou PNG até 5 MB"
-        />
-      )}
     </div>
   );
 }

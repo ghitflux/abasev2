@@ -15,10 +15,6 @@ import {
   LineChart,
   Pie,
   PieChart,
-  PolarAngleAxis,
-  PolarGrid,
-  Radar,
-  RadarChart,
   RadialBar,
   RadialBarChart,
   XAxis,
@@ -41,6 +37,11 @@ import type { DashboardTrendPoint } from "@/gen/models/DashboardTrendPoint";
 import type { DashboardValuePoint } from "@/gen/models/DashboardValuePoint";
 import type { PaginatedDashboardDetailRowList } from "@/gen/models/PaginatedDashboardDetailRowList";
 import { apiFetch } from "@/lib/api/client";
+import type {
+  PaginatedMetaResponse,
+  SystemUserListItem,
+  SystemUsersMeta,
+} from "@/lib/api/types";
 import {
   formatCurrency,
   formatDate,
@@ -51,6 +52,9 @@ import { cn } from "@/lib/utils";
 import RoleGuard from "@/components/auth/role-guard";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import DatePicker from "@/components/custom/date-picker";
+import SearchableSelect, {
+  type SelectOption,
+} from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import DashboardDetailDialog from "@/components/shared/dashboard-detail-dialog";
 import type { DataTableColumn } from "@/components/shared/data-table";
@@ -185,39 +189,56 @@ const DETAIL_COLUMNS: DataTableColumn<DashboardDetailRow>[] = [
 ];
 
 const TREASURY_CHART_CONFIG = {
-  recebido: { label: "Recebido", color: "hsl(var(--primary))" },
-  projetado: { label: "Projetado", color: "hsl(142 71% 45%)" },
-  importacao: { label: "Importacao", color: "hsl(var(--primary))" },
-  manual: { label: "Manual", color: "hsl(38 92% 50%)" },
+  recebido: { label: "Recebido", color: "#f97316" },
+  projetado: { label: "Projetado", color: "#22c55e" },
+  importacao: { label: "Importacao", color: "#f97316" },
+  manual: { label: "Manual", color: "#f59e0b" },
   inadimplentes_quitados: {
     label: "Inadimplentes quitados",
-    color: "hsl(142 71% 45%)",
+    color: "#22c55e",
   },
-  contratos_novos: { label: "Contratos novos", color: "hsl(199 89% 48%)" },
-  recebido_atual: { label: "Recebido", color: "hsl(var(--primary))" },
-  pendente_atual: { label: "Pendente", color: "hsl(0 84% 60%)" },
-  futuro: { label: "Projecao futura", color: "hsl(142 71% 45%)" },
+  contratos_novos: { label: "Contratos novos", color: "#38bdf8" },
+  recebido_atual: { label: "Recebido", color: "#f97316" },
+  pendente_atual: { label: "Pendente", color: "#ef4444" },
+  futuro: { label: "Projecao futura", color: "#22c55e" },
+  saidas_agentes_associados: {
+    label: "Saidas a agentes/associados",
+    color: "#fb7185",
+  },
+  despesas: { label: "Despesas", color: "#ef4444" },
 } satisfies ChartConfig;
 
 const SUMMARY_CHART_CONFIG = {
-  value: { label: "Volume", color: "hsl(var(--primary))" },
-  cadastros: { label: "Cadastros", color: "hsl(var(--primary))" },
-  efetivados: { label: "Efetivados", color: "hsl(142 71% 45%)" },
-  renovacoes: { label: "Renovacoes", color: "hsl(199 89% 48%)" },
-  cadastrado: { label: "Cadastrado", color: "hsl(var(--primary))" },
-  em_analise: { label: "Em analise", color: "hsl(38 92% 50%)" },
-  pendente: { label: "Pendente", color: "hsl(0 84% 60%)" },
-  ativo: { label: "Ativo", color: "hsl(142 71% 45%)" },
-  inadimplente: { label: "Inadimplente", color: "hsl(0 84% 60%)" },
-  inativo: { label: "Inativo", color: "hsl(215 20% 65%)" },
+  value: { label: "Volume", color: "#f97316" },
+  cadastros: { label: "Cadastros", color: "#f97316" },
+  efetivados: { label: "Efetivados", color: "#22c55e" },
+  renovacoes: { label: "Renovacoes", color: "#38bdf8" },
+  cadastrado: { label: "Cadastrado", color: "#f97316" },
+  em_analise: { label: "Em analise", color: "#38bdf8" },
+  pendente: { label: "Pendente", color: "#f59e0b" },
+  ativo: { label: "Ativo", color: "#22c55e" },
+  inadimplente: { label: "Inadimplente", color: "#ef4444" },
+  inativo: { label: "Inativo", color: "#94a3b8" },
 } satisfies ChartConfig;
 
 const AGENT_CHART_COLORS = [
-  "hsl(var(--primary))",
-  "hsl(142 71% 45%)",
-  "hsl(199 89% 48%)",
-  "hsl(38 92% 50%)",
+  "#f97316",
+  "#22c55e",
+  "#38bdf8",
+  "#f59e0b",
+  "#fb7185",
+  "#14b8a6",
 ];
+
+const AGENT_STATUS_CHART_CONFIG = {
+  volume_financeiro: { label: "Volume financeiro", color: "#f97316" },
+  cadastrado: { label: "Cadastrado", color: "#f97316" },
+  em_analise: { label: "Em analise", color: "#38bdf8" },
+  pendente: { label: "Pendente", color: "#f59e0b" },
+  ativo: { label: "Ativo", color: "#22c55e" },
+  inadimplente: { label: "Inadimplente", color: "#ef4444" },
+  inativo: { label: "Inativo", color: "#94a3b8" },
+} satisfies ChartConfig;
 
 type SectionFilterButtonProps = {
   title: string;
@@ -241,22 +262,33 @@ type SummaryFilters = {
   competencia: Date;
   dateStart?: Date;
   dateEnd?: Date;
+  day?: Date;
+  agentId?: string;
   status: string;
 };
 
 type TreasuryFilters = {
   competencia: Date;
+  day?: Date;
+  agentId?: string;
+  status: string;
 };
 
 type NewAssociadosFilters = {
   dateStart?: Date;
   dateEnd?: Date;
+  day?: Date;
+  agentId?: string;
   status: string;
 };
 
 type AgentFilters = {
+  competencia: Date;
   dateStart?: Date;
   dateEnd?: Date;
+  day?: Date;
+  agentId?: string;
+  status: string;
 };
 
 type DashboardSection = DetailState["section"];
@@ -307,6 +339,11 @@ function hasSameMonth(left: Date, right: Date) {
 
 function hasSameDate(left: Date, right: Date) {
   return format(left, "yyyy-MM-dd") === format(right, "yyyy-MM-dd");
+}
+
+function isDayCompatibleWithCompetencia(day?: Date, competencia?: Date) {
+  if (!day || !competencia) return true;
+  return toMonthId(day) === toMonthId(competencia);
 }
 
 function uniqExportMetrics(metrics: Array<SectionExportMetric | null>) {
@@ -407,10 +444,28 @@ function buildNewAssociadosExportMetrics(data: DashboardNovosAssociados) {
 
 function buildAgentsExportMetrics(data: DashboardAgentes) {
   return uniqExportMetrics([
-    ...data.ranking.map((item) => ({
-      label: `${item.agent_name} · Efetivados`,
-      metric: item.detail_metric,
-    })),
+    ...data.ranking.flatMap((item) => [
+      {
+        label: `${item.agent_name} · Volume financeiro`,
+        metric: item.detail_metric,
+      },
+      {
+        label: `${item.agent_name} · Inativos`,
+        metric: `agente:${item.agent_id}:status:inativo`,
+      },
+      {
+        label: `${item.agent_name} · Devolvidos`,
+        metric: `agente:${item.agent_id}:devolvidos`,
+      },
+      {
+        label: `${item.agent_name} · Renovados`,
+        metric: `agente:${item.agent_id}:renovados`,
+      },
+      {
+        label: `${item.agent_name} · Aptos a renovar`,
+        metric: `agente:${item.agent_id}:aptos_renovar`,
+      },
+    ]),
     ...data.cards.map((card) => ({
       label: card.label,
       metric: card.detail_metric,
@@ -502,12 +557,14 @@ function SectionFilterButton({
           ) : null}
         </Button>
       </SheetTrigger>
-      <SheetContent className="w-full border-l border-border/60 sm:max-w-lg">
+      <SheetContent className="flex h-full w-full flex-col border-l border-border/60 sm:max-w-lg">
         <SheetHeader>
           <SheetTitle>{title}</SheetTitle>
           <SheetDescription>{description}</SheetDescription>
         </SheetHeader>
-        <div className="space-y-5 overflow-y-auto px-4 pb-4">{children}</div>
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 pb-4">
+          {children}
+        </div>
         <SheetFooter className="border-t border-border/60">
           <Button
             variant="outline"
@@ -650,6 +707,7 @@ function DashboardPageContent() {
   const [treasuryFilters, setTreasuryFilters] = React.useState<TreasuryFilters>(
     {
       competencia: currentMonth,
+      status: "todos",
     },
   );
   const [treasuryDraft, setTreasuryDraft] = React.useState(treasuryFilters);
@@ -662,8 +720,10 @@ function DashboardPageContent() {
   const [newAssociadosDraft, setNewAssociadosDraft] =
     React.useState(newAssociadosFilters);
   const [agentFilters, setAgentFilters] = React.useState<AgentFilters>({
+    competencia: currentMonth,
     dateStart: currentMonthStart,
     dateEnd: currentMonth,
+    status: "todos",
   });
   const [agentDraft, setAgentDraft] = React.useState(agentFilters);
   const [detailState, setDetailState] = React.useState<DetailState | null>(
@@ -672,11 +732,38 @@ function DashboardPageContent() {
   const [exportingSection, setExportingSection] =
     React.useState<DashboardSection | null>(null);
 
+  const agentOptionsQuery = useQuery({
+    queryKey: ["dashboard-agent-options"],
+    queryFn: () =>
+      apiFetch<PaginatedMetaResponse<SystemUserListItem, SystemUsersMeta>>(
+        "configuracoes/usuarios",
+        {
+          query: {
+            page: 1,
+            page_size: 200,
+            role: "AGENTE",
+            is_active: true,
+          },
+        },
+      ),
+  });
+
+  const agentOptions = React.useMemo<SelectOption[]>(
+    () =>
+      (agentOptionsQuery.data?.results ?? []).map((user) => ({
+        value: String(user.id),
+        label: user.full_name || user.email,
+      })),
+    [agentOptionsQuery.data?.results],
+  );
+
   const summaryQueryParams = React.useMemo<Record<string, string | undefined>>(
     () => ({
       competencia: toMonthId(summaryFilters.competencia),
       date_start: toIsoDate(summaryFilters.dateStart),
       date_end: toIsoDate(summaryFilters.dateEnd),
+      day: toIsoDate(summaryFilters.day),
+      agent_id: summaryFilters.agentId,
       status:
         summaryFilters.status === "todos" ? undefined : summaryFilters.status,
     }),
@@ -686,6 +773,12 @@ function DashboardPageContent() {
   const treasuryQueryParams = React.useMemo<Record<string, string | undefined>>(
     () => ({
       competencia: toMonthId(treasuryFilters.competencia),
+      day: toIsoDate(treasuryFilters.day),
+      agent_id: treasuryFilters.agentId,
+      status:
+        treasuryFilters.status === "todos"
+          ? undefined
+          : treasuryFilters.status,
     }),
     [treasuryFilters],
   );
@@ -696,6 +789,8 @@ function DashboardPageContent() {
     () => ({
       date_start: toIsoDate(newAssociadosFilters.dateStart),
       date_end: toIsoDate(newAssociadosFilters.dateEnd),
+      day: toIsoDate(newAssociadosFilters.day),
+      agent_id: newAssociadosFilters.agentId,
       status:
         newAssociadosFilters.status === "todos"
           ? undefined
@@ -706,8 +801,13 @@ function DashboardPageContent() {
 
   const agentQueryParams = React.useMemo<Record<string, string | undefined>>(
     () => ({
+      competencia: toMonthId(agentFilters.competencia),
       date_start: toIsoDate(agentFilters.dateStart),
       date_end: toIsoDate(agentFilters.dateEnd),
+      day: toIsoDate(agentFilters.day),
+      agent_id: agentFilters.agentId,
+      status:
+        agentFilters.status === "todos" ? undefined : agentFilters.status,
     }),
     [agentFilters],
   );
@@ -718,6 +818,8 @@ function DashboardPageContent() {
       toMonthId(summaryFilters.competencia),
       toIsoDate(summaryFilters.dateStart),
       toIsoDate(summaryFilters.dateEnd),
+      toIsoDate(summaryFilters.day),
+      summaryFilters.agentId,
       summaryFilters.status,
     ],
     queryFn: () =>
@@ -730,6 +832,9 @@ function DashboardPageContent() {
     queryKey: [
       "dashboard-admin-treasury",
       toMonthId(treasuryFilters.competencia),
+      toIsoDate(treasuryFilters.day),
+      treasuryFilters.agentId,
+      treasuryFilters.status,
     ],
     queryFn: () =>
       apiFetch<DashboardTesouraria>("dashboard/admin/tesouraria", {
@@ -742,6 +847,8 @@ function DashboardPageContent() {
       "dashboard-admin-new-associados",
       toIsoDate(newAssociadosFilters.dateStart),
       toIsoDate(newAssociadosFilters.dateEnd),
+      toIsoDate(newAssociadosFilters.day),
+      newAssociadosFilters.agentId,
       newAssociadosFilters.status,
     ],
     queryFn: () =>
@@ -753,8 +860,12 @@ function DashboardPageContent() {
   const agentsQuery = useQuery({
     queryKey: [
       "dashboard-admin-agents",
+      toMonthId(agentFilters.competencia),
       toIsoDate(agentFilters.dateStart),
       toIsoDate(agentFilters.dateEnd),
+      toIsoDate(agentFilters.day),
+      agentFilters.agentId,
+      agentFilters.status,
     ],
     queryFn: () =>
       apiFetch<DashboardAgentes>("dashboard/admin/agentes", {
@@ -896,11 +1007,15 @@ function DashboardPageContent() {
     countActiveFilters({
       dateStart: summaryFilters.dateStart,
       dateEnd: summaryFilters.dateEnd,
+      day: summaryFilters.day,
+      agentId: summaryFilters.agentId,
       status: summaryFilters.status,
     }) + (hasSameMonth(summaryFilters.competencia, currentMonth) ? 0 : 1);
 
   const newAssociadosActiveFilters =
     countActiveFilters({
+      day: newAssociadosFilters.day,
+      agentId: newAssociadosFilters.agentId,
       status: newAssociadosFilters.status,
     }) +
     (newAssociadosFilters.dateStart &&
@@ -914,9 +1029,14 @@ function DashboardPageContent() {
       ? 0
       : newAssociadosFilters.dateEnd
         ? 1
-        : 0);
+      : 0);
 
   const agentActiveFilters =
+    countActiveFilters({
+      day: agentFilters.day,
+      agentId: agentFilters.agentId,
+      status: agentFilters.status,
+    }) +
     (agentFilters.dateStart &&
     hasSameDate(agentFilters.dateStart, currentMonthStart)
       ? 0
@@ -927,52 +1047,61 @@ function DashboardPageContent() {
       ? 0
       : agentFilters.dateEnd
         ? 1
-        : 0);
-  const treasuryActiveFilters = hasSameMonth(
-    treasuryFilters.competencia,
-    currentMonth,
-  )
-    ? 0
-    : 1;
+        : 0) +
+    (hasSameMonth(agentFilters.competencia, currentMonth) ? 0 : 1);
+  const treasuryActiveFilters =
+    countActiveFilters({
+      day: treasuryFilters.day,
+      agentId: treasuryFilters.agentId,
+      status: treasuryFilters.status,
+    }) + (hasSameMonth(treasuryFilters.competencia, currentMonth) ? 0 : 1);
 
   const summaryTitle = formatLongMonthYear(summaryFilters.competencia);
   const treasuryTitle = formatLongMonthYear(treasuryFilters.competencia);
+  const agentTitle = formatLongMonthYear(agentFilters.competencia);
+  const agentStatusSeries = React.useMemo(
+    () => agentsQuery.data?.ranking ?? [],
+    [agentsQuery.data?.ranking],
+  );
+  const agentVolumeRanking = React.useMemo(
+    () => agentStatusSeries.slice(0, 8),
+    [agentStatusSeries],
+  );
+  const agentParticipationSeries = React.useMemo(
+    () =>
+      agentStatusSeries
+        .filter((item) => item.participacao_volume > 0)
+        .map((item) => ({
+          ...item,
+          value: item.participacao_volume,
+        })),
+    [agentStatusSeries],
+  );
 
-  const topAgentSeries = React.useMemo(() => {
-    return (agentsQuery.data?.ranking ?? []).slice(0, 3);
-  }, [agentsQuery.data?.ranking]);
+  const applyTreasuryFilters = React.useCallback(() => {
+    if (
+      !isDayCompatibleWithCompetencia(
+        treasuryDraft.day,
+        treasuryDraft.competencia,
+      )
+    ) {
+      toast.error(
+        "O filtro por dia da tesouraria precisa estar dentro da competência selecionada.",
+      );
+      return;
+    }
+    setTreasuryFilters(treasuryDraft);
+  }, [treasuryDraft]);
 
-  const radarData = React.useMemo(() => {
-    const metrics = [
-      { key: "efetivados", label: "Efetivados" },
-      { key: "cadastros", label: "Cadastros" },
-      { key: "em_processo", label: "Em processo" },
-      { key: "renovados", label: "Renovados" },
-      { key: "inadimplentes", label: "Inadimplentes" },
-    ] as const;
-
-    return metrics.map((metric) => ({
-      metric: metric.label,
-      ...Object.fromEntries(
-        topAgentSeries.map((agent) => [
-          `agent_${agent.agent_id}`,
-          agent[metric.key],
-        ]),
-      ),
-    }));
-  }, [topAgentSeries]);
-
-  const radarConfig = React.useMemo<ChartConfig>(() => {
-    return Object.fromEntries(
-      topAgentSeries.map((agent, index) => [
-        `agent_${agent.agent_id}`,
-        {
-          label: agent.agent_name,
-          color: AGENT_CHART_COLORS[index % AGENT_CHART_COLORS.length],
-        },
-      ]),
-    );
-  }, [topAgentSeries]);
+  const applyAgentFilters = React.useCallback(() => {
+    if (!isDayCompatibleWithCompetencia(agentDraft.day, agentDraft.competencia)) {
+      toast.error(
+        "O filtro por dia da seção de agentes precisa estar dentro da competência selecionada.",
+      );
+      return;
+    }
+    setAgentFilters(agentDraft);
+  }, [agentDraft]);
 
   const detailRows = detailQuery.data?.results ?? [];
 
@@ -984,7 +1113,7 @@ function DashboardPageContent() {
             variant="outline"
             className="w-fit border-white/15 bg-white/5 text-white"
           >
-            ADMIN
+            ADMIN / COORDENAÇÃO
           </Badge>
           <div className="space-y-2">
             <h1 className="text-3xl font-semibold tracking-tight text-white md:text-[2.5rem]">
@@ -999,7 +1128,7 @@ function DashboardPageContent() {
 
         <SectionCard
           title="Tesouraria"
-          description="Recebimentos, baixas, inadimplencia quitada e projecao para a competencia atual e os ciclos seguintes."
+          description="Recebimentos, saidas, despesas e projecao financeira para a competencia atual e os ciclos seguintes."
           actions={
             <>
               <SectionFilterButton
@@ -1012,9 +1141,10 @@ function DashboardPageContent() {
                 onClear={() =>
                   setTreasuryDraft({
                     competencia: currentMonth,
+                    status: "todos",
                   })
                 }
-                onApply={() => setTreasuryFilters(treasuryDraft)}
+                onApply={applyTreasuryFilters}
               >
                 <FilterField label="Competencia">
                   <CalendarCompetencia
@@ -1026,6 +1156,60 @@ function DashboardPageContent() {
                       }))
                     }
                   />
+                </FilterField>
+                <FilterField label="Dia">
+                  <DatePicker
+                    value={treasuryDraft.day}
+                    onChange={(value) =>
+                      setTreasuryDraft((current) => ({
+                        ...current,
+                        day: value,
+                      }))
+                    }
+                    placeholder="Dia exato"
+                  />
+                </FilterField>
+                <p className="rounded-2xl border border-border/60 bg-background/40 px-4 py-3 text-xs text-muted-foreground">
+                  Quando o filtro por dia estiver preenchido, ele refina os
+                  eventos com data real da tesouraria dentro da competência
+                  selecionada.
+                </p>
+                <FilterField label="Agente">
+                  <SearchableSelect
+                    options={agentOptions}
+                    value={treasuryDraft.agentId}
+                    onChange={(value) =>
+                      setTreasuryDraft((current) => ({
+                        ...current,
+                        agentId: value || undefined,
+                      }))
+                    }
+                    placeholder="Todos os agentes"
+                    searchPlaceholder="Buscar agente..."
+                    clearValue=""
+                  />
+                </FilterField>
+                <FilterField label="Status do associado">
+                  <Select
+                    value={treasuryDraft.status}
+                    onValueChange={(value) =>
+                      setTreasuryDraft((current) => ({
+                        ...current,
+                        status: value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="rounded-2xl bg-card/60">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATUS_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </FilterField>
               </SectionFilterButton>
               <ExportButton
@@ -1299,6 +1483,59 @@ function DashboardPageContent() {
                     }
                   />
                 </FilterField>
+                <FilterField label="Dia">
+                  <DatePicker
+                    value={summaryDraft.day}
+                    onChange={(value) =>
+                      setSummaryDraft((current) => ({
+                        ...current,
+                        day: value,
+                      }))
+                    }
+                    placeholder="Dia exato"
+                  />
+                </FilterField>
+                <p className="rounded-2xl border border-border/60 bg-background/40 px-4 py-3 text-xs text-muted-foreground">
+                  Quando o dia estiver preenchido, ele sobrescreve o intervalo
+                  de datas da seção.
+                </p>
+                <FilterField label="Agente">
+                  <SearchableSelect
+                    options={agentOptions}
+                    value={summaryDraft.agentId}
+                    onChange={(value) =>
+                      setSummaryDraft((current) => ({
+                        ...current,
+                        agentId: value || undefined,
+                      }))
+                    }
+                    placeholder="Todos os agentes"
+                    searchPlaceholder="Buscar agente..."
+                    clearValue=""
+                  />
+                </FilterField>
+                <FilterField label="Status do associado">
+                  <Select
+                    value={summaryDraft.status}
+                    onValueChange={(value) =>
+                      setSummaryDraft((current) => ({
+                        ...current,
+                        status: value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="rounded-2xl bg-card/60">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATUS_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FilterField>
                 <div className="grid gap-4 md:grid-cols-2">
                   <FilterField label="Data inicial">
                     <DatePicker
@@ -1325,28 +1562,6 @@ function DashboardPageContent() {
                     />
                   </FilterField>
                 </div>
-                <FilterField label="Status do associado">
-                  <Select
-                    value={summaryDraft.status}
-                    onValueChange={(value) =>
-                      setSummaryDraft((current) => ({
-                        ...current,
-                        status: value,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="rounded-2xl bg-card/60">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {STATUS_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </FilterField>
               </SectionFilterButton>
               <ExportButton
                 disabled={!summaryQuery.data || exportingSection === "summary"}
@@ -1599,6 +1814,59 @@ function DashboardPageContent() {
                 }
                 onApply={() => setNewAssociadosFilters(newAssociadosDraft)}
               >
+                <FilterField label="Dia">
+                  <DatePicker
+                    value={newAssociadosDraft.day}
+                    onChange={(value) =>
+                      setNewAssociadosDraft((current) => ({
+                        ...current,
+                        day: value,
+                      }))
+                    }
+                    placeholder="Dia exato"
+                  />
+                </FilterField>
+                <p className="rounded-2xl border border-border/60 bg-background/40 px-4 py-3 text-xs text-muted-foreground">
+                  Quando o dia estiver preenchido, ele sobrescreve o intervalo
+                  de datas da seção.
+                </p>
+                <FilterField label="Agente">
+                  <SearchableSelect
+                    options={agentOptions}
+                    value={newAssociadosDraft.agentId}
+                    onChange={(value) =>
+                      setNewAssociadosDraft((current) => ({
+                        ...current,
+                        agentId: value || undefined,
+                      }))
+                    }
+                    placeholder="Todos os agentes"
+                    searchPlaceholder="Buscar agente..."
+                    clearValue=""
+                  />
+                </FilterField>
+                <FilterField label="Status do associado">
+                  <Select
+                    value={newAssociadosDraft.status}
+                    onValueChange={(value) =>
+                      setNewAssociadosDraft((current) => ({
+                        ...current,
+                        status: value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="rounded-2xl bg-card/60">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATUS_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FilterField>
                 <div className="grid gap-4 md:grid-cols-2">
                   <FilterField label="Data inicial">
                     <DatePicker
@@ -1625,28 +1893,6 @@ function DashboardPageContent() {
                     />
                   </FilterField>
                 </div>
-                <FilterField label="Status do associado">
-                  <Select
-                    value={newAssociadosDraft.status}
-                    onValueChange={(value) =>
-                      setNewAssociadosDraft((current) => ({
-                        ...current,
-                        status: value,
-                      }))
-                    }
-                  >
-                    <SelectTrigger className="rounded-2xl bg-card/60">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {STATUS_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </FilterField>
               </SectionFilterButton>
               <ExportButton
                 disabled={
@@ -1822,7 +2068,7 @@ function DashboardPageContent() {
 
         <SectionCard
           title="Agentes"
-          description="Ranking por efetivacao, comparacao por radar e participacao relativa dos agentes."
+          description="Volume financeiro, distribuicao de status e sinais operacionais por agente na competencia selecionada."
           actions={
             <>
               <SectionFilterButton
@@ -1834,12 +2080,78 @@ function DashboardPageContent() {
                 }}
                 onClear={() =>
                   setAgentDraft({
+                    competencia: currentMonth,
                     dateStart: currentMonthStart,
                     dateEnd: currentMonth,
+                    status: "todos",
                   })
                 }
-                onApply={() => setAgentFilters(agentDraft)}
+                onApply={applyAgentFilters}
               >
+                <FilterField label="Competencia">
+                  <CalendarCompetencia
+                    value={agentDraft.competencia}
+                    onChange={(value) =>
+                      setAgentDraft((current) => ({
+                        ...current,
+                        competencia: value,
+                      }))
+                    }
+                  />
+                </FilterField>
+                <FilterField label="Dia">
+                  <DatePicker
+                    value={agentDraft.day}
+                    onChange={(value) =>
+                      setAgentDraft((current) => ({
+                        ...current,
+                        day: value,
+                      }))
+                    }
+                    placeholder="Dia exato"
+                  />
+                </FilterField>
+                <p className="rounded-2xl border border-border/60 bg-background/40 px-4 py-3 text-xs text-muted-foreground">
+                  Quando o dia estiver preenchido, ele sobrescreve o intervalo e
+                  precisa estar dentro da competência selecionada.
+                </p>
+                <FilterField label="Agente">
+                  <SearchableSelect
+                    options={agentOptions}
+                    value={agentDraft.agentId}
+                    onChange={(value) =>
+                      setAgentDraft((current) => ({
+                        ...current,
+                        agentId: value || undefined,
+                      }))
+                    }
+                    placeholder="Todos os agentes"
+                    searchPlaceholder="Buscar agente..."
+                    clearValue=""
+                  />
+                </FilterField>
+                <FilterField label="Status do associado">
+                  <Select
+                    value={agentDraft.status}
+                    onValueChange={(value) =>
+                      setAgentDraft((current) => ({
+                        ...current,
+                        status: value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="rounded-2xl bg-card/60">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STATUS_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FilterField>
                 <div className="grid gap-4 md:grid-cols-2">
                   <FilterField label="Data inicial">
                     <DatePicker
@@ -1890,6 +2202,20 @@ function DashboardPageContent() {
             <LoadingSection label="agentes" />
           ) : (
             <div className="space-y-6">
+              <div className="flex items-center justify-between rounded-[1.4rem] border border-border/60 bg-background/40 px-4 py-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                    Competencia
+                  </p>
+                  <p className="text-lg font-semibold text-foreground">
+                    {agentTitle}
+                  </p>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Volume efetivado, distribuicao por status e renovacoes por agente
+                </p>
+              </div>
+
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {agentsQuery.data.cards.map((card) => (
                   <MetricButtonCard
@@ -1911,20 +2237,20 @@ function DashboardPageContent() {
 
               <div className="grid gap-6 xl:grid-cols-3">
                 <SectionCard
-                  title="Ranking por efetivacao"
-                  description="Top agentes do periodo com foco em contratos efetivados."
+                  title="Ranking por volume financeiro"
+                  description="Top agentes por valor liquido efetivado no recorte selecionado."
                   className="xl:col-span-2"
                 >
                   <ChartContainer
                     config={{
-                      efetivados: {
-                        label: "Efetivados",
-                        color: "hsl(var(--primary))",
+                      volume_financeiro: {
+                        label: "Volume financeiro",
+                        color: "#f97316",
                       },
                     }}
                     className="h-[320px] w-full"
                   >
-                    <BarChart data={agentsQuery.data.ranking}>
+                    <BarChart data={agentVolumeRanking}>
                       <CartesianGrid vertical={false} />
                       <XAxis
                         dataKey="agent_name"
@@ -1933,8 +2259,8 @@ function DashboardPageContent() {
                         hide
                       />
                       <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="efetivados" radius={[14, 14, 6, 6]}>
-                        {agentsQuery.data.ranking.map((item, index) => (
+                      <Bar dataKey="volume_financeiro" radius={[14, 14, 6, 6]}>
+                        {agentVolumeRanking.map((item, index) => (
                           <Cell
                             key={item.agent_id}
                             fill={
@@ -1948,7 +2274,7 @@ function DashboardPageContent() {
                                 "agentes",
                                 item.detail_metric,
                                 `${item.agent_name} no ranking`,
-                                "Contratos efetivados que sustentam a posicao do agente.",
+                                "Contratos efetivados que sustentam o volume financeiro do agente.",
                                 agentQueryParams,
                               )
                             }
@@ -1958,7 +2284,7 @@ function DashboardPageContent() {
                     </BarChart>
                   </ChartContainer>
                   <div className="mt-4 grid gap-2 md:grid-cols-2">
-                    {agentsQuery.data.ranking.map((item, index) => (
+                    {agentVolumeRanking.map((item, index) => (
                       <button
                         key={item.agent_id}
                         type="button"
@@ -1968,7 +2294,7 @@ function DashboardPageContent() {
                             "agentes",
                             item.detail_metric,
                             `${item.agent_name} no ranking`,
-                            "Contratos efetivados que sustentam a posicao do agente.",
+                            "Contratos efetivados que sustentam o volume financeiro do agente.",
                             agentQueryParams,
                           )
                         }
@@ -1990,13 +2316,17 @@ function DashboardPageContent() {
                               {item.agent_name}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {item.cadastros} cadastros · {item.renovados}{" "}
-                              renovados
+                              {item.efetivados} efetivados · {item.cadastros} cadastros
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {item.ativo} ativos · {item.inativo} inativos ·{" "}
+                              {item.devolvidos} devolvidos · {item.renovados} renovados ·{" "}
+                              {item.aptos_renovar} para renovar
                             </p>
                           </div>
                         </div>
                         <p className="text-lg font-semibold text-foreground">
-                          {item.efetivados}
+                          {formatCurrency(item.volume_financeiro)}
                         </p>
                       </button>
                     ))}
@@ -2004,29 +2334,41 @@ function DashboardPageContent() {
                 </SectionCard>
 
                 <SectionCard
-                  title="Participacao no total"
-                  description="Percentual de participacao das efetivacoes por agente."
+                  title="Participacao no volume"
+                  description="Peso relativo de cada agente no volume financeiro efetivado."
                 >
                   <ChartContainer
-                    config={radarConfig}
+                    config={{
+                      participacao_volume: {
+                        label: "Participacao no volume",
+                        color: "#22c55e",
+                      },
+                    }}
                     className="h-[320px] w-full"
                   >
-                    <RadialBarChart
-                      data={agentsQuery.data.ranking}
-                      innerRadius={24}
-                      outerRadius={120}
-                      startAngle={180}
-                      endAngle={0}
-                    >
+                    <PieChart>
                       <ChartTooltip
                         content={
                           <ChartTooltipContent
-                            formatter={(value) => [`${value}%`, "Participacao"]}
+                            formatter={(value) => [
+                              `${value}%`,
+                              "Participacao no volume",
+                            ]}
                           />
                         }
                       />
-                      <RadialBar background dataKey="participacao">
-                        {agentsQuery.data.ranking.map((item, index) => (
+                      <ChartLegend
+                        content={<ChartLegendContent nameKey="agent_name" />}
+                      />
+                      <Pie
+                        data={agentParticipationSeries}
+                        dataKey="value"
+                        nameKey="agent_name"
+                        innerRadius={52}
+                        outerRadius={94}
+                        strokeWidth={4}
+                      >
+                        {agentParticipationSeries.map((item, index) => (
                           <Cell
                             key={item.agent_id}
                             fill={
@@ -2040,64 +2382,154 @@ function DashboardPageContent() {
                                 "agentes",
                                 item.detail_metric,
                                 `${item.agent_name} na participacao`,
-                                "Contratos efetivados relacionados a participacao do agente.",
+                                "Contratos efetivados relacionados a participacao de volume do agente.",
                                 agentQueryParams,
                               )
                             }
                           />
                         ))}
-                      </RadialBar>
-                    </RadialBarChart>
+                      </Pie>
+                    </PieChart>
                   </ChartContainer>
                 </SectionCard>
               </div>
 
               <SectionCard
-                title="Comparacao multidimensional"
-                description="Radar com as metricas de efetivacao, cadastro, renovacao, processo e inadimplencia dos agentes lideres."
+                title="Status dos associados por agente"
+                description="Distribuicao empilhada dos status da base por agente, sem depender de temas escuros nos graficos."
               >
-                {topAgentSeries.length ? (
+                {agentStatusSeries.length ? (
                   <ChartContainer
-                    config={radarConfig}
+                    config={AGENT_STATUS_CHART_CONFIG}
                     className="h-[340px] w-full"
                   >
-                    <RadarChart data={radarData}>
-                      <ChartTooltip content={<ChartTooltipContent />} />
+                    <BarChart data={agentStatusSeries}>
+                      <CartesianGrid vertical={false} />
+                      <XAxis
+                        dataKey="agent_name"
+                        tickLine={false}
+                        axisLine={false}
+                        hide
+                      />
+                      <ChartTooltip
+                        content={
+                          <ChartTooltipContent
+                            formatter={(value, name) => [String(value), String(name)]}
+                          />
+                        }
+                      />
                       <ChartLegend content={<ChartLegendContent />} />
-                      <PolarGrid />
-                      <PolarAngleAxis dataKey="metric" />
-                      {topAgentSeries.map((agent, index) => (
-                        <Radar
-                          key={agent.agent_id}
-                          dataKey={`agent_${agent.agent_id}`}
-                          stroke={
-                            AGENT_CHART_COLORS[
-                              index % AGENT_CHART_COLORS.length
-                            ]
-                          }
-                          fill={
-                            AGENT_CHART_COLORS[
-                              index % AGENT_CHART_COLORS.length
-                            ]
-                          }
-                          fillOpacity={0.12}
-                          onClick={() =>
-                            openDetail(
-                              "agentes",
-                              agent.detail_metric,
-                              `${agent.agent_name} no radar`,
-                              "Contratos efetivados associados ao agente selecionado no radar.",
-                              agentQueryParams,
-                            )
-                          }
-                        />
-                      ))}
-                    </RadarChart>
+                      <Bar dataKey="cadastrado" stackId="status" fill="var(--color-cadastrado)">
+                        {agentStatusSeries.map((item) => (
+                          <Cell
+                            key={`cadastrado-${item.agent_id}`}
+                            className="cursor-pointer"
+                            onClick={() =>
+                              openDetail(
+                                "agentes",
+                                `agente:${item.agent_id}:status:cadastrado`,
+                                `${item.agent_name} · Cadastrado`,
+                                "Associados cadastrados vinculados ao agente selecionado.",
+                                agentQueryParams,
+                              )
+                            }
+                          />
+                        ))}
+                      </Bar>
+                      <Bar dataKey="em_analise" stackId="status" fill="var(--color-em_analise)">
+                        {agentStatusSeries.map((item) => (
+                          <Cell
+                            key={`em-analise-${item.agent_id}`}
+                            className="cursor-pointer"
+                            onClick={() =>
+                              openDetail(
+                                "agentes",
+                                `agente:${item.agent_id}:status:em_analise`,
+                                `${item.agent_name} · Em analise`,
+                                "Associados em analise vinculados ao agente selecionado.",
+                                agentQueryParams,
+                              )
+                            }
+                          />
+                        ))}
+                      </Bar>
+                      <Bar dataKey="pendente" stackId="status" fill="var(--color-pendente)">
+                        {agentStatusSeries.map((item) => (
+                          <Cell
+                            key={`pendente-${item.agent_id}`}
+                            className="cursor-pointer"
+                            onClick={() =>
+                              openDetail(
+                                "agentes",
+                                `agente:${item.agent_id}:status:pendente`,
+                                `${item.agent_name} · Pendente`,
+                                "Associados pendentes vinculados ao agente selecionado.",
+                                agentQueryParams,
+                              )
+                            }
+                          />
+                        ))}
+                      </Bar>
+                      <Bar dataKey="ativo" stackId="status" fill="var(--color-ativo)">
+                        {agentStatusSeries.map((item) => (
+                          <Cell
+                            key={`ativo-${item.agent_id}`}
+                            className="cursor-pointer"
+                            onClick={() =>
+                              openDetail(
+                                "agentes",
+                                `agente:${item.agent_id}:status:ativo`,
+                                `${item.agent_name} · Ativo`,
+                                "Associados ativos vinculados ao agente selecionado.",
+                                agentQueryParams,
+                              )
+                            }
+                          />
+                        ))}
+                      </Bar>
+                      <Bar
+                        dataKey="inadimplente"
+                        stackId="status"
+                        fill="var(--color-inadimplente)"
+                      >
+                        {agentStatusSeries.map((item) => (
+                          <Cell
+                            key={`inadimplente-${item.agent_id}`}
+                            className="cursor-pointer"
+                            onClick={() =>
+                              openDetail(
+                                "agentes",
+                                `agente:${item.agent_id}:status:inadimplente`,
+                                `${item.agent_name} · Inadimplente`,
+                                "Associados inadimplentes vinculados ao agente selecionado.",
+                                agentQueryParams,
+                              )
+                            }
+                          />
+                        ))}
+                      </Bar>
+                      <Bar dataKey="inativo" stackId="status" fill="var(--color-inativo)">
+                        {agentStatusSeries.map((item) => (
+                          <Cell
+                            key={`inativo-${item.agent_id}`}
+                            className="cursor-pointer"
+                            onClick={() =>
+                              openDetail(
+                                "agentes",
+                                `agente:${item.agent_id}:status:inativo`,
+                                `${item.agent_name} · Inativo`,
+                                "Associados inativos vinculados ao agente selecionado.",
+                                agentQueryParams,
+                              )
+                            }
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
                   </ChartContainer>
                 ) : (
                   <div className="rounded-[1.5rem] border border-border/60 bg-background/40 px-6 py-12 text-center text-sm text-muted-foreground">
-                    Nenhum agente com dados suficientes para o radar no periodo
-                    selecionado.
+                    Nenhum agente com dados suficientes para o recorte selecionado.
                   </div>
                 )}
               </SectionCard>
@@ -2133,7 +2565,7 @@ function DashboardPageContent() {
 
 export default function DashboardPage() {
   return (
-    <RoleGuard allow={["ADMIN"]}>
+    <RoleGuard allow={["ADMIN", "COORDENADOR"]}>
       <DashboardPageContent />
     </RoleGuard>
   );

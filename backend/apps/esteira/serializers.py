@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal
+
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.contratos.cycle_projection import get_contract_visual_status_payload
@@ -9,7 +13,7 @@ from .models import DocIssue, EsteiraItem, Pendencia, Transicao
 from .services import EsteiraService
 
 
-class SimpleUserSerializer(serializers.Serializer):
+class EsteiraSimpleUserSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     full_name = serializers.CharField(read_only=True)
 
@@ -50,20 +54,25 @@ class DocumentoEsteiraSerializer(serializers.Serializer):
             )
         return reference
 
-    def get_arquivo(self, obj):
+    def get_arquivo(self, obj) -> str:
         return str(getattr(obj.arquivo, "name", "") or "")
 
-    def get_arquivo_referencia(self, obj):
+    def get_arquivo_referencia(self, obj) -> str:
         return self._reference(obj).arquivo_referencia
 
-    def get_arquivo_disponivel_localmente(self, obj):
+    def get_arquivo_disponivel_localmente(self, obj) -> bool:
         return self._reference(obj).arquivo_disponivel_localmente
 
-    def get_tipo_referencia(self, obj):
+    def get_tipo_referencia(self, obj) -> str:
         return self._reference(obj).tipo_referencia
 
 
 class PendenciaSerializer(serializers.ModelSerializer):
+    esteira_item_id = serializers.IntegerField(source="esteira_item.id", read_only=True)
+    associado_created_at = serializers.DateTimeField(
+        source="esteira_item.associado.created_at",
+        read_only=True,
+    )
     associado_id = serializers.IntegerField(
         source="esteira_item.associado.id",
         read_only=True,
@@ -84,6 +93,8 @@ class PendenciaSerializer(serializers.ModelSerializer):
         model = Pendencia
         fields = [
             "id",
+            "esteira_item_id",
+            "associado_created_at",
             "tipo",
             "descricao",
             "status",
@@ -98,6 +109,7 @@ class PendenciaSerializer(serializers.ModelSerializer):
             "resolvida_em",
         ]
 
+    @extend_schema_field(serializers.CharField(allow_null=True))
     def get_contrato_codigo(self, obj: Pendencia):
         contrato = obj.esteira_item.associado.contratos.order_by("-created_at").first()
         return contrato.codigo if contrato else None
@@ -110,7 +122,7 @@ class PendenciaSerializer(serializers.ModelSerializer):
 
 
 class TransicaoSerializer(serializers.ModelSerializer):
-    realizado_por = SimpleUserSerializer(read_only=True)
+    realizado_por = EsteiraSimpleUserSerializer(read_only=True)
 
     class Meta:
         model = Transicao
@@ -140,7 +152,10 @@ class EsteiraListSerializer(serializers.ModelSerializer):
     status_documentacao = serializers.SerializerMethodField()
     contato_web = serializers.SerializerMethodField()
     termos_web = serializers.SerializerMethodField()
-    agente = SimpleUserSerializer(source="associado.agente_responsavel", read_only=True)
+    agente = EsteiraSimpleUserSerializer(
+        source="associado.agente_responsavel",
+        read_only=True,
+    )
     orgao_publico = serializers.SerializerMethodField()
     documentos_count = serializers.SerializerMethodField()
     acoes_disponiveis = serializers.SerializerMethodField()
@@ -173,6 +188,7 @@ class EsteiraListSerializer(serializers.ModelSerializer):
     def _get_contrato(self, obj: EsteiraItem):
         return obj.associado.contratos.order_by("-created_at").first()
 
+    @extend_schema_field(ContratoEsteiraSerializer(allow_null=True))
     def get_contrato(self, obj: EsteiraItem):
         contrato = self._get_contrato(obj)
         if not contrato:
@@ -187,37 +203,47 @@ class EsteiraListSerializer(serializers.ModelSerializer):
             }
         ).data
 
-    def get_data_assinatura(self, obj: EsteiraItem):
+    @extend_schema_field(serializers.DateField(allow_null=True))
+    def get_data_assinatura(self, obj: EsteiraItem) -> date | None:
         contrato = self._get_contrato(obj)
         return contrato.data_contrato if contrato else None
 
-    def get_valor_disponivel(self, obj: EsteiraItem):
+    @extend_schema_field(
+        serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
+    )
+    def get_valor_disponivel(self, obj: EsteiraItem) -> Decimal | None:
         contrato = self._get_contrato(obj)
         if not contrato:
             return None
         return contrato.margem_disponivel or contrato.valor_total_antecipacao
 
-    def get_comissao_agente(self, obj: EsteiraItem):
+    @extend_schema_field(
+        serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
+    )
+    def get_comissao_agente(self, obj: EsteiraItem) -> Decimal | None:
         contrato = self._get_contrato(obj)
         return contrato.comissao_agente if contrato else None
 
-    def get_status_contrato(self, obj: EsteiraItem):
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_status_contrato(self, obj: EsteiraItem) -> str | None:
         contrato = self._get_contrato(obj)
         return contrato.status if contrato else None
 
-    def get_status_contrato_visual_slug(self, obj: EsteiraItem):
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_status_contrato_visual_slug(self, obj: EsteiraItem) -> str | None:
         contrato = self._get_contrato(obj)
         if not contrato:
             return None
         return get_contract_visual_status_payload(contrato)["status_visual_slug"]
 
-    def get_status_contrato_visual_label(self, obj: EsteiraItem):
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_status_contrato_visual_label(self, obj: EsteiraItem) -> str | None:
         contrato = self._get_contrato(obj)
         if not contrato:
             return None
         return get_contract_visual_status_payload(contrato)["status_visual_label"]
 
-    def get_status_documentacao(self, obj: EsteiraItem):
+    def get_status_documentacao(self, obj: EsteiraItem) -> str:
         documentos = list(obj.associado.documentos.all())
         if any(pendencia.status == Pendencia.Status.ABERTA for pendencia in obj.pendencias.all()):
             return "reenvio_pendente"
@@ -230,22 +256,23 @@ class EsteiraListSerializer(serializers.ModelSerializer):
             return "incompleta"
         return "completa"
 
-    def get_contato_web(self, obj: EsteiraItem):
+    def get_contato_web(self, obj: EsteiraItem) -> bool:
         contrato = self._get_contrato(obj)
         return bool(contrato and contrato.contato_web)
 
-    def get_termos_web(self, obj: EsteiraItem):
+    def get_termos_web(self, obj: EsteiraItem) -> bool:
         contrato = self._get_contrato(obj)
         return bool(contrato and contrato.termos_web)
 
-    def get_orgao_publico(self, obj: EsteiraItem):
+    def get_orgao_publico(self, obj: EsteiraItem) -> str:
         contato = obj.associado.build_contato_payload() or {}
         return obj.associado.orgao_publico or contato.get("orgao_publico", "")
 
-    def get_documentos_count(self, obj: EsteiraItem):
+    def get_documentos_count(self, obj: EsteiraItem) -> int:
         return obj.associado.documentos.count()
 
-    def get_acoes_disponiveis(self, obj: EsteiraItem):
+    @extend_schema_field(serializers.ListField(child=serializers.CharField()))
+    def get_acoes_disponiveis(self, obj: EsteiraItem) -> list[str]:
         return EsteiraService.TRANSICOES_VALIDAS.get((obj.etapa_atual, obj.status), [])
 
 
@@ -261,6 +288,7 @@ class EsteiraDetailSerializer(EsteiraListSerializer):
             "transicoes",
         ]
 
+    @extend_schema_field(DocumentoEsteiraSerializer(many=True))
     def get_documentos(self, obj: EsteiraItem):
         return DocumentoEsteiraSerializer(obj.associado.documentos.all(), many=True).data
 

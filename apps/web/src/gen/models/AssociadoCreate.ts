@@ -127,6 +127,16 @@ export type AssociadoCreate = {
    */
   doacao_associado?: string;
   /**
+   * @type integer
+   */
+  agente_responsavel_id?: number | null;
+  /**
+   * @pattern ^-?\d{0,4}(?:\.\d{0,2})?$
+   * @default "10.00"
+   * @type string | undefined, decimal
+   */
+  percentual_repasse?: string;
+  /**
    * @type array | undefined
    */
   documentos_payload?: {

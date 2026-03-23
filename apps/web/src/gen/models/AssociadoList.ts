@@ -52,6 +52,14 @@ export type AssociadoList = {
    * @type string
    */
   readonly status_visual_label: string;
+  /**
+   * @type boolean
+   */
+  readonly possui_meses_nao_descontados: boolean;
+  /**
+   * @type integer
+   */
+  readonly meses_nao_descontados_count: number;
   readonly agente: SimpleUser;
   /**
    * @type integer

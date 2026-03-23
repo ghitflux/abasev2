@@ -9,7 +9,10 @@ import Image from "next/image";
 import { ChevronRightIcon, LogOutIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import type { PagamentoAgenteNotificacoes } from "@/lib/api/types";
+import type {
+  PagamentoAgenteNotificacoes,
+  PendenciaResumo,
+} from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { getNavigationForRole } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
@@ -72,6 +75,12 @@ export default function AppSidebar() {
     queryFn: () =>
       apiFetch<PagamentoAgenteNotificacoes>("agente/pagamentos/notificacoes"),
   });
+  const pendenciasResumoQuery = useQuery({
+    queryKey: ["pendencias-agente-resumo-sidebar"],
+    enabled: role === "AGENTE",
+    refetchInterval: 30000,
+    queryFn: () => apiFetch<PendenciaResumo>("esteira/pendencias-resumo"),
+  });
   const routeBadges = React.useMemo<Record<string, number>>(
     () => {
       const badges: Record<string, number> = {};
@@ -79,11 +88,17 @@ export default function AppSidebar() {
       if (role === "AGENTE") {
         badges["/agentes/pagamentos"] =
           pagamentoNotificacoesQuery.data?.unread_count ?? 0;
+        badges["/agentes/esteira-pendencias"] =
+          pendenciasResumoQuery.data?.retornadas_agente ?? 0;
       }
 
       return badges;
     },
-    [pagamentoNotificacoesQuery.data?.unread_count, role],
+    [
+      pagamentoNotificacoesQuery.data?.unread_count,
+      pendenciasResumoQuery.data?.retornadas_agente,
+      role,
+    ],
   );
 
   // Track which collapsible sections are open (controlled)

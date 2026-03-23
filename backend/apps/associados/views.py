@@ -8,7 +8,12 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
 from apps.accounts.models import User
-from apps.accounts.permissions import IsAdmin, IsAgenteOrAdmin, IsOperacionalOrAdmin
+from apps.accounts.permissions import (
+    IsAdmin,
+    IsAgenteOrAdmin,
+    IsCoordenadorOrAdmin,
+    IsOperacionalOrAdmin,
+)
 from apps.contratos.parcela_detail import build_parcela_detail_payload
 from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.models import Contrato
@@ -36,6 +41,7 @@ from .strategies import build_duplicate_document_message
 
 
 class AssociadoViewSet(ModelViewSet):
+    queryset = Associado.objects.none()
     filterset_class = AssociadoFilter
     pagination_class = StandardResultsSetPagination
     search_fields = ["nome_completo", "cpf_cnpj", "matricula", "matricula_orgao"]
@@ -88,6 +94,8 @@ class AssociadoViewSet(ModelViewSet):
             queryset = AssociadoService.buscar_com_contagens(queryset)
 
         user = self.request.user
+        if not getattr(user, "is_authenticated", False) or not hasattr(user, "has_role"):
+            return Associado.objects.none()
         if user.has_role("AGENTE") and not user.has_role("ADMIN"):
             queryset = queryset.filter(agente_responsavel=user)
 
@@ -102,6 +110,8 @@ class AssociadoViewSet(ModelViewSet):
             "partial_update",
         }:
             return [permissions.IsAuthenticated(), IsAgenteOrAdmin()]
+        if self.action == "list":
+            return [permissions.IsAuthenticated(), IsCoordenadorOrAdmin()]
         if self.action == "agentes":
             return [permissions.IsAuthenticated(), IsOperacionalOrAdmin()]
         if self.action in {"retrieve", "ciclos", "parcela_detalhe"}:

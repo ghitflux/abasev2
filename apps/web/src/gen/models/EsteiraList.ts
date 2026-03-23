@@ -15,6 +15,10 @@ export type EsteiraList = {
   /**
    * @type integer
    */
+  readonly associado_id: number;
+  /**
+   * @type integer
+   */
   readonly ordem: number;
   /**
    * @type string

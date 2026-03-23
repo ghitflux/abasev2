@@ -69,6 +69,8 @@ class Contrato(BaseModel):
     comprovante_pix = models.FileField(
         upload_to="comprovantes_pix/", null=True, blank=True
     )
+    admin_manual_layout_enabled = models.BooleanField(default=False)
+    admin_manual_layout_updated_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -166,11 +168,17 @@ class ParcelaAllObjectsManager(AllObjectsManager):
 
 
 class Parcela(BaseModel):
+    class LayoutBucket(models.TextChoices):
+        CYCLE = "cycle", "No ciclo"
+        UNPAID = "unpaid", "Parcelas não descontadas"
+        MOVEMENT = "movement", "Movimento financeiro avulso"
+
     class Status(models.TextChoices):
         FUTURO = "futuro", "Futuro"
         EM_ABERTO = "em_aberto", "Em aberto"
         EM_PREVISAO = "em_previsao", "Em previsão"
         DESCONTADO = "descontado", "Descontado"
+        LIQUIDADA = "liquidada", "Liquidada"
         NAO_DESCONTADO = "nao_descontado", "Não descontado"
         CANCELADO = "cancelado", "Cancelado"
 
@@ -192,6 +200,11 @@ class Parcela(BaseModel):
     data_vencimento = models.DateField()
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.EM_ABERTO
+    )
+    layout_bucket = models.CharField(
+        max_length=20,
+        choices=LayoutBucket.choices,
+        default=LayoutBucket.CYCLE,
     )
     data_pagamento = models.DateField(null=True, blank=True)
     observacao = models.TextField(blank=True)

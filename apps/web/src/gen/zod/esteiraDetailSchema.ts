@@ -12,6 +12,7 @@ import { transicaoSchema } from "./transicaoSchema.ts";
 
 export const esteiraDetailSchema = z.object({
   id: z.int(),
+  associado_id: z.int(),
   ordem: z.int(),
   contrato: z.string(),
   data_assinatura: z.string(),

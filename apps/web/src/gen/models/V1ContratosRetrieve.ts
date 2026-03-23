@@ -7,7 +7,7 @@ import type { ContratoList } from "./ContratoList.ts";
 
 export type V1ContratosRetrievePathParams = {
   /**
-   * @description Um valor inteiro único que identifica este contrato.
+   * @description A unique integer value identifying this contrato.
    * @type integer
    */
   id: number;

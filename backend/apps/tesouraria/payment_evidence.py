@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import Iterable
 
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, PagamentoMensalidade
-from apps.tesouraria.models import BaixaManual
+from apps.tesouraria.models import BaixaManual, LiquidacaoContratoItem
 from core.file_references import build_filefield_reference, build_storage_reference
 
 MANUAL_STATUS_OK = {"pago", "ok", "concluido", "concluído"}
@@ -14,6 +14,7 @@ MANUAL_STATUS_OK = {"pago", "ok", "concluido", "concluído"}
 QUITACAO_LABELS = {
     "arquivo_retorno": "Quitado por arquivo retorno",
     "baixa_manual": "Quitado por baixa manual",
+    "liquidacao_contrato": "Quitado por liquidação de contrato",
     "manual": "Quitado por comprovante manual",
     "relatorio_competencia": "Quitado por relatório manual",
     "manual_sem_arquivo": "Quitado manualmente sem anexo",
@@ -139,6 +140,7 @@ def build_competencia_evidence_payload(
     arquivo_items: Iterable[ArquivoRetornoItem] = (),
     pagamento_mensalidade: PagamentoMensalidade | None = None,
     baixa_manual: BaixaManual | None = None,
+    liquidacao_item: LiquidacaoContratoItem | None = None,
     request=None,
 ) -> CompetenciaEvidencePayload:
     evidencias: list[dict[str, object]] = []
@@ -254,14 +256,42 @@ def build_competencia_evidence_payload(
             }
         )
 
+    if liquidacao_item is not None and liquidacao_item.liquidacao.comprovante:
+        reference = build_filefield_reference(
+            liquidacao_item.liquidacao.comprovante,
+            request=request,
+            missing_type="legado_sem_arquivo",
+        )
+        evidencias.append(
+            {
+                "id": f"liquidacao-{liquidacao_item.id}",
+                "nome": liquidacao_item.liquidacao.nome_comprovante
+                or "Comprovante liquidação contrato",
+                "url": reference.url,
+                "arquivo_referencia": reference.arquivo_referencia,
+                "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
+                "tipo_referencia": reference.tipo_referencia,
+                "origem": "liquidacao_contrato",
+                "papel": "",
+                "tipo": "liquidacao_contrato",
+                "status": liquidacao_item.liquidacao.status,
+                "competencia": referencia_mes,
+                "created_at": liquidacao_item.liquidacao.created_at,
+            }
+        )
+
     if any(item["origem"] == "arquivo_retorno" for item in evidencias):
         origem_quitacao = "arquivo_retorno"
     elif any(item["origem"] == "baixa_manual" for item in evidencias):
         origem_quitacao = "baixa_manual"
+    elif any(item["origem"] == "liquidacao_contrato" for item in evidencias):
+        origem_quitacao = "liquidacao_contrato"
     elif any(item["origem"] == "manual" for item in evidencias):
         origem_quitacao = "manual"
     elif any(item["origem"] == "relatorio_competencia" for item in evidencias):
         origem_quitacao = "relatorio_competencia"
+    elif liquidacao_item is not None:
+        origem_quitacao = "liquidacao_contrato"
     elif pagamento_mensalidade and manual_status in MANUAL_STATUS_OK:
         origem_quitacao = "manual_sem_arquivo"
     else:

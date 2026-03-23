@@ -116,6 +116,17 @@
       "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
       "default": "0.00"
     },
+    "agente_responsavel_id": {
+      "type": "integer",
+      "writeOnly": true,
+      "nullable": true
+    },
+    "percentual_repasse": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,4}(?:\\.\\d{0,2})?$",
+      "default": "10.00"
+    },
     "documentos_payload": {
       "type": "array",
       "items": { "type": "object", "additionalProperties": {} },

@@ -49,6 +49,16 @@ export type SystemUserAccessUpdatePayload = {
   is_active: boolean;
 };
 
+export type SystemUserCreatePayload = {
+  email: string;
+  first_name: string;
+  last_name: string;
+  roles: Role[];
+  password: string;
+  password_confirm: string;
+  is_active: boolean;
+};
+
 export type SystemUserPasswordResetPayload = {
   password: string;
   password_confirm: string;
@@ -96,6 +106,7 @@ export type ComprovanteCiclo = {
   size_bytes: number | null;
   data_pagamento: string | null;
   origem: string;
+  status_validacao?: string;
   created_at: string | null;
   legacy_comprovante_id: number | null;
 };
@@ -116,6 +127,69 @@ export type ArquivoEvidencia = {
 };
 
 export type PagamentoInicialEvidencia = ArquivoEvidencia;
+
+export type LiquidacaoArquivo = {
+  nome: string;
+  url: string;
+  arquivo_referencia: string;
+  arquivo_disponivel_localmente: boolean;
+  tipo_referencia: string;
+};
+
+export type LiquidacaoParcela = {
+  id: number;
+  numero: number;
+  referencia_mes: string;
+  valor: string;
+  status: string;
+  data_vencimento: string | null;
+  data_pagamento: string | null;
+  observacao?: string;
+};
+
+export type LiquidacaoContratoResumo = {
+  id: number;
+  status: string;
+  data_liquidacao: string;
+  valor_total: string;
+  observacao: string;
+  realizado_por: SimpleUser | null;
+  revertida_em: string | null;
+  revertida_por: SimpleUser | null;
+  motivo_reversao: string;
+  comprovante: LiquidacaoArquivo | null;
+  parcelas: LiquidacaoParcela[];
+};
+
+export type DevolucaoArquivo = {
+  nome: string;
+  url: string;
+  arquivo_referencia: string;
+  arquivo_disponivel_localmente: boolean;
+  tipo_referencia: string;
+};
+
+export type DevolucaoAssociadoResumo = {
+  id: number;
+  tipo: string;
+  status: string;
+  data_devolucao: string;
+  quantidade_parcelas: number;
+  valor: string;
+  motivo: string;
+  competencia_referencia: string | null;
+  nome: string;
+  cpf_cnpj: string;
+  matricula: string;
+  agente_nome: string;
+  contrato_codigo: string;
+  realizado_por: SimpleUser | null;
+  revertida_em: string | null;
+  revertida_por: SimpleUser | null;
+  motivo_reversao: string;
+  comprovante: DevolucaoArquivo | null;
+  anexos: DevolucaoArquivo[];
+};
 
 export type Ciclo = {
   id: number;
@@ -236,6 +310,8 @@ export type EsteiraResumo = {
   etapa_atual: string;
   status: string;
   prioridade: number;
+  observacao?: string;
+  updated_at?: string | null;
   pendencias: Array<{
     id: number;
     tipo: string;
@@ -288,6 +364,8 @@ export type ContratoResumo = {
   pagamento_inicial_valor: string | null;
   pagamento_inicial_paid_at: string | null;
   pagamento_inicial_evidencias: PagamentoInicialEvidencia[];
+  liquidacao_contrato: LiquidacaoContratoResumo | null;
+  devolucoes_associado: DevolucaoAssociadoResumo[];
   status_renovacao: string;
   refinanciamento_id: number | null;
   possui_meses_nao_descontados: boolean;
@@ -348,6 +426,143 @@ export type AssociadoDetail = {
   documentos: Documento[];
   esteira?: EsteiraResumo | null;
   mobile_sessions?: { last_used_at: string | null; is_active: boolean }[];
+  created_at?: string;
+  updated_at?: string;
+  admin_history?: AdminOverrideHistoryEvent[];
+};
+
+export type AdminOverrideHistoryChange = {
+  id: number;
+  entity_type: string;
+  entity_id: number;
+  competencia_referencia: string | null;
+  resumo: string;
+  before_snapshot: Record<string, unknown>;
+  after_snapshot: Record<string, unknown>;
+};
+
+export type AdminOverrideHistoryEvent = {
+  id: number;
+  escopo: string;
+  resumo: string;
+  motivo: string;
+  confirmacao_dupla: boolean;
+  created_at: string;
+  realizado_por: SimpleUser | null;
+  revertida_em: string | null;
+  revertida_por: SimpleUser | null;
+  motivo_reversao: string;
+  before_snapshot: Record<string, unknown>;
+  after_snapshot: Record<string, unknown>;
+  changes: AdminOverrideHistoryChange[];
+};
+
+export type AdminFinancialFlags = {
+  tem_retorno: boolean;
+  tem_baixa_manual: boolean;
+  tem_liquidacao: boolean;
+};
+
+export type AdminEditorParcela = {
+  id: number | null;
+  numero: number;
+  referencia_mes: string;
+  valor: string;
+  data_vencimento: string;
+  status: string;
+  data_pagamento: string | null;
+  observacao: string;
+  layout_bucket: string;
+  updated_at: string | null;
+  financial_flags: AdminFinancialFlags;
+};
+
+export type AdminEditorCiclo = {
+  id: number | null;
+  client_key?: string;
+  numero: number;
+  data_inicio: string;
+  data_fim: string;
+  status: string;
+  valor_total: string;
+  updated_at: string | null;
+  comprovantes_ciclo: ComprovanteCiclo[];
+  termo_antecipacao: ComprovanteCiclo | null;
+  parcelas: AdminEditorParcela[];
+};
+
+export type AdminEditorRefinanciamento = {
+  id: number;
+  status: string;
+  competencia_solicitada: string;
+  valor_refinanciamento: string;
+  repasse_agente: string;
+  executado_em: string | null;
+  data_ativacao_ciclo: string | null;
+  motivo_bloqueio: string;
+  observacao: string;
+  analista_note: string;
+  coordenador_note: string;
+  reviewed_by_id: number | null;
+  updated_at: string | null;
+};
+
+export type AdminEditorContrato = {
+  id: number;
+  updated_at: string | null;
+  codigo: string;
+  status: string;
+  valor_bruto: string;
+  valor_liquido: string;
+  valor_mensalidade: string;
+  prazo_meses: number;
+  taxa_antecipacao: string;
+  margem_disponivel: string;
+  valor_total_antecipacao: string;
+  doacao_associado: string;
+  comissao_agente: string;
+  data_contrato: string | null;
+  data_aprovacao: string | null;
+  data_primeira_mensalidade: string | null;
+  mes_averbacao: string | null;
+  auxilio_liberado_em: string | null;
+  ciclos: AdminEditorCiclo[];
+  meses_nao_pagos: AdminEditorParcela[];
+  movimentos_financeiros_avulsos: AdminEditorParcela[];
+  refinanciamento_ativo: AdminEditorRefinanciamento | null;
+};
+
+export type AdminAssociadoSnapshot = {
+  id: number;
+  matricula: string;
+  tipo_documento: string;
+  nome_completo: string;
+  cpf_cnpj: string;
+  rg?: string;
+  orgao_expedidor?: string;
+  email?: string;
+  telefone?: string;
+  data_nascimento?: string | null;
+  profissao?: string;
+  estado_civil?: string;
+  orgao_publico?: string;
+  matricula_orgao?: string;
+  cargo?: string;
+  status: string;
+  observacao?: string;
+  agente_responsavel_id?: number | null;
+  percentual_repasse?: string;
+  endereco?: Endereco | null;
+  dados_bancarios?: DadosBancarios | null;
+  contato?: Contato | null;
+  updated_at?: string | null;
+};
+
+export type AdminAssociadoEditorPayload = {
+  associado: AdminAssociadoSnapshot;
+  contratos: AdminEditorContrato[];
+  esteira?: EsteiraResumo | null;
+  documentos: Documento[];
 };
 
 export type EsteiraContrato = {
@@ -501,6 +716,8 @@ export type AnaliseDadosItem = {
 
 export type PendenciaItem = {
   id: number;
+  esteira_item_id: number;
+  associado_created_at: string;
   tipo: string;
   descricao: string;
   status: string;
@@ -544,6 +761,8 @@ export type ContratoListItem = {
   data_contrato: string;
   valor_mensalidade: string;
   comissao_agente: string;
+  valor_auxilio_liberado: string;
+  percentual_repasse: string;
   mensalidades: {
     pagas: number;
     total: number;
@@ -552,6 +771,18 @@ export type ContratoListItem = {
     refinanciamento_ativo: boolean;
   };
   auxilio_liberado_em: string | null;
+  ciclo_apto: {
+    numero: number;
+    status: string;
+    status_visual_slug: string;
+    status_visual_label: string;
+    resumo_referencias: string;
+    parcelas_pagas: number;
+    parcelas_total: number;
+    valor_total: string;
+    primeira_competencia_ciclo: string;
+    ultima_competencia_ciclo: string;
+  } | null;
   pode_solicitar_refinanciamento: boolean;
   status_renovacao: string;
   refinanciamento_id: number | null;
@@ -594,12 +825,14 @@ export type TesourariaContratoItem = {
   associado_id: number;
   nome: string;
   cpf_cnpj: string;
+  matricula: string;
   chave_pix: string;
   codigo: string;
   data_assinatura: string;
   status: string;
   agente?: SimpleUser | null;
   agente_nome: string;
+  percentual_repasse: string;
   comissao_agente: string;
   margem_disponivel: string;
   comprovantes: ComprovanteResumo[];
@@ -621,6 +854,98 @@ export type ConfirmacaoItem = {
   ligacao_confirmada: boolean;
   averbacao_confirmada: boolean;
   status_visual: string;
+};
+
+export type LiquidacaoContratoItem = {
+  id: number;
+  contrato_id: number;
+  liquidacao_id: number | null;
+  associado_id: number;
+  nome: string;
+  cpf_cnpj: string;
+  matricula: string;
+  agente_nome: string;
+  contrato_codigo: string;
+  quantidade_parcelas: number;
+  valor_total: string;
+  referencia_inicial: string | null;
+  referencia_final: string | null;
+  status_liquidacao: string;
+  status_contrato: string;
+  status_renovacao: string;
+  origem_solicitacao: string;
+  data_liquidacao: string | null;
+  observacao: string;
+  realizado_por: SimpleUser | null;
+  revertida_em: string | null;
+  revertida_por: SimpleUser | null;
+  motivo_reversao: string;
+  comprovante: LiquidacaoArquivo | null;
+  anexos: LiquidacaoArquivo[];
+  parcelas: LiquidacaoParcela[];
+  pode_reverter: boolean;
+};
+
+export type LiquidacaoKpis = {
+  total_contratos: number;
+  total_parcelas: number;
+  valor_total: string;
+  associados_impactados: number;
+  revertidas: number;
+  ativas: number;
+};
+
+export type DevolucaoContratoItem = {
+  id: number;
+  contrato_id: number;
+  associado_id: number;
+  nome: string;
+  cpf_cnpj: string;
+  matricula: string;
+  agente_nome: string;
+  contrato_codigo: string;
+  status_contrato: string;
+  data_contrato: string;
+  mes_averbacao: string | null;
+};
+
+export type DevolucaoAssociadoItem = {
+  id: number;
+  devolucao_id: number;
+  contrato_id: number;
+  associado_id: number;
+  tipo: string;
+  status_devolucao: string;
+  data_devolucao: string;
+  quantidade_parcelas: number;
+  valor: string;
+  motivo: string;
+  competencia_referencia: string | null;
+  nome: string;
+  cpf_cnpj: string;
+  matricula: string;
+  agente_nome: string;
+  contrato_codigo: string;
+  status_contrato: string;
+  realizado_por: SimpleUser | null;
+  revertida_em: string | null;
+  revertida_por: SimpleUser | null;
+  motivo_reversao: string;
+  comprovante: DevolucaoArquivo | null;
+  anexos: DevolucaoArquivo[];
+  pode_reverter: boolean;
+};
+
+export type DevolucaoKpis = {
+  total_contratos: number;
+  associados_impactados: number;
+  ativos: number;
+  encerrados: number;
+  cancelados: number;
+  total_registros: number;
+  valor_total: string;
+  registradas: number;
+  revertidas: number;
 };
 
 export type DespesaArquivo = {
@@ -672,6 +997,7 @@ export type RefinanciamentoItem = {
   aprovado_por?: SimpleUser | null;
   bloqueado_por?: SimpleUser | null;
   efetivado_por?: SimpleUser | null;
+  reviewed_by?: SimpleUser | null;
   competencia_solicitada: string;
   status: string;
   valor_refinanciamento: string;
@@ -702,6 +1028,9 @@ export type RefinanciamentoItem = {
   motivo_apto_renovacao: string;
   motivo_bloqueio?: string;
   observacao?: string;
+  analista_note?: string;
+  coordenador_note?: string;
+  reviewed_at?: string | null;
   executado_em?: string | null;
   created_at: string;
   updated_at: string;
@@ -710,6 +1039,10 @@ export type RefinanciamentoItem = {
     aprovado_por?: SimpleUser | null;
     bloqueado_por?: SimpleUser | null;
     efetivado_por?: SimpleUser | null;
+    reviewed_by?: SimpleUser | null;
+    reviewed_at?: string | null;
+    analista_note?: string;
+    coordenador_note?: string;
     observacao?: string;
     motivo_bloqueio?: string;
   };
@@ -725,6 +1058,7 @@ export type RefinanciamentoResumo = {
   concluidos: number;
   bloqueados: number;
   revertidos: number;
+  desativados?: number;
   em_fluxo: number;
   com_anexo_agente: number;
   repasse_total: string;

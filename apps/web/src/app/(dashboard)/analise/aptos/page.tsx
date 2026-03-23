@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BadgeCheckIcon,
   EyeIcon,
-  FileTextIcon,
+  ForwardIcon,
   PlayIcon,
   ShieldCheckIcon,
   SlidersHorizontalIcon,
@@ -20,7 +20,6 @@ import type {
 import { apiFetch } from "@/lib/api/client";
 import { formatMonthYear } from "@/lib/formatters";
 import { RefinanciamentoDetalhesDialog } from "@/components/refinanciamento/refinanciamento-detalhes-dialog";
-import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import MultiSelect from "@/components/custom/multi-select";
 import SearchableSelect, { type SelectOption } from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
@@ -49,12 +48,6 @@ import {
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 
-const termoAccept = {
-  "application/pdf": [".pdf"],
-  "image/png": [".png"],
-  "image/jpeg": [".jpg", ".jpeg"],
-};
-
 type AnaliseAdvancedFilters = {
   competenciaStart: string;
   competenciaEnd: string;
@@ -68,7 +61,10 @@ type KpiFilterKey = "total" | "em_analise" | "assumidos" | "aprovados";
 
 const STATUS_OPTIONS: SelectOption[] = [
   { value: "em_analise_renovacao", label: "Em análise para renovação" },
-  { value: "aprovado_para_renovacao", label: "Aprovado para renovação" },
+  {
+    value: "aprovado_analise_renovacao",
+    label: "Aguardando validação da coordenação",
+  },
 ];
 
 const ORIGIN_OPTIONS: SelectOption[] = [
@@ -137,7 +133,6 @@ export default function AnaliseAptosPage() {
   const [draftFilters, setDraftFilters] = React.useState<AnaliseAdvancedFilters>(INITIAL_FILTERS);
   const [selected, setSelected] = React.useState<RefinanciamentoItem | null>(null);
   const [detailItem, setDetailItem] = React.useState<RefinanciamentoItem | null>(null);
-  const [termo, setTermo] = React.useState<File | null>(null);
   const [observacao, setObservacao] = React.useState("");
   const [activeKpi, setActiveKpi] = React.useState<KpiFilterKey>("total");
 
@@ -146,7 +141,7 @@ export default function AnaliseAptosPage() {
       return ["em_analise_renovacao"];
     }
     if (activeKpi === "aprovados") {
-      return ["aprovado_para_renovacao"];
+      return ["aprovado_analise_renovacao"];
     }
     return filters.statuses;
   }, [activeKpi, filters.statuses]);
@@ -232,31 +227,26 @@ export default function AnaliseAptosPage() {
   const aprovarMutation = useMutation({
     mutationFn: async ({
       id,
-      file,
       note,
     }: {
       id: number;
-      file: File;
       note: string;
     }) => {
-      const formData = new FormData();
-      formData.set("termo_antecipacao", file);
-      formData.set("observacao", note);
       return apiFetch<RefinanciamentoItem>(`refinanciamentos/${id}/aprovar_analise`, {
         method: "POST",
-        formData,
+        body: { observacao: note },
       });
     },
     onSuccess: () => {
-      toast.success("Renovação aprovada pela análise.");
+      toast.success("Renovação aprovada e enviada para validação da coordenação.");
       setSelected(null);
-      setTermo(null);
       setObservacao("");
       void queryClient.invalidateQueries({ queryKey: ["analise-refinanciamentos"] });
       void queryClient.invalidateQueries({
         queryKey: ["analise-refinanciamentos-resumo"],
       });
-      void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos"] });
+      void queryClient.invalidateQueries({ queryKey: ["coordenacao-refinanciamento"] });
+      void queryClient.invalidateQueries({ queryKey: ["agente-refinanciados"] });
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Falha ao aprovar renovação.");
@@ -341,10 +331,12 @@ export default function AnaliseAptosPage() {
                 Assumir
               </Button>
             ) : null}
-            <Button size="sm" onClick={() => setSelected(row)}>
-              <FileTextIcon className="size-4" />
-              Anexar termo
-            </Button>
+            {row.status === "em_analise_renovacao" ? (
+              <Button size="sm" onClick={() => setSelected(row)}>
+                <ForwardIcon className="size-4" />
+                Aprovar
+              </Button>
+            ) : null}
           </div>
         ),
       },
@@ -361,8 +353,8 @@ export default function AnaliseAptosPage() {
           </p>
           <h1 className="text-3xl font-semibold">Contratos para Renovação</h1>
           <p className="text-sm text-muted-foreground">
-            Fila do analista para revisar contratos aptos, assumir a análise e encaminhar a
-            renovação para a tesouraria. Total filtrado: {resumo.total}
+            Fila do analista para revisar solicitações enviadas pelo agente e encaminhá-las
+            para validação da coordenação. Total filtrado: {resumo.total}
           </p>
         </div>
       </section>
@@ -399,7 +391,7 @@ export default function AnaliseAptosPage() {
             <StatsCard
               title="Assumidos"
               value={String(resumo.assumidos)}
-              delta={`${resumo.aprovados} já aprovados para tesouraria`}
+              delta={`${resumo.aprovados} já aprovados pela análise`}
               icon={PlayIcon}
               tone="neutral"
               active={activeKpi === "assumidos"}
@@ -411,7 +403,7 @@ export default function AnaliseAptosPage() {
             <StatsCard
               title="Aprovados"
               value={String(resumo.aprovados)}
-              delta="Prontos para seguir ao financeiro"
+              delta="Prontos para validação da coordenação"
               icon={BadgeCheckIcon}
               tone="positive"
               active={activeKpi === "aprovados"}
@@ -594,18 +586,12 @@ export default function AnaliseAptosPage() {
       <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Anexar termo de antecipação</DialogTitle>
+            <DialogTitle>Aprovar e enviar à coordenação</DialogTitle>
             <DialogDescription>
-              O termo fica catalogado no ciclo de origem da renovação e não substitui anexos antigos.
+              O termo enviado pelo agente permanece no histórico. Aqui o analista só registra a observação da validação.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <FileUploadDropzone
-              accept={termoAccept}
-              file={termo}
-              onUpload={setTermo}
-              emptyTitle="Selecione o termo de antecipação"
-            />
             <Textarea
               value={observacao}
               onChange={(event) => setObservacao(event.target.value)}
@@ -618,17 +604,16 @@ export default function AnaliseAptosPage() {
               Cancelar
             </Button>
             <Button
-              disabled={!selected || !termo || aprovarMutation.isPending}
+              disabled={!selected || aprovarMutation.isPending}
               onClick={() => {
-                if (!selected || !termo) return;
+                if (!selected) return;
                 aprovarMutation.mutate({
                   id: selected.id,
-                  file: termo,
                   note: observacao,
                 });
               }}
             >
-              Aprovar para tesouraria
+              Aprovar e enviar à coordenação
             </Button>
           </DialogFooter>
         </DialogContent>

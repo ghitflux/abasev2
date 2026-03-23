@@ -8,6 +8,7 @@ import { dashboardAgentRankingSchema } from "./dashboardAgentRankingSchema.ts";
 import { dashboardMetricCardSchema } from "./dashboardMetricCardSchema.ts";
 
 export const dashboardAgentesSchema = z.object({
+  competencia: z.string(),
   date_start: z.iso.date(),
   date_end: z.iso.date(),
   get cards() {

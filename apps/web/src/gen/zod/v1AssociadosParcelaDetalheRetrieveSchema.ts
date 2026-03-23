@@ -10,7 +10,7 @@ export const V1AssociadosParcelaDetalheRetrievePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("Um valor inteiro único que identifica este associado."),
+    .describe("A unique integer value identifying this associado."),
 });
 
 export const V1AssociadosParcelaDetalheRetrieve200Schema = z.lazy(

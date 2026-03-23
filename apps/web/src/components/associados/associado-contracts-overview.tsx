@@ -130,6 +130,88 @@ function InitialPaymentEvidenceCard({
   );
 }
 
+function LiquidacaoEvidenceCard({
+  arquivo,
+}: {
+  arquivo: {
+    nome: string;
+    url: string;
+    arquivo_referencia: string;
+    arquivo_disponivel_localmente: boolean;
+    tipo_referencia: string;
+  };
+}) {
+  const title = arquivo.arquivo_referencia || arquivo.nome;
+  if (arquivo.arquivo_disponivel_localmente && arquivo.url) {
+    return (
+      <a
+        href={buildBackendFileUrl(arquivo.url)}
+        target="_blank"
+        rel="noreferrer"
+        className="rounded-2xl border border-border/60 bg-background/60 p-3 transition hover:border-primary/50"
+      >
+        <p className="text-sm font-medium">{arquivo.nome}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{title}</p>
+      </a>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 p-3">
+      <p className="text-sm font-medium">{arquivo.nome}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{title}</p>
+      <p className="mt-1 text-[11px] text-amber-200">
+        {arquivo.tipo_referencia === "local"
+          ? "Arquivo local"
+          : "Referência de arquivo legado"}
+      </p>
+    </div>
+  );
+}
+
+function DevolucaoEvidenceCard({
+  arquivo,
+}: {
+  arquivo: {
+    nome: string;
+    url: string;
+    arquivo_referencia: string;
+    arquivo_disponivel_localmente: boolean;
+    tipo_referencia: string;
+  };
+}) {
+  const title = arquivo.arquivo_referencia || arquivo.nome;
+  if (arquivo.arquivo_disponivel_localmente && arquivo.url) {
+    return (
+      <a
+        href={buildBackendFileUrl(arquivo.url)}
+        target="_blank"
+        rel="noreferrer"
+        className="rounded-2xl border border-border/60 bg-background/60 p-3 transition hover:border-primary/50"
+      >
+        <p className="text-sm font-medium">{arquivo.nome}</p>
+        <p className="mt-1 text-xs text-muted-foreground">{title}</p>
+      </a>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 p-3">
+      <p className="text-sm font-medium">{arquivo.nome}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{title}</p>
+      <p className="mt-1 text-[11px] text-amber-200">
+        {arquivo.tipo_referencia === "local"
+          ? "Arquivo local"
+          : "Referência de arquivo legado"}
+      </p>
+    </div>
+  );
+}
+
+function formatDevolucaoTipoLabel(tipo: string) {
+  return tipo.replaceAll("_", " ");
+}
+
 export function AssociadoDocumentCard({
   documento,
 }: {
@@ -354,6 +436,153 @@ export function AssociadoContractsOverview({
                       )}
                     </CardContent>
                   </Card>
+
+                  {contrato.liquidacao_contrato ? (
+                    <Card className="rounded-[1.5rem] border-border/60 bg-card/60">
+                      <CardHeader>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <CardTitle className="text-base">Liquidação do contrato</CardTitle>
+                          <StatusBadge status={contrato.liquidacao_contrato.status} />
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <DetailItem
+                            label="Data da liquidação"
+                            value={formatDate(contrato.liquidacao_contrato.data_liquidacao)}
+                          />
+                          <DetailItem
+                            label="Valor total"
+                            value={formatCurrency(contrato.liquidacao_contrato.valor_total)}
+                          />
+                          <DetailItem
+                            label="Responsável"
+                            value={contrato.liquidacao_contrato.realizado_por?.full_name}
+                          />
+                        </div>
+                        {contrato.liquidacao_contrato.observacao ? (
+                          <div className="rounded-2xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+                            {contrato.liquidacao_contrato.observacao}
+                          </div>
+                        ) : null}
+                        {contrato.liquidacao_contrato.comprovante ? (
+                          <LiquidacaoEvidenceCard
+                            arquivo={contrato.liquidacao_contrato.comprovante}
+                          />
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Nenhum comprovante de liquidação disponível.
+                          </p>
+                        )}
+                        {contrato.liquidacao_contrato.parcelas.length ? (
+                          <div className="space-y-3">
+                            <p className="text-sm font-medium text-foreground">
+                              Parcelas afetadas
+                            </p>
+                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                              {contrato.liquidacao_contrato.parcelas.map((parcela) => (
+                                <div
+                                  key={`${contrato.liquidacao_contrato?.id}-${parcela.id}`}
+                                  className="rounded-2xl border border-border/60 bg-background/60 p-4"
+                                >
+                                  <div className="flex items-center justify-between gap-3">
+                                    <p className="font-medium">
+                                      Parcela {parcela.numero}
+                                    </p>
+                                    <StatusBadge status={parcela.status} />
+                                  </div>
+                                  <p className="mt-2 text-sm text-muted-foreground">
+                                    {formatMonthYear(parcela.referencia_mes)} ·{" "}
+                                    {formatCurrency(parcela.valor)}
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    Pagamento {formatDate(parcela.data_pagamento)}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </CardContent>
+                    </Card>
+                  ) : null}
+
+                  {contrato.devolucoes_associado.length ? (
+                    <Card className="rounded-[1.5rem] border-border/60 bg-card/60">
+                      <CardHeader>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <CardTitle className="text-base">Devoluções ao associado</CardTitle>
+                          <StatusBadge
+                            status={contrato.devolucoes_associado[0].status}
+                            label={`${contrato.devolucoes_associado.length} registro(s)`}
+                          />
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid gap-4 xl:grid-cols-2">
+                          {contrato.devolucoes_associado.map((devolucao) => (
+                            <div
+                              key={devolucao.id}
+                              className="space-y-4 rounded-[1.5rem] border border-border/60 bg-background/50 p-4"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                  <p className="font-medium capitalize">
+                                    {formatDevolucaoTipoLabel(devolucao.tipo)}
+                                  </p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {formatDate(devolucao.data_devolucao)} ·{" "}
+                                    {formatCurrency(devolucao.valor)}
+                                  </p>
+                                </div>
+                                <StatusBadge status={devolucao.status} />
+                              </div>
+                              <div className="grid gap-3 md:grid-cols-2">
+                                <DetailItem
+                                  label="Responsável"
+                                  value={devolucao.realizado_por?.full_name}
+                                />
+                                <DetailItem
+                                  label="Parcelas"
+                                  value={String(devolucao.quantidade_parcelas)}
+                                />
+                                <DetailItem
+                                  label="Competência"
+                                  value={
+                                    devolucao.competencia_referencia
+                                      ? formatMonthYear(devolucao.competencia_referencia)
+                                      : "Sem competência"
+                                  }
+                                />
+                              </div>
+                              <div className="rounded-2xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+                                {devolucao.motivo}
+                              </div>
+                              {devolucao.anexos.length ? (
+                                <div className="grid gap-3 md:grid-cols-2">
+                                  {devolucao.anexos.map((anexo) => (
+                                    <DevolucaoEvidenceCard
+                                      key={`${devolucao.id}-${anexo.arquivo_referencia}-${anexo.nome}`}
+                                      arquivo={anexo}
+                                    />
+                                  ))}
+                                </div>
+                              ) : null}
+                              {devolucao.revertida_em ? (
+                                <div className="rounded-2xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+                                  Revertida em {formatDateTime(devolucao.revertida_em)}
+                                  {devolucao.revertida_por?.full_name
+                                    ? ` por ${devolucao.revertida_por.full_name}.`
+                                    : "."}{" "}
+                                  {devolucao.motivo_reversao || "Sem motivo informado."}
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : null}
                 </>
               )}
 

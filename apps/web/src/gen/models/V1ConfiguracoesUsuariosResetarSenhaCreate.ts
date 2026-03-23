@@ -8,7 +8,7 @@ import type { PasswordResetResult } from "./PasswordResetResult.ts";
 
 export type V1ConfiguracoesUsuariosResetarSenhaCreatePathParams = {
   /**
-   * @description Um valor inteiro único que identifica este user.
+   * @description A unique integer value identifying this user.
    * @type integer
    */
   id: number;

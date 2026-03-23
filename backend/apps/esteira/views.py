@@ -3,9 +3,11 @@ from __future__ import annotations
 from django.db.models import Count, Prefetch, Q
 from rest_framework import mixins, permissions, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
+from apps.associados.serializers import AssociadoDetailSerializer
 from core.pagination import StandardResultsSetPagination
 
 from .models import EsteiraItem, Pendencia
@@ -147,6 +149,33 @@ class EsteiraViewSet(
             payload.validated_data["observacao"],
         )
         return Response(EsteiraDetailSerializer(esteira_item, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["get"], url_path="correcao")
+    def correcao(self, request, pk=None):
+        esteira_item = self.get_object()
+        user = request.user
+
+        if not (user.has_role("AGENTE") or user.has_role("ADMIN")):
+            raise PermissionDenied("Somente agente responsável ou admin podem revisar esta correção.")
+
+        if user.has_role("AGENTE") and not user.has_role("ADMIN"):
+            has_open_returned_pending = esteira_item.pendencias.filter(
+                status=Pendencia.Status.ABERTA,
+                retornado_para_agente=True,
+            ).exists()
+            if not has_open_returned_pending:
+                raise ValidationError(
+                    "Este item não possui pendência aberta retornada ao agente para correção."
+                )
+
+        serializer = AssociadoDetailSerializer(
+            esteira_item.associado,
+            context={
+                **self.get_serializer_context(),
+                "agent_correction_mode": True,
+            },
+        )
+        return Response(serializer.data)
 
     @action(detail=True, methods=["get"])
     def transicoes(self, request, pk=None):

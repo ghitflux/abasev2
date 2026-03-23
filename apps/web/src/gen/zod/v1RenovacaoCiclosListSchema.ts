@@ -10,7 +10,7 @@ export const V1RenovacaoCiclosListQueryParamsSchema = z
   .object({
     competencia: z.optional(z.string()),
     ordering: z.optional(
-      z.string().describe("Qual campo usar ao ordenar os resultados."),
+      z.string().describe("Which field to use when ordering the results."),
     ),
     page: z.optional(z.coerce.number().int()),
     page_size: z.optional(z.coerce.number().int()),

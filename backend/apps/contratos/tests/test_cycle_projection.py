@@ -164,7 +164,7 @@ class CycleProjectionTestCase(TestCase):
         self.assertEqual(cycles[0]["status"], Ciclo.Status.CICLO_RENOVADO)
         self.assertEqual(
             cycles[0]["status_visual_label"],
-            "Renovado",
+            "Concluído",
         )
         self.assertEqual(
             cycles[0]["data_solicitacao_renovacao"].date(),

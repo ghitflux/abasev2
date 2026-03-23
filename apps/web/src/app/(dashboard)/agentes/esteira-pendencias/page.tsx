@@ -20,7 +20,9 @@ import type {
   PendenciaResumo,
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
+import { getDefaultRouteForRole } from "@/lib/navigation";
 import { formatDate } from "@/lib/formatters";
+import { maskCPFCNPJ } from "@/lib/masks";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { usePermissions } from "@/hooks/use-permissions";
 import AssociadoForm from "@/components/associados/associado-form";
@@ -43,8 +45,9 @@ import { Input } from "@/components/ui/input";
 
 export default function EsteiraPendenciasPage() {
   const queryClient = useQueryClient();
-  const { hasRole } = usePermissions();
+  const { hasRole, role } = usePermissions();
   const isAdmin = hasRole("ADMIN");
+  const fallbackHref = getDefaultRouteForRole(role);
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [selectedPendencia, setSelectedPendencia] =
@@ -83,17 +86,17 @@ export default function EsteiraPendenciasPage() {
     internas: 0,
     associados_impactados: 0,
   };
-  const selectedAssociadoId = selectedPendencia?.associado_id;
+  const selectedEsteiraItemId = selectedPendencia?.esteira_item_id;
   const associadoQuery = useQuery({
-    queryKey: ["pendencias-agente-associado", selectedAssociadoId],
-    enabled: selectedAssociadoId !== undefined,
+    queryKey: ["pendencias-agente-correcao", selectedEsteiraItemId],
+    enabled: selectedEsteiraItemId !== undefined,
     queryFn: () =>
-      apiFetch<AssociadoDetail>(`associados/${selectedAssociadoId!}`),
+      apiFetch<AssociadoDetail>(`esteira/${selectedEsteiraItemId!}/correcao`),
   });
 
   const handleCorrectionSuccess = React.useCallback(
     async (associado: AssociadoDetail) => {
-      const esteiraId = associado.esteira?.id;
+      const esteiraId = selectedPendencia?.esteira_item_id;
       if (!esteiraId) {
         throw new Error(
           "Este associado não possui item de esteira para reenvio.",
@@ -108,6 +111,9 @@ export default function EsteiraPendenciasPage() {
         queryClient.invalidateQueries({ queryKey: ["pendencias-agente"] }),
         queryClient.invalidateQueries({ queryKey: ["pendencias-agente-resumo"] }),
         queryClient.invalidateQueries({
+          queryKey: ["pendencias-agente-resumo-sidebar"],
+        }),
+        queryClient.invalidateQueries({
           queryKey: ["dashboard-pendencias-agente"],
         }),
         queryClient.invalidateQueries({ queryKey: ["esteira"] }),
@@ -117,7 +123,7 @@ export default function EsteiraPendenciasPage() {
           queryKey: ["associado", associado.id],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["pendencias-agente-associado", associado.id],
+          queryKey: ["pendencias-agente-correcao", esteiraId],
         }),
         queryClient.invalidateQueries({ queryKey: ["contratos-lista"] }),
         queryClient.invalidateQueries({ queryKey: ["contratos-resumo"] }),
@@ -126,7 +132,7 @@ export default function EsteiraPendenciasPage() {
       toast.success("Cadastro corrigido e reenviado para nova análise.");
       setSelectedPendencia(null);
     },
-    [queryClient],
+    [queryClient, selectedPendencia],
   );
 
   const columns = React.useMemo<DataTableColumn<PendenciaItem>[]>(
@@ -137,9 +143,14 @@ export default function EsteiraPendenciasPage() {
         cell: (row) => row.associado_nome,
       },
       {
-        id: "matricula",
-        header: "Matrícula",
-        accessor: "matricula",
+        id: "matricula_servidor",
+        header: "Matrícula do Servidor",
+        cell: (row) => row.matricula_display || row.matricula || "—",
+      },
+      {
+        id: "cpf",
+        header: "CPF",
+        cell: (row) => maskCPFCNPJ(row.cpf_cnpj),
       },
       {
         id: "tipo",
@@ -153,8 +164,8 @@ export default function EsteiraPendenciasPage() {
       },
       {
         id: "data",
-        header: "Data",
-        cell: (row) => formatDate(row.created_at),
+        header: "Data do cadastro",
+        cell: (row) => formatDate(row.associado_created_at || row.created_at),
       },
       {
         id: "acoes",
@@ -246,7 +257,7 @@ export default function EsteiraPendenciasPage() {
           Limpar
         </Button>
         <Button variant="outline" asChild>
-          <Link href="/dashboard">
+          <Link href={fallbackHref}>
             <ArrowLeftIcon className="size-4" />
             Voltar
           </Link>

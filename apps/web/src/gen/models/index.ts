@@ -1,4 +1,5 @@
 export type { AdminUserAccessUpdate } from "./AdminUserAccessUpdate.ts";
+export type { AdminUserCreate } from "./AdminUserCreate.ts";
 export type { AdminUserList } from "./AdminUserList.ts";
 export type { AgentePagamentoCiclo } from "./AgentePagamentoCiclo.ts";
 export type { AgentePagamentoComprovante } from "./AgentePagamentoComprovante.ts";
@@ -44,7 +45,6 @@ export type {
 } from "./AssociadoA2StatusRetrieve.ts";
 export type { AssociadoContrato } from "./AssociadoContrato.ts";
 export type { AssociadoCreate } from "./AssociadoCreate.ts";
-export type { AssociadoDetail } from "./AssociadoDetail.ts";
 export type { AssociadoList } from "./AssociadoList.ts";
 export type {
   AssociadoMeRetrieve200,
@@ -134,20 +134,14 @@ export type {
 } from "./AuthResetPasswordCreate.ts";
 export type { BaixaManualItem } from "./BaixaManualItem.ts";
 export type { BlankEnum, BlankEnumEnumKey } from "./BlankEnum.ts";
-export type { ComprovanteResumo } from "./ComprovanteResumo.ts";
-export type {
-  ComprovanteResumoOrigemEnum,
-  ComprovanteResumoOrigemEnumEnumKey,
-} from "./ComprovanteResumoOrigemEnum.ts";
-export type {
-  ComprovanteResumoTipoEnum,
-  ComprovanteResumoTipoEnumEnumKey,
-} from "./ComprovanteResumoTipoEnum.ts";
 export type { ConfirmacaoList } from "./ConfirmacaoList.ts";
 export type { ContatoHistoricoWrite } from "./ContatoHistoricoWrite.ts";
 export type { ContratoAgente } from "./ContratoAgente.ts";
 export type { ContratoList } from "./ContratoList.ts";
-export type { ContratoResumo } from "./ContratoResumo.ts";
+export type {
+  ContratoListStatusEnum,
+  ContratoListStatusEnumEnumKey,
+} from "./ContratoListStatusEnum.ts";
 export type { DadosBancariosWrite } from "./DadosBancariosWrite.ts";
 export type { DashboardAgentRanking } from "./DashboardAgentRanking.ts";
 export type { DashboardAgentes } from "./DashboardAgentes.ts";
@@ -164,26 +158,16 @@ export type { DashboardValuePoint } from "./DashboardValuePoint.ts";
 export type { DespesaAnexo } from "./DespesaAnexo.ts";
 export type { DespesaList } from "./DespesaList.ts";
 export type { DespesaWrite } from "./DespesaWrite.ts";
-export type { Documento } from "./Documento.ts";
-export type {
-  DocumentoOrigemEnum,
-  DocumentoOrigemEnumEnumKey,
-} from "./DocumentoOrigemEnum.ts";
-export type {
-  DocumentoStatusEnum,
-  DocumentoStatusEnumEnumKey,
-} from "./DocumentoStatusEnum.ts";
-export type {
-  DocumentoTipoEnum,
-  DocumentoTipoEnumEnumKey,
-} from "./DocumentoTipoEnum.ts";
+export type { DevolucaoAnexo } from "./DevolucaoAnexo.ts";
+export type { DevolucaoAssociadoList } from "./DevolucaoAssociadoList.ts";
+export type { DevolucaoComprovante } from "./DevolucaoComprovante.ts";
+export type { DevolucaoContratoList } from "./DevolucaoContratoList.ts";
 export type { EnderecoWrite } from "./EnderecoWrite.ts";
 export type {
   EstadoCivilEnum,
   EstadoCivilEnumEnumKey,
 } from "./EstadoCivilEnum.ts";
 export type { EsteiraDetail } from "./EsteiraDetail.ts";
-export type { EsteiraItemResumo } from "./EsteiraItemResumo.ts";
 export type { EsteiraList } from "./EsteiraList.ts";
 export type { FormatEnum, FormatEnumEnumKey } from "./FormatEnum.ts";
 export type { FormatoEnum, FormatoEnumEnumKey } from "./FormatoEnum.ts";
@@ -192,6 +176,9 @@ export type {
   HomeRetrieveQuery,
   HomeRetrieveQueryResponse,
 } from "./HomeRetrieve.ts";
+export type { LiquidacaoComprovante } from "./LiquidacaoComprovante.ts";
+export type { LiquidacaoContratoList } from "./LiquidacaoContratoList.ts";
+export type { LiquidacaoParcela } from "./LiquidacaoParcela.ts";
 export type { Login } from "./Login.ts";
 export type {
   LoginCreate200,
@@ -220,11 +207,13 @@ export type { PaginatedConfirmacaoListList } from "./PaginatedConfirmacaoListLis
 export type { PaginatedContratoListList } from "./PaginatedContratoListList.ts";
 export type { PaginatedDashboardDetailRowList } from "./PaginatedDashboardDetailRowList.ts";
 export type { PaginatedDespesaListList } from "./PaginatedDespesaListList.ts";
+export type { PaginatedDevolucaoAssociadoListList } from "./PaginatedDevolucaoAssociadoListList.ts";
+export type { PaginatedDevolucaoContratoListList } from "./PaginatedDevolucaoContratoListList.ts";
 export type { PaginatedEsteiraListList } from "./PaginatedEsteiraListList.ts";
+export type { PaginatedLiquidacaoContratoListList } from "./PaginatedLiquidacaoContratoListList.ts";
 export type { PaginatedRefinanciamentoListList } from "./PaginatedRefinanciamentoListList.ts";
 export type { PaginatedRenovacaoCicloItemList } from "./PaginatedRenovacaoCicloItemList.ts";
 export type { PaginatedTesourariaContratoListList } from "./PaginatedTesourariaContratoListList.ts";
-export type { PapelEnum, PapelEnumEnumKey } from "./PapelEnum.ts";
 export type {
   ParaSituacaoEnum,
   ParaSituacaoEnumEnumKey,
@@ -241,7 +230,6 @@ export type { PatchedAnalisePagamentoData } from "./PatchedAnalisePagamentoData.
 export type { PatchedAssociadoUpdate } from "./PatchedAssociadoUpdate.ts";
 export type { PatchedDespesaWrite } from "./PatchedDespesaWrite.ts";
 export type { Pendencia } from "./Pendencia.ts";
-export type { PendenciaResumo } from "./PendenciaResumo.ts";
 export type {
   PendenciaStatusEnum,
   PendenciaStatusEnumEnumKey,
@@ -270,10 +258,9 @@ export type {
   SchemaRetrieveQueryResponse,
 } from "./SchemaRetrieve.ts";
 export type { SimpleUser } from "./SimpleUser.ts";
-export type { Status1D4Enum, Status1D4EnumEnumKey } from "./Status1D4Enum.ts";
+export type { Status0BbEnum, Status0BbEnumEnumKey } from "./Status0BbEnum.ts";
 export type { Status200Enum, Status200EnumEnumKey } from "./Status200Enum.ts";
 export type { Status427Enum, Status427EnumEnumKey } from "./Status427Enum.ts";
-export type { Status707Enum, Status707EnumEnumKey } from "./Status707Enum.ts";
 export type { Status7A5Enum, Status7A5EnumEnumKey } from "./Status7A5Enum.ts";
 export type {
   StatusAnexoEnum,
@@ -284,14 +271,13 @@ export type {
   StatusDescontoEnumEnumKey,
 } from "./StatusDescontoEnum.ts";
 export type { TesourariaContratoList } from "./TesourariaContratoList.ts";
-export type { TipoC90Enum, TipoC90EnumEnumKey } from "./TipoC90Enum.ts";
 export type {
   TipoDocumentoEnum,
   TipoDocumentoEnumEnumKey,
 } from "./TipoDocumentoEnum.ts";
+export type { TipoEnum, TipoEnumEnumKey } from "./TipoEnum.ts";
 export type { ToneEnum, ToneEnumEnumKey } from "./ToneEnum.ts";
 export type { Transicao } from "./Transicao.ts";
-export type { TransicaoResumo } from "./TransicaoResumo.ts";
 export type { User } from "./User.ts";
 export type {
   V1AgentePagamentosList200,
@@ -299,6 +285,17 @@ export type {
   V1AgentePagamentosListQueryParams,
   V1AgentePagamentosListQueryResponse,
 } from "./V1AgentePagamentosList.ts";
+export type {
+  V1AgentePagamentosNotificacoesMarcarLidasCreate200,
+  V1AgentePagamentosNotificacoesMarcarLidasCreateMutation,
+  V1AgentePagamentosNotificacoesMarcarLidasCreateMutationRequest,
+  V1AgentePagamentosNotificacoesMarcarLidasCreateMutationResponse,
+} from "./V1AgentePagamentosNotificacoesMarcarLidasCreate.ts";
+export type {
+  V1AgentePagamentosNotificacoesRetrieve200,
+  V1AgentePagamentosNotificacoesRetrieveQuery,
+  V1AgentePagamentosNotificacoesRetrieveQueryResponse,
+} from "./V1AgentePagamentosNotificacoesRetrieve.ts";
 export type {
   V1AnaliseAjustesDataPagamentoPartialUpdate200,
   V1AnaliseAjustesDataPagamentoPartialUpdateMutation,
@@ -352,6 +349,11 @@ export type {
   V1AnaliseRefinanciamentosListQueryResponse,
 } from "./V1AnaliseRefinanciamentosList.ts";
 export type {
+  V1AnaliseRefinanciamentosResumoRetrieve200,
+  V1AnaliseRefinanciamentosResumoRetrieveQuery,
+  V1AnaliseRefinanciamentosResumoRetrieveQueryResponse,
+} from "./V1AnaliseRefinanciamentosResumoRetrieve.ts";
+export type {
   V1AnaliseRefinanciamentosRetrieve200,
   V1AnaliseRefinanciamentosRetrievePathParams,
   V1AnaliseRefinanciamentosRetrieveQuery,
@@ -383,6 +385,11 @@ export type {
   V1AppPendenciasRetrieveQueryResponse,
 } from "./V1AppPendenciasRetrieve.ts";
 export type {
+  V1AssociadosAgentesRetrieve200,
+  V1AssociadosAgentesRetrieveQuery,
+  V1AssociadosAgentesRetrieveQueryResponse,
+} from "./V1AssociadosAgentesRetrieve.ts";
+export type {
   V1AssociadosCiclosRetrieve200,
   V1AssociadosCiclosRetrievePathParams,
   V1AssociadosCiclosRetrieveQuery,
@@ -411,7 +418,6 @@ export type {
   V1AssociadosList200,
   V1AssociadosListQuery,
   V1AssociadosListQueryParams,
-  V1AssociadosListQueryParamsStatusEnumKey,
   V1AssociadosListQueryResponse,
 } from "./V1AssociadosList.ts";
 export type {
@@ -474,6 +480,12 @@ export type {
   V1AuthRefreshCreateMutationResponse,
 } from "./V1AuthRefreshCreate.ts";
 export type {
+  V1ConfiguracoesUsuariosCreate201,
+  V1ConfiguracoesUsuariosCreateMutation,
+  V1ConfiguracoesUsuariosCreateMutationRequest,
+  V1ConfiguracoesUsuariosCreateMutationResponse,
+} from "./V1ConfiguracoesUsuariosCreate.ts";
+export type {
   V1ConfiguracoesUsuariosList200,
   V1ConfiguracoesUsuariosListQuery,
   V1ConfiguracoesUsuariosListQueryParams,
@@ -523,6 +535,11 @@ export type {
   V1CoordenacaoRefinanciadosListQueryResponse,
 } from "./V1CoordenacaoRefinanciadosList.ts";
 export type {
+  V1CoordenacaoRefinanciadosResumoRetrieve200,
+  V1CoordenacaoRefinanciadosResumoRetrieveQuery,
+  V1CoordenacaoRefinanciadosResumoRetrieveQueryResponse,
+} from "./V1CoordenacaoRefinanciadosResumoRetrieve.ts";
+export type {
   V1CoordenacaoRefinanciadosRetrieve200,
   V1CoordenacaoRefinanciadosRetrievePathParams,
   V1CoordenacaoRefinanciadosRetrieveQuery,
@@ -540,6 +557,11 @@ export type {
   V1CoordenacaoRefinanciamentoListQueryParams,
   V1CoordenacaoRefinanciamentoListQueryResponse,
 } from "./V1CoordenacaoRefinanciamentoList.ts";
+export type {
+  V1CoordenacaoRefinanciamentoResumoRetrieve200,
+  V1CoordenacaoRefinanciamentoResumoRetrieveQuery,
+  V1CoordenacaoRefinanciamentoResumoRetrieveQueryResponse,
+} from "./V1CoordenacaoRefinanciamentoResumoRetrieve.ts";
 export type {
   V1CoordenacaoRefinanciamentoRetrieve200,
   V1CoordenacaoRefinanciamentoRetrievePathParams,
@@ -603,6 +625,11 @@ export type {
   V1EsteiraPendenciarCreateMutationResponse,
   V1EsteiraPendenciarCreatePathParams,
 } from "./V1EsteiraPendenciarCreate.ts";
+export type {
+  V1EsteiraPendenciasResumoRetrieve200,
+  V1EsteiraPendenciasResumoRetrieveQuery,
+  V1EsteiraPendenciasResumoRetrieveQueryResponse,
+} from "./V1EsteiraPendenciasResumoRetrieve.ts";
 export type {
   V1EsteiraPendenciasRetrieve200,
   V1EsteiraPendenciasRetrieveQuery,
@@ -766,6 +793,11 @@ export type {
   V1RefinanciamentosListQueryParams,
   V1RefinanciamentosListQueryResponse,
 } from "./V1RefinanciamentosList.ts";
+export type {
+  V1RefinanciamentosResumoRetrieve200,
+  V1RefinanciamentosResumoRetrieveQuery,
+  V1RefinanciamentosResumoRetrieveQueryResponse,
+} from "./V1RefinanciamentosResumoRetrieve.ts";
 export type {
   V1RefinanciamentosRetrieve200,
   V1RefinanciamentosRetrievePathParams,
@@ -951,6 +983,52 @@ export type {
   V1TesourariaDespesasUpdatePathParams,
 } from "./V1TesourariaDespesasUpdate.ts";
 export type {
+  V1TesourariaDevolucoesContratosList200,
+  V1TesourariaDevolucoesContratosListQuery,
+  V1TesourariaDevolucoesContratosListQueryParams,
+  V1TesourariaDevolucoesContratosListQueryResponse,
+} from "./V1TesourariaDevolucoesContratosList.ts";
+export type {
+  V1TesourariaDevolucoesContratosRegistrarCreate200,
+  V1TesourariaDevolucoesContratosRegistrarCreateMutation,
+  V1TesourariaDevolucoesContratosRegistrarCreateMutationRequest,
+  V1TesourariaDevolucoesContratosRegistrarCreateMutationResponse,
+  V1TesourariaDevolucoesContratosRegistrarCreatePathParams,
+} from "./V1TesourariaDevolucoesContratosRegistrarCreate.ts";
+export type {
+  V1TesourariaDevolucoesList200,
+  V1TesourariaDevolucoesListQuery,
+  V1TesourariaDevolucoesListQueryParams,
+  V1TesourariaDevolucoesListQueryResponse,
+} from "./V1TesourariaDevolucoesList.ts";
+export type {
+  V1TesourariaDevolucoesReverterCreate200,
+  V1TesourariaDevolucoesReverterCreateMutation,
+  V1TesourariaDevolucoesReverterCreateMutationRequest,
+  V1TesourariaDevolucoesReverterCreateMutationResponse,
+  V1TesourariaDevolucoesReverterCreatePathParams,
+} from "./V1TesourariaDevolucoesReverterCreate.ts";
+export type {
+  V1TesourariaLiquidacoesLiquidarCreate200,
+  V1TesourariaLiquidacoesLiquidarCreateMutation,
+  V1TesourariaLiquidacoesLiquidarCreateMutationRequest,
+  V1TesourariaLiquidacoesLiquidarCreateMutationResponse,
+  V1TesourariaLiquidacoesLiquidarCreatePathParams,
+} from "./V1TesourariaLiquidacoesLiquidarCreate.ts";
+export type {
+  V1TesourariaLiquidacoesList200,
+  V1TesourariaLiquidacoesListQuery,
+  V1TesourariaLiquidacoesListQueryParams,
+  V1TesourariaLiquidacoesListQueryResponse,
+} from "./V1TesourariaLiquidacoesList.ts";
+export type {
+  V1TesourariaLiquidacoesReverterCreate200,
+  V1TesourariaLiquidacoesReverterCreateMutation,
+  V1TesourariaLiquidacoesReverterCreateMutationRequest,
+  V1TesourariaLiquidacoesReverterCreateMutationResponse,
+  V1TesourariaLiquidacoesReverterCreatePathParams,
+} from "./V1TesourariaLiquidacoesReverterCreate.ts";
+export type {
   V1TesourariaRefinanciamentosEfetivarCreate200,
   V1TesourariaRefinanciamentosEfetivarCreateMutation,
   V1TesourariaRefinanciamentosEfetivarCreateMutationRequest,
@@ -964,21 +1042,21 @@ export type {
   V1TesourariaRefinanciamentosListQueryResponse,
 } from "./V1TesourariaRefinanciamentosList.ts";
 export type {
+  V1TesourariaRefinanciamentosResumoRetrieve200,
+  V1TesourariaRefinanciamentosResumoRetrieveQuery,
+  V1TesourariaRefinanciamentosResumoRetrieveQueryResponse,
+} from "./V1TesourariaRefinanciamentosResumoRetrieve.ts";
+export type {
   V1TesourariaRefinanciamentosRetrieve200,
   V1TesourariaRefinanciamentosRetrievePathParams,
   V1TesourariaRefinanciamentosRetrieveQuery,
   V1TesourariaRefinanciamentosRetrieveQueryResponse,
 } from "./V1TesourariaRefinanciamentosRetrieve.ts";
 export { blankEnumEnum } from "./BlankEnum.ts";
-export { comprovanteResumoOrigemEnumEnum } from "./ComprovanteResumoOrigemEnum.ts";
-export { comprovanteResumoTipoEnumEnum } from "./ComprovanteResumoTipoEnum.ts";
-export { documentoOrigemEnumEnum } from "./DocumentoOrigemEnum.ts";
-export { documentoStatusEnumEnum } from "./DocumentoStatusEnum.ts";
-export { documentoTipoEnumEnum } from "./DocumentoTipoEnum.ts";
+export { contratoListStatusEnumEnum } from "./ContratoListStatusEnum.ts";
 export { estadoCivilEnumEnum } from "./EstadoCivilEnum.ts";
 export { formatEnumEnum } from "./FormatEnum.ts";
 export { formatoEnumEnum } from "./FormatoEnum.ts";
-export { papelEnumEnum } from "./PapelEnum.ts";
 export { paraSituacaoEnumEnum } from "./ParaSituacaoEnum.ts";
 export { paraStatusEnumEnum } from "./ParaStatusEnum.ts";
 export { pendenciaStatusEnumEnum } from "./PendenciaStatusEnum.ts";
@@ -986,14 +1064,12 @@ export { recorrenciaEnumEnum } from "./RecorrenciaEnum.ts";
 export { resultadoProcessamentoEnumEnum } from "./ResultadoProcessamentoEnum.ts";
 export { schemaRetrieveQueryParamsFormatEnum } from "./SchemaRetrieve.ts";
 export { schemaRetrieveQueryParamsLangEnum } from "./SchemaRetrieve.ts";
-export { status1D4EnumEnum } from "./Status1D4Enum.ts";
+export { status0BbEnumEnum } from "./Status0BbEnum.ts";
 export { status200EnumEnum } from "./Status200Enum.ts";
 export { status427EnumEnum } from "./Status427Enum.ts";
-export { status707EnumEnum } from "./Status707Enum.ts";
 export { status7A5EnumEnum } from "./Status7A5Enum.ts";
 export { statusAnexoEnumEnum } from "./StatusAnexoEnum.ts";
 export { statusDescontoEnumEnum } from "./StatusDescontoEnum.ts";
-export { tipoC90EnumEnum } from "./TipoC90Enum.ts";
 export { tipoDocumentoEnumEnum } from "./TipoDocumentoEnum.ts";
+export { tipoEnumEnum } from "./TipoEnum.ts";
 export { toneEnumEnum } from "./ToneEnum.ts";
-export { V1AssociadosListQueryParamsStatusEnum } from "./V1AssociadosList.ts";

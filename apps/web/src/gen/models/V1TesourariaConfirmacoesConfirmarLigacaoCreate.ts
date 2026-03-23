@@ -7,7 +7,7 @@ import type { ConfirmacaoList } from "./ConfirmacaoList.ts";
 
 export type V1TesourariaConfirmacoesConfirmarLigacaoCreatePathParams = {
   /**
-   * @description Um valor inteiro único que identifica este confirmacao.
+   * @description A unique integer value identifying this confirmacao.
    * @type integer
    */
   id: number;

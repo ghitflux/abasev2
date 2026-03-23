@@ -2,6 +2,7 @@ from django.conf import settings
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
@@ -10,8 +11,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from core.pagination import StandardResultsSetPagination
 
 from .models import Role, User
-from .permissions import IsAdmin
+from .permissions import IsCoordenadorOrAdmin
 from .serializers import (
+    AdminUserCreateSerializer,
     AdminUserAccessUpdateSerializer,
     AdminUserListSerializer,
     AdminUsersMetaSerializer,
@@ -21,6 +23,8 @@ from .serializers import (
     PasswordResetResultSerializer,
     RefreshSerializer,
     UserSerializer,
+    get_manageable_role_codes,
+    is_manageable_user_for_manager,
 )
 
 
@@ -78,25 +82,31 @@ def _parse_bool_query_param(value: str | None) -> bool | None:
 
 
 class AdminUserViewSet(
+    mixins.CreateModelMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
+    queryset = User.objects.none()
     serializer_class = AdminUserListSerializer
     pagination_class = StandardResultsSetPagination
-    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrAdmin]
     search_fields = ["first_name", "last_name", "email"]
     ordering_fields = ["first_name", "last_name", "email", "date_joined", "last_login"]
     ordering = ["first_name", "last_name", "email"]
     http_method_names = ["get", "patch", "head", "options", "post"]
 
     def get_serializer_class(self):
+        if self.action == "create":
+            return AdminUserCreateSerializer
         if self.action in {"update", "partial_update"}:
             return AdminUserAccessUpdateSerializer
         return AdminUserListSerializer
 
     def get_base_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return User.objects.none()
         return (
             User.objects.prefetch_related("user_roles__role")
             .exclude(
@@ -106,8 +116,28 @@ class AdminUserViewSet(
             .distinct()
         )
 
+    def _filter_manager_scope(self, queryset):
+        user = self.request.user
+        if not getattr(user, "is_authenticated", False) or not hasattr(user, "has_role"):
+            return queryset.none()
+        if user.has_role("ADMIN"):
+            return queryset
+        return queryset.exclude(
+            user_roles__deleted_at__isnull=True,
+            user_roles__role__codigo__in=["ADMIN", "COORDENADOR"],
+        )
+
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return User.objects.none()
+
+        user = self.request.user
+        if not getattr(user, "is_authenticated", False) or not hasattr(user, "has_role"):
+            return User.objects.none()
+
         queryset = self.get_base_queryset()
+        if self.action == "list":
+            queryset = self._filter_manager_scope(queryset)
 
         role_code = self.request.query_params.get("role")
         if role_code:
@@ -122,6 +152,12 @@ class AdminUserViewSet(
 
         return queryset
 
+    def get_object(self):
+        instance = super().get_object()
+        if not is_manageable_user_for_manager(self.request.user, instance):
+            raise PermissionDenied("Você não pode gerenciar este usuário.")
+        return instance
+
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
         page = self.paginate_queryset(queryset)
@@ -129,6 +165,20 @@ class AdminUserViewSet(
         response = self.get_paginated_response(serializer.data)
         response.data["meta"] = self._build_meta()
         return response
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(
+            data=request.data,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+        instance = serializer.save()
+        refreshed = self.get_base_queryset().get(pk=instance.pk)
+        output = AdminUserListSerializer(
+            refreshed,
+            context=self.get_serializer_context(),
+        )
+        return Response(output.data, status=status.HTTP_201_CREATED)
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -176,8 +226,22 @@ class AdminUserViewSet(
         )
 
     def _build_meta(self):
-        queryset = self.get_base_queryset()
-        available_roles = Role.objects.exclude(codigo__iexact="ASSOCIADO").order_by("nome")
+        user = self.request.user
+        if not getattr(user, "is_authenticated", False) or not hasattr(user, "has_role"):
+            return AdminUsersMetaSerializer(
+                {
+                    "total": 0,
+                    "ativos": 0,
+                    "admins": 0,
+                    "troca_senha_pendente": 0,
+                    "available_roles": Role.objects.none(),
+                }
+            ).data
+
+        queryset = self._filter_manager_scope(self.get_base_queryset())
+        available_roles = Role.objects.filter(
+            codigo__in=get_manageable_role_codes(self.request.user)
+        ).order_by("nome")
 
         data = {
             "total": queryset.count(),

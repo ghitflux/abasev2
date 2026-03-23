@@ -34,6 +34,12 @@ describe("navigation", () => {
 
     expect(cadastroChildren.map((entry) => entry.href)).toContain("/agentes/pagamentos");
     expect(financeiroChildren.map((entry) => entry.href)).not.toContain("/agentes/pagamentos");
+    expect(
+      cadastroChildren.find((entry) => entry.href === "/agentes/refinanciados")?.title,
+    ).toBe("Renovações");
+    expect(
+      cadastroChildren.find((entry) => entry.href === "/agentes/pagamentos")?.title,
+    ).toBe("Pagamentos");
   });
 
   it("expoe meus pagamentos para tesoureiro no modulo financeiro", () => {
@@ -45,24 +51,39 @@ describe("navigation", () => {
     );
 
     expect(hrefs).toContain("/agentes/pagamentos");
+    expect(hrefs).toContain("/tesouraria/liquidacoes");
+    expect(hrefs).toContain("/tesouraria/devolucoes");
     expect(hrefs).toContain("/tesouraria/despesas");
+    expect(hrefs).not.toContain("/importacao");
     expect(canAccessPath("/agentes/pagamentos", ["TESOUREIRO"])).toBe(true);
+    expect(canAccessPath("/associados/123", ["TESOUREIRO"])).toBe(true);
+    expect(canAccessPath("/tesouraria/liquidacoes", ["TESOUREIRO"])).toBe(true);
+    expect(canAccessPath("/tesouraria/devolucoes", ["TESOUREIRO"])).toBe(true);
     expect(canAccessPath("/tesouraria/despesas", ["TESOUREIRO"])).toBe(true);
+    expect(canAccessPath("/importacao", ["TESOUREIRO"])).toBe(false);
     expect(getLegacyRouteTarget("/pagamentos", "TESOUREIRO")).toBe(
       "/agentes/pagamentos",
     );
   });
 
-  it("expoe dashboard apenas para admin", () => {
+  it("expoe dashboard para admin e coordenador", () => {
     const adminSections = getNavigationForRole("ADMIN");
     const adminHrefs = adminSections.flatMap((section) =>
       section.items.flatMap(
         (item) => item.children?.map((child) => child.href) ?? item.href ?? [],
       ),
     );
+    const coordinatorSections = getNavigationForRole("COORDENADOR");
+    const coordinatorHrefs = coordinatorSections.flatMap((section) =>
+      section.items.flatMap(
+        (item) => item.children?.map((child) => child.href) ?? item.href ?? [],
+      ),
+    );
 
     expect(adminHrefs).toContain("/dashboard");
+    expect(coordinatorHrefs).toContain("/dashboard");
     expect(canAccessPath("/dashboard", ["ADMIN"])).toBe(true);
+    expect(canAccessPath("/dashboard", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/dashboard", ["AGENTE"])).toBe(false);
   });
 
@@ -76,10 +97,30 @@ describe("navigation", () => {
     expect(adminEntries.map((entry) => entry.href)).toContain("/tesouraria/despesas");
     expect(
       adminEntries.find((entry) => entry.href === "/tesouraria/baixa-manual")?.searchTerms,
-    ).toEqual(expect.arrayContaining(["Baixa Manual", "baixa manual", "manual"]));
+    ).toEqual(expect.arrayContaining(["Inadimplentes", "inadimplentes", "baixa manual"]));
     expect(
       adminEntries.find((entry) => entry.href === "/tesouraria/despesas")?.searchTerms,
     ).toEqual(expect.arrayContaining(["Despesas", "despesas", "lancamento de despesas"]));
+    expect(
+      adminEntries.find((entry) => entry.href === "/tesouraria/liquidacoes")?.searchTerms,
+    ).toEqual(
+      expect.arrayContaining([
+        "Liquidação",
+        "liquidação",
+        "liquidacao de contratos",
+        "liquidar contrato",
+      ]),
+    );
+    expect(
+      adminEntries.find((entry) => entry.href === "/tesouraria/devolucoes")?.searchTerms,
+    ).toEqual(
+      expect.arrayContaining([
+        "Devoluções",
+        "devoluções",
+        "devolucoes ao associado",
+        "desconto indevido",
+      ]),
+    );
   });
 
   it("renomeia a rota aptos do analista e libera detalhe de associado", () => {
@@ -94,5 +135,61 @@ describe("navigation", () => {
       analiseChildren.find((item) => item.href === "/analise/aptos")?.title,
     ).toBe("Contratos para Renovação");
     expect(canAccessPath("/associados/123", ["ANALISTA"])).toBe(true);
+  });
+
+  it("renomeia as filas da tesouraria e libera liquidacoes para coordenacao", () => {
+    const financeSections = getNavigationForRole("TESOUREIRO");
+    const tesourariaChildren =
+      financeSections
+        .find((section) => section.title === "Financeiro")
+        ?.items.find((item) => item.title === "Tesouraria")
+        ?.children ?? [];
+
+    expect(tesourariaChildren.find((item) => item.href === "/tesouraria")?.title).toBe(
+      "Novos Contratos",
+    );
+    expect(
+      tesourariaChildren.find((item) => item.href === "/tesouraria/refinanciamentos")?.title,
+    ).toBe("Renovações");
+    expect(
+      tesourariaChildren.find((item) => item.href === "/tesouraria/baixa-manual")?.title,
+    ).toBe("Inadimplentes");
+    expect(
+      tesourariaChildren.find((item) => item.href === "/tesouraria/liquidacoes")?.title,
+    ).toBe("Liquidação");
+    expect(
+      tesourariaChildren.find((item) => item.href === "/tesouraria/devolucoes")?.title,
+    ).toBe("Devoluções");
+    expect(canAccessPath("/tesouraria/liquidacoes", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/tesouraria/devolucoes", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/tesouraria/confirmacoes", ["ADMIN"])).toBe(false);
+    expect(canAccessPath("/tesouraria/confirmacoes", ["TESOUREIRO"])).toBe(false);
+  });
+
+  it("libera associados, usuarios e importacao para coordenador", () => {
+    const coordinatorSections = getNavigationForRole("COORDENADOR");
+    const hrefs = coordinatorSections.flatMap((section) =>
+      section.items.flatMap(
+        (item) => item.children?.map((child) => child.href) ?? item.href ?? [],
+      ),
+    );
+
+    expect(hrefs).toContain("/associados");
+    expect(hrefs).toContain("/dashboard");
+    expect(hrefs).toContain("/configuracoes/usuarios");
+    expect(hrefs).toContain("/importacao");
+    expect(canAccessPath("/dashboard", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/associados", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/associados/123", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/associados/123/editar", ["COORDENADOR"])).toBe(false);
+    expect(canAccessPath("/configuracoes/usuarios", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/importacao", ["COORDENADOR"])).toBe(true);
+  });
+
+  it("renomeia dashboard de ciclos para tesouraria e admin", () => {
+    const adminEntries = getNavigationRouteSearchEntries(["ADMIN"]);
+    expect(
+      adminEntries.find((entry) => entry.href === "/renovacao-ciclos")?.title,
+    ).toBe("Dashboard de Ciclos");
   });
 });

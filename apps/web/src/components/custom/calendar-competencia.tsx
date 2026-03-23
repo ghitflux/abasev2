@@ -123,9 +123,6 @@ export default function CalendarCompetencia({
           </InputGroupAddon>
         </InputGroup>
         <PopoverContent className="w-auto rounded-2xl border-border/60 p-0">
-          <div className="border-b border-border/60 px-4 py-3 text-sm text-muted-foreground">
-            Selecione o mês pelo calendário ou pelos seletores de mês e ano.
-          </div>
           <Calendar
             mode="single"
             month={displayMonth}

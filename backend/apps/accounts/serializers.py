@@ -5,6 +5,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -14,6 +15,68 @@ from .models import Role, User, UserRole
 
 def _only_digits(value: str) -> str:
     return re.sub(r"\D", "", value or "")
+
+
+COORDENADOR_MANAGEABLE_ROLE_CODES = {"AGENTE", "ANALISTA", "TESOUREIRO"}
+
+
+def get_manageable_role_codes(user: User) -> set[str]:
+    if user.has_role("ADMIN"):
+        return set(
+            Role.objects.exclude(codigo__iexact="ASSOCIADO").values_list(
+                "codigo", flat=True
+            )
+        )
+    if user.has_role("COORDENADOR"):
+        return set(COORDENADOR_MANAGEABLE_ROLE_CODES)
+    return set()
+
+
+def is_manageable_user_for_manager(manager: User, target_user: User) -> bool:
+    if manager.has_role("ADMIN"):
+        return True
+    if not manager.has_role("COORDENADOR"):
+        return False
+    return not target_user.has_role("ADMIN", "COORDENADOR")
+
+
+def resolve_manageable_roles(
+    *,
+    manager: User,
+    role_codes: list[str] | set[str],
+) -> list[Role]:
+    normalized_codes = sorted(
+        {
+            code.strip().upper()
+            for code in role_codes
+            if isinstance(code, str) and code.strip()
+        }
+    )
+    if not normalized_codes:
+        raise serializers.ValidationError(
+            {"roles": "Selecione ao menos um perfil de acesso."}
+        )
+
+    roles = list(
+        Role.objects.filter(codigo__in=normalized_codes)
+        .exclude(codigo__iexact="ASSOCIADO")
+        .order_by("id")
+    )
+    found_codes = {role.codigo for role in roles}
+    missing_codes = [code for code in normalized_codes if code not in found_codes]
+    if missing_codes:
+        raise serializers.ValidationError(
+            {
+                "roles": "Perfis inválidos: " + ", ".join(sorted(missing_codes)) + "."
+            }
+        )
+
+    allowed_codes = get_manageable_role_codes(manager)
+    disallowed_codes = [code for code in normalized_codes if code not in allowed_codes]
+    if disallowed_codes:
+        raise PermissionDenied("Você não pode atribuir os perfis informados.")
+
+    return roles
 
 
 def get_user_role_codes(user: User) -> list[str]:
@@ -106,6 +169,62 @@ class AdminUsersMetaSerializer(serializers.Serializer):
     available_roles = AvailableRoleSerializer(many=True)
 
 
+class AdminUserCreateSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    first_name = serializers.CharField(max_length=150)
+    last_name = serializers.CharField(max_length=150, allow_blank=True, required=False)
+    roles = serializers.ListField(
+        child=serializers.CharField(max_length=30),
+        allow_empty=False,
+    )
+    password = serializers.CharField(trim_whitespace=False, write_only=True)
+    password_confirm = serializers.CharField(trim_whitespace=False, write_only=True)
+    is_active = serializers.BooleanField(required=False, default=True)
+
+    def validate_email(self, value: str):
+        normalized_email = User.objects.normalize_email(value.strip())
+        if User.all_objects.filter(email__iexact=normalized_email).exists():
+            raise serializers.ValidationError("Já existe um usuário com este email.")
+        return normalized_email
+
+    def validate(self, attrs):
+        request = self.context["request"]
+        attrs["roles"] = resolve_manageable_roles(
+            manager=request.user,
+            role_codes=attrs["roles"],
+        )
+
+        if attrs["password"] != attrs["password_confirm"]:
+            raise serializers.ValidationError(
+                {"password_confirm": "A confirmação da senha não confere."}
+            )
+
+        try:
+            validate_password(attrs["password"])
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({"password": list(exc.messages)})
+
+        return attrs
+
+    def create(self, validated_data):
+        roles: list[Role] = validated_data["roles"]
+        password = validated_data.pop("password")
+        validated_data.pop("password_confirm", None)
+
+        role_codes = {role.codigo for role in roles}
+        user = User.objects.create_user(
+            email=validated_data["email"],
+            password=password,
+            first_name=validated_data["first_name"],
+            last_name=validated_data.get("last_name", ""),
+            is_active=validated_data.get("is_active", True),
+            is_staff="ADMIN" in role_codes,
+            must_set_password=True,
+        )
+        user.roles.add(*roles)
+        return user
+
+
 class AdminUserAccessUpdateSerializer(serializers.Serializer):
     roles = serializers.ListField(
         child=serializers.CharField(max_length=30),
@@ -117,6 +236,16 @@ class AdminUserAccessUpdateSerializer(serializers.Serializer):
     def validate(self, attrs):
         instance: User = self.instance
         request = self.context["request"]
+        manager = request.user
+
+        if (
+            manager.has_role("COORDENADOR")
+            and not manager.has_role("ADMIN")
+            and instance.pk == manager.pk
+        ):
+            raise PermissionDenied(
+                "Coordenador não pode alterar o próprio acesso pela gestão de usuários."
+            )
 
         role_codes = attrs.get("roles")
         if role_codes is None:
@@ -127,45 +256,22 @@ class AdminUserAccessUpdateSerializer(serializers.Serializer):
                 .order_by("role_id")
             ]
         else:
-            normalized_codes = sorted(
-                {
-                    code.strip().upper()
-                    for code in role_codes
-                    if isinstance(code, str) and code.strip()
-                }
+            roles = resolve_manageable_roles(
+                manager=manager,
+                role_codes=role_codes,
             )
-            if not normalized_codes:
-                raise serializers.ValidationError(
-                    {"roles": "Selecione ao menos um perfil de acesso."}
-                )
-
-            roles = list(
-                Role.objects.filter(codigo__in=normalized_codes)
-                .exclude(codigo__iexact="ASSOCIADO")
-                .order_by("id")
-            )
-            found_codes = {role.codigo for role in roles}
-            missing_codes = [code for code in normalized_codes if code not in found_codes]
-            if missing_codes:
-                raise serializers.ValidationError(
-                    {
-                        "roles": (
-                            "Perfis inválidos: " + ", ".join(sorted(missing_codes)) + "."
-                        )
-                    }
-                )
 
         next_is_active = attrs.get("is_active", instance.is_active)
         next_role_codes = {role.codigo for role in roles}
 
-        if instance.pk == request.user.pk and not next_is_active:
+        if instance.pk == manager.pk and not next_is_active:
             raise serializers.ValidationError(
                 {"is_active": "Você não pode desativar o próprio usuário em sessão."}
             )
 
         if (
-            instance.pk == request.user.pk
-            and request.user.has_role("ADMIN")
+            instance.pk == manager.pk
+            and manager.has_role("ADMIN")
             and "ADMIN" not in next_role_codes
         ):
             raise serializers.ValidationError(

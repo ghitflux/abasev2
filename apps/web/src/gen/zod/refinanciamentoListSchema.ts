@@ -4,9 +4,8 @@
  */
 
 import * as z from "zod";
-import { comprovanteResumoSchema } from "./comprovanteResumoSchema.ts";
 import { simpleUserSchema } from "./simpleUserSchema.ts";
-import { status707EnumSchema } from "./status707EnumSchema.ts";
+import { status0BbEnumSchema } from "./status0BbEnumSchema.ts";
 
 export const refinanciamentoListSchema = z.object({
   id: z.int(),
@@ -15,6 +14,8 @@ export const refinanciamentoListSchema = z.object({
   associado_id: z.int(),
   associado_nome: z.string(),
   cpf_cnpj: z.string(),
+  matricula: z.string(),
+  matricula_display: z.string(),
   get agente() {
     return simpleUserSchema;
   },
@@ -30,11 +31,14 @@ export const refinanciamentoListSchema = z.object({
   get efetivado_por() {
     return simpleUserSchema;
   },
+  get reviewed_by() {
+    return simpleUserSchema;
+  },
   competencia_solicitada: z.iso.date(),
   get status() {
-    return status707EnumSchema
+    return status0BbEnumSchema
       .describe(
-        "* `apto_a_renovar` - Apto a renovar\n* `em_analise_renovacao` - Em análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
+        "* `apto_a_renovar` - Apto a renovar\n* `em_analise_renovacao` - Em análise para renovação\n* `aprovado_analise_renovacao` - Aprovado pela análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
       )
       .optional();
   },
@@ -62,11 +66,12 @@ export const refinanciamentoListSchema = z.object({
   etapa_operacional: z.string(),
   motivo_bloqueio: z.optional(z.string()),
   observacao: z.optional(z.string()),
+  analista_note: z.optional(z.string()),
+  coordenador_note: z.optional(z.string()),
+  reviewed_at: z.iso.datetime().nullish(),
   executado_em: z.iso.datetime().nullish(),
   created_at: z.iso.datetime(),
   updated_at: z.iso.datetime(),
   auditoria: z.string(),
-  get comprovantes() {
-    return z.array(comprovanteResumoSchema);
-  },
+  comprovantes: z.string(),
 });

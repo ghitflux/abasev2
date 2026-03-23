@@ -7,7 +7,7 @@ import type { EsteiraList } from "./EsteiraList.ts";
 
 export type V1EsteiraAprovarCreatePathParams = {
   /**
-   * @description Um valor inteiro único que identifica este esteira item.
+   * @description A unique integer value identifying this esteira item.
    * @type integer
    */
   id: number;
@@ -18,6 +18,7 @@ export type V1EsteiraAprovarCreate200 = EsteiraList;
 export type V1EsteiraAprovarCreateMutationRequest = Omit<
   NonNullable<EsteiraList>,
   | "id"
+  | "associado_id"
   | "ordem"
   | "contrato"
   | "data_assinatura"

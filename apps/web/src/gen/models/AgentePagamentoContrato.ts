@@ -40,6 +40,14 @@ export type AgentePagamentoContrato = {
    */
   readonly status_visual_label: string;
   /**
+   * @type boolean
+   */
+  readonly possui_meses_nao_descontados: boolean;
+  /**
+   * @type integer
+   */
+  readonly meses_nao_descontados_count: number;
+  /**
    * @type string | undefined, date
    */
   data_contrato?: string;

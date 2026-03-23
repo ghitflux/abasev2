@@ -1,0 +1,360 @@
+import tempfile
+from datetime import date
+from decimal import Decimal
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
+from rest_framework.test import APIClient
+
+from apps.accounts.models import Role, User
+from apps.associados.models import AdminOverrideEvent, Associado, Documento
+from apps.contratos.cycle_projection import build_contract_cycle_projection
+from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
+from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.esteira.models import EsteiraItem
+from apps.refinanciamento.models import Comprovante
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class AdminOverrideApiTestCase(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        admin_role = Role.objects.create(codigo="ADMIN", nome="Administrador")
+        agent_role = Role.objects.create(codigo="AGENTE", nome="Agente")
+
+        cls.admin = User.objects.create_user(
+            email="admin@teste.local",
+            password="Senha@123",
+            first_name="Admin",
+            last_name="ABASE",
+        )
+        cls.admin.roles.add(admin_role)
+
+        cls.agent = User.objects.create_user(
+            email="agente@teste.local",
+            password="Senha@123",
+            first_name="Agente",
+            last_name="ABASE",
+        )
+        cls.agent.roles.add(agent_role)
+
+        cls.associado = Associado.objects.create(
+            nome_completo="Associado Admin",
+            cpf_cnpj="12345678901",
+            email="assoc@teste.local",
+            telefone="86999999999",
+            orgao_publico="SEFAZ",
+            agente_responsavel=cls.agent,
+            status=Associado.Status.ATIVO,
+        )
+        cls.esteira = EsteiraItem.objects.create(
+            associado=cls.associado,
+            etapa_atual=EsteiraItem.Etapa.ANALISE,
+            status=EsteiraItem.Situacao.AGUARDANDO,
+        )
+        cls.contrato = Contrato.objects.create(
+            associado=cls.associado,
+            agente=cls.agent,
+            status=Contrato.Status.ATIVO,
+            valor_bruto=Decimal("1500.00"),
+            valor_liquido=Decimal("1200.00"),
+            valor_mensalidade=Decimal("300.00"),
+            prazo_meses=3,
+            taxa_antecipacao=Decimal("30.00"),
+            margem_disponivel=Decimal("900.00"),
+            valor_total_antecipacao=Decimal("900.00"),
+            doacao_associado=Decimal("0.00"),
+            comissao_agente=Decimal("30.00"),
+            data_contrato=date(2026, 1, 1),
+        )
+        cls.ciclo = Ciclo.objects.create(
+            contrato=cls.contrato,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("900.00"),
+        )
+        cls.parcela_jan = Parcela.objects.create(
+            ciclo=cls.ciclo,
+            associado=cls.associado,
+            numero=1,
+            referencia_mes=date(2026, 1, 1),
+            valor=Decimal("300.00"),
+            data_vencimento=date(2026, 1, 5),
+            status=Parcela.Status.DESCONTADO,
+        )
+        cls.parcela_fev = Parcela.objects.create(
+            ciclo=cls.ciclo,
+            associado=cls.associado,
+            numero=2,
+            referencia_mes=date(2026, 2, 1),
+            valor=Decimal("300.00"),
+            data_vencimento=date(2026, 2, 5),
+            status=Parcela.Status.EM_PREVISAO,
+        )
+        cls.parcela_mar = Parcela.objects.create(
+            ciclo=cls.ciclo,
+            associado=cls.associado,
+            numero=3,
+            referencia_mes=date(2026, 3, 1),
+            valor=Decimal("300.00"),
+            data_vencimento=date(2026, 3, 5),
+            status=Parcela.Status.EM_PREVISAO,
+        )
+        cls.documento = Documento.objects.create(
+            associado=cls.associado,
+            tipo=Documento.Tipo.CPF,
+            arquivo=SimpleUploadedFile("doc.pdf", b"doc", content_type="application/pdf"),
+        )
+
+    def setUp(self):
+        self.admin_client = APIClient()
+        self.admin_client.force_authenticate(self.admin)
+
+        self.agent_client = APIClient()
+        self.agent_client.force_authenticate(self.agent)
+
+    def test_admin_override_endpoints_are_admin_only(self):
+        response = self.agent_client.get(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/editor/"
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_admin_can_save_manual_cycle_layout_and_rebuild_keeps_it(self):
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/contratos/{self.contrato.id}/cycles/layout/",
+            {
+                "updated_at": self.contrato.updated_at.isoformat(),
+                "motivo": "Organização manual dos ciclos",
+                "cycles": [
+                    {
+                        "id": self.ciclo.id,
+                        "numero": 1,
+                        "data_inicio": "2026-01-01",
+                        "data_fim": "2026-03-01",
+                        "status": "aberto",
+                        "valor_total": "600.00",
+                    },
+                    {
+                        "client_key": "novo-ciclo",
+                        "numero": 2,
+                        "data_inicio": "2026-02-01",
+                        "data_fim": "2026-02-01",
+                        "status": "futuro",
+                        "valor_total": "300.00",
+                    },
+                ],
+                "parcelas": [
+                    {
+                        "id": self.parcela_jan.id,
+                        "cycle_ref": str(self.ciclo.id),
+                        "numero": 1,
+                        "referencia_mes": "2026-01-01",
+                        "valor": "300.00",
+                        "data_vencimento": "2026-01-05",
+                        "status": "descontado",
+                        "layout_bucket": "cycle",
+                    },
+                    {
+                        "id": self.parcela_mar.id,
+                        "cycle_ref": str(self.ciclo.id),
+                        "numero": 2,
+                        "referencia_mes": "2026-03-01",
+                        "valor": "300.00",
+                        "data_vencimento": "2026-03-05",
+                        "status": "em_previsao",
+                        "layout_bucket": "cycle",
+                    },
+                    {
+                        "id": self.parcela_fev.id,
+                        "cycle_ref": "novo-ciclo",
+                        "numero": 1,
+                        "referencia_mes": "2026-02-01",
+                        "valor": "300.00",
+                        "data_vencimento": "2026-02-05",
+                        "status": "em_previsao",
+                        "layout_bucket": "cycle",
+                    },
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.contrato.refresh_from_db()
+        self.assertTrue(self.contrato.admin_manual_layout_enabled)
+
+        projection = build_contract_cycle_projection(self.contrato)
+        ordered_cycles = sorted(projection["cycles"], key=lambda item: item["numero"])
+        self.assertEqual(len(ordered_cycles), 2)
+        self.assertEqual(
+            [parcela["referencia_mes"].isoformat() for parcela in ordered_cycles[0]["parcelas"]],
+            ["2026-01-01", "2026-03-01"],
+        )
+        self.assertEqual(
+            [parcela["referencia_mes"].isoformat() for parcela in ordered_cycles[1]["parcelas"]],
+            ["2026-02-01"],
+        )
+
+        rebuild_contract_cycle_state(self.contrato, execute=True)
+        projection_after_rebuild = build_contract_cycle_projection(self.contrato)
+        ordered_after_rebuild = sorted(
+            projection_after_rebuild["cycles"],
+            key=lambda item: item["numero"],
+        )
+        self.assertEqual(
+            [parcela["referencia_mes"].isoformat() for parcela in ordered_after_rebuild[0]["parcelas"]],
+            ["2026-01-01", "2026-03-01"],
+        )
+        self.assertEqual(
+            [parcela["referencia_mes"].isoformat() for parcela in ordered_after_rebuild[1]["parcelas"]],
+            ["2026-02-01"],
+        )
+        self.assertTrue(
+            AdminOverrideEvent.objects.filter(
+                associado=self.associado,
+                escopo=AdminOverrideEvent.Scope.CICLOS,
+            ).exists()
+        )
+
+    def test_admin_can_override_associado_and_contract_core_with_audit(self):
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/core/",
+            {
+                "updated_at": self.associado.updated_at.isoformat(),
+                "contrato_updated_at": self.contrato.updated_at.isoformat(),
+                "motivo": "Correção operacional do cadastro",
+                "nome_completo": "Associado Admin Ajustado",
+                "status": Associado.Status.INADIMPLENTE,
+                "percentual_repasse": "12.50",
+                "dados_bancarios": {
+                    "banco": "001",
+                    "agencia": "1234",
+                    "conta": "998877",
+                    "tipo_conta": "corrente",
+                },
+                "valor_bruto_total": "1800.00",
+                "mensalidade": "350.00",
+                "status_contrato": Contrato.Status.ENCERRADO,
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.associado.refresh_from_db()
+        self.contrato.refresh_from_db()
+        self.assertEqual(self.associado.nome_completo, "Associado Admin Ajustado")
+        self.assertEqual(self.associado.status, Associado.Status.INADIMPLENTE)
+        self.assertEqual(self.associado.agencia, "1234")
+        self.assertEqual(self.associado.auxilio_taxa, Decimal("12.50"))
+        self.assertEqual(self.contrato.valor_bruto, Decimal("1800.00"))
+        self.assertEqual(self.contrato.valor_mensalidade, Decimal("350.00"))
+        self.assertEqual(self.contrato.status, Contrato.Status.ENCERRADO)
+        self.assertTrue(
+            AdminOverrideEvent.objects.filter(
+                associado=self.associado,
+                escopo=AdminOverrideEvent.Scope.ASSOCIADO,
+            ).exists()
+        )
+
+    def test_admin_can_override_esteira_and_register_transition(self):
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/esteira/status/",
+            {
+                "updated_at": self.esteira.updated_at.isoformat(),
+                "motivo": "Reclassificação administrativa",
+                "etapa_atual": EsteiraItem.Etapa.COORDENACAO,
+                "status": EsteiraItem.Situacao.EM_ANDAMENTO,
+                "prioridade": 1,
+                "observacao": "Ajuste direto pelo admin",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.esteira.refresh_from_db()
+        self.assertEqual(self.esteira.etapa_atual, EsteiraItem.Etapa.COORDENACAO)
+        self.assertEqual(self.esteira.status, EsteiraItem.Situacao.EM_ANDAMENTO)
+        self.assertEqual(self.esteira.prioridade, 1)
+        self.assertEqual(self.esteira.observacao, "Ajuste direto pelo admin")
+        self.assertTrue(
+            self.esteira.transicoes.filter(
+                acao="admin_override",
+                observacao="Reclassificação administrativa",
+            ).exists()
+        )
+        self.assertTrue(
+            AdminOverrideEvent.objects.filter(
+                associado=self.associado,
+                escopo=AdminOverrideEvent.Scope.ESTEIRA,
+            ).exists()
+        )
+
+    def test_admin_can_version_document_and_keep_history(self):
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/documentos/{self.documento.id}/versionar/",
+            {
+                "motivo": "Atualização do documento",
+                "status": Documento.Status.APROVADO,
+                "arquivo": SimpleUploadedFile(
+                    "novo.pdf",
+                    b"novo-conteudo",
+                    content_type="application/pdf",
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.documento.refresh_from_db()
+        self.assertIsNotNone(self.documento.deleted_at)
+        self.assertEqual(
+            Documento.objects.filter(
+                associado=self.associado,
+                tipo=Documento.Tipo.CPF,
+                deleted_at__isnull=True,
+            ).count(),
+            1,
+        )
+        self.assertTrue(
+            AdminOverrideEvent.objects.filter(
+                associado=self.associado,
+                escopo=AdminOverrideEvent.Scope.DOCUMENTO,
+            ).exists()
+        )
+
+    def test_admin_can_attach_cycle_comprovantes_and_editor_payload_returns_them(self):
+        response = self.admin_client.post(
+            "/api/v1/admin-overrides/comprovantes/",
+            {
+                "ciclo_id": str(self.ciclo.id),
+                "motivo": "Inclusão de comprovantes no ciclo",
+                "tipo": Comprovante.Tipo.OUTRO,
+                "papel": Comprovante.Papel.OPERACIONAL,
+                "origem": Comprovante.Origem.OUTRO,
+                "status_validacao": Comprovante.StatusValidacao.PENDENTE,
+                "arquivos": [
+                    SimpleUploadedFile(
+                        "ciclo-1.pdf",
+                        b"arquivo-1",
+                        content_type="application/pdf",
+                    ),
+                    SimpleUploadedFile(
+                        "ciclo-2.pdf",
+                        b"arquivo-2",
+                        content_type="application/pdf",
+                    ),
+                ],
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(
+            Comprovante.objects.filter(ciclo=self.ciclo, deleted_at__isnull=True).count(),
+            2,
+        )
+        contrato_payload = response.json()["contratos"][0]
+        ciclo_payload = contrato_payload["ciclos"][0]
+        self.assertEqual(len(ciclo_payload["comprovantes_ciclo"]), 2)
+        self.assertEqual(ciclo_payload["comprovantes_ciclo"][0]["status_validacao"], "pendente")

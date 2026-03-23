@@ -56,6 +56,9 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
         response = self.agent_client.get("/api/v1/importacao/arquivo-retorno/")
         self.assertEqual(response.status_code, 403)
 
+        response = self.tes_client.get("/api/v1/importacao/arquivo-retorno/")
+        self.assertEqual(response.status_code, 403)
+
         arquivo_agente = SimpleUploadedFile(
             "retorno_etipi_052025.txt",
             self.fixture_bytes(),
@@ -64,6 +67,18 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
         response = self.agent_client.post(
             "/api/v1/importacao/arquivo-retorno/upload/",
             {"arquivo": arquivo_agente},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 403)
+
+        arquivo_tes = SimpleUploadedFile(
+            "retorno_etipi_052025.txt",
+            self.fixture_bytes(),
+            content_type="text/plain",
+        )
+        response = self.tes_client.post(
+            "/api/v1/importacao/arquivo-retorno/upload/",
+            {"arquivo": arquivo_tes},
             format="multipart",
         )
         self.assertEqual(response.status_code, 403)
@@ -81,14 +96,14 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
             nome="Maria de Jesus Araujo Goncalves",
         )
 
-        arquivo_tes = SimpleUploadedFile(
+        arquivo_coord = SimpleUploadedFile(
             "retorno_etipi_052025.txt",
             self.fixture_bytes(),
             content_type="text/plain",
         )
-        response = self.tes_client.post(
+        response = self.coord_client.post(
             "/api/v1/importacao/arquivo-retorno/upload/",
-            {"arquivo": arquivo_tes},
+            {"arquivo": arquivo_coord},
             format="multipart",
         )
         self.assertEqual(response.status_code, 201, response.json())
@@ -104,7 +119,7 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
         self.assertEqual(payload["financeiro"]["ok"], 2)
         self.assertEqual(payload["financeiro"]["recebido"], "60.00")
 
-        response = self.tes_client.get(
+        response = self.coord_client.get(
             f"/api/v1/importacao/arquivo-retorno/{payload['id']}/descontados/",
             {"page_size": 10},
         )
@@ -133,7 +148,7 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
         arquivo_mar.status = ArquivoRetorno.Status.CONCLUIDO
         arquivo_mar.save(update_fields=["competencia", "status", "updated_at"])
 
-        response = self.tes_client.get(
+        response = self.coord_client.get(
             "/api/v1/importacao/arquivo-retorno/",
             {"competencia": "2026-02", "periodo": "mes", "page_size": 10},
         )
@@ -142,7 +157,7 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
         self.assertEqual(payload["count"], 1)
         self.assertEqual(payload["results"][0]["id"], arquivo_fev.id)
 
-        response = self.tes_client.get(
+        response = self.coord_client.get(
             "/api/v1/importacao/arquivo-retorno/",
             {"competencia": "2026-02", "periodo": "trimestre", "page_size": 10},
         )
@@ -228,7 +243,7 @@ STATUS MATRICULA NOME                           CARGO                          F
             ),
         )
 
-        response = self.tes_client.post(
+        response = self.coord_client.post(
             "/api/v1/importacao/arquivo-retorno/upload/",
             {
                 "arquivo": SimpleUploadedFile(
@@ -316,7 +331,7 @@ STATUS MATRICULA NOME                           CARGO                          F
             ),
         )
 
-        response = self.tes_client.post(
+        response = self.coord_client.post(
             "/api/v1/importacao/arquivo-retorno/upload/",
             {
                 "arquivo": SimpleUploadedFile(
@@ -351,7 +366,7 @@ STATUS MATRICULA NOME                           CARGO                          F
         )
 
     def test_upload_outubro_replica_totais_do_legado(self):
-        response = self.tes_client.post(
+        response = self.coord_client.post(
             "/api/v1/importacao/arquivo-retorno/upload/",
             {
                 "arquivo": SimpleUploadedFile(
@@ -385,7 +400,7 @@ STATUS MATRICULA NOME                           CARGO                          F
         self.assertEqual(alceanira.count(), 1)
         self.assertEqual(alceanira.first().valor, Decimal("1.00"))
 
-        financeiro = self.tes_client.get(
+        financeiro = self.coord_client.get(
             f"/api/v1/importacao/arquivo-retorno/{arquivo.id}/financeiro/"
         )
         self.assertEqual(financeiro.status_code, 200, financeiro.json())
@@ -422,7 +437,7 @@ STATUS MATRICULA NOME                           CARGO                          F
                 )
             },
         ):
-            response = self.tes_client.post(
+            response = self.coord_client.post(
                 "/api/v1/importacao/arquivo-retorno/upload/",
                 {
                     "arquivo": SimpleUploadedFile(
@@ -444,7 +459,7 @@ STATUS MATRICULA NOME                           CARGO                          F
             self.assertEqual(pagamento.manual_forma_pagamento, "PIX")
             self.assertTrue(pagamento.agente_refi_solicitado)
 
-            financeiro = self.tes_client.get(
+            financeiro = self.coord_client.get(
                 f"/api/v1/importacao/arquivo-retorno/{response.json()['id']}/financeiro/"
             )
             self.assertEqual(financeiro.status_code, 200, financeiro.json())

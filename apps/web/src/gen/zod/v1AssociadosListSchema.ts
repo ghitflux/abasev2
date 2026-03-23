@@ -16,38 +16,28 @@ export const V1AssociadosListQueryParamsSchema = z
     data_cadastro_inicio: z.optional(z.iso.date()),
     matricula: z.optional(z.string()),
     nome: z.optional(z.string().describe("Busca parcial por nome")),
+    numero_ciclos: z.optional(
+      z.coerce.number().describe("Filtrar pelo total exato de ciclos lógicos"),
+    ),
     ordering: z.optional(
-      z.string().describe("Qual campo usar ao ordenar os resultados."),
+      z.string().describe("Which field to use when ordering the results."),
     ),
     orgao_publico: z.optional(z.string().describe("Filtrar por órgão público")),
     page: z.optional(
       z.coerce
         .number()
         .int()
-        .describe(
-          "Um número de página dentro do conjunto de resultados paginado.",
-        ),
+        .describe("A page number within the paginated result set."),
     ),
     page_size: z.optional(
-      z.coerce
-        .number()
-        .int()
-        .describe("Número de resultados a serem retornados por página."),
+      z.coerce.number().int().describe("Number of results to return per page."),
     ),
-    search: z.optional(z.string().describe("Um termo de busca.")),
+    perfil_ciclo: z.optional(
+      z.string().describe("Filtrar por perfil de ciclo: novo ou renovado"),
+    ),
+    search: z.optional(z.string().describe("A search term.")),
     status: z.optional(
-      z
-        .enum([
-          "ativo",
-          "cadastrado",
-          "em_analise",
-          "inadimplente",
-          "inativo",
-          "pendente",
-        ])
-        .describe(
-          "Filtrar por status do associado\n\n* `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente",
-        ),
+      z.string().describe("Filtrar por status do associado ou liquidado"),
     ),
   })
   .optional();

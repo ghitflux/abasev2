@@ -7,7 +7,7 @@ import type { AssociadoUpdate } from "./AssociadoUpdate.ts";
 
 export type V1AssociadosDocumentosCreatePathParams = {
   /**
-   * @description Um valor inteiro único que identifica este associado.
+   * @description A unique integer value identifying this associado.
    * @type integer
    */
   id: number;

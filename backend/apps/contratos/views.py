@@ -83,6 +83,7 @@ def filter_by_status_visual(queryset, status_visual: str):
                 "ciclo_aberto",
                 "apto_a_renovar",
                 "renovacao_em_analise",
+                "aguardando_coordenacao",
                 "aprovado_para_renovacao",
                 "ciclo_renovado",
             }

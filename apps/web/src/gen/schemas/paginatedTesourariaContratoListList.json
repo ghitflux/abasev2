@@ -24,6 +24,7 @@
           "associado_id": { "type": "integer", "readOnly": true },
           "nome": { "type": "string", "readOnly": true },
           "cpf_cnpj": { "type": "string", "readOnly": true },
+          "matricula": { "type": "string", "readOnly": true },
           "chave_pix": { "type": "string", "readOnly": true },
           "codigo": { "type": "string", "readOnly": true },
           "data_assinatura": {
@@ -47,6 +48,7 @@
             "readOnly": true
           },
           "agente_nome": { "type": "string", "readOnly": true },
+          "percentual_repasse": { "type": "string", "readOnly": true },
           "comissao_agente": {
             "type": "string",
             "format": "decimal",
@@ -79,8 +81,10 @@
           "etapa_atual",
           "id",
           "margem_disponivel",
+          "matricula",
           "nome",
           "observacao_tesouraria",
+          "percentual_repasse",
           "situacao_esteira",
           "status"
         ],

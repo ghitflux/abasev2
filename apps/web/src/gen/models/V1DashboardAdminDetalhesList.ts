@@ -23,11 +23,15 @@ export type V1DashboardAdminDetalhesListQueryParams = {
    */
   date_start?: string;
   /**
+   * @type string | undefined
+   */
+  day?: string;
+  /**
    * @type string
    */
   metric: string;
   /**
-   * @description Qual campo usar ao ordenar os resultados.
+   * @description Which field to use when ordering the results.
    * @type string | undefined
    */
   ordering?: string;
@@ -40,7 +44,7 @@ export type V1DashboardAdminDetalhesListQueryParams = {
    */
   page_size?: string;
   /**
-   * @description Um termo de busca.
+   * @description A search term.
    * @type string | undefined
    */
   search?: string;

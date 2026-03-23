@@ -5,7 +5,7 @@
 
 export type V1TesourariaDespesasDestroyPathParams = {
   /**
-   * @description Um valor inteiro único que identifica este despesa.
+   * @description A unique integer value identifying this despesa.
    * @type integer
    */
   id: number;

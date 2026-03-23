@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   EyeIcon,
-  LockIcon,
   PrinterIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
@@ -41,11 +40,9 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Textarea } from "@/components/ui/textarea";
 
 type DialogState =
   | { mode: "aprovar"; item: RefinanciamentoItem }
-  | { mode: "desativar"; item: RefinanciamentoItem }
   | null;
 
 type CoordAdvancedFilters = {
@@ -69,10 +66,13 @@ type BulkApproveResponse = {
 };
 
 const STATUS_OPTIONS: SelectOption[] = [
-  { value: "apto_a_renovar", label: "Apto a renovar" },
-  { value: "pendente_apto", label: "Pendente apto" },
+  {
+    value: "aprovado_analise_renovacao",
+    label: "Aguardando validação da coordenação",
+  },
+  { value: "aprovado_para_renovacao", label: "Enviado para tesouraria" },
   { value: "bloqueado", label: "Bloqueado" },
-  { value: "desativado", label: "Desativado" },
+  { value: "revertido", label: "Revertido" },
 ];
 
 const ORIGIN_OPTIONS: SelectOption[] = [
@@ -115,7 +115,7 @@ function toCompetenciaDate(value: string) {
 }
 
 function isBulkEligible(item: RefinanciamentoItem) {
-  return item.status === "apto_a_renovar" || item.status === "pendente_apto";
+  return item.status === "aprovado_analise_renovacao";
 }
 
 export default function CoordenacaoRefinanciamentoPage() {
@@ -126,7 +126,7 @@ export default function CoordenacaoRefinanciamentoPage() {
   const [filters, setFilters] = React.useState<CoordAdvancedFilters>(INITIAL_FILTERS);
   const [draftFilters, setDraftFilters] = React.useState<CoordAdvancedFilters>(INITIAL_FILTERS);
   const [dialogState, setDialogState] = React.useState<DialogState>(null);
-  const [motivo, setMotivo] = React.useState("");
+  const [observacao, setObservacao] = React.useState("");
   const [selectedIds, setSelectedIds] = React.useState<number[]>([]);
   const [bulkDialogOpen, setBulkDialogOpen] = React.useState(false);
   const [bulkConfirmText, setBulkConfirmText] = React.useState("");
@@ -165,21 +165,19 @@ export default function CoordenacaoRefinanciamentoPage() {
   const actionMutation = useMutation({
     mutationFn: async ({
       id,
-      action,
       body,
     }: {
       id: number;
-      action: "aprovar" | "desativar";
       body?: Record<string, string>;
     }) =>
-      apiFetch<RefinanciamentoItem>(`refinanciamentos/${id}/${action}`, {
+      apiFetch<RefinanciamentoItem>(`refinanciamentos/${id}/aprovar`, {
         method: "POST",
         body,
       }),
     onSuccess: () => {
       toast.success("Ação de coordenação concluída.");
       setDialogState(null);
-      setMotivo("");
+      setObservacao("");
       void queryClient.invalidateQueries({ queryKey: ["coordenacao-refinanciamento"] });
       void queryClient.invalidateQueries({ queryKey: ["coordenacao-refinanciados"] });
       void queryClient.invalidateQueries({ queryKey: ["analise-refinanciamentos"] });
@@ -208,13 +206,13 @@ export default function CoordenacaoRefinanciamentoPage() {
         .filter(Boolean);
       if (payload.failure_count > 0) {
         toast.error(
-          `${payload.success_count} aprovações concluídas e ${payload.failure_count} falhas.`,
+          `${payload.success_count} validações concluídas e ${payload.failure_count} falhas.`,
           {
             description: failureSummary.join(" | ") || "Algumas linhas mudaram de status.",
           },
         );
       } else {
-        toast.success(`${payload.success_count} renovações aprovadas em massa.`);
+        toast.success(`${payload.success_count} renovações enviadas para tesouraria.`);
       }
       setBulkDialogOpen(false);
       setBulkConfirmText("");
@@ -341,17 +339,17 @@ export default function CoordenacaoRefinanciamentoPage() {
         id: "acao",
         header: "Ações",
         cell: (row) =>
-          row.status === "desativado" ? (
+          row.status !== "aprovado_analise_renovacao" ? (
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="outline" onClick={() => setDetailItem(row)}>
                   <EyeIcon className="size-4" />
                   Detalhes
                 </Button>
-                <StatusBadge status="desativado" />
+                <StatusBadge status={row.status} />
               </div>
               <p className="text-xs text-muted-foreground">
-                {row.motivo_bloqueio || "Sem motivo registrado."}
+                {row.coordenador_note || row.motivo_bloqueio || "Sem observação registrada."}
               </p>
             </div>
           ) : (
@@ -361,16 +359,14 @@ export default function CoordenacaoRefinanciamentoPage() {
                 Detalhes
               </Button>
               <Button size="sm" onClick={() => setDialogState({ mode: "aprovar", item: row })}>
-                Aprovar renovação
+                Aprovar e enviar para tesouraria
               </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-slate-500/40 text-slate-200"
-                onClick={() => setDialogState({ mode: "desativar", item: row })}
-              >
-                <LockIcon className="size-4" />
-                Desativar
+              <Button asChild size="sm" variant="outline">
+                <Link
+                  href={`/tesouraria/liquidacoes?status=elegivel&contrato=${row.contrato_id}&origem=renovacao&refinanciamento=${row.id}`}
+                >
+                  Liquidar contrato
+                </Link>
               </Button>
             </div>
           ),
@@ -394,7 +390,7 @@ export default function CoordenacaoRefinanciamentoPage() {
             </div>
             <h1 className="text-3xl font-semibold">Refinanciamento em aprovação</h1>
             <p className="text-sm text-muted-foreground">
-              Fila de coordenação para associados aptos a renovar. Total: {totalCount} | Aptos: {aptos}
+              Fila de coordenação para renovações já aprovadas pelo analista. Total: {totalCount} | Pendentes de validação: {aptos}
             </p>
           </div>
           <Button variant="outline" onClick={() => window.print()}>
@@ -559,7 +555,7 @@ export default function CoordenacaoRefinanciamentoPage() {
               Limpar seleção
             </Button>
             <Button onClick={() => setBulkDialogOpen(true)}>
-              Aprovar renovação em massa
+              Enviar em massa para tesouraria
             </Button>
           </div>
         </section>
@@ -579,24 +575,17 @@ export default function CoordenacaoRefinanciamentoPage() {
       <Dialog open={!!dialogState} onOpenChange={(open) => !open && setDialogState(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>
-              {dialogState?.mode === "aprovar" ? "Aprovar renovação" : "Desativar associado"}
-            </DialogTitle>
+            <DialogTitle>Aprovar renovação</DialogTitle>
             <DialogDescription>
-              {dialogState?.mode === "aprovar"
-                ? "A aprovação envia a renovação para a fila de análise."
-                : "Informe o motivo da desativação para auditoria."}
+              A coordenação valida os anexos do agente e envia a renovação para a tesouraria.
             </DialogDescription>
           </DialogHeader>
 
-          {dialogState?.mode === "desativar" ? (
-            <Textarea
-              value={motivo}
-              onChange={(event) => setMotivo(event.target.value)}
-              placeholder="Motivo da desativação..."
-              className="min-h-32"
-            />
-          ) : null}
+          <Input
+            value={observacao}
+            onChange={(event) => setObservacao(event.target.value)}
+            placeholder="Observação da coordenação (opcional)"
+          />
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogState(null)}>
@@ -605,14 +594,9 @@ export default function CoordenacaoRefinanciamentoPage() {
             <Button
               onClick={() => {
                 if (!dialogState) return;
-                if (dialogState.mode === "desativar" && !motivo.trim()) {
-                  toast.error("Informe um motivo para desativar.");
-                  return;
-                }
                 actionMutation.mutate({
                   id: dialogState.item.id,
-                  action: dialogState.mode,
-                  body: dialogState.mode === "desativar" ? { motivo } : undefined,
+                  body: observacao.trim() ? { observacao } : undefined,
                 });
               }}
               disabled={actionMutation.isPending}
@@ -626,9 +610,9 @@ export default function CoordenacaoRefinanciamentoPage() {
       <AlertDialog open={bulkDialogOpen} onOpenChange={setBulkDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Aprovar renovação em massa</AlertDialogTitle>
+            <AlertDialogTitle>Enviar renovações para tesouraria</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação é sensível e aprova apenas as linhas selecionadas da página atual.
+              Esta ação é sensível e valida apenas as linhas selecionadas da página atual.
               Digite <strong>CONFIRMAR</strong> para continuar.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -657,7 +641,7 @@ export default function CoordenacaoRefinanciamentoPage() {
                 bulkApproveMutation.mutate(selectedIds);
               }}
             >
-              Confirmar aprovação em massa
+              Confirmar envio em massa
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -1,0 +1,62 @@
+{
+  "type": "object",
+  "required": ["count", "results"],
+  "properties": {
+    "count": { "type": "integer", "example": 123 },
+    "next": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=4"
+    },
+    "previous": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=2"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "contrato_id": { "type": "integer", "readOnly": true },
+          "associado_id": { "type": "integer", "readOnly": true },
+          "nome": { "type": "string", "readOnly": true },
+          "cpf_cnpj": { "type": "string", "readOnly": true },
+          "matricula": { "type": "string", "readOnly": true },
+          "agente_nome": { "type": "string", "readOnly": true },
+          "contrato_codigo": { "type": "string", "readOnly": true },
+          "status_contrato": { "type": "string", "readOnly": true },
+          "data_contrato": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true
+          },
+          "mes_averbacao": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true,
+            "nullable": true
+          }
+        },
+        "required": [
+          "agente_nome",
+          "associado_id",
+          "contrato_codigo",
+          "contrato_id",
+          "cpf_cnpj",
+          "data_contrato",
+          "id",
+          "matricula",
+          "mes_averbacao",
+          "nome",
+          "status_contrato"
+        ],
+        "x-readme-ref-name": "DevolucaoContratoList"
+      }
+    }
+  },
+  "x-readme-ref-name": "PaginatedDevolucaoContratoListList"
+}

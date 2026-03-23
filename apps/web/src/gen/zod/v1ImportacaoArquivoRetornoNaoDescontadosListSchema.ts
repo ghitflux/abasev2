@@ -11,29 +11,24 @@ export const V1ImportacaoArquivoRetornoNaoDescontadosListPathParamsSchema =
     id: z.coerce
       .number()
       .int()
-      .describe("Um valor inteiro único que identifica este arquivo retorno."),
+      .describe("A unique integer value identifying this arquivo retorno."),
   });
 
 export const V1ImportacaoArquivoRetornoNaoDescontadosListQueryParamsSchema = z
   .object({
     ordering: z.optional(
-      z.string().describe("Qual campo usar ao ordenar os resultados."),
+      z.string().describe("Which field to use when ordering the results."),
     ),
     page: z.optional(
       z.coerce
         .number()
         .int()
-        .describe(
-          "Um número de página dentro do conjunto de resultados paginado.",
-        ),
+        .describe("A page number within the paginated result set."),
     ),
     page_size: z.optional(
-      z.coerce
-        .number()
-        .int()
-        .describe("Número de resultados a serem retornados por página."),
+      z.coerce.number().int().describe("Number of results to return per page."),
     ),
-    search: z.optional(z.string().describe("Um termo de busca.")),
+    search: z.optional(z.string().describe("A search term.")),
   })
   .optional();
 

@@ -12,6 +12,7 @@ export const V1DashboardAdminResumoGeralRetrieveQueryParamsSchema = z
     competencia: z.optional(z.string()),
     date_end: z.optional(z.string()),
     date_start: z.optional(z.string()),
+    day: z.optional(z.string()),
     status: z.optional(z.string()),
   })
   .optional();

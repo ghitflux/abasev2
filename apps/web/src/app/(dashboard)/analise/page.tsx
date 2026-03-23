@@ -30,6 +30,7 @@ import { buildBackendFileUrl } from "@/lib/backend-files";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { usePermissions } from "@/hooks/use-permissions";
 import StatusBadge from "@/components/custom/status-badge";
+import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import EmptyState from "@/components/shared/empty-state";
 import {
@@ -296,27 +297,33 @@ export default function AnalisePage() {
           ),
       },
       {
-        id: "codigo",
-        header: "Contrato",
+        id: "nome",
+        header: "Nome",
         cell: (row) => (
-          <div className="space-y-1">
-            <p className="font-medium text-foreground">{row.contrato?.codigo ?? "-"}</p>
-            <p className="text-xs text-muted-foreground">
-              {row.contrato?.associado_nome ?? "-"}
-            </p>
-          </div>
+          <CopySnippet
+            label="Nome"
+            value={row.contrato?.associado_nome ?? "-"}
+            inline
+          />
         ),
       },
       {
         id: "cpf",
-        header: "CPF / Matrícula",
+        header: "CPF",
         cell: (row) => (
-          <div className="text-sm">
-            <p>{row.contrato?.cpf_cnpj ?? "-"}</p>
-            <p className="text-muted-foreground">
-              {row.contrato?.matricula_display ?? row.contrato?.matricula ?? "-"}
-            </p>
-          </div>
+          <CopySnippet label="CPF" value={row.contrato?.cpf_cnpj ?? "-"} mono inline />
+        ),
+      },
+      {
+        id: "matricula",
+        header: "Matrícula",
+        cell: (row) => (
+          <CopySnippet
+            label="Matrícula"
+            value={row.contrato?.matricula_display ?? row.contrato?.matricula ?? "-"}
+            mono
+            inline
+          />
         ),
       },
       {
@@ -536,8 +543,12 @@ export default function AnalisePage() {
           setObservacao("");
         }}
       >
-        <DialogContent
-          className={dialogState?.mode === "documentos" ? "max-w-5xl" : "max-w-2xl"}
+      <DialogContent
+          className={
+            dialogState?.mode === "documentos"
+              ? "w-[min(96vw,1120px)] max-w-none overflow-hidden"
+              : "max-w-2xl"
+          }
         >
           <DialogHeader>
             <DialogTitle>
@@ -564,130 +575,132 @@ export default function AnalisePage() {
             detalheQuery.isLoading ? (
               <InlinePanelSkeleton rows={3} />
             ) : (
-              <div className="space-y-5">
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)]">
-                  <div className="space-y-4">
-                    <SummaryCard label="Associado">
-                      <p>{detalheItem?.contrato?.associado_nome ?? "-"}</p>
-                      <p className="text-muted-foreground">
-                        Órgão: {detalheItem?.orgao_publico || "-"}
-                      </p>
-                    </SummaryCard>
-                    <SummaryCard label="Contrato">
-                      <p>{detalheItem?.contrato?.codigo ?? "-"}</p>
-                      <p className="text-muted-foreground">
-                        Assumido em{" "}
-                        {detalheItem?.assumido_em
-                          ? new Intl.DateTimeFormat("pt-BR", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                              hour12: false,
-                            }).format(new Date(detalheItem.assumido_em))
-                          : "N/I"}
-                      </p>
-                    </SummaryCard>
-                    <SummaryCard label="CPF / Matrícula">
-                      <p>{detalheItem?.contrato?.cpf_cnpj ?? "-"}</p>
-                      <p className="text-muted-foreground">
-                        {detalheItem?.contrato?.matricula_display ??
-                          detalheItem?.contrato?.matricula ??
-                          "-"}
-                      </p>
-                    </SummaryCard>
-                    <SummaryCard label="Status do fluxo">
-                      <div className="flex flex-wrap gap-2">
-                        <StatusBadge status={detalheItem?.status_documentacao ?? "incompleta"} />
-                        <StatusBadge status={detalheItem?.status ?? "aguardando"} />
-                      </div>
-                    </SummaryCard>
-                    <SummaryCard label="Pendências">
-                      <div className="flex flex-wrap gap-2">
-                        <Badge variant="outline">{pendenciasAbertas} abertas</Badge>
-                        <Badge variant="outline">{pendenciasResolvidas} resolvidas</Badge>
-                      </div>
-                      <p className="text-muted-foreground">
-                        {detalheQuery.data?.pendencias?.length
-                          ? "Resumo rápido das ocorrências registradas na esteira."
-                          : "Nenhuma pendência registrada neste item."}
-                      </p>
-                    </SummaryCard>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          Documentos anexados
+              <div className="max-h-[calc(90vh-12rem)] overflow-y-auto pr-1">
+                <div className="space-y-5">
+                  <div className="grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)]">
+                    <div className="space-y-4">
+                      <SummaryCard label="Associado">
+                        <p>{detalheItem?.contrato?.associado_nome ?? "-"}</p>
+                        <p className="text-muted-foreground">
+                          Órgão: {detalheItem?.orgao_publico || "-"}
                         </p>
-                        <p className="text-sm text-muted-foreground">
-                          Revise os arquivos do cadastro e siga para o detalhe completo quando
-                          precisar analisar o histórico inteiro do associado.
+                      </SummaryCard>
+                      <SummaryCard label="Contrato">
+                        <p>{detalheItem?.contrato?.codigo ?? "-"}</p>
+                        <p className="text-muted-foreground">
+                          Assumido em{" "}
+                          {detalheItem?.assumido_em
+                            ? new Intl.DateTimeFormat("pt-BR", {
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                hour12: false,
+                              }).format(new Date(detalheItem.assumido_em))
+                            : "N/I"}
                         </p>
-                      </div>
-                      {detalheItem?.associado_id ? (
-                        <Button asChild variant="outline" size="sm">
-                          <Link href={`/associados/${detalheItem.associado_id}`}>
-                            Ver detalhes completos
-                          </Link>
-                        </Button>
-                      ) : null}
+                      </SummaryCard>
+                      <SummaryCard label="CPF / Matrícula">
+                        <p>{detalheItem?.contrato?.cpf_cnpj ?? "-"}</p>
+                        <p className="text-muted-foreground">
+                          {detalheItem?.contrato?.matricula_display ??
+                            detalheItem?.contrato?.matricula ??
+                            "-"}
+                        </p>
+                      </SummaryCard>
+                      <SummaryCard label="Status do fluxo">
+                        <div className="flex flex-wrap gap-2">
+                          <StatusBadge status={detalheItem?.status_documentacao ?? "incompleta"} />
+                          <StatusBadge status={detalheItem?.status ?? "aguardando"} />
+                        </div>
+                      </SummaryCard>
+                      <SummaryCard label="Pendências">
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="outline">{pendenciasAbertas} abertas</Badge>
+                          <Badge variant="outline">{pendenciasResolvidas} resolvidas</Badge>
+                        </div>
+                        <p className="text-muted-foreground">
+                          {detalheQuery.data?.pendencias?.length
+                            ? "Resumo rápido das ocorrências registradas na esteira."
+                            : "Nenhuma pendência registrada neste item."}
+                        </p>
+                      </SummaryCard>
                     </div>
 
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {detalheQuery.data?.documentos?.length ? (
-                        detalheQuery.data.documentos.map((documento) => (
-                          <div
-                            key={documento.id}
-                            className="rounded-2xl border border-border/60 bg-card/60 p-4"
-                          >
-                            <div className="space-y-3">
-                              <div className="space-y-2">
-                                <p className="font-medium capitalize">
-                                  {documento.tipo.replaceAll("_", " ")}
-                                </p>
-                                <StatusBadge status={documento.status} />
-                                <p className="text-sm text-muted-foreground">
-                                  {documento.nome_original ||
-                                    documento.arquivo_referencia ||
-                                    "Sem nome disponível"}
-                                </p>
-                                {documento.observacao ? (
+                    <div className="space-y-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">
+                            Documentos anexados
+                          </p>
+                          <p className="text-sm text-muted-foreground">
+                            Revise os arquivos do cadastro e siga para o detalhe completo quando
+                            precisar analisar o histórico inteiro do associado.
+                          </p>
+                        </div>
+                        {detalheItem?.associado_id ? (
+                          <Button asChild variant="outline" size="sm">
+                            <Link href={`/associados/${detalheItem.associado_id}`}>
+                              Ver detalhes completos
+                            </Link>
+                          </Button>
+                        ) : null}
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        {detalheQuery.data?.documentos?.length ? (
+                          detalheQuery.data.documentos.map((documento) => (
+                            <div
+                              key={documento.id}
+                              className="rounded-2xl border border-border/60 bg-card/60 p-4"
+                            >
+                              <div className="space-y-3">
+                                <div className="space-y-2">
+                                  <p className="font-medium capitalize">
+                                    {documento.tipo.replaceAll("_", " ")}
+                                  </p>
+                                  <StatusBadge status={documento.status} />
                                   <p className="text-sm text-muted-foreground">
-                                    {documento.observacao}
+                                    {documento.nome_original ||
+                                      documento.arquivo_referencia ||
+                                      "Sem nome disponível"}
                                   </p>
-                                ) : null}
-                              </div>
-                              {documento.arquivo_disponivel_localmente && documento.arquivo ? (
-                                <Button asChild size="sm" variant="outline">
-                                  <a
-                                    href={buildBackendFileUrl(documento.arquivo)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                  >
-                                    <ExternalLinkIcon className="size-4" />
-                                    Ver documento
-                                  </a>
-                                </Button>
-                              ) : (
-                                <div className="text-sm text-muted-foreground">
-                                  <p>Arquivo indisponível localmente.</p>
-                                  <p className="text-xs text-amber-200">
-                                    {documento.arquivo_referencia ||
-                                      "Referência de arquivo legado"}
-                                  </p>
+                                  {documento.observacao ? (
+                                    <p className="text-sm text-muted-foreground">
+                                      {documento.observacao}
+                                    </p>
+                                  ) : null}
                                 </div>
-                              )}
+                                {documento.arquivo_disponivel_localmente && documento.arquivo ? (
+                                  <Button asChild size="sm" variant="outline">
+                                    <a
+                                      href={buildBackendFileUrl(documento.arquivo)}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                    >
+                                      <ExternalLinkIcon className="size-4" />
+                                      Ver documento
+                                    </a>
+                                  </Button>
+                                ) : (
+                                  <div className="text-sm text-muted-foreground">
+                                    <p>Arquivo indisponível localmente.</p>
+                                    <p className="text-xs text-amber-200">
+                                      {documento.arquivo_referencia ||
+                                        "Referência de arquivo legado"}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-sm text-muted-foreground">
-                          Nenhum documento anexado.
-                        </p>
-                      )}
+                          ))
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            Nenhum documento anexado.
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

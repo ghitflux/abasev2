@@ -9,7 +9,7 @@ import { associadoCreateSchema } from "./associadoCreateSchema.ts";
 export const V1AssociadosCreate201Schema = z
   .lazy(() => associadoCreateSchema)
   .unwrap()
-  .omit({ documentos_payload: true });
+  .omit({ agente_responsavel_id: true, documentos_payload: true });
 
 export const V1AssociadosCreateMutationRequestSchema = z
   .lazy(() => associadoCreateSchema)

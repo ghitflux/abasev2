@@ -10,7 +10,7 @@ import { recorrenciaEnumSchema } from "./recorrenciaEnumSchema.ts";
 import { simpleUserSchema } from "./simpleUserSchema.ts";
 import { status7A5EnumSchema } from "./status7A5EnumSchema.ts";
 import { statusAnexoEnumSchema } from "./statusAnexoEnumSchema.ts";
-import { tipoC90EnumSchema } from "./tipoC90EnumSchema.ts";
+import { tipoEnumSchema } from "./tipoEnumSchema.ts";
 
 export const despesaListSchema = z.object({
   id: z.int(),
@@ -25,7 +25,7 @@ export const despesaListSchema = z.object({
       .optional();
   },
   get tipo() {
-    return z.union([tipoC90EnumSchema, blankEnumSchema]).optional();
+    return z.union([tipoEnumSchema, blankEnumSchema]).optional();
   },
   get recorrencia() {
     return recorrenciaEnumSchema

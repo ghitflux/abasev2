@@ -3,9 +3,8 @@
  * Do not edit manually.
  */
 
-import type { ComprovanteResumo } from "./ComprovanteResumo.ts";
 import type { SimpleUser } from "./SimpleUser.ts";
-import type { Status707Enum } from "./Status707Enum.ts";
+import type { Status0BbEnum } from "./Status0BbEnum.ts";
 
 export type RefinanciamentoList = {
   /**
@@ -32,20 +31,29 @@ export type RefinanciamentoList = {
    * @type string
    */
   readonly cpf_cnpj: string;
+  /**
+   * @type string
+   */
+  readonly matricula: string;
+  /**
+   * @type string
+   */
+  readonly matricula_display: string;
   readonly agente: SimpleUser;
   readonly solicitado_por: SimpleUser;
   readonly aprovado_por: SimpleUser;
   readonly bloqueado_por: SimpleUser;
   readonly efetivado_por: SimpleUser;
+  readonly reviewed_by: SimpleUser;
   /**
    * @type string, date
    */
   competencia_solicitada: string;
   /**
-   * @description * `apto_a_renovar` - Apto a renovar\n* `em_analise_renovacao` - Em análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado
+   * @description * `apto_a_renovar` - Apto a renovar\n* `em_analise_renovacao` - Em análise para renovação\n* `aprovado_analise_renovacao` - Aprovado pela análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado
    * @type string | undefined
    */
-  status?: Status707Enum;
+  status?: Status0BbEnum;
   /**
    * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
    * @type string | undefined, decimal
@@ -137,6 +145,18 @@ export type RefinanciamentoList = {
    */
   observacao?: string;
   /**
+   * @type string | undefined
+   */
+  analista_note?: string;
+  /**
+   * @type string | undefined
+   */
+  coordenador_note?: string;
+  /**
+   * @type string, date-time
+   */
+  reviewed_at?: string | null;
+  /**
    * @type string, date-time
    */
   executado_em?: string | null;
@@ -153,7 +173,7 @@ export type RefinanciamentoList = {
    */
   readonly auditoria: string;
   /**
-   * @type array
+   * @type string
    */
-  readonly comprovantes: ComprovanteResumo[];
+  readonly comprovantes: string;
 };

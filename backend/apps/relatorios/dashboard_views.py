@@ -6,7 +6,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
-from apps.accounts.permissions import IsAdmin
+from apps.accounts.permissions import IsCoordenadorOrAdmin
 from apps.associados.models import Associado
 from core.pagination import StandardResultsSetPagination
 
@@ -29,7 +29,7 @@ class DashboardDetailPagination(StandardResultsSetPagination):
 
 class AdminDashboardViewSet(GenericViewSet):
     queryset = Associado.objects.none()
-    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrAdmin]
     pagination_class = DashboardDetailPagination
 
     @staticmethod
@@ -38,6 +38,7 @@ class AdminDashboardViewSet(GenericViewSet):
             competencia=request.query_params.get("competencia"),
             date_start=request.query_params.get("date_start"),
             date_end=request.query_params.get("date_end"),
+            day=request.query_params.get("day"),
             agent_id=request.query_params.get("agent_id"),
             status=request.query_params.get("status"),
         )
@@ -47,6 +48,7 @@ class AdminDashboardViewSet(GenericViewSet):
             OpenApiParameter("competencia", str, OpenApiParameter.QUERY),
             OpenApiParameter("date_start", str, OpenApiParameter.QUERY),
             OpenApiParameter("date_end", str, OpenApiParameter.QUERY),
+            OpenApiParameter("day", str, OpenApiParameter.QUERY),
             OpenApiParameter("agent_id", int, OpenApiParameter.QUERY),
             OpenApiParameter("status", str, OpenApiParameter.QUERY),
         ],
@@ -60,7 +62,9 @@ class AdminDashboardViewSet(GenericViewSet):
     @extend_schema(
         parameters=[
             OpenApiParameter("competencia", str, OpenApiParameter.QUERY),
+            OpenApiParameter("day", str, OpenApiParameter.QUERY),
             OpenApiParameter("agent_id", int, OpenApiParameter.QUERY),
+            OpenApiParameter("status", str, OpenApiParameter.QUERY),
         ],
         responses=DashboardTesourariaSerializer,
     )
@@ -73,6 +77,7 @@ class AdminDashboardViewSet(GenericViewSet):
         parameters=[
             OpenApiParameter("date_start", str, OpenApiParameter.QUERY),
             OpenApiParameter("date_end", str, OpenApiParameter.QUERY),
+            OpenApiParameter("day", str, OpenApiParameter.QUERY),
             OpenApiParameter("agent_id", int, OpenApiParameter.QUERY),
             OpenApiParameter("status", str, OpenApiParameter.QUERY),
         ],
@@ -85,9 +90,12 @@ class AdminDashboardViewSet(GenericViewSet):
 
     @extend_schema(
         parameters=[
+            OpenApiParameter("competencia", str, OpenApiParameter.QUERY),
             OpenApiParameter("date_start", str, OpenApiParameter.QUERY),
             OpenApiParameter("date_end", str, OpenApiParameter.QUERY),
+            OpenApiParameter("day", str, OpenApiParameter.QUERY),
             OpenApiParameter("agent_id", int, OpenApiParameter.QUERY),
+            OpenApiParameter("status", str, OpenApiParameter.QUERY),
         ],
         responses=DashboardAgentesSerializer,
     )
@@ -103,6 +111,7 @@ class AdminDashboardViewSet(GenericViewSet):
             OpenApiParameter("competencia", str, OpenApiParameter.QUERY),
             OpenApiParameter("date_start", str, OpenApiParameter.QUERY),
             OpenApiParameter("date_end", str, OpenApiParameter.QUERY),
+            OpenApiParameter("day", str, OpenApiParameter.QUERY),
             OpenApiParameter("agent_id", int, OpenApiParameter.QUERY),
             OpenApiParameter("status", str, OpenApiParameter.QUERY),
             OpenApiParameter("page", int, OpenApiParameter.QUERY),

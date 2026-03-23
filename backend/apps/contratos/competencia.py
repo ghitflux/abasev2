@@ -569,7 +569,7 @@ def propagate_competencia_status(source_parcela: Parcela) -> int:
 
     data_pagamento = (
         source_parcela.data_pagamento
-        if source_parcela.status == Parcela.Status.DESCONTADO
+        if source_parcela.status in {Parcela.Status.DESCONTADO, Parcela.Status.LIQUIDADA}
         else None
     )
     synchronized = (
@@ -831,7 +831,7 @@ def repair_conflict_group(
                 parcela.status = target.status
                 parcela.data_pagamento = (
                     target.data_pagamento
-                    if target.status == Parcela.Status.DESCONTADO
+                    if target.status in {Parcela.Status.DESCONTADO, Parcela.Status.LIQUIDADA}
                     else None
                 )
                 parcela.save(

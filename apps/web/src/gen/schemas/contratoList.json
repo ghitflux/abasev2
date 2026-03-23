@@ -50,7 +50,7 @@
       "enum": ["rascunho", "em_analise", "ativo", "encerrado", "cancelado"],
       "type": "string",
       "description": "* `rascunho` - Rascunho\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `encerrado` - Encerrado\n* `cancelado` - Cancelado",
-      "x-readme-ref-name": "Status1d4Enum"
+      "x-readme-ref-name": "ContratoListStatusEnum"
     },
     "status_resumido": { "type": "string", "readOnly": true },
     "status_contrato_visual": { "type": "string", "readOnly": true },
@@ -76,7 +76,9 @@
     },
     "pode_solicitar_refinanciamento": { "type": "boolean", "readOnly": true },
     "status_renovacao": { "type": "string", "readOnly": true },
-    "refinanciamento_id": { "type": "string", "readOnly": true }
+    "refinanciamento_id": { "type": "string", "readOnly": true },
+    "possui_meses_nao_descontados": { "type": "boolean", "readOnly": true },
+    "meses_nao_descontados_count": { "type": "integer", "readOnly": true }
   },
   "required": [
     "agente",
@@ -84,7 +86,9 @@
     "etapa_fluxo",
     "id",
     "mensalidades",
+    "meses_nao_descontados_count",
     "pode_solicitar_refinanciamento",
+    "possui_meses_nao_descontados",
     "refinanciamento_id",
     "status_contrato_visual",
     "status_renovacao",

@@ -6,7 +6,7 @@ from django.db.models import Count, OuterRef, Prefetch, Q, Subquery, Sum
 from django.utils.dateparse import parse_date
 from rest_framework import mixins, permissions, status
 from rest_framework.decorators import action
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
@@ -21,6 +21,7 @@ from core.pagination import StandardResultsSetPagination
 from .models import Assumption, Comprovante, Refinanciamento
 from .serializers import (
     AprovarAnaliseRefinanciamentoSerializer,
+    AprovarRefinanciamentoSerializer,
     AprovarEmMassaRefinanciamentoSerializer,
     BloquearRefinanciamentoSerializer,
     DesativarRefinanciamentoSerializer,
@@ -28,6 +29,8 @@ from .serializers import (
     ElegibilidadeRefinanciamentoSerializer,
     RefinanciamentoDetailSerializer,
     RefinanciamentoListSerializer,
+    SolicitarLiquidacaoRefinanciamentoSerializer,
+    SolicitarRefinanciamentoSerializer,
 )
 from .services import RefinanciamentoService
 
@@ -152,7 +155,7 @@ class BaseRefinanciamentoViewSet(
             return queryset.filter(
                 status__in=[
                     Refinanciamento.Status.EM_ANALISE_RENOVACAO,
-                    Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+                    Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
                 ]
             )
         if user.has_role("TESOUREIRO"):
@@ -160,6 +163,9 @@ class BaseRefinanciamentoViewSet(
                 status__in=[
                     Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
                     Refinanciamento.Status.EFETIVADO,
+                    Refinanciamento.Status.BLOQUEADO,
+                    Refinanciamento.Status.REVERTIDO,
+                    Refinanciamento.Status.DESATIVADO,
                 ]
             )
         return queryset.none()
@@ -176,7 +182,8 @@ class BaseRefinanciamentoViewSet(
                 "id", filter=Q(assumption_status_value=Assumption.Status.ASSUMIDO)
             ),
             aprovados=Count(
-                "id", filter=Q(status=Refinanciamento.Status.APROVADO_PARA_RENOVACAO)
+                "id",
+                filter=Q(status=Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO),
             ),
             efetivados=Count(
                 "id", filter=Q(status=Refinanciamento.Status.EFETIVADO)
@@ -196,16 +203,21 @@ class BaseRefinanciamentoViewSet(
             revertidos=Count(
                 "id", filter=Q(status=Refinanciamento.Status.REVERTIDO)
             ),
+            desativados=Count(
+                "id", filter=Q(status=Refinanciamento.Status.DESATIVADO)
+            ),
             em_fluxo=Count(
                 "id",
                 filter=Q(
                     status__in=[
                         Refinanciamento.Status.APTO_A_RENOVAR,
+                        Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
                         Refinanciamento.Status.PENDENTE_APTO,
                         Refinanciamento.Status.SOLICITADO,
                         Refinanciamento.Status.EM_ANALISE,
                         Refinanciamento.Status.APROVADO,
                         Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                        Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
                         Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
                     ]
                 ),
@@ -224,7 +236,7 @@ class BaseRefinanciamentoViewSet(
 
 class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
     def get_permissions(self):
-        if self.action == "solicitar" or self.action == "eligibilidade":
+        if self.action in {"solicitar", "solicitar_liquidacao", "eligibilidade"}:
             return [permissions.IsAuthenticated(), IsAgenteOrAdmin()]
         if self.action in ["aprovar", "bloquear", "reverter", "desativar"]:
             return [permissions.IsAuthenticated(), IsCoordenadorOrAdmin()]
@@ -239,9 +251,28 @@ class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
         payload = RefinanciamentoService.verificar_elegibilidade(int(pk))
         return Response(ElegibilidadeRefinanciamentoSerializer(payload).data)
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], parser_classes=[MultiPartParser, FormParser])
     def solicitar(self, request, pk=None):
-        refinanciamento = RefinanciamentoService.solicitar(int(pk), request.user)
+        payload = SolicitarRefinanciamentoSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        refinanciamento = RefinanciamentoService.solicitar(
+            int(pk),
+            payload.validated_data["termo_antecipacao"],
+            request.user,
+        )
+        serializer = RefinanciamentoDetailSerializer(
+            refinanciamento, context=self.get_serializer_context()
+        )
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="solicitar-liquidacao")
+    def solicitar_liquidacao(self, request, pk=None):
+        payload = SolicitarLiquidacaoRefinanciamentoSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        refinanciamento = RefinanciamentoService.solicitar_liquidacao(
+            int(pk),
+            request.user,
+        )
         serializer = RefinanciamentoDetailSerializer(
             refinanciamento, context=self.get_serializer_context()
         )
@@ -249,7 +280,13 @@ class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
 
     @action(detail=True, methods=["post"])
     def aprovar(self, request, pk=None):
-        refinanciamento = RefinanciamentoService.aprovar(int(pk), request.user)
+        payload = AprovarRefinanciamentoSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        refinanciamento = RefinanciamentoService.aprovar(
+            int(pk),
+            request.user,
+            payload.validated_data.get("observacao", ""),
+        )
         serializer = RefinanciamentoDetailSerializer(
             refinanciamento, context=self.get_serializer_context()
         )
@@ -287,13 +324,12 @@ class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
         )
         return Response(serializer.data)
 
-    @action(detail=True, methods=["post"], parser_classes=[MultiPartParser])
+    @action(detail=True, methods=["post"], parser_classes=[FormParser, JSONParser, MultiPartParser])
     def aprovar_analise(self, request, pk=None):
         payload = AprovarAnaliseRefinanciamentoSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         refinanciamento = RefinanciamentoService.aprovar_analise(
             int(pk),
-            payload.validated_data["termo_antecipacao"],
             request.user,
             payload.validated_data.get("observacao", ""),
         )
@@ -332,7 +368,7 @@ class CoordenadorRefinanciadosViewSet(BaseRefinanciamentoViewSet):
     def get_queryset(self):
         queryset = super().get_queryset().filter(
             status__in=[
-                Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+                Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
                 Refinanciamento.Status.EFETIVADO,
             ]
         )
@@ -348,10 +384,9 @@ class CoordenadorRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
     def get_queryset(self):
         queryset = super().get_queryset().filter(
             status__in=[
-                Refinanciamento.Status.APTO_A_RENOVAR,
-                Refinanciamento.Status.PENDENTE_APTO,
+                Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
                 Refinanciamento.Status.BLOQUEADO,
-                Refinanciamento.Status.DESATIVADO,
+                Refinanciamento.Status.REVERTIDO,
             ]
         )
         year = self.request.query_params.get("year")
@@ -380,7 +415,10 @@ class CoordenadorRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
                 )
                 continue
             try:
-                RefinanciamentoService.aprovar(refinanciamento_id, request.user)
+                RefinanciamentoService.aprovar(
+                    refinanciamento_id,
+                    request.user,
+                )
             except ValidationError as exc:
                 detail = exc.detail
                 if isinstance(detail, list) and detail:
@@ -421,7 +459,7 @@ class AnalistaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
         queryset = super().get_queryset().filter(
             status__in=[
                 Refinanciamento.Status.EM_ANALISE_RENOVACAO,
-                Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+                Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
             ]
         )
         assignment = self.request.query_params.get("assignment")
@@ -444,6 +482,9 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
             status__in=[
                 Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
                 Refinanciamento.Status.EFETIVADO,
+                Refinanciamento.Status.BLOQUEADO,
+                Refinanciamento.Status.REVERTIDO,
+                Refinanciamento.Status.DESATIVADO,
             ]
         )
 

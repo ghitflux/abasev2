@@ -108,6 +108,12 @@
       "type": "string",
       "format": "decimal",
       "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "agente_responsavel_id": { "type": "integer", "nullable": true },
+    "percentual_repasse": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,4}(?:\\.\\d{0,2})?$"
     }
   },
   "x-readme-ref-name": "PatchedAssociadoUpdate"

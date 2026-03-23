@@ -14,6 +14,7 @@ from apps.tesouraria.models import BaixaManual, Pagamento
 from .cycle_timeline import (
     get_contract_activation_payload,
     get_contract_cycle_size,
+    get_cycle_activation_payload,
     get_future_generation_threshold,
 )
 from .models import Ciclo, Contrato, Parcela
@@ -22,7 +23,9 @@ PAID_STATUS_CODES = {"1", "4"}
 PROJECTION_STATUS_QUITADA = "quitada"
 ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES = {
     Refinanciamento.Status.APTO_A_RENOVAR,
+    Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
     Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+    Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
     Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
     Refinanciamento.Status.PENDENTE_APTO,
     Refinanciamento.Status.SOLICITADO,
@@ -39,7 +42,9 @@ STATUS_VISUAL_PHASE_LABELS = {
     "em_analise": "Em Análise",
     "ciclo_aberto": "Ativo",
     "apto_a_renovar": "Apto para Renovação",
+    "solicitado_para_liquidacao": "Solicitado para Liquidação",
     "renovacao_em_analise": "Renovação em Análise",
+    "aguardando_coordenacao": "Aguardando Coordenação",
     "aprovado_para_renovacao": "Aguardando Pagamento",
     "ciclo_renovado": "Concluído",
     "contrato_desativado": "Inativo",
@@ -53,8 +58,10 @@ STATUS_VISUAL_FINANCIAL_LABELS = {
 }
 STATUS_VISUAL_PHASE_PRIORITY = {
     "aprovado_para_renovacao": 5,
-    "renovacao_em_analise": 4,
-    "apto_a_renovar": 3,
+    "solicitado_para_liquidacao": 4,
+    "aguardando_coordenacao": 4,
+    "renovacao_em_analise": 3,
+    "apto_a_renovar": 2,
     "ciclo_aberto": 2,
     "ciclo_renovado": 1,
     "em_analise": 0,
@@ -63,7 +70,9 @@ STATUS_VISUAL_PHASE_PRIORITY = {
 }
 OPERATIONAL_STATUS_TO_VISUAL_PHASE = {
     Refinanciamento.Status.APTO_A_RENOVAR: "apto_a_renovar",
+    Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO: "solicitado_para_liquidacao",
     Refinanciamento.Status.EM_ANALISE_RENOVACAO: "renovacao_em_analise",
+    Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO: "aguardando_coordenacao",
     Refinanciamento.Status.APROVADO_PARA_RENOVACAO: "aprovado_para_renovacao",
     Refinanciamento.Status.DESATIVADO: "contrato_desativado",
     Refinanciamento.Status.BLOQUEADO: "renovacao_em_analise",
@@ -436,6 +445,17 @@ def _merge_financial_references(
                 counts_for_cycle=False,
                 had_unpaid_event=True,
             )
+        elif parcela.status == Parcela.Status.LIQUIDADA:
+            paid_by_reference[referencia] = FinancialReference(
+                referencia_mes=referencia,
+                status=Parcela.Status.LIQUIDADA,
+                data_pagamento=parcela.data_pagamento,
+                valor=parcela.valor,
+                observacao=parcela.observacao or "Parcela liquidada pela tesouraria.",
+                source="parcela_liquidada",
+                counts_for_cycle=True,
+                had_unpaid_event=False,
+            )
         elif parcela.status == Parcela.Status.DESCONTADO:
             had_unpaid_event = referencia in references_with_unpaid_history
             paid_by_reference[referencia] = FinancialReference(
@@ -725,8 +745,8 @@ def _normalize_operational_status(status: str) -> str:
         Refinanciamento.Status.PENDENTE_APTO: Refinanciamento.Status.APTO_A_RENOVAR,
         Refinanciamento.Status.SOLICITADO: Refinanciamento.Status.APTO_A_RENOVAR,
         Refinanciamento.Status.EM_ANALISE: Refinanciamento.Status.EM_ANALISE_RENOVACAO,
-        Refinanciamento.Status.APROVADO: Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
-        Refinanciamento.Status.CONCLUIDO: Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+        Refinanciamento.Status.APROVADO: Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+        Refinanciamento.Status.CONCLUIDO: Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
     }
     return mapping.get(status, status)
 
@@ -761,6 +781,7 @@ def _serialize_comprovante(comprovante: Comprovante) -> dict[str, object]:
         "size_bytes": comprovante.size_bytes,
         "data_pagamento": comprovante.data_pagamento,
         "origem": comprovante.origem,
+        "status_validacao": comprovante.status_validacao,
         "created_at": created_at,
         "legacy_comprovante_id": comprovante.legacy_comprovante_id,
     }
@@ -962,11 +983,189 @@ def _financial_row(item: FinancialReference, *, contrato: Contrato, index: int) 
     }
 
 
+def _manual_phase_slug(
+    *,
+    contrato: Contrato,
+    ciclo: Ciclo,
+    is_latest_cycle: bool,
+) -> str:
+    associado_status = getattr(contrato.associado, "status", "")
+    if associado_status == Associado.Status.INATIVO or contrato.status == Contrato.Status.CANCELADO:
+        return "contrato_desativado"
+    if contrato.status == Contrato.Status.ENCERRADO:
+        return "contrato_encerrado"
+    if is_latest_cycle:
+        refinanciamento_operacional = _active_operational_refinanciamentos(contrato)
+        if refinanciamento_operacional:
+            normalized = _normalize_operational_status(refinanciamento_operacional[0].status)
+            if normalized in OPERATIONAL_STATUS_TO_VISUAL_PHASE:
+                return OPERATIONAL_STATUS_TO_VISUAL_PHASE[normalized]
+    if ciclo.status == Ciclo.Status.CICLO_RENOVADO:
+        return "ciclo_renovado"
+    if ciclo.status == Ciclo.Status.APTO_A_RENOVAR:
+        return "apto_a_renovar"
+    return "ciclo_aberto"
+
+
+def _build_manual_contract_projection(
+    contrato: Contrato,
+    *,
+    include_documents: bool = False,
+) -> dict[str, object]:
+    ciclos = list(
+        contrato.ciclos.filter(deleted_at__isnull=True).order_by("numero", "id")
+    )
+    parcelas = list(
+        Parcela.all_objects.filter(ciclo__contrato=contrato, deleted_at__isnull=True)
+        .exclude(status=Parcela.Status.CANCELADO)
+        .select_related("ciclo")
+        .order_by("ciclo__numero", "numero", "id")
+    )
+    parcelas_por_ciclo: dict[int, list[Parcela]] = {}
+    unpaid_rows: list[dict[str, object]] = []
+    movement_rows: list[dict[str, object]] = []
+
+    for parcela in parcelas:
+        if parcela.layout_bucket == Parcela.LayoutBucket.UNPAID:
+            unpaid_rows.append(
+                {
+                    "id": parcela.id,
+                    "contrato_id": contrato.id,
+                    "contrato_codigo": contrato.codigo,
+                    "referencia_mes": parcela.referencia_mes,
+                    "valor": parcela.valor,
+                    "status": parcela.status,
+                    "data_pagamento": parcela.data_pagamento,
+                    "observacao": parcela.observacao,
+                    "source": "admin_override",
+                }
+            )
+            continue
+        if parcela.layout_bucket == Parcela.LayoutBucket.MOVEMENT:
+            movement_rows.append(
+                {
+                    "id": parcela.id,
+                    "contrato_id": contrato.id,
+                    "contrato_codigo": contrato.codigo,
+                    "referencia_mes": parcela.referencia_mes,
+                    "valor": parcela.valor,
+                    "status": parcela.status,
+                    "data_pagamento": parcela.data_pagamento,
+                    "observacao": parcela.observacao,
+                    "source": "admin_override",
+                }
+            )
+            continue
+        parcelas_por_ciclo.setdefault(parcela.ciclo_id, []).append(parcela)
+
+    has_unpaid = bool(unpaid_rows)
+    latest_cycle_number = max((ciclo.numero for ciclo in ciclos), default=0)
+    projected_cycles: list[dict[str, object]] = []
+
+    for ciclo in ciclos:
+        cycle_parcelas = parcelas_por_ciclo.get(ciclo.id, [])
+        activation = get_cycle_activation_payload(ciclo)
+        phase_slug = _manual_phase_slug(
+            contrato=contrato,
+            ciclo=ciclo,
+            is_latest_cycle=ciclo.numero == latest_cycle_number,
+        )
+        financial_slug = _cycle_financial_status(
+            contrato=contrato,
+            has_unpaid_months=has_unpaid,
+        )
+        visual_status = _compose_visual_status(phase_slug=phase_slug)
+        comprovantes_ciclo, termo_antecipacao = _cycle_documents(
+            contrato,
+            cycle_number=ciclo.numero,
+            renewal=None,
+            include_documents=include_documents,
+        )
+        projected_cycles.append(
+            {
+                "id": ciclo.id,
+                "contrato_id": contrato.id,
+                "contrato_codigo": contrato.codigo,
+                "contrato_status": contrato.status,
+                "numero": ciclo.numero,
+                "data_inicio": ciclo.data_inicio,
+                "data_fim": ciclo.data_fim,
+                "status": ciclo.status,
+                "fase_ciclo": phase_slug,
+                "situacao_financeira": financial_slug,
+                "status_visual_slug": visual_status["status_visual_slug"],
+                "status_visual_label": visual_status["status_visual_label"],
+                "valor_total": ciclo.valor_total,
+                "data_ativacao_ciclo": activation["data_ativacao_ciclo"],
+                "origem_data_ativacao": activation["origem_data_ativacao"],
+                "ativacao_inferida": activation["ativacao_inferida"],
+                "data_solicitacao_renovacao": activation["data_solicitacao_renovacao"],
+                "data_renovacao": None,
+                "origem_renovacao": "",
+                "primeira_competencia_ciclo": (
+                    cycle_parcelas[0].referencia_mes if cycle_parcelas else ciclo.data_inicio
+                ),
+                "ultima_competencia_ciclo": (
+                    cycle_parcelas[-1].referencia_mes if cycle_parcelas else ciclo.data_fim
+                ),
+                "resumo_referencias": ", ".join(
+                    parcela.referencia_mes.strftime("%m/%Y") for parcela in cycle_parcelas
+                ),
+                "refinanciamento_id": None,
+                "legacy_refinanciamento_id": None,
+                "comprovantes_ciclo": comprovantes_ciclo,
+                "termo_antecipacao": termo_antecipacao,
+                "parcelas": [
+                    {
+                        "id": parcela.id,
+                        "numero": parcela.numero,
+                        "referencia_mes": parcela.referencia_mes,
+                        "valor": parcela.valor,
+                        "data_vencimento": parcela.data_vencimento,
+                        "status": parcela.status,
+                        "data_pagamento": parcela.data_pagamento,
+                        "observacao": parcela.observacao,
+                    }
+                    for parcela in cycle_parcelas
+                ],
+            }
+        )
+
+    refinanciamento_ativo = _active_operational_refinanciamentos(contrato)
+    status_renovacao = ""
+    refinanciamento_id: int | None = None
+    if refinanciamento_ativo:
+        status_renovacao = _normalize_operational_status(refinanciamento_ativo[0].status)
+        refinanciamento_id = refinanciamento_ativo[0].id
+    elif ciclos and ciclos[-1].status == Ciclo.Status.APTO_A_RENOVAR:
+        status_renovacao = Refinanciamento.Status.APTO_A_RENOVAR
+
+    return {
+        "cycle_size": get_contract_cycle_size(contrato),
+        "cycles": list(sorted(projected_cycles, key=lambda item: item["numero"], reverse=True)),
+        "unpaid_months": sorted(unpaid_rows, key=lambda item: item["referencia_mes"], reverse=True),
+        "possui_meses_nao_descontados": bool(unpaid_rows),
+        "meses_nao_descontados_count": len(unpaid_rows),
+        "status_renovacao": status_renovacao,
+        "refinanciamento_id": refinanciamento_id,
+        "movimentos_financeiros_avulsos": sorted(
+            movement_rows,
+            key=lambda item: item["referencia_mes"],
+        ),
+    }
+
+
 def build_contract_cycle_projection(
     contrato: Contrato,
     *,
     include_documents: bool = False,
 ) -> dict[str, object]:
+    if contrato.admin_manual_layout_enabled:
+        return _build_manual_contract_projection(
+            contrato,
+            include_documents=include_documents,
+        )
+
     cycle_size = get_contract_cycle_size(contrato)
     threshold = get_future_generation_threshold(contrato)
     paid, unpaid, regularized = _merge_financial_references(contrato)

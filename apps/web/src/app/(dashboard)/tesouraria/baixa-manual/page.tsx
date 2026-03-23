@@ -385,7 +385,7 @@ export default function BaixaManualPage() {
       {/* Header */}
       <section className="rounded-[1.75rem] border border-border/60 bg-card/70 p-6">
         <div className="space-y-1">
-          <h1 className="text-3xl font-semibold">Baixa Manual</h1>
+          <h1 className="text-3xl font-semibold">Inadimplentes</h1>
           <p className="text-sm text-muted-foreground">
             Parcelas de meses anteriores pendentes ou não descontadas — registre a baixa com comprovante.
           </p>
@@ -512,7 +512,7 @@ export default function BaixaManualPage() {
       >
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Registrar Baixa Manual</DialogTitle>
+            <DialogTitle>Registrar inadimplência</DialogTitle>
             <DialogDescription>
               {darBaixaState ? (
                 <>

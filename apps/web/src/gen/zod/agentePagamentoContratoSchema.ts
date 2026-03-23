@@ -16,6 +16,8 @@ export const agentePagamentoContratoSchema = z.object({
   status_contrato: z.string(),
   status_visual_slug: z.string(),
   status_visual_label: z.string(),
+  possui_meses_nao_descontados: z.boolean(),
+  meses_nao_descontados_count: z.int(),
   data_contrato: z.optional(z.iso.date()),
   auxilio_liberado_em: z.iso.date().nullish(),
   pagamento_inicial_status: z.string(),

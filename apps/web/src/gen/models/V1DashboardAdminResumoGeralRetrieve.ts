@@ -25,6 +25,10 @@ export type V1DashboardAdminResumoGeralRetrieveQueryParams = {
   /**
    * @type string | undefined
    */
+  day?: string;
+  /**
+   * @type string | undefined
+   */
   status?: string;
 };
 

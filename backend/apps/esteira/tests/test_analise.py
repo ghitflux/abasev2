@@ -387,6 +387,53 @@ class AnaliseViewSetTestCase(TestCase):
         self.assertEqual(doc_issue.status, DocIssue.Status.RESOLVIDO)
         self.assertEqual(documento.status, Documento.Status.APROVADO)
 
+    def test_pendencias_retorna_esteira_item_id_para_correcao(self):
+        item = self._create_item(
+            suffix="404",
+            etapa=EsteiraItem.Etapa.CADASTRO,
+            status=EsteiraItem.Situacao.PENDENCIADO,
+        )
+        pendencia = Pendencia.objects.create(
+            esteira_item=item,
+            tipo="documentacao",
+            descricao="Atualizar comprovante.",
+            retornado_para_agente=True,
+        )
+
+        response = self.agent_client.get("/api/v1/esteira/pendencias/")
+        self.assertEqual(response.status_code, 200, response.json())
+
+        row = next(
+            registro
+            for registro in response.json()["results"]
+            if registro["id"] == pendencia.id
+        )
+        self.assertEqual(row["esteira_item_id"], item.id)
+
+    def test_correcao_retorna_payload_completo_para_agente(self):
+        item = self._create_item(
+            suffix="405",
+            etapa=EsteiraItem.Etapa.CADASTRO,
+            status=EsteiraItem.Situacao.PENDENCIADO,
+            documentos=1,
+        )
+        Pendencia.objects.create(
+            esteira_item=item,
+            tipo="documentacao",
+            descricao="Corrigir cadastro e anexos.",
+            retornado_para_agente=True,
+        )
+
+        response = self.agent_client.get(f"/api/v1/esteira/{item.id}/correcao/")
+        self.assertEqual(response.status_code, 200, response.json())
+
+        payload = response.json()
+        self.assertEqual(payload["id"], item.associado_id)
+        self.assertIn("documentos", payload)
+        self.assertEqual(len(payload["documentos"]), 1)
+        self.assertIn("esteira", payload)
+        self.assertEqual(payload["esteira"]["id"], item.id)
+
     def test_agente_nao_tem_acesso_ao_modulo_analise(self):
         response = self.agent_client.get("/api/v1/analise/")
         self.assertEqual(response.status_code, 403)

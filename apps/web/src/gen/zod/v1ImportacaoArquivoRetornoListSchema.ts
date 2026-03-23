@@ -12,26 +12,21 @@ export const V1ImportacaoArquivoRetornoListQueryParamsSchema = z
       z.string().describe("Competência base no formato YYYY-MM."),
     ),
     ordering: z.optional(
-      z.string().describe("Qual campo usar ao ordenar os resultados."),
+      z.string().describe("Which field to use when ordering the results."),
     ),
     page: z.optional(
       z.coerce
         .number()
         .int()
-        .describe(
-          "Um número de página dentro do conjunto de resultados paginado.",
-        ),
+        .describe("A page number within the paginated result set."),
     ),
     page_size: z.optional(
-      z.coerce
-        .number()
-        .int()
-        .describe("Número de resultados a serem retornados por página."),
+      z.coerce.number().int().describe("Number of results to return per page."),
     ),
     periodo: z.optional(
       z.string().describe("Janela de filtro: mes ou trimestre."),
     ),
-    search: z.optional(z.string().describe("Um termo de busca.")),
+    search: z.optional(z.string().describe("A search term.")),
   })
   .optional();
 

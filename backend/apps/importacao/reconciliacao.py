@@ -240,6 +240,19 @@ class MotorReconciliacao:
         parcela: Parcela,
         permitir_diferenca: bool = False,
     ) -> dict[str, object]:
+        if parcela.status == Parcela.Status.LIQUIDADA:
+            item.resultado_processamento = (
+                ArquivoRetornoItem.ResultadoProcessamento.PENDENCIA_MANUAL
+            )
+            item.observacao = (
+                "Competência vinculada a contrato liquidado. Revisão manual necessária."
+            )
+            return {
+                "resultado": ArquivoRetornoItem.ResultadoProcessamento.PENDENCIA_MANUAL,
+                "gerou_encerramento": False,
+                "gerou_novo_ciclo": False,
+            }
+
         if item.valor_descontado != parcela.valor and not permitir_diferenca:
             item.resultado_processamento = ArquivoRetornoItem.ResultadoProcessamento.PENDENCIA_MANUAL
             item.observacao = (

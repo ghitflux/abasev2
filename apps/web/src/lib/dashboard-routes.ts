@@ -17,7 +17,7 @@ const ROUTE_PREFIXES: Array<{ kind: DashboardRouteKind; prefixes: string[] }> = 
   },
   {
     kind: "form",
-    prefixes: ["/associados/novo", "/agentes/cadastrar-associado"],
+    prefixes: ["/associados/novo", "/agentes/cadastrar-associado", "/associados-editar"],
   },
   {
     kind: "list",
@@ -27,7 +27,6 @@ const ROUTE_PREFIXES: Array<{ kind: DashboardRouteKind; prefixes: string[] }> = 
       "/agentes/pagamentos",
       "/agentes/refinanciados",
       "/tesouraria",
-      "/tesouraria/confirmacoes",
       "/tesouraria/refinanciamentos",
       "/coordenacao/refinanciamento",
       "/coordenacao/refinanciados",
@@ -65,7 +64,11 @@ export function resolveDashboardRouteKind(pathname?: string | null): DashboardRo
     return "list";
   }
 
-  if (/^\/associados\/[^/]+\/editar$/.test(normalizedPathname)) {
+  if (
+    /^\/associados\/[^/]+\/editar$/.test(normalizedPathname) ||
+    /^\/associados\/editar\/[^/]+$/.test(normalizedPathname) ||
+    /^\/associados-editar\/[^/]+$/.test(normalizedPathname)
+  ) {
     return "form";
   }
 
@@ -93,7 +96,11 @@ export function isDashboardRoute(pathname?: string | null) {
     return true;
   }
 
-  if (/^\/associados\/[^/]+(\/editar)?$/.test(normalizedPathname)) {
+  if (
+    /^\/associados\/[^/]+(\/editar)?$/.test(normalizedPathname) ||
+    /^\/associados\/editar\/[^/]+$/.test(normalizedPathname) ||
+    /^\/associados-editar\/[^/]+$/.test(normalizedPathname)
+  ) {
     return true;
   }
 

@@ -37,6 +37,17 @@ import StatusBadge from "@/components/custom/status-badge";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import StatsCard from "@/components/shared/stats-card";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -210,6 +221,8 @@ export default function TesourariaDespesasPage() {
   const [formOpen, setFormOpen] = React.useState(false);
   const [uploadTarget, setUploadTarget] = React.useState<DespesaItem | null>(null);
   const [uploadFile, setUploadFile] = React.useState<File | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<DespesaItem | null>(null);
+  const [deleteConfirmed, setDeleteConfirmed] = React.useState(false);
 
   const despesasQuery = useQuery({
     queryKey: [
@@ -423,10 +436,8 @@ export default function TesourariaDespesasPage() {
                 className="border-rose-500/40 text-rose-200"
                 disabled={deleteMutation.isPending}
                 onClick={() => {
-                  if (!window.confirm(`Excluir a despesa "${row.descricao}"?`)) {
-                    return;
-                  }
-                  deleteMutation.mutate(row.id);
+                  setDeleteTarget(row);
+                  setDeleteConfirmed(false);
                 }}
               >
                 <Trash2Icon className="size-4" />
@@ -933,6 +944,80 @@ export default function TesourariaDespesasPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+            setDeleteConfirmed(false);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia className="bg-rose-500/10 text-rose-200">
+              <Trash2Icon className="size-8" />
+            </AlertDialogMedia>
+            <AlertDialogTitle>Excluir despesa</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget ? (
+                <>
+                  A despesa <strong>{deleteTarget.descricao}</strong> será removida da listagem
+                  ativa da competência atual.
+                </>
+              ) : (
+                "Confirme a exclusão da despesa selecionada."
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-4 rounded-2xl border border-border/60 bg-card/60 p-4">
+            {deleteTarget ? (
+              <>
+                <div className="space-y-1 text-sm">
+                  <p className="font-medium">{deleteTarget.categoria}</p>
+                  <p className="text-muted-foreground">{formatCurrency(deleteTarget.valor)}</p>
+                  <p className="text-muted-foreground">
+                    Lançada em {formatDate(deleteTarget.data_despesa)}
+                  </p>
+                </div>
+                <label className="flex items-start gap-3 text-sm text-muted-foreground">
+                  <Checkbox
+                    checked={deleteConfirmed}
+                    onCheckedChange={(checked) => setDeleteConfirmed(Boolean(checked))}
+                  />
+                  <span>
+                    Confirmo que revisei esta despesa e desejo excluí-la.
+                  </span>
+                </label>
+              </>
+            ) : null}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={!deleteTarget || !deleteConfirmed || deleteMutation.isPending}
+              onClick={(event) => {
+                if (!deleteTarget || !deleteConfirmed) {
+                  event.preventDefault();
+                  return;
+                }
+                deleteMutation.mutate(deleteTarget.id, {
+                  onSuccess: () => {
+                    setDeleteTarget(null);
+                    setDeleteConfirmed(false);
+                  },
+                });
+              }}
+            >
+              Excluir despesa
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

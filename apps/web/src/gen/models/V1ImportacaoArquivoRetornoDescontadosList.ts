@@ -7,7 +7,7 @@ import type { PaginatedArquivoRetornoItemList } from "./PaginatedArquivoRetornoI
 
 export type V1ImportacaoArquivoRetornoDescontadosListPathParams = {
   /**
-   * @description Um valor inteiro único que identifica este arquivo retorno.
+   * @description A unique integer value identifying this arquivo retorno.
    * @type integer
    */
   id: number;
@@ -15,22 +15,22 @@ export type V1ImportacaoArquivoRetornoDescontadosListPathParams = {
 
 export type V1ImportacaoArquivoRetornoDescontadosListQueryParams = {
   /**
-   * @description Qual campo usar ao ordenar os resultados.
+   * @description Which field to use when ordering the results.
    * @type string | undefined
    */
   ordering?: string;
   /**
-   * @description Um número de página dentro do conjunto de resultados paginado.
+   * @description A page number within the paginated result set.
    * @type integer | undefined
    */
   page?: number;
   /**
-   * @description Número de resultados a serem retornados por página.
+   * @description Number of results to return per page.
    * @type integer | undefined
    */
   page_size?: number;
   /**
-   * @description Um termo de busca.
+   * @description A search term.
    * @type string | undefined
    */
   search?: string;

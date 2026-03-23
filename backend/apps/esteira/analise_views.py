@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -15,11 +17,13 @@ from .analise_serializers import (
     AnalisePagamentoDataSerializer,
     AnalisePagamentoSerializer,
 )
+from .models import EsteiraItem
 from .analise_services import AnaliseService
 from .serializers import EsteiraListSerializer
 
 
 class AnaliseViewSet(GenericViewSet):
+    queryset = EsteiraItem.objects.none()
     permission_classes = [permissions.IsAuthenticated, IsAnalistaOrAdmin]
     pagination_class = StandardResultsSetPagination
 
@@ -97,7 +101,16 @@ class AnaliseViewSet(GenericViewSet):
     @action(
         detail=False,
         methods=["patch"],
-        url_path=r"ajustes/(?P<pagamento_id>[^/.]+)/data-pagamento",
+        url_path=r"ajustes/(?P<pagamento_id>\d+)/data-pagamento",
+    )
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="pagamento_id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+            )
+        ]
     )
     def ajuste_data_pagamento(self, request, pagamento_id=None):
         payload = AnalisePagamentoDataSerializer(data=request.data)
@@ -108,7 +121,16 @@ class AnaliseViewSet(GenericViewSet):
         )
         return Response(AnalisePagamentoSerializer(pagamento).data)
 
-    @action(detail=False, methods=["delete"], url_path=r"ajustes/(?P<pagamento_id>[^/.]+)")
+    @action(detail=False, methods=["delete"], url_path=r"ajustes/(?P<pagamento_id>\d+)")
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="pagamento_id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+            )
+        ]
+    )
     def excluir_ajuste(self, request, pagamento_id=None):
         AnaliseService.excluir_pagamento(int(pagamento_id))
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -134,7 +156,16 @@ class AnaliseViewSet(GenericViewSet):
     @action(
         detail=False,
         methods=["patch"],
-        url_path=r"dados/(?P<associado_id>[^/.]+)/nome",
+        url_path=r"dados/(?P<associado_id>\d+)/nome",
+    )
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="associado_id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+            )
+        ]
     )
     def atualizar_nome(self, request, associado_id=None):
         payload = AnaliseDadosUpdateSerializer(data=request.data)

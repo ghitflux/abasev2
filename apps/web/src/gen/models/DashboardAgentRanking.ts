@@ -13,6 +13,14 @@ export type DashboardAgentRanking = {
    */
   agent_name: string;
   /**
+   * @type number, double
+   */
+  volume_financeiro: number;
+  /**
+   * @type number, double
+   */
+  participacao_volume: number;
+  /**
    * @type integer
    */
   efetivados: number;
@@ -31,7 +39,39 @@ export type DashboardAgentRanking = {
   /**
    * @type integer
    */
+  aptos_renovar: number;
+  /**
+   * @type integer
+   */
   inadimplentes: number;
+  /**
+   * @type integer
+   */
+  devolvidos: number;
+  /**
+   * @type integer
+   */
+  cadastrado: number;
+  /**
+   * @type integer
+   */
+  em_analise: number;
+  /**
+   * @type integer
+   */
+  pendente: number;
+  /**
+   * @type integer
+   */
+  ativo: number;
+  /**
+   * @type integer
+   */
+  inadimplente: number;
+  /**
+   * @type integer
+   */
+  inativo: number;
   /**
    * @type number, double
    */

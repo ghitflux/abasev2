@@ -7,7 +7,7 @@ import type { DespesaList } from "./DespesaList.ts";
 
 export type V1TesourariaDespesasRetrievePathParams = {
   /**
-   * @description Um valor inteiro único que identifica este despesa.
+   * @description A unique integer value identifying this despesa.
    * @type integer
    */
   id: number;

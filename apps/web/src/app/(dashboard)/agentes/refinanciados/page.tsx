@@ -1,14 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BadgeCheckIcon,
+  ClipboardCheckIcon,
   HandCoinsIcon,
   PaperclipIcon,
   RefreshCcwIcon,
+  SlidersHorizontalIcon,
   WalletIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import type {
   ContratoListItem,
@@ -18,6 +21,7 @@ import type {
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
+import { formatMonthValue, parseMonthValue } from "@/lib/date-value";
 import {
   formatCurrency,
   formatDateTime,
@@ -25,12 +29,23 @@ import {
 } from "@/lib/formatters";
 import { maskCPFCNPJ } from "@/lib/masks";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
+import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import StatusBadge from "@/components/custom/status-badge";
+import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import { MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -39,15 +54,41 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type RefinanciadosTab = "efetivados" | "aptos";
+type RefinanciadosTab = "historico" | "aptos";
+type HistoryAdvancedFilters = {
+  status: string;
+  competenciaStart: string;
+  competenciaEnd: string;
+};
 
-const FINAL_STATUS_OPTIONS = [
-  { value: "todos", label: "Todos finalizados" },
+const HISTORY_STATUS_OPTIONS = [
+  { value: "todos", label: "Todos no fluxo" },
+  { value: "solicitado_para_liquidacao", label: "Solicitada para liquidação" },
+  { value: "em_analise_renovacao", label: "Em análise" },
+  { value: "aprovado_analise_renovacao", label: "Aguardando coordenação" },
+  { value: "aprovado_para_renovacao", label: "Aguardando tesouraria" },
   { value: "efetivado", label: "Efetivados" },
   { value: "concluido", label: "Concluídos" },
+  { value: "bloqueado", label: "Bloqueados" },
+  { value: "revertido", label: "Revertidos" },
+  { value: "desativado", label: "Desativados" },
 ];
+
+const TERMO_ACCEPT = {
+  "application/pdf": [".pdf"],
+  "image/png": [".png"],
+  "image/jpeg": [".jpg", ".jpeg"],
+};
 
 const EMPTY_RESUMO: RefinanciamentoResumo = {
   total: 0,
@@ -63,60 +104,104 @@ const EMPTY_RESUMO: RefinanciamentoResumo = {
   repasse_total: "0.00",
 };
 
+const INITIAL_HISTORY_FILTERS: HistoryAdvancedFilters = {
+  status: "todos",
+  competenciaStart: "",
+  competenciaEnd: "",
+};
+
+function toCompetenciaDate(value: string) {
+  return value ? `${value}-01` : undefined;
+}
+
+function countActiveHistoryFilters(filters: HistoryAdvancedFilters) {
+  return [
+    filters.status !== "todos" ? filters.status : "",
+    filters.competenciaStart,
+    filters.competenciaEnd,
+  ].filter(Boolean).length;
+}
+
 export default function AgenteRefinanciadosPage() {
-  const [tab, setTab] = React.useState<RefinanciadosTab>("efetivados");
+  const queryClient = useQueryClient();
+  const [tab, setTab] = React.useState<RefinanciadosTab>("historico");
   const [search, setSearch] = React.useState("");
-  const [finalStatus, setFinalStatus] = React.useState("todos");
-  const [cycleKey, setCycleKey] = React.useState("");
+  const [historyFilters, setHistoryFilters] =
+    React.useState<HistoryAdvancedFilters>(INITIAL_HISTORY_FILTERS);
+  const [draftHistoryFilters, setDraftHistoryFilters] =
+    React.useState<HistoryAdvancedFilters>(INITIAL_HISTORY_FILTERS);
+  const [historySheetOpen, setHistorySheetOpen] = React.useState(false);
   const [pageSize, setPageSize] = React.useState("15");
   const [page, setPage] = React.useState(1);
+  const [sendTarget, setSendTarget] = React.useState<ContratoListItem | null>(null);
+  const [liquidacaoTarget, setLiquidacaoTarget] = React.useState<ContratoListItem | null>(null);
+  const [termo, setTermo] = React.useState<File | null>(null);
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  const resolvedFinalStatus =
-    finalStatus === "todos" ? "efetivado,concluido" : finalStatus;
+  const resolvedHistoryStatus =
+    historyFilters.status === "todos"
+      ? [
+          "solicitado_para_liquidacao",
+          "em_analise_renovacao",
+          "aprovado_analise_renovacao",
+          "aprovado_para_renovacao",
+          "efetivado",
+          "concluido",
+          "bloqueado",
+          "revertido",
+          "desativado",
+        ].join(",")
+      : historyFilters.status;
+  const activeHistoryFiltersCount = countActiveHistoryFilters(historyFilters);
 
   const refinanciamentosQuery = useQuery({
     queryKey: [
-      "agente-refinanciados-finalizados",
+      "agente-refinanciados",
+      "historico",
       debouncedSearch,
-      resolvedFinalStatus,
-      cycleKey,
+      resolvedHistoryStatus,
+      historyFilters.competenciaStart,
+      historyFilters.competenciaEnd,
       pageSize,
       page,
     ],
-    enabled: tab === "efetivados",
+    enabled: tab === "historico",
     queryFn: () =>
       apiFetch<PaginatedResponse<RefinanciamentoItem>>("refinanciamentos", {
         query: {
           page,
           page_size: Number(pageSize),
           search: debouncedSearch || undefined,
-          status: resolvedFinalStatus,
-          cycle_key: cycleKey || undefined,
+          status: resolvedHistoryStatus,
+          competencia_start: toCompetenciaDate(historyFilters.competenciaStart),
+          competencia_end: toCompetenciaDate(historyFilters.competenciaEnd),
         },
       }),
   });
 
   const resumoQuery = useQuery({
     queryKey: [
-      "agente-refinanciados-finalizados-resumo",
+      "agente-refinanciados",
+      "resumo",
       debouncedSearch,
-      resolvedFinalStatus,
-      cycleKey,
+      resolvedHistoryStatus,
+      historyFilters.competenciaStart,
+      historyFilters.competenciaEnd,
     ],
-    enabled: tab === "efetivados",
+    enabled: tab === "historico",
     queryFn: () =>
       apiFetch<RefinanciamentoResumo>("refinanciamentos/resumo", {
         query: {
           search: debouncedSearch || undefined,
-          status: resolvedFinalStatus,
-          cycle_key: cycleKey || undefined,
+          status: resolvedHistoryStatus,
+          competencia_start: toCompetenciaDate(historyFilters.competenciaStart),
+          competencia_end: toCompetenciaDate(historyFilters.competenciaEnd),
         },
       }),
   });
 
   const aptosQuery = useQuery({
-    queryKey: ["agente-refinanciados-aptos", debouncedSearch, pageSize, page],
+    queryKey: ["agente-refinanciados", "aptos", debouncedSearch, pageSize, page],
     enabled: tab === "aptos",
     queryFn: () =>
       apiFetch<PaginatedResponse<ContratoListItem>>("contratos", {
@@ -127,6 +212,81 @@ export default function AgenteRefinanciadosPage() {
           status_renovacao: "apto_a_renovar",
         },
       }),
+  });
+
+  const solicitarMutation = useMutation({
+    mutationFn: async ({
+      contratoId,
+      file,
+    }: {
+      contratoId: number;
+      file: File;
+    }) => {
+      const formData = new FormData();
+      formData.set("termo_antecipacao", file);
+      return apiFetch<RefinanciamentoItem>(`refinanciamentos/${contratoId}/solicitar`, {
+        method: "POST",
+        formData,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Renovação enviada para análise.");
+      setSendTarget(null);
+      setTermo(null);
+      setTab("historico");
+      setHistoryFilters((current) => ({
+        ...current,
+        status: "em_analise_renovacao",
+      }));
+      setDraftHistoryFilters((current) => ({
+        ...current,
+        status: "em_analise_renovacao",
+      }));
+      setPage(1);
+      void queryClient.invalidateQueries({ queryKey: ["agente-refinanciados"] });
+      void queryClient.invalidateQueries({ queryKey: ["analise-refinanciamentos"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["analise-refinanciamentos-resumo"],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["contratos"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao enviar renovação para análise.",
+      );
+    },
+  });
+
+  const solicitarLiquidacaoMutation = useMutation({
+    mutationFn: async ({ contratoId }: { contratoId: number }) =>
+      apiFetch<RefinanciamentoItem>(`refinanciamentos/${contratoId}/solicitar-liquidacao`, {
+        method: "POST",
+        body: {},
+      }),
+    onSuccess: () => {
+      toast.success("Solicitação de liquidação enviada para tesouraria.");
+      setLiquidacaoTarget(null);
+      setTab("historico");
+      setHistoryFilters((current) => ({
+        ...current,
+        status: "solicitado_para_liquidacao",
+      }));
+      setDraftHistoryFilters((current) => ({
+        ...current,
+        status: "solicitado_para_liquidacao",
+      }));
+      setPage(1);
+      void queryClient.invalidateQueries({ queryKey: ["agente-refinanciados"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-liquidacoes"] });
+      void queryClient.invalidateQueries({ queryKey: ["contratos"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao solicitar a liquidação do contrato.",
+      );
+    },
   });
 
   const refinanciadosRows = refinanciamentosQuery.data?.results ?? [];
@@ -199,21 +359,41 @@ export default function AgenteRefinanciadosPage() {
   const aptosColumns = React.useMemo<DataTableColumn<ContratoListItem>[]>(
     () => [
       {
-        id: "associado",
-        header: "Associado",
-        cellClassName: "min-w-[20rem]",
+        id: "nome",
+        header: "Nome",
+        cellClassName: "min-w-[16rem]",
         cell: (row) => (
-          <AssociadoSummary
-            nome={row.associado.nome_completo}
-            cpf={row.associado.cpf_cnpj}
-            matricula={row.associado.matricula_display || row.associado.matricula}
+          <CopySnippet
+            label="Nome"
+            value={row.associado.nome_completo}
+            inline
+            className="max-w-full"
+          />
+        ),
+      },
+      {
+        id: "cpf",
+        header: "CPF",
+        cellClassName: "min-w-[11rem]",
+        cell: (row) => <CopySnippet label="CPF" value={row.associado.cpf_cnpj} mono inline />,
+      },
+      {
+        id: "matricula",
+        header: "Matrícula do Servidor",
+        cellClassName: "min-w-[12rem]",
+        cell: (row) => (
+          <CopySnippet
+            label="Matrícula do Servidor"
+            value={row.associado.matricula_display || row.associado.matricula || "N/I"}
+            mono
+            inline
           />
         ),
       },
       {
         id: "contrato",
-        header: "Contrato",
-        cellClassName: "min-w-[14rem]",
+        header: "Contrato atual",
+        cellClassName: "min-w-[15rem]",
         cell: (row) => (
           <div className="space-y-2">
             <p className="font-mono text-xs text-foreground">{row.codigo}</p>
@@ -225,35 +405,64 @@ export default function AgenteRefinanciadosPage() {
         ),
       },
       {
-        id: "mensalidades",
-        header: "Mensalidades do ciclo",
+        id: "ciclo_apto",
+        header: "Ciclo que gerou o apto",
         cellClassName: "min-w-[15rem]",
         cell: (row) => (
           <div className="space-y-1">
-            <p className="font-medium">
-              {row.mensalidades.pagas}/{row.mensalidades.total}
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-medium">
+                Ciclo {row.ciclo_apto?.numero ?? "N/I"}
+              </p>
+              {row.ciclo_apto ? (
+                <StatusBadge
+                  status={row.ciclo_apto.status_visual_slug}
+                  label={row.ciclo_apto.status_visual_label}
+                />
+              ) : null}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {row.ciclo_apto?.resumo_referencias || row.mensalidades.descricao}
             </p>
             <p className="text-xs text-muted-foreground">
-              {row.mensalidades.descricao}
+              {row.ciclo_apto
+                ? `${row.ciclo_apto.parcelas_pagas}/${row.ciclo_apto.parcelas_total} parcela(s) quitadas`
+                : `${row.mensalidades.pagas}/${row.mensalidades.total} parcela(s) quitadas`}
             </p>
           </div>
         ),
       },
       {
-        id: "status_contrato",
-        header: "Contrato atual",
+        id: "financeiro",
+        header: "Auxílio liberado / Repasse",
+        cellClassName: "min-w-[15rem]",
         cell: (row) => (
-          <StatusBadge
-            status={row.status_visual_slug}
-            label={row.status_visual_label}
-          />
+          <div className="space-y-1">
+            <p className="font-medium">
+              Auxílio liberado: {formatCurrency(row.valor_auxilio_liberado)}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Repasse: {formatCurrency(row.comissao_agente)} · {row.percentual_repasse}%
+            </p>
+          </div>
         ),
       },
       {
-        id: "valor",
-        header: "Mensalidade",
-        cellClassName: "whitespace-nowrap",
-        cell: (row) => formatCurrency(row.valor_mensalidade),
+        id: "acoes",
+        header: "Ações",
+        cellClassName: "min-w-[280px]",
+        cell: (row) => (
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" onClick={() => setSendTarget(row)}>
+              <ClipboardCheckIcon className="size-4" />
+              Enviar para renovação
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setLiquidacaoTarget(row)}>
+              <HandCoinsIcon className="size-4" />
+              Enviar para liquidação
+            </Button>
+          </div>
+        ),
       },
     ],
     [],
@@ -269,24 +478,24 @@ export default function AgenteRefinanciadosPage() {
       className="space-y-6"
     >
       <section className="rounded-[1.75rem] border border-border/60 bg-card/70 p-6 shadow-xl shadow-black/15">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-4">
           <div className="space-y-2">
             <h1 className="text-3xl font-semibold tracking-tight">
-              Refinanciados
+              Renovações
             </h1>
             <p className="max-w-3xl text-sm text-muted-foreground">
-              Acompanhe separadamente os contratos com renovação já efetivada e
-              os contratos que ainda estão aptos a renovar.
+              O agente envia o termo de antecipação dos próprios contratos aptos
+              para a fila do analista e acompanha o andamento até a tesouraria.
             </p>
+            <TabsList variant="line" className="w-fit">
+              <TabsTrigger value="historico">Solicitações e histórico</TabsTrigger>
+              <TabsTrigger value="aptos">Aptos a renovar</TabsTrigger>
+            </TabsList>
           </div>
-          <TabsList variant="line">
-            <TabsTrigger value="efetivados">Renovação efetivada</TabsTrigger>
-            <TabsTrigger value="aptos">Aptos a renovar</TabsTrigger>
-          </TabsList>
         </div>
       </section>
 
-      <TabsContent value="efetivados" className="space-y-6">
+      <TabsContent value="historico" className="space-y-6">
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {resumoQuery.isLoading && !resumoQuery.data ? (
             Array.from({ length: 4 }).map((_, index) => (
@@ -295,72 +504,45 @@ export default function AgenteRefinanciadosPage() {
           ) : (
             <>
               <StatsCard
-                title="Contratos refinanciados"
+                title="Solicitações do agente"
                 value={String(resumo.total)}
-                delta={`${resumo.efetivados} com status efetivado`}
+                delta={`${resumo.em_analise} em análise no recorte`}
                 icon={RefreshCcwIcon}
                 tone="neutral"
               />
               <StatsCard
-                title="Efetivados"
-                value={String(resumo.efetivados)}
-                delta={`${resumo.concluidos} finalizados no recorte`}
+                title="Em análise"
+                value={String(resumo.em_analise)}
+                delta={`${resumo.aprovados} validadas pela análise`}
+                icon={ClipboardCheckIcon}
+                tone="warning"
+              />
+              <StatsCard
+                title="Aguardando coordenação"
+                value={String(resumo.aprovados)}
+                delta={`${resumo.efetivados} efetivadas pela tesouraria`}
                 icon={BadgeCheckIcon}
                 tone="positive"
               />
               <StatsCard
-                title="Com anexo do agente"
+                title="Com termo do agente"
                 value={String(resumo.com_anexo_agente)}
-                delta="Comprovante do agente disponível"
+                delta="Anexo do agente disponível na solicitação"
                 icon={PaperclipIcon}
                 tone="neutral"
-              />
-              <StatsCard
-                title="Repasse total"
-                value={formatCurrency(resumo.repasse_total)}
-                delta="Soma do repasse do agente no recorte"
-                icon={HandCoinsIcon}
-                tone="positive"
               />
             </>
           )}
         </section>
 
-        <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 xl:grid-cols-[minmax(0,1fr)_220px_minmax(0,0.9fr)_160px_auto_auto]">
+        <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 xl:grid-cols-[minmax(0,1fr)_160px_auto_auto]">
           <Input
             value={search}
             onChange={(event) => {
               setSearch(event.target.value);
               setPage(1);
             }}
-            placeholder="Buscar por nome, CPF, matrícula, contrato ou ciclo..."
-            className="rounded-2xl border-border/60 bg-card/60"
-          />
-          <Select
-            value={finalStatus}
-            onValueChange={(value) => {
-              setFinalStatus(value);
-              setPage(1);
-            }}
-          >
-            <SelectTrigger className="rounded-2xl bg-card/60">
-              <SelectValue placeholder="Todos finalizados" />
-            </SelectTrigger>
-            <SelectContent>
-              {FINAL_STATUS_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Input
-            value={cycleKey}
-            onChange={(event) => {
-              setCycleKey(event.target.value);
-              setPage(1);
-            }}
-            placeholder="Ciclo (ex: 2026-03|2026-04|2026-05)"
+            placeholder="Buscar por nome, CPF, matrícula ou contrato..."
             className="rounded-2xl border-border/60 bg-card/60"
           />
           <PageSizeSelect
@@ -370,13 +552,105 @@ export default function AgenteRefinanciadosPage() {
               setPage(1);
             }}
           />
-          <Button onClick={() => setPage(1)}>Aplicar</Button>
+          <Sheet open={historySheetOpen} onOpenChange={setHistorySheetOpen}>
+            <SheetTrigger asChild>
+              <Button variant="outline" className="rounded-2xl">
+                <SlidersHorizontalIcon className="size-4" />
+                Filtros avançados
+                {activeHistoryFiltersCount > 0 ? (
+                  <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-[11px] text-primary">
+                    {activeHistoryFiltersCount}
+                  </Badge>
+                ) : null}
+              </Button>
+            </SheetTrigger>
+            <SheetContent className="w-full border-l border-border/60 bg-background/95 sm:max-w-lg">
+              <SheetHeader>
+                <SheetTitle>Filtros avançados</SheetTitle>
+              </SheetHeader>
+              <div className="mt-8 space-y-6">
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-foreground">Status</p>
+                  <Select
+                    value={draftHistoryFilters.status}
+                    onValueChange={(value) =>
+                      setDraftHistoryFilters((current) => ({
+                        ...current,
+                        status: value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="rounded-2xl bg-card/60">
+                      <SelectValue placeholder="Todos no fluxo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HISTORY_STATUS_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">
+                      Competência inicial
+                    </p>
+                    <CalendarCompetencia
+                      value={parseMonthValue(draftHistoryFilters.competenciaStart)}
+                      onChange={(value) =>
+                        setDraftHistoryFilters((current) => ({
+                          ...current,
+                          competenciaStart: formatMonthValue(value),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">
+                      Competência final
+                    </p>
+                    <CalendarCompetencia
+                      value={parseMonthValue(draftHistoryFilters.competenciaEnd)}
+                      onChange={(value) =>
+                        setDraftHistoryFilters((current) => ({
+                          ...current,
+                          competenciaEnd: formatMonthValue(value),
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+              </div>
+              <SheetFooter className="mt-8 gap-3 sm:flex-col">
+                <Button
+                  variant="outline"
+                  className="w-full rounded-2xl"
+                  onClick={() => setDraftHistoryFilters(INITIAL_HISTORY_FILTERS)}
+                >
+                  Limpar filtros avançados
+                </Button>
+                <Button
+                  className="w-full rounded-2xl"
+                  onClick={() => {
+                    setHistoryFilters(draftHistoryFilters);
+                    setPage(1);
+                    setHistorySheetOpen(false);
+                  }}
+                >
+                  Aplicar filtros
+                </Button>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
           <Button
             variant="outline"
             onClick={() => {
               setSearch("");
-              setFinalStatus("todos");
-              setCycleKey("");
+              setHistoryFilters(INITIAL_HISTORY_FILTERS);
+              setDraftHistoryFilters(INITIAL_HISTORY_FILTERS);
               setPageSize("15");
               setPage(1);
             }}
@@ -396,7 +670,7 @@ export default function AgenteRefinanciadosPage() {
             ),
           )}
           onPageChange={setPage}
-          emptyMessage="Nenhum contrato com renovação efetivada encontrado."
+          emptyMessage="Nenhuma solicitação de renovação encontrada."
           loading={refinanciamentosQuery.isLoading}
           skeletonRows={6}
         />
@@ -411,7 +685,7 @@ export default function AgenteRefinanciadosPage() {
               </p>
               <p className="text-sm text-muted-foreground">
                 Esta aba mostra somente os contratos do agente que já podem
-                entrar em uma nova renovação.
+                receber o termo de antecipação e seguir para a análise.
               </p>
             </div>
             <StatsCard
@@ -468,6 +742,102 @@ export default function AgenteRefinanciadosPage() {
           skeletonRows={6}
         />
       </TabsContent>
+
+      <Dialog
+        open={!!sendTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSendTarget(null);
+            setTermo(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enviar renovação</DialogTitle>
+            <DialogDescription>
+              {sendTarget
+                ? `${sendTarget.associado.nome_completo} · ${sendTarget.codigo}`
+                : "Anexe o termo de antecipação para encaminhar a renovação ao analista."}
+            </DialogDescription>
+          </DialogHeader>
+          <FileUploadDropzone
+            accept={TERMO_ACCEPT}
+            file={termo}
+            onUpload={setTermo}
+            emptyTitle="Selecione o termo de antecipação"
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSendTarget(null);
+                setTermo(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={!sendTarget || !termo || solicitarMutation.isPending}
+              onClick={() => {
+                if (!sendTarget || !termo) return;
+                solicitarMutation.mutate({
+                  contratoId: sendTarget.id,
+                  file: termo,
+                });
+              }}
+            >
+              Enviar para renovação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!liquidacaoTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLiquidacaoTarget(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enviar para liquidação</DialogTitle>
+            <DialogDescription>
+              {liquidacaoTarget
+                ? `${liquidacaoTarget.associado.nome_completo} · ${liquidacaoTarget.codigo}`
+                : "A solicitação será encaminhada para a tesouraria tratar a liquidação do contrato."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-2xl border border-border/60 bg-card/50 p-4 text-sm text-muted-foreground">
+            Esta ação remove o contrato da lista de aptos a renovar e registra no histórico do agente
+            que o caso deve seguir para liquidação.
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setLiquidacaoTarget(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!liquidacaoTarget || solicitarLiquidacaoMutation.isPending}
+              onClick={() => {
+                if (!liquidacaoTarget) return;
+                solicitarLiquidacaoMutation.mutate({
+                  contratoId: liquidacaoTarget.id,
+                });
+              }}
+            >
+              Enviar para liquidação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Tabs>
   );
 }
@@ -537,12 +907,23 @@ function ReferenceList({ referencias }: { referencias: string[] }) {
 }
 
 function RenovacaoSummary({ row }: { row: RefinanciamentoItem }) {
-  const activationDate = row.data_ativacao_ciclo || row.executado_em;
+  const activationDate =
+    row.data_ativacao_ciclo ||
+    row.executado_em ||
+    row.reviewed_at ||
+    row.data_solicitacao_renovacao ||
+    row.created_at;
   const helperLabel = row.data_ativacao_ciclo
     ? "Ciclo ativado"
     : row.executado_em
       ? "Efetivado na tesouraria"
-      : "Data não identificada";
+      : row.status === "solicitado_para_liquidacao"
+        ? "Solicitada para liquidação"
+      : row.status === "aprovado_para_renovacao"
+        ? "Aguardando tesouraria"
+        : row.status === "aprovado_analise_renovacao"
+          ? "Aprovado na análise"
+          : "Enviado para análise";
 
   if (!activationDate) {
     return <span className="text-sm text-muted-foreground">N/I</span>;

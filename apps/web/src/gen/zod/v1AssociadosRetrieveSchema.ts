@@ -4,18 +4,18 @@
  */
 
 import * as z from "zod";
-import { associadoDetailSchema } from "./associadoDetailSchema.ts";
 
 export const V1AssociadosRetrievePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("Um valor inteiro único que identifica este associado."),
+    .describe("A unique integer value identifying this associado."),
 });
 
-export const V1AssociadosRetrieve200Schema = z.lazy(
-  () => associadoDetailSchema,
-);
+/**
+ * @description No response body
+ */
+export const V1AssociadosRetrieve200Schema = z.any();
 
 export const V1AssociadosRetrieveQueryResponseSchema = z.lazy(
   () => V1AssociadosRetrieve200Schema,

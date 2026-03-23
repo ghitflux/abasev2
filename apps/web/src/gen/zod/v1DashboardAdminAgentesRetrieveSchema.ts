@@ -9,8 +9,11 @@ import { dashboardAgentesSchema } from "./dashboardAgentesSchema.ts";
 export const V1DashboardAdminAgentesRetrieveQueryParamsSchema = z
   .object({
     agent_id: z.optional(z.coerce.number().int()),
+    competencia: z.optional(z.string()),
     date_end: z.optional(z.string()),
     date_start: z.optional(z.string()),
+    day: z.optional(z.string()),
+    status: z.optional(z.string()),
   })
   .optional();
 

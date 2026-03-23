@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from datetime import datetime
+
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.associados.serializers import SimpleUserSerializer
@@ -68,6 +71,28 @@ class ComprovanteResumoSerializer(serializers.ModelSerializer):
         return reference
 
 
+class RefinanciamentoItemResumoSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    numero = serializers.IntegerField()
+    pagamento_mensalidade_id = serializers.IntegerField(allow_null=True)
+    referencia_mes = serializers.DateField()
+    valor = serializers.DecimalField(max_digits=12, decimal_places=2)
+    status = serializers.CharField()
+
+
+class RefinanciamentoAuditoriaSerializer(serializers.Serializer):
+    solicitado_por = SimpleUserSerializer(allow_null=True)
+    aprovado_por = SimpleUserSerializer(allow_null=True)
+    bloqueado_por = SimpleUserSerializer(allow_null=True)
+    efetivado_por = SimpleUserSerializer(allow_null=True)
+    reviewed_by = SimpleUserSerializer(allow_null=True)
+    reviewed_at = serializers.DateTimeField(allow_null=True)
+    analista_note = serializers.CharField(allow_null=True, allow_blank=True)
+    coordenador_note = serializers.CharField(allow_null=True, allow_blank=True)
+    observacao = serializers.CharField(allow_null=True, allow_blank=True)
+    motivo_bloqueio = serializers.CharField(allow_null=True, allow_blank=True)
+
+
 class RefinanciamentoListSerializer(serializers.ModelSerializer):
     contrato_id = serializers.IntegerField(source="contrato_origem.id", read_only=True)
     contrato_codigo = serializers.CharField(
@@ -85,6 +110,7 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
     aprovado_por = SimpleUserSerializer(read_only=True)
     bloqueado_por = SimpleUserSerializer(read_only=True)
     efetivado_por = SimpleUserSerializer(read_only=True)
+    reviewed_by = SimpleUserSerializer(read_only=True)
     comprovantes = serializers.SerializerMethodField()
     ciclo_key = serializers.SerializerMethodField()
     referencias = serializers.SerializerMethodField()
@@ -122,6 +148,7 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
             "aprovado_por",
             "bloqueado_por",
             "efetivado_por",
+            "reviewed_by",
             "competencia_solicitada",
             "status",
             "valor_refinanciamento",
@@ -146,6 +173,9 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
             "etapa_operacional",
             "motivo_bloqueio",
             "observacao",
+            "analista_note",
+            "coordenador_note",
+            "reviewed_at",
             "executado_em",
             "created_at",
             "updated_at",
@@ -179,6 +209,7 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
             if referencia is not None
         ]
 
+    @extend_schema_field(RefinanciamentoItemResumoSerializer(many=True))
     def get_itens(self, obj: Refinanciamento) -> list[dict[str, object]]:
         return [
             {
@@ -208,6 +239,7 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
     def get_matricula_display(self, obj: Refinanciamento) -> str:
         return obj.associado.matricula_display
 
+    @extend_schema_field(ComprovanteResumoSerializer(many=True))
     def get_comprovantes(self, obj: Refinanciamento):
         prefetched = getattr(obj, "_prefetched_objects_cache", {})
         comprovantes = list(prefetched.get("comprovantes", []))
@@ -234,6 +266,7 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
             obj.associado.refinanciamentos.filter(created_at__lte=obj.created_at).count()
         )
 
+    @extend_schema_field(RefinanciamentoAuditoriaSerializer)
     def get_auditoria(self, obj: Refinanciamento) -> dict[str, object]:
         return {
             "solicitado_por": SimpleUserSerializer(obj.solicitado_por).data
@@ -248,6 +281,12 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
             "efetivado_por": SimpleUserSerializer(obj.efetivado_por).data
             if obj.efetivado_por
             else None,
+            "reviewed_by": SimpleUserSerializer(obj.reviewed_by).data
+            if obj.reviewed_by
+            else None,
+            "reviewed_at": obj.reviewed_at,
+            "analista_note": obj.analista_note,
+            "coordenador_note": obj.coordenador_note,
             "observacao": obj.observacao,
             "motivo_bloqueio": obj.motivo_bloqueio,
         }
@@ -259,25 +298,29 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
             else "pendente"
         )
 
-    def get_data_primeiro_ciclo_ativado(self, obj: Refinanciamento):
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_data_primeiro_ciclo_ativado(self, obj: Refinanciamento) -> datetime | None:
         if obj.contrato_origem is None:
             return None
         return get_contract_first_cycle_activation_info(obj.contrato_origem).activated_at
 
-    def get_data_renovacao(self, obj: Refinanciamento):
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_data_renovacao(self, obj: Refinanciamento) -> datetime | None:
         return obj.data_ativacao_ciclo or obj.executado_em or obj.created_at
 
     def get_origem_renovacao(self, obj: Refinanciamento) -> str:
         return obj.origem
 
-    def get_data_ativacao_ciclo(self, obj: Refinanciamento):
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_data_ativacao_ciclo(self, obj: Refinanciamento) -> datetime | None:
         return get_refinanciamento_activation_info(obj).activated_at
 
     def get_origem_data_ativacao(self, obj: Refinanciamento) -> str:
         return get_refinanciamento_activation_info(obj).source
 
-    def get_data_solicitacao_renovacao(self, obj: Refinanciamento):
-        return obj.data_ativacao_ciclo or obj.executado_em or obj.created_at
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
+    def get_data_solicitacao_renovacao(self, obj: Refinanciamento) -> datetime | None:
+        return obj.created_at
 
     def get_ativacao_inferida(self, obj: Refinanciamento) -> bool:
         return get_refinanciamento_activation_info(obj).inferred
@@ -286,6 +329,8 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
         return obj.status
 
     def get_motivo_apto_renovacao(self, obj: Refinanciamento) -> str:
+        if obj.status == Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO:
+            return "Liquidação solicitada pelo agente; aguardando tratativa da tesouraria."
         total = self.get_mensalidades_total(obj)
         pagas = min(self.get_mensalidades_pagas(obj), total)
         ciclo_numero = obj.ciclo_origem.numero if obj.ciclo_origem_id else 1
@@ -317,13 +362,24 @@ class DesativarRefinanciamentoSerializer(serializers.Serializer):
     motivo = serializers.CharField()
 
 
+class SolicitarRefinanciamentoSerializer(serializers.Serializer):
+    termo_antecipacao = serializers.FileField(required=True)
+
+
+class SolicitarLiquidacaoRefinanciamentoSerializer(serializers.Serializer):
+    pass
+
+
+class AprovarRefinanciamentoSerializer(serializers.Serializer):
+    observacao = serializers.CharField(required=False, allow_blank=True, default="")
+
+
 class EfetivarRefinanciamentoSerializer(serializers.Serializer):
     comprovante_associado = serializers.FileField(required=True)
     comprovante_agente = serializers.FileField(required=True)
 
 
 class AprovarAnaliseRefinanciamentoSerializer(serializers.Serializer):
-    termo_antecipacao = serializers.FileField(required=True)
     observacao = serializers.CharField(required=False, allow_blank=True, default="")
 
 

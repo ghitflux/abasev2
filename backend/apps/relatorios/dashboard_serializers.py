@@ -58,11 +58,21 @@ class DashboardRadialPointSerializer(serializers.Serializer):
 class DashboardAgentRankingSerializer(serializers.Serializer):
     agent_id = serializers.IntegerField()
     agent_name = serializers.CharField()
+    volume_financeiro = serializers.FloatField()
+    participacao_volume = serializers.FloatField()
     efetivados = serializers.IntegerField()
     cadastros = serializers.IntegerField()
     em_processo = serializers.IntegerField()
     renovados = serializers.IntegerField()
+    aptos_renovar = serializers.IntegerField()
     inadimplentes = serializers.IntegerField()
+    devolvidos = serializers.IntegerField()
+    cadastrado = serializers.IntegerField()
+    em_analise = serializers.IntegerField()
+    pendente = serializers.IntegerField()
+    ativo = serializers.IntegerField()
+    inadimplente = serializers.IntegerField()
+    inativo = serializers.IntegerField()
     participacao = serializers.FloatField()
     detail_metric = serializers.CharField()
 
@@ -92,6 +102,7 @@ class DashboardNovosAssociadosSerializer(serializers.Serializer):
 
 
 class DashboardAgentesSerializer(serializers.Serializer):
+    competencia = serializers.CharField()
     date_start = serializers.DateField()
     date_end = serializers.DateField()
     cards = DashboardMetricCardSerializer(many=True)

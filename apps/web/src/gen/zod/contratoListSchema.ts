@@ -6,7 +6,7 @@
 import * as z from "zod";
 import { associadoContratoSchema } from "./associadoContratoSchema.ts";
 import { contratoAgenteSchema } from "./contratoAgenteSchema.ts";
-import { status1D4EnumSchema } from "./status1D4EnumSchema.ts";
+import { contratoListStatusEnumSchema } from "./contratoListStatusEnumSchema.ts";
 
 export const contratoListSchema = z.object({
   id: z.int(),
@@ -18,7 +18,7 @@ export const contratoListSchema = z.object({
     return contratoAgenteSchema;
   },
   get status() {
-    return status1D4EnumSchema
+    return contratoListStatusEnumSchema
       .describe(
         "* `rascunho` - Rascunho\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `encerrado` - Encerrado\n* `cancelado` - Cancelado",
       )
@@ -37,4 +37,6 @@ export const contratoListSchema = z.object({
   pode_solicitar_refinanciamento: z.boolean(),
   status_renovacao: z.string(),
   refinanciamento_id: z.string(),
+  possui_meses_nao_descontados: z.boolean(),
+  meses_nao_descontados_count: z.int(),
 });

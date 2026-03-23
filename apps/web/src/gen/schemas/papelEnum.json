@@ -1,6 +1,0 @@
-{
-  "enum": ["associado", "agente", "operacional"],
-  "type": "string",
-  "description": "* `associado` - Associado\n* `agente` - Agente\n* `operacional` - Operacional",
-  "x-readme-ref-name": "PapelEnum"
-}

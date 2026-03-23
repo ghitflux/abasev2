@@ -1,0 +1,57 @@
+{
+  "expo": {
+    "name": "ABASE",
+    "slug": "abase-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./src/assets/icon.png",
+    "scheme": "abase",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./src/assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#692e44"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "br.org.abase.mobile",
+      "buildNumber": "1"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./src/assets/adaptive-icon.png",
+        "backgroundColor": "#692e44"
+      },
+      "package": "br.org.abase.mobile",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O ABASE precisa de acesso à sua galeria para enviar documentos.",
+          "cameraPermission": "O ABASE precisa da câmera para fotografar documentos."
+        }
+      ],
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "6f760d38-1bec-4112-8471-99476fa4c13e"
+      }
+    },
+    "owner": "helciovenancio"
+  }
+}

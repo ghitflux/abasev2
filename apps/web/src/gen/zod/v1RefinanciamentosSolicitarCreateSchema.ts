@@ -10,7 +10,7 @@ export const V1RefinanciamentosSolicitarCreatePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("Um valor inteiro único que identifica este refinanciamento."),
+    .describe("A unique integer value identifying this refinanciamento."),
 });
 
 export const V1RefinanciamentosSolicitarCreate200Schema = z.lazy(
@@ -27,11 +27,14 @@ export const V1RefinanciamentosSolicitarCreateMutationRequestSchema = z
     associado_id: true,
     associado_nome: true,
     cpf_cnpj: true,
+    matricula: true,
+    matricula_display: true,
     agente: true,
     solicitado_por: true,
     aprovado_por: true,
     bloqueado_por: true,
     efetivado_por: true,
+    reviewed_by: true,
     ciclo_key: true,
     referencias: true,
     itens: true,

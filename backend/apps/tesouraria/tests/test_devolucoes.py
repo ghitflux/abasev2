@@ -1,0 +1,306 @@
+from __future__ import annotations
+
+from datetime import date
+from decimal import Decimal
+import tempfile
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
+from rest_framework.test import APIClient
+
+from apps.accounts.models import Role, User
+from apps.associados.models import Associado
+from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.tesouraria.models import DevolucaoAssociado
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class DevolucaoAssociadoViewSetTestCase(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.role_admin = Role.objects.create(codigo="ADMIN", nome="Administrador")
+        cls.role_tesoureiro = Role.objects.create(codigo="TESOUREIRO", nome="Tesoureiro")
+        cls.role_coordenador = Role.objects.create(
+            codigo="COORDENADOR",
+            nome="Coordenador",
+        )
+        cls.role_agente = Role.objects.create(codigo="AGENTE", nome="Agente")
+
+        cls.admin = cls._create_user("admin.devolucao@abase.local", cls.role_admin, "Admin")
+        cls.tesoureiro = cls._create_user(
+            "tes.devolucao@abase.local",
+            cls.role_tesoureiro,
+            "Tesoureiro",
+        )
+        cls.coordenador = cls._create_user(
+            "coord.devolucao@abase.local",
+            cls.role_coordenador,
+            "Coordenador",
+        )
+        cls.agente = cls._create_user("agente.devolucao@abase.local", cls.role_agente, "Agente")
+
+    @classmethod
+    def _create_user(cls, email: str, role: Role, first_name: str) -> User:
+        user = User.objects.create_user(
+            email=email,
+            password="Senha@123",
+            first_name=first_name,
+            last_name="ABASE",
+            is_active=True,
+        )
+        user.roles.add(role)
+        return user
+
+    def setUp(self):
+        self.admin_client = APIClient()
+        self.admin_client.force_authenticate(self.admin)
+
+        self.tes_client = APIClient()
+        self.tes_client.force_authenticate(self.tesoureiro)
+
+        self.coord_client = APIClient()
+        self.coord_client.force_authenticate(self.coordenador)
+
+    def _create_contract_fixture(self, cpf: str = "77852621368") -> tuple[Associado, Contrato, Parcela]:
+        associado = Associado.objects.create(
+            nome_completo=f"Associado {cpf[-4:]}",
+            cpf_cnpj=cpf,
+            email=f"{cpf}@teste.local",
+            telefone="86999999999",
+            orgao_publico="SEFAZ",
+            matricula_orgao=f"MAT-{cpf[-4:]}",
+            status=Associado.Status.ATIVO,
+            agente_responsavel=self.agente,
+        )
+        contrato = Contrato.objects.create(
+            associado=associado,
+            agente=self.agente,
+            codigo=f"CTR-{cpf[-6:]}",
+            valor_bruto=Decimal("18000.00"),
+            valor_liquido=Decimal("10000.00"),
+            valor_mensalidade=Decimal("300.00"),
+            prazo_meses=3,
+            taxa_antecipacao=Decimal("30.00"),
+            margem_disponivel=Decimal("630.00"),
+            valor_total_antecipacao=Decimal("900.00"),
+            status=Contrato.Status.ATIVO,
+            data_contrato=date(2026, 1, 3),
+            data_aprovacao=date(2026, 1, 3),
+            data_primeira_mensalidade=date(2026, 1, 1),
+            mes_averbacao=date(2026, 1, 1),
+        )
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("900.00"),
+        )
+        parcela = Parcela.objects.create(
+            ciclo=ciclo,
+            associado=associado,
+            numero=1,
+            referencia_mes=date(2026, 2, 1),
+            valor=Decimal("300.00"),
+            data_vencimento=date(2026, 2, 1),
+            status=Parcela.Status.DESCONTADO,
+            data_pagamento=date(2026, 2, 5),
+            observacao="Desconto confirmado pelo retorno.",
+        )
+        return associado, contrato, parcela
+
+    def test_lista_contratos_para_registrar_devolucao(self):
+        _associado, contrato, _parcela = self._create_contract_fixture()
+
+        response = self.tes_client.get("/api/v1/tesouraria/devolucoes/contratos/")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        ids = {row["contrato_id"] for row in payload["results"]}
+        self.assertIn(contrato.id, ids)
+        row = next(row for row in payload["results"] if row["contrato_id"] == contrato.id)
+        self.assertEqual(row["status_contrato"], Contrato.Status.ATIVO)
+        self.assertEqual(row["matricula"], contrato.associado.matricula_orgao)
+
+    def test_tesoureiro_registra_pagamento_indevido_sem_alterar_parcela(self):
+        associado, contrato, parcela = self._create_contract_fixture()
+        status_anterior = parcela.status
+        pagamento_anterior = parcela.data_pagamento
+        observacao_anterior = parcela.observacao
+
+        response = self.tes_client.post(
+            f"/api/v1/tesouraria/devolucoes/contratos/{contrato.id}/registrar/",
+            {
+                "tipo": DevolucaoAssociado.Tipo.PAGAMENTO_INDEVIDO,
+                "data_devolucao": "2026-03-21",
+                "quantidade_parcelas": 2,
+                "valor": "300.00",
+                "motivo": "Pagamento duplicado ao associado.",
+                "comprovantes": [
+                    SimpleUploadedFile(
+                        "devolucao.pdf",
+                        b"arquivo",
+                        content_type="application/pdf",
+                    ),
+                    SimpleUploadedFile(
+                        "devolucao-extra.pdf",
+                        b"arquivo-extra",
+                        content_type="application/pdf",
+                    ),
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        parcela.refresh_from_db()
+        self.assertEqual(parcela.status, status_anterior)
+        self.assertEqual(parcela.data_pagamento, pagamento_anterior)
+        self.assertEqual(parcela.observacao, observacao_anterior)
+
+        devolucao = DevolucaoAssociado.objects.get(contrato=contrato)
+        self.assertEqual(devolucao.associado, associado)
+        self.assertEqual(devolucao.status, "registrada")
+        self.assertEqual(devolucao.nome_snapshot, associado.nome_completo)
+        self.assertEqual(devolucao.cpf_cnpj_snapshot, associado.cpf_cnpj)
+        self.assertEqual(devolucao.matricula_snapshot, associado.matricula_orgao)
+        self.assertEqual(devolucao.agente_snapshot, self.agente.full_name)
+        self.assertEqual(devolucao.contrato_codigo_snapshot, contrato.codigo)
+        self.assertEqual(devolucao.realizado_por, self.tesoureiro)
+        self.assertEqual(devolucao.quantidade_parcelas, 2)
+        self.assertEqual(devolucao.anexos.count(), 1)
+
+    def test_coordenador_registra_desconto_indevido_com_competencia(self):
+        _associado, contrato, _parcela = self._create_contract_fixture(cpf="77852621369")
+
+        response = self.coord_client.post(
+            f"/api/v1/tesouraria/devolucoes/contratos/{contrato.id}/registrar/",
+            {
+                "tipo": DevolucaoAssociado.Tipo.DESCONTO_INDEVIDO,
+                "data_devolucao": "2026-03-21",
+                "quantidade_parcelas": 1,
+                "valor": "300.00",
+                "motivo": "Desconto realizado em folha após cancelamento.",
+                "competencia_referencia": "2026-02-01",
+                "comprovantes": [
+                    SimpleUploadedFile(
+                        "desconto-indevido.pdf",
+                        b"arquivo",
+                        content_type="application/pdf",
+                    )
+                ],
+            },
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        devolucao = DevolucaoAssociado.objects.get(contrato=contrato)
+        self.assertEqual(devolucao.competencia_referencia, date(2026, 2, 1))
+        self.assertEqual(devolucao.realizado_por, self.coordenador)
+
+    def test_historico_filtra_status_e_tipo(self):
+        _associado, contrato, _parcela = self._create_contract_fixture(cpf="77852621370")
+        devolucao = DevolucaoAssociado.objects.create(
+            contrato=contrato,
+            associado=contrato.associado,
+            tipo=DevolucaoAssociado.Tipo.DESCONTO_INDEVIDO,
+            data_devolucao=date(2026, 3, 21),
+            valor=Decimal("300.00"),
+            motivo="Desconto indevido confirmado.",
+            comprovante=SimpleUploadedFile("hist.pdf", b"arquivo", content_type="application/pdf"),
+            nome_comprovante="hist.pdf",
+            competencia_referencia=date(2026, 2, 1),
+            nome_snapshot=contrato.associado.nome_completo,
+            cpf_cnpj_snapshot=contrato.associado.cpf_cnpj,
+            matricula_snapshot=contrato.associado.matricula_orgao,
+            agente_snapshot=self.agente.full_name,
+            contrato_codigo_snapshot=contrato.codigo,
+            realizado_por=self.tesoureiro,
+        )
+        devolucao.revertida_em = devolucao.created_at
+        devolucao.revertida_por = self.admin
+        devolucao.motivo_reversao = "Estorno cancelado"
+        devolucao.save(
+            update_fields=["revertida_em", "revertida_por", "motivo_reversao", "updated_at"]
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/devolucoes/",
+            {"status": "revertida", "tipo": DevolucaoAssociado.Tipo.DESCONTO_INDEVIDO},
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["results"][0]["status_devolucao"], "revertida")
+        self.assertEqual(payload["results"][0]["tipo"], DevolucaoAssociado.Tipo.DESCONTO_INDEVIDO)
+
+    def test_reversao_e_admin_only(self):
+        _associado, contrato, _parcela = self._create_contract_fixture(cpf="77852621371")
+        devolucao = DevolucaoAssociado.objects.create(
+            contrato=contrato,
+            associado=contrato.associado,
+            tipo=DevolucaoAssociado.Tipo.PAGAMENTO_INDEVIDO,
+            data_devolucao=date(2026, 3, 21),
+            valor=Decimal("200.00"),
+            motivo="Pagamento em duplicidade.",
+            comprovante=SimpleUploadedFile("dup.pdf", b"arquivo", content_type="application/pdf"),
+            nome_comprovante="dup.pdf",
+            nome_snapshot=contrato.associado.nome_completo,
+            cpf_cnpj_snapshot=contrato.associado.cpf_cnpj,
+            matricula_snapshot=contrato.associado.matricula_orgao,
+            agente_snapshot=self.agente.full_name,
+            contrato_codigo_snapshot=contrato.codigo,
+            realizado_por=self.tesoureiro,
+        )
+
+        forbidden_response = self.tes_client.post(
+            f"/api/v1/tesouraria/devolucoes/{devolucao.id}/reverter/",
+            {"motivo_reversao": "Teste sem permissão"},
+            format="json",
+        )
+        self.assertEqual(forbidden_response.status_code, 400, forbidden_response.json())
+
+        response = self.admin_client.post(
+            f"/api/v1/tesouraria/devolucoes/{devolucao.id}/reverter/",
+            {"motivo_reversao": "Correção administrativa"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        devolucao.refresh_from_db()
+        self.assertIsNotNone(devolucao.revertida_em)
+        self.assertEqual(devolucao.revertida_por, self.admin)
+        self.assertEqual(devolucao.motivo_reversao, "Correção administrativa")
+
+    def test_detalhe_do_associado_expoe_devolucoes(self):
+        associado, contrato, _parcela = self._create_contract_fixture(cpf="77852621372")
+        DevolucaoAssociado.objects.create(
+            contrato=contrato,
+            associado=associado,
+            tipo=DevolucaoAssociado.Tipo.PAGAMENTO_INDEVIDO,
+            data_devolucao=date(2026, 3, 21),
+            valor=Decimal("150.00"),
+            motivo="Depósito em conta divergente.",
+            comprovante=SimpleUploadedFile("assoc.pdf", b"arquivo", content_type="application/pdf"),
+            nome_comprovante="assoc.pdf",
+            nome_snapshot=associado.nome_completo,
+            cpf_cnpj_snapshot=associado.cpf_cnpj,
+            matricula_snapshot=associado.matricula_orgao,
+            agente_snapshot=self.agente.full_name,
+            contrato_codigo_snapshot=contrato.codigo,
+            realizado_por=self.tesoureiro,
+        )
+
+        response = self.admin_client.get(f"/api/v1/associados/{associado.id}/")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(len(payload["contratos"]), 1)
+        self.assertEqual(len(payload["contratos"][0]["devolucoes_associado"]), 1)
+        self.assertEqual(
+            payload["contratos"][0]["devolucoes_associado"][0]["tipo"],
+            DevolucaoAssociado.Tipo.PAGAMENTO_INDEVIDO,
+        )
+        self.assertEqual(
+            len(payload["contratos"][0]["devolucoes_associado"][0]["anexos"]),
+            1,
+        )

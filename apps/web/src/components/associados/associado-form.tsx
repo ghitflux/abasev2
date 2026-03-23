@@ -59,6 +59,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 
 const ufOptions = [
   "AC",
@@ -370,6 +372,7 @@ export default function AssociadoForm({
   const { startRouteTransition } = useRouteTransition();
   const { user } = useAuth();
   const { hasRole } = usePermissions();
+  const isAdminEditMode = mode === "edit" && hasRole("ADMIN");
   const canManageAgentAssignment =
     hasRole("ADMIN") ||
     hasRole("ANALISTA") ||
@@ -381,6 +384,8 @@ export default function AssociadoForm({
   >({});
   const [isCheckingDocumento, setIsCheckingDocumento] = React.useState(false);
   const [isCompletingFlow, setIsCompletingFlow] = React.useState(false);
+  const [adminMotivo, setAdminMotivo] = React.useState("");
+  const [adminConfirmado, setAdminConfirmado] = React.useState(false);
   const todayRef = React.useRef(startOfLocalDay(new Date()));
   const documentoValidationCacheRef = React.useRef<{
     documento: string;
@@ -610,15 +615,32 @@ export default function AssociadoForm({
               percentual_repasse: values.percentual_repasse.toFixed(2),
             }
           : {}),
+        ...(isAdminEditMode
+          ? {
+              updated_at: initialData?.updated_at ?? null,
+              motivo: adminMotivo,
+            }
+          : {}),
       };
 
-      const associado = await apiFetch<AssociadoDetail>(
-        mode === "create" ? "associados" : `associados/${associadoId}`,
-        {
-          method: mode === "create" ? "POST" : "PATCH",
-          body: payload,
-        },
-      );
+      const associado =
+        mode === "create"
+          ? await apiFetch<AssociadoDetail>("associados", {
+              method: "POST",
+              body: payload,
+            })
+          : isAdminEditMode
+            ? await (async () => {
+                await apiFetch(`admin-overrides/associados/${associadoId}/core/`, {
+                  method: "POST",
+                  body: payload,
+                });
+                return apiFetch<AssociadoDetail>(`associados/${associadoId}`);
+              })()
+            : await apiFetch<AssociadoDetail>(`associados/${associadoId}`, {
+                method: "PATCH",
+                body: payload,
+              });
 
       const uploads = Object.entries(documentos).filter(([, file]) => !!file);
       if (uploads.length) {
@@ -736,6 +758,16 @@ export default function AssociadoForm({
       onSubmit={handleSubmit(async (values) => {
         // Guard: só processa o submit quando estiver na última etapa
         if (step !== stepTitles.length - 1) return;
+        if (isAdminEditMode) {
+          if (!adminMotivo.trim()) {
+            toast.error("Informe o motivo da alteração administrativa.");
+            return;
+          }
+          if (!adminConfirmado) {
+            toast.error("Confirme a alteração administrativa antes de salvar.");
+            return;
+          }
+        }
         if (canManageAgentAssignment && !values.agente_responsavel_id) {
           toast.error("Selecione o agente responsável antes de enviar o cadastro.");
           return;
@@ -1736,6 +1768,39 @@ export default function AssociadoForm({
           ) : null}
         </CardContent>
       </Card>
+
+      {isAdminEditMode ? (
+        <Card className="glass-panel rounded-[2rem] border-primary/20 bg-primary/5 shadow-xl shadow-black/20">
+          <CardHeader>
+            <CardTitle className="text-2xl">Confirmação Administrativa</CardTitle>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Esta alteração será gravada pelo fluxo admin auditado e ficará registrada no histórico do associado.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Field>
+              <FieldLabel>Motivo da alteração</FieldLabel>
+              <FieldContent>
+                <Textarea
+                  rows={4}
+                  value={adminMotivo}
+                  onChange={(event) => setAdminMotivo(event.target.value)}
+                  placeholder="Explique por que este cadastro está sendo ajustado pelo admin."
+                />
+              </FieldContent>
+            </Field>
+            <label className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background/60 p-4 text-sm">
+              <Checkbox
+                checked={adminConfirmado}
+                onCheckedChange={(checked) => setAdminConfirmado(checked === true)}
+              />
+              <span>
+                Confirmo que esta alteração deve sobrescrever o cadastro atual e permanecer no histórico administrativo.
+              </span>
+            </label>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="flex items-center justify-between gap-3">
         <Button

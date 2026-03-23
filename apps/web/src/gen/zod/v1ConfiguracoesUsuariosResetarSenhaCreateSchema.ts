@@ -12,7 +12,7 @@ export const V1ConfiguracoesUsuariosResetarSenhaCreatePathParamsSchema =
     id: z.coerce
       .number()
       .int()
-      .describe("Um valor inteiro único que identifica este user."),
+      .describe("A unique integer value identifying this user."),
   });
 
 export const V1ConfiguracoesUsuariosResetarSenhaCreate200Schema = z.lazy(

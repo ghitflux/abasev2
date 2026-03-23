@@ -5,18 +5,6 @@
 
 import type { PaginatedAssociadoListList } from "./PaginatedAssociadoListList.ts";
 
-export const V1AssociadosListQueryParamsStatusEnum = {
-  ativo: "ativo",
-  cadastrado: "cadastrado",
-  em_analise: "em_analise",
-  inadimplente: "inadimplente",
-  inativo: "inativo",
-  pendente: "pendente",
-} as const;
-
-export type V1AssociadosListQueryParamsStatusEnumKey =
-  (typeof V1AssociadosListQueryParamsStatusEnum)[keyof typeof V1AssociadosListQueryParamsStatusEnum];
-
 export type V1AssociadosListQueryParams = {
   /**
    * @description Filtrar por ID do agente responsável
@@ -46,7 +34,12 @@ export type V1AssociadosListQueryParams = {
    */
   nome?: string;
   /**
-   * @description Qual campo usar ao ordenar os resultados.
+   * @description Filtrar pelo total exato de ciclos lógicos
+   * @type number | undefined
+   */
+  numero_ciclos?: number;
+  /**
+   * @description Which field to use when ordering the results.
    * @type string | undefined
    */
   ordering?: string;
@@ -56,25 +49,30 @@ export type V1AssociadosListQueryParams = {
    */
   orgao_publico?: string;
   /**
-   * @description Um número de página dentro do conjunto de resultados paginado.
+   * @description A page number within the paginated result set.
    * @type integer | undefined
    */
   page?: number;
   /**
-   * @description Número de resultados a serem retornados por página.
+   * @description Number of results to return per page.
    * @type integer | undefined
    */
   page_size?: number;
   /**
-   * @description Um termo de busca.
+   * @description Filtrar por perfil de ciclo: novo ou renovado
+   * @type string | undefined
+   */
+  perfil_ciclo?: string;
+  /**
+   * @description A search term.
    * @type string | undefined
    */
   search?: string;
   /**
-   * @description Filtrar por status do associado\n\n* `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente
+   * @description Filtrar por status do associado ou liquidado
    * @type string | undefined
    */
-  status?: V1AssociadosListQueryParamsStatusEnumKey;
+  status?: string;
 };
 
 export type V1AssociadosList200 = PaginatedAssociadoListList;

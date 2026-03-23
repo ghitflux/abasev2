@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.accounts.models import MobileAccessToken, User
@@ -11,15 +12,20 @@ from apps.contratos.serializers import CicloDetailSerializer, ContratoResumoSeri
 from core.file_references import build_storage_reference
 
 from .models import Associado, Documento
+from .admin_override_service import AdminOverrideService
 from .services import AssociadoService
 from .strategies import CadastroValidationStrategy, EdicaoValidationStrategy
 
 
 def _is_agent_restricted(context: dict) -> bool:
+    if context.get("agent_correction_mode"):
+        return False
     request = context.get("request")
     if not request or not getattr(request, "user", None):
         return False
     user = request.user
+    if not getattr(user, "is_authenticated", False) or not hasattr(user, "has_role"):
+        return False
     return user.has_role("AGENTE") and not user.has_role("ADMIN")
 
 
@@ -28,6 +34,8 @@ def _can_manage_agent_assignment(context: dict) -> bool:
     if not request or not getattr(request, "user", None):
         return False
     user = request.user
+    if not getattr(user, "is_authenticated", False) or not hasattr(user, "has_role"):
+        return False
     return user.has_role("ADMIN", "ANALISTA", "COORDENADOR", "TESOUREIRO")
 
 
@@ -311,6 +319,7 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
     matricula_display = serializers.SerializerMethodField()
     percentual_repasse = serializers.SerializerMethodField()
     mobile_sessions = serializers.SerializerMethodField()
+    admin_history = serializers.SerializerMethodField()
 
     class Meta:
         model = Associado
@@ -349,6 +358,7 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "mobile_sessions",
+            "admin_history",
         ]
 
     def __init__(self, *args, **kwargs):
@@ -372,6 +382,7 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
                 "dados_bancarios",
                 "documentos",
                 "esteira",
+                "admin_history",
             ]:
                 self.fields.pop(field_name, None)
 
@@ -407,18 +418,21 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
     def get_percentual_repasse(self, obj: Associado) -> str:
         return f"{obj.auxilio_taxa:.2f}"
 
+    @extend_schema_field(EnderecoSerializer(allow_null=True))
     def get_endereco(self, obj: Associado):
         payload = obj.build_endereco_payload()
         if not payload:
             return None
         return EnderecoSerializer(payload).data
 
+    @extend_schema_field(DadosBancariosSerializer(allow_null=True))
     def get_dados_bancarios(self, obj: Associado):
         payload = obj.build_dados_bancarios_payload()
         if not payload:
             return None
         return DadosBancariosSerializer(payload).data
 
+    @extend_schema_field(ContatoHistoricoSerializer(allow_null=True))
     def get_contato(self, obj: Associado):
         payload = obj.build_contato_payload()
         if not payload:
@@ -441,6 +455,13 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
             }
             for t in qs
         ]
+
+    def get_admin_history(self, obj: Associado) -> list:
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not user.is_authenticated or not user.has_role("ADMIN"):
+            return []
+        return AdminOverrideService.build_associado_history_payload(obj, request=request)
 
 
 class AssociadoCreateSerializer(serializers.ModelSerializer):

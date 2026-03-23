@@ -8,6 +8,10 @@ import type { DashboardMetricCard } from "./DashboardMetricCard.ts";
 
 export type DashboardAgentes = {
   /**
+   * @type string
+   */
+  competencia: string;
+  /**
    * @type string, date
    */
   date_start: string;

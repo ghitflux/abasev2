@@ -10,7 +10,7 @@ export const V1TesourariaBaixaManualDarBaixaCreatePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("Um valor inteiro único que identifica este parcela."),
+    .describe("A unique integer value identifying this parcela."),
 });
 
 export const V1TesourariaBaixaManualDarBaixaCreate200Schema = z.lazy(

@@ -539,3 +539,7 @@ class DespesaService:
         despesa.status_anexo = Despesa.StatusAnexo.ANEXADO
         despesa.save(update_fields=["anexo", "nome_anexo", "status_anexo", "updated_at"])
         return despesa
+
+    @staticmethod
+    def excluir(despesa: Despesa) -> None:
+        despesa.soft_delete()

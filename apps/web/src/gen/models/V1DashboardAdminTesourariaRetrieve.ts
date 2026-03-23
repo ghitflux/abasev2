@@ -14,6 +14,14 @@ export type V1DashboardAdminTesourariaRetrieveQueryParams = {
    * @type string | undefined
    */
   competencia?: string;
+  /**
+   * @type string | undefined
+   */
+  day?: string;
+  /**
+   * @type string | undefined
+   */
+  status?: string;
 };
 
 export type V1DashboardAdminTesourariaRetrieve200 = DashboardTesouraria;

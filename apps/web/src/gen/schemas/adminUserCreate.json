@@ -1,0 +1,17 @@
+{
+  "type": "object",
+  "properties": {
+    "email": { "type": "string", "format": "email" },
+    "first_name": { "type": "string", "maxLength": 150 },
+    "last_name": { "type": "string", "maxLength": 150 },
+    "roles": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 30 }
+    },
+    "password": { "type": "string", "writeOnly": true },
+    "password_confirm": { "type": "string", "writeOnly": true },
+    "is_active": { "type": "boolean", "default": true }
+  },
+  "required": ["email", "first_name", "password", "password_confirm", "roles"],
+  "x-readme-ref-name": "AdminUserCreate"
+}

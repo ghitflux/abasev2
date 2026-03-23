@@ -24,6 +24,8 @@ export const associadoListSchema = z.object({
   status_renovacao: z.string(),
   status_visual_slug: z.string(),
   status_visual_label: z.string(),
+  possui_meses_nao_descontados: z.boolean(),
+  meses_nao_descontados_count: z.int(),
   get agente() {
     return simpleUserSchema;
   },

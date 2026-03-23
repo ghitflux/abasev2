@@ -5,7 +5,7 @@
 
 import type { AssociadoContrato } from "./AssociadoContrato.ts";
 import type { ContratoAgente } from "./ContratoAgente.ts";
-import type { Status1D4Enum } from "./Status1D4Enum.ts";
+import type { ContratoListStatusEnum } from "./ContratoListStatusEnum.ts";
 
 export type ContratoList = {
   /**
@@ -23,7 +23,7 @@ export type ContratoList = {
    * @description * `rascunho` - Rascunho\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `encerrado` - Encerrado\n* `cancelado` - Cancelado
    * @type string | undefined
    */
-  status?: Status1D4Enum;
+  status?: ContratoListStatusEnum;
   /**
    * @type string
    */
@@ -78,4 +78,12 @@ export type ContratoList = {
    * @type string
    */
   readonly refinanciamento_id: string;
+  /**
+   * @type boolean
+   */
+  readonly possui_meses_nao_descontados: boolean;
+  /**
+   * @type integer
+   */
+  readonly meses_nao_descontados_count: number;
 };

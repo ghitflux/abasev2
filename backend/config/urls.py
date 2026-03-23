@@ -10,6 +10,14 @@ def health_check(request):
     return JsonResponse({"status": "ok", "service": "abase-backend"})
 
 from apps.associados.views import AssociadoViewSet
+from apps.associados.admin_override_views import (
+    AdminOverrideAssociadoViewSet,
+    AdminOverrideComprovanteViewSet,
+    AdminOverrideContratoViewSet,
+    AdminOverrideDocumentoViewSet,
+    AdminOverrideEventViewSet,
+    AdminOverrideRefinanciamentoViewSet,
+)
 from apps.accounts.views import AdminUserViewSet
 from apps.accounts.mobile_legacy_views import (
     LegacyCheckEmailView,
@@ -64,13 +72,46 @@ from apps.relatorios.views import RelatorioViewSet
 from apps.tesouraria.views import (
     AgentePagamentoViewSet,
     BaixaManualViewSet,
+    DevolucaoAssociadoViewSet,
+    DevolucaoContratoViewSet,
     DespesaViewSet,
     ConfirmacaoViewSet,
+    LiquidacaoContratoViewSet,
     TesourariaContratoViewSet,
 )
 
 router = DefaultRouter()
 router.register(r"associados", AssociadoViewSet, basename="associado")
+router.register(
+    r"admin-overrides/associados",
+    AdminOverrideAssociadoViewSet,
+    basename="admin-override-associado",
+)
+router.register(
+    r"admin-overrides/contratos",
+    AdminOverrideContratoViewSet,
+    basename="admin-override-contrato",
+)
+router.register(
+    r"admin-overrides/refinanciamentos",
+    AdminOverrideRefinanciamentoViewSet,
+    basename="admin-override-refinanciamento",
+)
+router.register(
+    r"admin-overrides/documentos",
+    AdminOverrideDocumentoViewSet,
+    basename="admin-override-documento",
+)
+router.register(
+    r"admin-overrides/comprovantes",
+    AdminOverrideComprovanteViewSet,
+    basename="admin-override-comprovante",
+)
+router.register(
+    r"admin-overrides/events",
+    AdminOverrideEventViewSet,
+    basename="admin-override-event",
+)
 router.register(r"analise", AnaliseViewSet, basename="analise")
 router.register(r"esteira", EsteiraViewSet, basename="esteira")
 router.register(r"contratos", ContratoViewSet, basename="contrato")
@@ -116,6 +157,21 @@ router.register(
     r"tesouraria/baixa-manual",
     BaixaManualViewSet,
     basename="tesouraria-baixa-manual",
+)
+router.register(
+    r"tesouraria/liquidacoes",
+    LiquidacaoContratoViewSet,
+    basename="tesouraria-liquidacao",
+)
+router.register(
+    r"tesouraria/devolucoes",
+    DevolucaoAssociadoViewSet,
+    basename="tesouraria-devolucao",
+)
+router.register(
+    r"tesouraria/devolucoes/contratos",
+    DevolucaoContratoViewSet,
+    basename="tesouraria-devolucao-contrato",
 )
 router.register(
     r"tesouraria/despesas",

@@ -98,7 +98,7 @@ function ComprovanteChip({
   );
 }
 
-export default function MeusPagamentosPage() {
+export default function PagamentosPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = React.useState("");
   const [status, setStatus] = React.useState("todos");

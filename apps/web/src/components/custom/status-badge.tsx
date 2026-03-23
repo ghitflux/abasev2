@@ -19,14 +19,24 @@ const STATUS_STYLES: Record<string, string> = {
     "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
   anexado: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
   pago: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
+  registrada: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
   quitada: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
+  liquidada: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
+  liquidado: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
+  ativa: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
   aberto: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   analise: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   ciclo_iniciado: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   em_analise: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   em_analise_renovacao: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
+  aprovado_analise_renovacao:
+    "bg-violet-500/15 text-violet-300 ring-1 ring-violet-500/30",
   aprovado_para_renovacao:
     "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
+  solicitado_para_liquidacao:
+    "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
+  aguardando_coordenacao:
+    "bg-violet-500/15 text-violet-300 ring-1 ring-violet-500/30",
   pendente_apto: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   em_aberto: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
   pendente: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
@@ -49,6 +59,7 @@ const STATUS_STYLES: Record<string, string> = {
   cancelado: "bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30",
   bloqueado: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
   revertido: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
+  revertida: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
   fechado: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
   inativo: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
   suspenso: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",

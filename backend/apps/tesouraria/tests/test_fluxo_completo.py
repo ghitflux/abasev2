@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 import tempfile
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -105,6 +106,7 @@ class TestFluxoCompleto(TestCase):
                 "situacao_servidor": "ativo",
                 "matricula_servidor": "MAT-ORG-1",
             },
+            "agente_responsavel_id": self.agente.id,
             "valor_bruto_total": "1500.00",
             "valor_liquido": "1200.00",
             "prazo_meses": 3,
@@ -247,6 +249,24 @@ class TestFluxoCompleto(TestCase):
             row for row in payload_cancelado if row["id"] == contrato_cancelado.id
         )
         self.assertEqual(contrato_cancelado_row["status"], "cancelado")
+
+    def test_tesouraria_retorna_matricula_e_percentual_repasse_na_listagem(self):
+        associado = self._criar_associado("17345678906")
+        associado.matricula_orgao = ""
+        associado.matricula = "MAT-LEGACY-99"
+        associado.auxilio_taxa = Decimal("12.50")
+        associado.save(update_fields=["matricula_orgao", "matricula", "auxilio_taxa", "updated_at"])
+        contrato = self._levar_para_tesouraria(associado)
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/contratos/",
+            {"competencia": timezone.localdate().strftime("%Y-%m"), "pagamento": "pendente"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        row = next(item for item in response.json()["results"] if item["id"] == contrato.id)
+        self.assertEqual(row["matricula"], "MAT-LEGACY-99")
+        self.assertEqual(row["percentual_repasse"], "12.50")
 
     def _efetivar_contrato(self, contrato: Contrato):
         response = self.tes_client.post(

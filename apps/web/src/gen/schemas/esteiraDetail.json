@@ -2,6 +2,7 @@
   "type": "object",
   "properties": {
     "id": { "type": "integer", "readOnly": true },
+    "associado_id": { "type": "integer", "readOnly": true },
     "ordem": { "type": "integer", "readOnly": true },
     "contrato": { "type": "string", "readOnly": true },
     "data_assinatura": { "type": "string", "readOnly": true },
@@ -192,6 +193,7 @@
   "required": [
     "acoes_disponiveis",
     "agente",
+    "associado_id",
     "comissao_agente",
     "contato_web",
     "contrato",

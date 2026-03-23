@@ -16,6 +16,15 @@ jest.mock("@/hooks/use-permissions", () => ({
   usePermissions: () => mockUsePermissions(),
 }));
 
+jest.mock("@/providers/route-transition-provider", () => ({
+  useRouteTransition: () => ({
+    isRouteTransitioning: false,
+    isRouteLoadingVisible: false,
+    pendingHref: null,
+    startRouteTransition: jest.fn(),
+  }),
+}));
+
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
     replace: mockReplace,
@@ -27,8 +36,8 @@ jest.mock("recharts", () => {
 
   const primitive =
     (name: string) =>
-    ({ children, ...props }: { children?: unknown }) =>
-      React.createElement("div", { "data-recharts": name, ...props }, children);
+    ({ children }: { children?: unknown }) =>
+      React.createElement("div", { "data-recharts": name }, children);
 
   return {
     Area: primitive("Area"),
@@ -41,10 +50,6 @@ jest.mock("recharts", () => {
     LineChart: primitive("LineChart"),
     Pie: primitive("Pie"),
     PieChart: primitive("PieChart"),
-    PolarAngleAxis: primitive("PolarAngleAxis"),
-    PolarGrid: primitive("PolarGrid"),
-    Radar: primitive("Radar"),
-    RadarChart: primitive("RadarChart"),
     RadialBar: primitive("RadialBar"),
     RadialBarChart: primitive("RadialBarChart"),
     XAxis: primitive("XAxis"),
@@ -189,6 +194,36 @@ const treasuryPayload = {
       description: "Recebimentos consolidados da competencia.",
       detail_metric: "valores_recebidos",
     },
+    {
+      key: "saidas_agentes_associados",
+      label: "Saidas a agentes/associados",
+      value: "35.00",
+      numeric_value: 35,
+      format: "currency" as const,
+      tone: "warning" as const,
+      description: "Pagamentos operacionais e devolucoes liquidadas na competencia.",
+      detail_metric: "saidas_agentes_associados",
+    },
+    {
+      key: "despesas",
+      label: "Despesas",
+      value: "10.00",
+      numeric_value: 10,
+      format: "currency" as const,
+      tone: "danger" as const,
+      description: "Despesas pagas que impactam o caixa da associacao.",
+      detail_metric: "despesas",
+    },
+    {
+      key: "receita_liquida_associacao",
+      label: "Receita liquida da associacao",
+      value: "60.00",
+      numeric_value: 60,
+      format: "currency" as const,
+      tone: "positive" as const,
+      description: "Receita recebida menos saidas e despesas.",
+      detail_metric: "receita_liquida_associacao",
+    },
   ],
   projection_area: [
     {
@@ -254,42 +289,123 @@ const newAssociadosPayload = {
 };
 
 const agentsPayload = {
+  competencia: "2026-03",
   date_start: "2026-03-01",
   date_end: "2026-03-31",
   cards: [
     {
-      key: "agentes_no_ranking",
-      label: "Agentes monitorados",
-      value: "2",
-      numeric_value: 2,
+      key: "volume_total",
+      label: "Volume total",
+      value: "18000.00",
+      numeric_value: 18000,
+      format: "currency" as const,
+      tone: "neutral" as const,
+      description: "Soma do valor liquido efetivado pelos agentes no recorte.",
+      detail_metric: "agentes:volume_total",
+    },
+    {
+      key: "top_agente_volume",
+      label: "Top agente por volume",
+      value: "10000.00",
+      numeric_value: 10000,
+      format: "currency" as const,
+      tone: "positive" as const,
+      description: "Alice ABASE",
+      detail_metric: "agente:1:volume",
+    },
+    {
+      key: "media_volume",
+      label: "Media por agente",
+      value: "9000.00",
+      numeric_value: 9000,
+      format: "currency" as const,
+      tone: "neutral" as const,
+      description: "Media de volume financeiro entre os agentes monitorados.",
+      detail_metric: "agentes:volume_total",
+    },
+    {
+      key: "associados_inativos",
+      label: "Associados inativos",
+      value: "1",
+      numeric_value: 1,
       format: "integer" as const,
       tone: "neutral" as const,
-      description: "Quantidade de agentes com dados no periodo.",
-      detail_metric: "agentes_no_ranking",
+      description: "Base atual de associados inativos vinculados aos agentes filtrados.",
+      detail_metric: "agentes:inativos",
+    },
+    {
+      key: "com_devolucao",
+      label: "Associados com devolucao",
+      value: "1",
+      numeric_value: 1,
+      format: "integer" as const,
+      tone: "neutral" as const,
+      description: "Devolucoes registradas na competencia filtrada.",
+      detail_metric: "agentes:devolvidos",
+    },
+    {
+      key: "renovados",
+      label: "Associados renovados",
+      value: "3",
+      numeric_value: 3,
+      format: "integer" as const,
+      tone: "positive" as const,
+      description: "Renovacoes efetivadas na competencia da secao.",
+      detail_metric: "agentes:renovados",
+    },
+    {
+      key: "aptos_renovar",
+      label: "Associados para renovar",
+      value: "4",
+      numeric_value: 4,
+      format: "integer" as const,
+      tone: "neutral" as const,
+      description: "Associados aptos a renovar na competencia da secao.",
+      detail_metric: "agentes:aptos_renovar",
     },
   ],
   ranking: [
     {
       agent_id: 1,
       agent_name: "Alice ABASE",
+      volume_financeiro: 10000,
+      participacao_volume: 55.6,
       efetivados: 3,
       cadastros: 5,
       em_processo: 1,
       renovados: 2,
+      aptos_renovar: 2,
       inadimplentes: 0,
+      devolvidos: 1,
+      cadastrado: 1,
+      em_analise: 1,
+      pendente: 0,
+      ativo: 5,
+      inadimplente: 0,
+      inativo: 1,
       participacao: 60,
-      detail_metric: "agente:1:efetivados",
+      detail_metric: "agente:1:volume",
     },
     {
       agent_id: 2,
       agent_name: "Bruno ABASE",
+      volume_financeiro: 8000,
+      participacao_volume: 44.4,
       efetivados: 2,
       cadastros: 4,
       em_processo: 2,
       renovados: 1,
+      aptos_renovar: 2,
       inadimplentes: 1,
+      devolvidos: 0,
+      cadastrado: 1,
+      em_analise: 0,
+      pendente: 1,
+      ativo: 3,
+      inadimplente: 1,
+      inativo: 0,
       participacao: 40,
-      detail_metric: "agente:2:efetivados",
+      detail_metric: "agente:2:volume",
     },
   ],
 };
@@ -352,6 +468,20 @@ describe("DashboardPage", () => {
     });
 
     mockedApiFetch.mockImplementation(async (path) => {
+      if (path === "configuracoes/usuarios") {
+        return {
+          count: 0,
+          next: null,
+          previous: null,
+          results: [],
+          meta: {
+            current_page: 1,
+            page_size: 200,
+            total_pages: 0,
+            total_items: 0,
+          },
+        };
+      }
       if (path === "dashboard/admin/resumo-geral") return summaryPayload;
       if (path === "dashboard/admin/tesouraria") return treasuryPayload;
       if (path === "dashboard/admin/novos-associados")
@@ -368,6 +498,18 @@ describe("DashboardPage", () => {
     });
     Object.defineProperty(URL, "revokeObjectURL", {
       writable: true,
+      value: jest.fn(),
+    });
+    Object.defineProperty(HTMLElement.prototype, "hasPointerCapture", {
+      configurable: true,
+      value: jest.fn(() => false),
+    });
+    Object.defineProperty(HTMLElement.prototype, "setPointerCapture", {
+      configurable: true,
+      value: jest.fn(),
+    });
+    Object.defineProperty(HTMLElement.prototype, "releasePointerCapture", {
+      configurable: true,
       value: jest.fn(),
     });
     HTMLAnchorElement.prototype.click = jest.fn();
@@ -394,6 +536,30 @@ describe("DashboardPage", () => {
     expect(mockedApiFetch).not.toHaveBeenCalled();
   });
 
+  it("permite acesso do coordenador ao dashboard executivo", async () => {
+    mockUsePermissions.mockReturnValue({
+      role: "COORDENADOR",
+      status: "authenticated",
+      roles: ["COORDENADOR"],
+      hasRole: jest.fn(),
+      hasAnyRole: jest.fn(),
+      user: {
+        id: 2,
+        email: "coordenacao@abase.local",
+        first_name: "Coordenacao",
+        last_name: "ABASE",
+        full_name: "Coordenacao ABASE",
+        primary_role: "COORDENADOR",
+        roles: ["COORDENADOR"],
+      },
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("Dashboard Executivo")).toBeInTheDocument();
+    expect(mockReplace).not.toHaveBeenCalled();
+  });
+
   it("renderiza as cinco secoes do dashboard e abre o modal detalhado ao clicar em KPI", async () => {
     const user = userEvent.setup();
 
@@ -406,7 +572,7 @@ describe("DashboardPage", () => {
     expect(screen.getByText("Agentes")).toBeInTheDocument();
 
     await user.click(
-      screen.getByRole("button", { name: "Associados cadastrados" }),
+      await screen.findByRole("button", { name: "Associados cadastrados" }),
     );
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
@@ -420,7 +586,7 @@ describe("DashboardPage", () => {
 
     await screen.findByText("KPIs gerais");
     await user.click(screen.getAllByRole("button", { name: /Filtros/i })[1]);
-    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getAllByRole("combobox")[1]);
     await user.click(await screen.findByRole("option", { name: "Ativo" }));
     await user.click(screen.getByRole("button", { name: "Aplicar" }));
 
@@ -443,7 +609,6 @@ describe("DashboardPage", () => {
 
     await screen.findByText("KPIs gerais");
     await user.click(screen.getAllByRole("button", { name: /Exportar/i })[1]);
-    await user.click(await screen.findByText("CSV"));
 
     await waitFor(() => {
       expect(mockedApiFetch).toHaveBeenCalledWith(

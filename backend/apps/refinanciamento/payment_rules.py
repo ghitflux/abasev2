@@ -13,13 +13,13 @@ from .models import Item, Refinanciamento
 
 PAGAMENTO_STATUS_CODES_OK = ("1", "4")
 REFINANCIAMENTO_ACTIVE_STATUSES = (
-    Refinanciamento.Status.APTO_A_RENOVAR,
     Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+    Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
     Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
-    Refinanciamento.Status.PENDENTE_APTO,
-    Refinanciamento.Status.SOLICITADO,
+    Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
     Refinanciamento.Status.EM_ANALISE,
     Refinanciamento.Status.APROVADO,
+    Refinanciamento.Status.CONCLUIDO,
 )
 
 

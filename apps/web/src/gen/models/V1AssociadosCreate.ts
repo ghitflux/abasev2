@@ -7,7 +7,7 @@ import type { AssociadoCreate } from "./AssociadoCreate.ts";
 
 export type V1AssociadosCreate201 = Omit<
   NonNullable<AssociadoCreate>,
-  "documentos_payload"
+  "agente_responsavel_id" | "documentos_payload"
 >;
 
 export type V1AssociadosCreateMutationRequest = Omit<

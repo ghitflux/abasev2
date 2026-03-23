@@ -23,7 +23,7 @@
           "enum": ["fixa", "variavel"],
           "type": "string",
           "description": "* `fixa` - Fixa\n* `variavel` - Variável",
-          "x-readme-ref-name": "TipoC90Enum"
+          "x-readme-ref-name": "TipoEnum"
         },
         { "enum": [""], "x-readme-ref-name": "BlankEnum" }
       ]

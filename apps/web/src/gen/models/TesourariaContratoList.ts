@@ -25,6 +25,10 @@ export type TesourariaContratoList = {
   /**
    * @type string
    */
+  readonly matricula: string;
+  /**
+   * @type string
+   */
   readonly chave_pix: string;
   /**
    * @type string
@@ -43,6 +47,10 @@ export type TesourariaContratoList = {
    * @type string
    */
   readonly agente_nome: string;
+  /**
+   * @type string
+   */
+  readonly percentual_repasse: string;
   /**
    * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
    * @type string, decimal

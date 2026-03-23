@@ -14,8 +14,10 @@ from apps.associados.services import add_months
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.contratos.renovacao import RenovacaoCicloService
 from apps.esteira.models import EsteiraItem
+from apps.financeiro.models import Despesa
 from apps.importacao.financeiro import canonicalize_pagamentos
 from apps.importacao.models import PagamentoMensalidade
+from apps.tesouraria.models import DevolucaoAssociado, Pagamento as TesourariaPagamento
 
 
 PROCESSING_ASSOCIADO_STATUSES = (
@@ -59,13 +61,22 @@ class DashboardFilters:
     competencia: date
     date_start: date | None = None
     date_end: date | None = None
+    day: date | None = None
     agent_id: int | None = None
     status: str | None = None
 
 
 class AdminDashboardService:
     @staticmethod
-    def build_filters(*, competencia: str | None, date_start: str | None, date_end: str | None, agent_id: str | None, status: str | None) -> DashboardFilters:
+    def build_filters(
+        *,
+        competencia: str | None,
+        date_start: str | None,
+        date_end: str | None,
+        day: str | None,
+        agent_id: str | None,
+        status: str | None,
+    ) -> DashboardFilters:
         parsed_agent_id: int | None = None
         if agent_id:
             try:
@@ -77,6 +88,7 @@ class AdminDashboardService:
             competencia=parse_competencia_query(competencia),
             date_start=parse_date_query(date_start, "date_start"),
             date_end=parse_date_query(date_end, "date_end"),
+            day=parse_date_query(day, "day"),
             agent_id=parsed_agent_id,
             status=(status or "").strip() or None,
         )
@@ -145,7 +157,11 @@ class AdminDashboardService:
         return queryset
 
     @staticmethod
-    def _payments_base(month: date, agent_id: int | None = None) -> list[PagamentoMensalidade]:
+    def _payments_base(
+        month: date,
+        agent_id: int | None = None,
+        status: str | None = None,
+    ) -> list[PagamentoMensalidade]:
         queryset = PagamentoMensalidade.objects.filter(referencia_month=month).select_related(
             "associado",
             "associado__agente_responsavel",
@@ -155,6 +171,8 @@ class AdminDashboardService:
                 Q(associado__agente_responsavel_id=agent_id)
                 | Q(associado__contratos__agente_id=agent_id)
             ).distinct()
+        if status:
+            queryset = queryset.filter(associado__status=status)
         return canonicalize_pagamentos(list(queryset.order_by("id")))
 
     @staticmethod
@@ -206,6 +224,36 @@ class AdminDashboardService:
         if date_end:
             queryset = queryset.filter(**{f"{field_name}__lte": date_end})
         return queryset
+
+    @staticmethod
+    def _validate_day_with_competencia(filters: DashboardFilters, *, section: str):
+        if not filters.day:
+            return
+        if filters.day.replace(day=1) != filters.competencia:
+            raise ValidationError(
+                {
+                    "day": (
+                        f"O filtro day precisa pertencer a mesma competência selecionada "
+                        f"para {section}."
+                    )
+                }
+            )
+
+    @staticmethod
+    def _matches_day(value: date | datetime | None, day: date | None) -> bool:
+        if not day:
+            return True
+        if value is None:
+            return False
+        if isinstance(value, datetime):
+            return value.date() == day
+        return value == day
+
+    @staticmethod
+    def _payment_matches_day(payment: PagamentoMensalidade, day: date | None) -> bool:
+        if not day:
+            return True
+        return bool(payment.manual_paid_at and payment.manual_paid_at.date() == day)
 
     @staticmethod
     def _filter_contracts_by_associado_status(queryset, status: str | None):
@@ -380,6 +428,87 @@ class AdminDashboardService:
         }
 
     @staticmethod
+    def _detail_row_from_tesouraria_pagamento(
+        pagamento: TesourariaPagamento,
+        *,
+        origem: str,
+        observacao: str = "",
+        valor: Decimal | None = None,
+    ) -> dict[str, object]:
+        associado = pagamento.cadastro
+        contrato = AdminDashboardService._resolve_contract_for_associado(associado)
+        paid_at = pagamento.paid_at.date() if pagamento.paid_at else None
+        return {
+            "id": f"tesouraria-pagamento-{pagamento.id}-{origem}",
+            "associado_id": associado.id,
+            "associado_nome": associado.nome_completo,
+            "cpf_cnpj": associado.cpf_cnpj,
+            "matricula": associado.matricula_orgao or associado.matricula or "-",
+            "status": pagamento.status,
+            "agente_nome": AdminDashboardService._resolve_agent_name(associado=associado, contrato=contrato),
+            "contrato_codigo": pagamento.contrato_codigo or (contrato.codigo if contrato else ""),
+            "etapa": "tesouraria",
+            "competencia": month_label(paid_at.replace(day=1)) if paid_at else "",
+            "valor": value_or_none(valor if valor is not None else pagamento.valor_pago),
+            "origem": origem,
+            "data_referencia": paid_at.isoformat() if paid_at else "",
+            "observacao": observacao,
+        }
+
+    @staticmethod
+    def _detail_row_from_devolucao(
+        devolucao: DevolucaoAssociado,
+        *,
+        origem: str,
+        observacao: str = "",
+        valor: Decimal | None = None,
+    ) -> dict[str, object]:
+        associado = devolucao.associado
+        contrato = devolucao.contrato
+        return {
+            "id": f"devolucao-{devolucao.id}-{origem}",
+            "associado_id": associado.id,
+            "associado_nome": devolucao.nome_snapshot or associado.nome_completo,
+            "cpf_cnpj": devolucao.cpf_cnpj_snapshot or associado.cpf_cnpj,
+            "matricula": devolucao.matricula_snapshot or associado.matricula_orgao or associado.matricula or "-",
+            "status": devolucao.status,
+            "agente_nome": devolucao.agente_snapshot or AdminDashboardService._resolve_agent_name(associado=associado, contrato=contrato),
+            "contrato_codigo": devolucao.contrato_codigo_snapshot or contrato.codigo,
+            "etapa": "devolucao",
+            "competencia": month_label(devolucao.competencia_referencia) if devolucao.competencia_referencia else "",
+            "valor": value_or_none(valor if valor is not None else devolucao.valor),
+            "origem": origem,
+            "data_referencia": devolucao.data_devolucao.isoformat(),
+            "observacao": observacao or devolucao.motivo,
+        }
+
+    @staticmethod
+    def _detail_row_from_despesa(
+        despesa: Despesa,
+        *,
+        origem: str,
+        observacao: str = "",
+        valor: Decimal | None = None,
+    ) -> dict[str, object]:
+        reference_date = despesa.data_pagamento or despesa.data_despesa
+        return {
+            "id": f"despesa-{despesa.id}-{origem}",
+            "associado_id": None,
+            "associado_nome": despesa.descricao,
+            "cpf_cnpj": "",
+            "matricula": despesa.categoria,
+            "status": despesa.status,
+            "agente_nome": "",
+            "contrato_codigo": "",
+            "etapa": "despesa",
+            "competencia": month_label(reference_date.replace(day=1)),
+            "valor": value_or_none(valor if valor is not None else despesa.valor),
+            "origem": origem,
+            "data_referencia": reference_date.isoformat(),
+            "observacao": observacao or despesa.observacoes,
+        }
+
+    @staticmethod
     def _detail_row_from_renewal_row(row: dict[str, object], *, origem: str) -> dict[str, object]:
         return {
             "id": f"renovacao-{row['id']}-{origem}",
@@ -403,17 +532,97 @@ class AdminDashboardService:
         }
 
     @staticmethod
+    def _renewal_reference_date(row: dict[str, object]) -> date | None:
+        for key in ("data_pagamento", "data_solicitacao_renovacao", "data_ativacao_ciclo"):
+            value = row.get(key)
+            if isinstance(value, datetime):
+                return value.date()
+            if isinstance(value, date):
+                return value
+        return None
+
+    @staticmethod
+    def _filter_renewal_rows_by_day(rows: list[dict[str, object]], day: date | None) -> list[dict[str, object]]:
+        if not day:
+            return rows
+        return [
+            row
+            for row in rows
+            if AdminDashboardService._renewal_reference_date(row) == day
+        ]
+
+    @staticmethod
     def _trend_months(end_month: date, count: int = 6) -> list[date]:
         start_month = add_months(end_month, -(count - 1))
         return [add_months(start_month, index) for index in range(count)]
+
+    @staticmethod
+    def _payments_saida_base(
+        filters: DashboardFilters,
+    ) -> QuerySet[TesourariaPagamento]:
+        queryset = TesourariaPagamento.objects.filter(
+            status=TesourariaPagamento.Status.PAGO
+        ).select_related("cadastro", "cadastro__agente_responsavel")
+        if filters.agent_id:
+            queryset = queryset.filter(
+                Q(cadastro__agente_responsavel_id=filters.agent_id)
+                | Q(cadastro__contratos__agente_id=filters.agent_id)
+            ).distinct()
+        if filters.status:
+            queryset = queryset.filter(cadastro__status=filters.status)
+
+        queryset = queryset.filter(
+            paid_at__date__year=filters.competencia.year,
+            paid_at__date__month=filters.competencia.month,
+        )
+        if filters.day:
+            queryset = queryset.filter(paid_at__date=filters.day)
+        return queryset
+
+    @staticmethod
+    def _devolucoes_base(filters: DashboardFilters) -> QuerySet[DevolucaoAssociado]:
+        queryset = DevolucaoAssociado.objects.filter(
+            revertida_em__isnull=True,
+            data_devolucao__year=filters.competencia.year,
+            data_devolucao__month=filters.competencia.month,
+        ).select_related(
+            "associado",
+            "associado__agente_responsavel",
+            "contrato",
+            "contrato__agente",
+        )
+        if filters.agent_id:
+            queryset = queryset.filter(
+                Q(associado__agente_responsavel_id=filters.agent_id)
+                | Q(contrato__agente_id=filters.agent_id)
+            ).distinct()
+        if filters.status:
+            queryset = queryset.filter(associado__status=filters.status)
+        if filters.day:
+            queryset = queryset.filter(data_devolucao=filters.day)
+        return queryset
+
+    @staticmethod
+    def _despesas_base(filters: DashboardFilters) -> list[Despesa]:
+        despesas = list(Despesa.objects.filter(status=Despesa.Status.PAGO).order_by("-data_pagamento", "-data_despesa"))
+        filtered: list[Despesa] = []
+        for despesa in despesas:
+            reference_date = despesa.data_pagamento or despesa.data_despesa
+            if reference_date.year != filters.competencia.year or reference_date.month != filters.competencia.month:
+                continue
+            if filters.day and reference_date != filters.day:
+                continue
+            filtered.append(despesa)
+        return filtered
 
     @staticmethod
     def resumo_geral(filters: DashboardFilters) -> dict[str, object]:
         associados = AdminDashboardService._associados_base(filters.agent_id)
         associados = AdminDashboardService._filter_queryset_by_created_range(
             associados,
-            filters.date_start,
-            filters.date_end,
+            *(AdminDashboardService._resolved_date_window(filters.date_start, filters.date_end, filters.day)
+              if (filters.date_start or filters.date_end or filters.day)
+              else (filters.date_start, filters.date_end)),
         )
         if filters.status:
             associados = associados.filter(status=filters.status)
@@ -439,6 +648,10 @@ class AdminDashboardService:
             filters.status,
             filters.agent_id,
         )
+        renewal_rows = AdminDashboardService._filter_renewal_rows_by_day(
+            renewal_rows,
+            filters.day,
+        )
         renovacoes = sum(
             1
             for row in renewal_rows
@@ -455,12 +668,15 @@ class AdminDashboardService:
             effective_contracts,
             filters.status,
         )
-        if filters.date_start or filters.date_end:
+        if filters.date_start or filters.date_end or filters.day:
             effective_contracts = AdminDashboardService._filter_queryset_by_field_range(
                 effective_contracts,
                 "auxilio_liberado_em",
-                filters.date_start,
-                filters.date_end,
+                *AdminDashboardService._resolved_date_window(
+                    filters.date_start,
+                    filters.date_end,
+                    filters.day,
+                ),
             )
 
         pie_counts = {
@@ -494,6 +710,16 @@ class AdminDashboardService:
             if filters.status:
                 month_associados = month_associados.filter(status=filters.status)
                 month_effectivados = month_effectivados.filter(associado__status=filters.status)
+            if filters.day:
+                month_associados = month_associados.filter(created_at__date=filters.day)
+                month_effectivados = month_effectivados.filter(auxilio_liberado_em=filters.day)
+            else:
+                if filters.date_start:
+                    month_associados = month_associados.filter(created_at__date__gte=filters.date_start)
+                    month_effectivados = month_effectivados.filter(auxilio_liberado_em__gte=filters.date_start)
+                if filters.date_end:
+                    month_associados = month_associados.filter(created_at__date__lte=filters.date_end)
+                    month_effectivados = month_effectivados.filter(auxilio_liberado_em__lte=filters.date_end)
             month_renewal_rows = AdminDashboardService._filter_renewal_rows_by_agent(
                 RenovacaoCicloService.listar_detalhes(competencia=month),
                 filters.agent_id,
@@ -502,6 +728,10 @@ class AdminDashboardService:
                 month_renewal_rows,
                 filters.status,
                 filters.agent_id,
+            )
+            month_renewal_rows = AdminDashboardService._filter_renewal_rows_by_day(
+                month_renewal_rows,
+                filters.day,
             )
             renewed_count = sum(
                 1
@@ -646,7 +876,17 @@ class AdminDashboardService:
 
     @staticmethod
     def tesouraria(filters: DashboardFilters) -> dict[str, object]:
-        payments = list(AdminDashboardService._payments_base(filters.competencia, filters.agent_id))
+        AdminDashboardService._validate_day_with_competencia(filters, section="tesouraria")
+
+        payments = [
+            payment
+            for payment in AdminDashboardService._payments_base(
+                filters.competencia,
+                filters.agent_id,
+                filters.status,
+            )
+            if AdminDashboardService._payment_matches_day(payment, filters.day)
+        ]
         received_value = sum(
             (AdminDashboardService._payment_value(payment) for payment in payments),
             Decimal("0.00"),
@@ -665,7 +905,23 @@ class AdminDashboardService:
             data_contrato__year=filters.competencia.year,
             data_contrato__month=filters.competencia.month,
         )
+        contracts_month = AdminDashboardService._filter_contracts_by_associado_status(
+            contracts_month,
+            filters.status,
+        )
+        if filters.day:
+            contracts_month = contracts_month.filter(data_contrato=filters.day)
         new_contracts = contracts_month.count()
+
+        treasury_payouts = list(AdminDashboardService._payments_saida_base(filters))
+        devolucoes = list(AdminDashboardService._devolucoes_base(filters))
+        despesas = AdminDashboardService._despesas_base(filters)
+        saidas_value = sum(
+            (pagamento.valor_pago or Decimal("0.00") for pagamento in treasury_payouts),
+            Decimal("0.00"),
+        ) + sum((devolucao.valor for devolucao in devolucoes), Decimal("0.00"))
+        despesas_value = sum((despesa.valor for despesa in despesas), Decimal("0.00"))
+        receita_liquida = received_value - saidas_value - despesas_value
 
         projection_points: list[dict[str, object]] = []
         projection_total = Decimal("0.00")
@@ -678,7 +934,12 @@ class AdminDashboardService:
             month_received = sum(
                 (
                     AdminDashboardService._payment_value(payment)
-                    for payment in AdminDashboardService._payments_base(month, filters.agent_id)
+                    for payment in AdminDashboardService._payments_base(
+                        month,
+                        filters.agent_id,
+                        filters.status,
+                    )
+                    if AdminDashboardService._payment_matches_day(payment, filters.day)
                 ),
                 Decimal("0.00"),
             )
@@ -742,6 +1003,33 @@ class AdminDashboardService:
                     description="Contratos criados no mes filtrado.",
                 ),
                 AdminDashboardService._metric_card(
+                    key="saidas_agentes_associados",
+                    label="Saidas a agentes/associados",
+                    numeric_value=saidas_value,
+                    value_format="currency",
+                    tone="warning",
+                    detail_metric="saidas_agentes_associados",
+                    description="Pagamentos operacionais e devolucoes liquidadas na competencia.",
+                ),
+                AdminDashboardService._metric_card(
+                    key="despesas",
+                    label="Despesas",
+                    numeric_value=despesas_value,
+                    value_format="currency",
+                    tone="danger",
+                    detail_metric="despesas",
+                    description="Despesas pagas que impactam o caixa da associacao.",
+                ),
+                AdminDashboardService._metric_card(
+                    key="receita_liquida_associacao",
+                    label="Receita liquida da associacao",
+                    numeric_value=receita_liquida,
+                    value_format="currency",
+                    tone="positive" if receita_liquida >= 0 else "danger",
+                    detail_metric="receita_liquida_associacao",
+                    description="Receita recebida menos saidas a agentes/associados e despesas.",
+                ),
+                AdminDashboardService._metric_card(
                     key="projecao_total",
                     label="Projecao competencia + 2 ciclos",
                     numeric_value=projection_total,
@@ -801,7 +1089,13 @@ class AdminDashboardService:
         }
 
     @staticmethod
-    def _resolved_date_window(date_start: date | None, date_end: date | None) -> tuple[date, date]:
+    def _resolved_date_window(
+        date_start: date | None,
+        date_end: date | None,
+        day: date | None = None,
+    ) -> tuple[date, date]:
+        if day:
+            return day, day
         today = timezone.localdate()
         if not date_start and not date_end:
             return today.replace(day=1), today
@@ -812,6 +1106,7 @@ class AdminDashboardService:
         date_start, date_end = AdminDashboardService._resolved_date_window(
             filters.date_start,
             filters.date_end,
+            filters.day,
         )
         associados = AdminDashboardService._associados_base(filters.agent_id)
         associados = AdminDashboardService._filter_queryset_by_created_range(
@@ -906,9 +1201,11 @@ class AdminDashboardService:
 
     @staticmethod
     def agentes(filters: DashboardFilters) -> dict[str, object]:
+        AdminDashboardService._validate_day_with_competencia(filters, section="agentes")
         date_start, date_end = AdminDashboardService._resolved_date_window(
             filters.date_start,
             filters.date_end,
+            filters.day,
         )
         agents = (
             User.objects.filter(
@@ -922,6 +1219,20 @@ class AdminDashboardService:
         if filters.agent_id:
             agents = agents.filter(id=filters.agent_id)
 
+        renewal_rows = AdminDashboardService._filter_renewal_rows_by_agent(
+            RenovacaoCicloService.listar_detalhes(competencia=filters.competencia),
+            filters.agent_id,
+        )
+        renewal_rows = AdminDashboardService._filter_renewal_rows_by_status(
+            renewal_rows,
+            filters.status,
+            filters.agent_id,
+        )
+        renewal_rows = AdminDashboardService._filter_renewal_rows_by_day(
+            renewal_rows,
+            filters.day,
+        )
+
         ranking: list[dict[str, object]] = []
         for agent in agents:
             cadastros = Associado.objects.filter(
@@ -929,33 +1240,63 @@ class AdminDashboardService:
                 created_at__date__gte=date_start,
                 created_at__date__lte=date_end,
             )
+            if filters.status:
+                cadastros = cadastros.filter(status=filters.status)
             em_processo = cadastros.filter(status__in=PROCESSING_ASSOCIADO_STATUSES)
-            inadimplentes = Associado.objects.filter(
-                agente_responsavel=agent,
-                status=Associado.Status.INADIMPLENTE,
-            )
+            base_associados = Associado.objects.filter(agente_responsavel=agent)
+            if filters.status:
+                base_associados = base_associados.filter(status=filters.status)
+            inadimplentes = base_associados.filter(status=Associado.Status.INADIMPLENTE)
+            inativos = base_associados.filter(status=Associado.Status.INATIVO)
             efetivados = AdminDashboardService._contracts_base(agent.id).filter(
                 auxilio_liberado_em__gte=date_start,
                 auxilio_liberado_em__lte=date_end,
                 auxilio_liberado_em__isnull=False,
             ).distinct()
-            renovados = Ciclo.objects.filter(
-                status=Ciclo.Status.CICLO_RENOVADO,
-                data_fim__gte=date_start.replace(day=1),
-                data_fim__lte=date_end,
-            ).filter(
-                Q(contrato__agente=agent)
-                | Q(
-                    contrato__agente__isnull=True,
-                    contrato__associado__agente_responsavel=agent,
-                )
+            efetivados = AdminDashboardService._filter_contracts_by_associado_status(
+                efetivados,
+                filters.status,
             )
+            volume_financeiro = sum(
+                (contrato.valor_liquido for contrato in efetivados),
+                Decimal("0.00"),
+            )
+            agent_renewals = [
+                row
+                for row in renewal_rows
+                if row["agente_responsavel"] == (agent.full_name or agent.email)
+            ]
+            renovados = sum(
+                1
+                for row in agent_renewals
+                if row["status_visual"] == "ciclo_renovado" or row["gerou_encerramento"]
+            )
+            aptos_renovar = sum(
+                1 for row in agent_renewals if row["status_visual"] == "apto_a_renovar"
+            )
+            devolvidos = AdminDashboardService._devolucoes_base(
+                DashboardFilters(
+                    competencia=filters.competencia,
+                    date_start=filters.date_start,
+                    date_end=filters.date_end,
+                    day=filters.day,
+                    agent_id=agent.id,
+                    status=filters.status,
+                )
+            ).count()
+            status_counts = {
+                status_key: base_associados.filter(status=status_key).count()
+                for status_key, _ in Associado.Status.choices
+            }
             metrics_total = (
                 cadastros.count()
                 + em_processo.count()
                 + inadimplentes.count()
                 + efetivados.count()
-                + renovados.count()
+                + renovados
+                + aptos_renovar
+                + devolvidos
+                + int(volume_financeiro > 0)
             )
             if metrics_total == 0 and not agent.has_role("AGENTE"):
                 continue
@@ -966,56 +1307,108 @@ class AdminDashboardService:
                     "efetivados": efetivados.count(),
                     "cadastros": cadastros.count(),
                     "em_processo": em_processo.count(),
-                    "renovados": renovados.count(),
+                    "renovados": renovados,
+                    "aptos_renovar": aptos_renovar,
                     "inadimplentes": inadimplentes.count(),
+                    "devolvidos": devolvidos,
+                    "volume_financeiro": float(volume_financeiro),
+                    "cadastrado": status_counts[Associado.Status.CADASTRADO],
+                    "em_analise": status_counts[Associado.Status.EM_ANALISE],
+                    "pendente": status_counts[Associado.Status.PENDENTE],
+                    "ativo": status_counts[Associado.Status.ATIVO],
+                    "inadimplente": status_counts[Associado.Status.INADIMPLENTE],
+                    "inativo": status_counts[Associado.Status.INATIVO],
                 }
             )
 
-        ranking.sort(key=lambda item: (-item["efetivados"], item["agent_name"]))
+        ranking.sort(
+            key=lambda item: (-item["volume_financeiro"], -item["efetivados"], item["agent_name"])
+        )
         total_efetivados = sum(item["efetivados"] for item in ranking)
+        total_volume = sum(Decimal(str(item["volume_financeiro"])) for item in ranking)
         for item in ranking:
             item["participacao"] = round(
                 ((item["efetivados"] / total_efetivados) * 100) if total_efetivados else 0,
                 1,
             )
-            item["detail_metric"] = f"agente:{item['agent_id']}:efetivados"
+            item["participacao_volume"] = round(
+                float(
+                    (
+                        (Decimal(str(item["volume_financeiro"])) / total_volume)
+                        * Decimal("100")
+                    )
+                    if total_volume
+                    else Decimal("0.0")
+                ),
+                1,
+            )
+            item["detail_metric"] = f"agente:{item['agent_id']}:volume"
 
         top_agent = ranking[0] if ranking else None
-        avg_efetivados = round(total_efetivados / len(ranking), 1) if ranking else 0.0
+        avg_volume = round(float(total_volume / Decimal(len(ranking))), 2) if ranking else 0.0
+        total_inativos = sum(item["inativo"] for item in ranking)
+        total_devolvidos = sum(item["devolvidos"] for item in ranking)
+        total_renovados = sum(item["renovados"] for item in ranking)
+        total_aptos = sum(item["aptos_renovar"] for item in ranking)
 
         return {
+            "competencia": month_key(filters.competencia),
             "date_start": date_start.isoformat(),
             "date_end": date_end.isoformat(),
             "cards": [
                 AdminDashboardService._metric_card(
-                    key="agentes_no_ranking",
-                    label="Agentes monitorados",
-                    numeric_value=len(ranking),
-                    detail_metric="agentes_no_ranking",
-                    description="Quantidade de agentes com dados no periodo.",
+                    key="volume_total",
+                    label="Volume total",
+                    numeric_value=total_volume,
+                    value_format="currency",
+                    detail_metric="agentes:volume_total",
+                    description="Soma do valor liquido efetivado pelos agentes no recorte.",
                 ),
                 AdminDashboardService._metric_card(
-                    key="top_agente_efetivacoes",
-                    label="Top agente",
-                    numeric_value=top_agent["efetivados"] if top_agent else 0,
+                    key="top_agente_volume",
+                    label="Top agente por volume",
+                    numeric_value=Decimal(str(top_agent["volume_financeiro"])) if top_agent else Decimal("0.00"),
+                    value_format="currency",
                     tone="positive",
-                    detail_metric=top_agent["detail_metric"] if top_agent else "agentes_no_ranking",
+                    detail_metric=top_agent["detail_metric"] if top_agent else "agentes:volume_total",
                     description=top_agent["agent_name"] if top_agent else "Sem agente no periodo",
                 ),
                 AdminDashboardService._metric_card(
-                    key="efetivacoes_total",
-                    label="Efetivacoes totais",
-                    numeric_value=total_efetivados,
-                    tone="positive",
-                    detail_metric="efetivacoes_total",
-                    description="Soma das efetivacoes atribuidas aos agentes.",
+                    key="media_volume",
+                    label="Media por agente",
+                    numeric_value=avg_volume,
+                    value_format="currency",
+                    detail_metric="agentes:volume_total",
+                    description="Media de volume financeiro entre os agentes monitorados.",
                 ),
                 AdminDashboardService._metric_card(
-                    key="media_efetivacoes",
-                    label="Media por agente",
-                    numeric_value=avg_efetivados,
-                    detail_metric="media_efetivacoes",
-                    description="Media de efetivacoes entre os agentes ranqueados.",
+                    key="associados_inativos",
+                    label="Associados inativos",
+                    numeric_value=total_inativos,
+                    detail_metric="agentes:inativos",
+                    description="Base atual de associados inativos vinculados aos agentes filtrados.",
+                ),
+                AdminDashboardService._metric_card(
+                    key="com_devolucao",
+                    label="Associados com devolucao",
+                    numeric_value=total_devolvidos,
+                    detail_metric="agentes:devolvidos",
+                    description="Devolucoes registradas na competencia filtrada.",
+                ),
+                AdminDashboardService._metric_card(
+                    key="renovados",
+                    label="Associados renovados",
+                    numeric_value=total_renovados,
+                    tone="positive",
+                    detail_metric="agentes:renovados",
+                    description="Renovacoes efetivadas na competencia da secao.",
+                ),
+                AdminDashboardService._metric_card(
+                    key="aptos_renovar",
+                    label="Associados para renovar",
+                    numeric_value=total_aptos,
+                    detail_metric="agentes:aptos_renovar",
+                    description="Associados aptos a renovar na competencia da secao.",
                 ),
             ],
             "ranking": ranking[:8],
@@ -1038,8 +1431,13 @@ class AdminDashboardService:
         associados = AdminDashboardService._associados_base(filters.agent_id)
         associados = AdminDashboardService._filter_queryset_by_created_range(
             associados,
-            filters.date_start,
-            filters.date_end,
+            *(AdminDashboardService._resolved_date_window(
+                filters.date_start,
+                filters.date_end,
+                filters.day,
+            )
+              if (filters.date_start or filters.date_end or filters.day)
+              else (filters.date_start, filters.date_end)),
         )
         if filters.status:
             associados = associados.filter(status=filters.status)
@@ -1056,6 +1454,10 @@ class AdminDashboardService:
             renewal_rows,
             filters.status,
             filters.agent_id,
+        )
+        renewal_rows = AdminDashboardService._filter_renewal_rows_by_day(
+            renewal_rows,
+            filters.day,
         )
 
         if metric == "associados_cadastrados":
@@ -1092,12 +1494,15 @@ class AdminDashboardService:
             ]
         if metric == "efetivados":
             effective_contracts = contracts.filter(auxilio_liberado_em__isnull=False).distinct()
-            if filters.date_start or filters.date_end:
+            if filters.date_start or filters.date_end or filters.day:
                 effective_contracts = AdminDashboardService._filter_queryset_by_field_range(
                     effective_contracts,
                     "auxilio_liberado_em",
-                    filters.date_start,
-                    filters.date_end,
+                    *AdminDashboardService._resolved_date_window(
+                        filters.date_start,
+                        filters.date_end,
+                        filters.day,
+                    ),
                 )
             return [
                 AdminDashboardService._detail_row_from_contract(
@@ -1138,6 +1543,13 @@ class AdminDashboardService:
                 )
                 if filters.status:
                     month_associados = month_associados.filter(status=filters.status)
+                if filters.day:
+                    month_associados = month_associados.filter(created_at__date=filters.day)
+                else:
+                    if filters.date_start:
+                        month_associados = month_associados.filter(created_at__date__gte=filters.date_start)
+                    if filters.date_end:
+                        month_associados = month_associados.filter(created_at__date__lte=filters.date_end)
                 return [
                     AdminDashboardService._detail_row_from_associado(
                         associado,
@@ -1155,6 +1567,13 @@ class AdminDashboardService:
                     contracts,
                     filters.status,
                 )
+                if filters.day:
+                    contracts = contracts.filter(auxilio_liberado_em=filters.day)
+                else:
+                    if filters.date_start:
+                        contracts = contracts.filter(auxilio_liberado_em__gte=filters.date_start)
+                    if filters.date_end:
+                        contracts = contracts.filter(auxilio_liberado_em__lte=filters.date_end)
                 return [
                     AdminDashboardService._detail_row_from_contract(
                         contrato,
@@ -1173,6 +1592,10 @@ class AdminDashboardService:
                     filters.status,
                     filters.agent_id,
                 )
+                month_rows = AdminDashboardService._filter_renewal_rows_by_day(
+                    month_rows,
+                    filters.day,
+                )
                 return [
                     AdminDashboardService._detail_row_from_renewal_row(row, origem=f"Renovacao {month_label(month)}")
                     for row in month_rows
@@ -1182,14 +1605,29 @@ class AdminDashboardService:
 
     @staticmethod
     def _treasury_details(filters: DashboardFilters, metric: str) -> list[dict[str, object]]:
+        AdminDashboardService._validate_day_with_competencia(filters, section="tesouraria")
+
         def ok_rows_for_month(month: date) -> list[PagamentoMensalidade]:
             return [
                 payment
-                for payment in AdminDashboardService._payments_base(month, filters.agent_id)
+                for payment in AdminDashboardService._payments_base(
+                    month,
+                    filters.agent_id,
+                    filters.status,
+                )
                 if AdminDashboardService._payment_is_ok(payment)
+                and AdminDashboardService._payment_matches_day(payment, filters.day)
             ]
 
-        payments = list(AdminDashboardService._payments_base(filters.competencia, filters.agent_id))
+        payments = [
+            payment
+            for payment in AdminDashboardService._payments_base(
+                filters.competencia,
+                filters.agent_id,
+                filters.status,
+            )
+            if AdminDashboardService._payment_matches_day(payment, filters.day)
+        ]
         if metric == "valores_recebidos":
             return [
                 AdminDashboardService._detail_row_from_payment(
@@ -1241,6 +1679,12 @@ class AdminDashboardService:
                 data_contrato__year=filters.competencia.year,
                 data_contrato__month=filters.competencia.month,
             )
+            contracts = AdminDashboardService._filter_contracts_by_associado_status(
+                contracts,
+                filters.status,
+            )
+            if filters.day:
+                contracts = contracts.filter(data_contrato=filters.day)
             return [
                 AdminDashboardService._detail_row_from_contract(
                     contrato,
@@ -1309,6 +1753,80 @@ class AdminDashboardService:
                 )
                 for parcela in AdminDashboardService._projection_parcelas(month, filters.agent_id)
             ]
+        if metric == "saidas_agentes_associados":
+            rows = [
+                AdminDashboardService._detail_row_from_tesouraria_pagamento(
+                    pagamento,
+                    origem="Pagamento tesouraria",
+                    observacao="Pagamento efetuado a agente ou associado.",
+                )
+                for pagamento in AdminDashboardService._payments_saida_base(filters)
+            ]
+            rows.extend(
+                [
+                    AdminDashboardService._detail_row_from_devolucao(
+                        devolucao,
+                        origem="Devolucao ao associado",
+                        observacao="Devolucao registrada na tesouraria.",
+                    )
+                    for devolucao in AdminDashboardService._devolucoes_base(filters)
+                ]
+            )
+            return rows
+        if metric == "despesas":
+            return [
+                AdminDashboardService._detail_row_from_despesa(
+                    despesa,
+                    origem="Despesa paga",
+                    observacao="Despesa operacional paga.",
+                )
+                for despesa in AdminDashboardService._despesas_base(filters)
+            ]
+        if metric == "receita_liquida_associacao":
+            rows = [
+                AdminDashboardService._detail_row_from_payment(
+                    payment,
+                    origem="Recebimento",
+                    valor=AdminDashboardService._payment_value(payment),
+                    observacao="Receita recebida na tesouraria.",
+                )
+                for payment in payments
+                if AdminDashboardService._payment_is_ok(payment)
+            ]
+            rows.extend(
+                [
+                    AdminDashboardService._detail_row_from_tesouraria_pagamento(
+                        pagamento,
+                        origem="Saida operacional",
+                        valor=-(pagamento.valor_pago or Decimal("0.00")),
+                        observacao="Pagamento efetuado a agente ou associado.",
+                    )
+                    for pagamento in AdminDashboardService._payments_saida_base(filters)
+                ]
+            )
+            rows.extend(
+                [
+                    AdminDashboardService._detail_row_from_devolucao(
+                        devolucao,
+                        origem="Devolucao ao associado",
+                        valor=-devolucao.valor,
+                        observacao="Devolucao registrada na tesouraria.",
+                    )
+                    for devolucao in AdminDashboardService._devolucoes_base(filters)
+                ]
+            )
+            rows.extend(
+                [
+                    AdminDashboardService._detail_row_from_despesa(
+                        despesa,
+                        origem="Despesa paga",
+                        valor=-despesa.valor,
+                        observacao="Despesa operacional paga.",
+                    )
+                    for despesa in AdminDashboardService._despesas_base(filters)
+                ]
+            )
+            return rows
         return []
 
     @staticmethod
@@ -1316,6 +1834,7 @@ class AdminDashboardService:
         date_start, date_end = AdminDashboardService._resolved_date_window(
             filters.date_start,
             filters.date_end,
+            filters.day,
         )
         associados = AdminDashboardService._associados_base(filters.agent_id)
         associados = AdminDashboardService._filter_queryset_by_created_range(
@@ -1382,10 +1901,63 @@ class AdminDashboardService:
 
     @staticmethod
     def _agents_details(filters: DashboardFilters, metric: str) -> list[dict[str, object]]:
+        AdminDashboardService._validate_day_with_competencia(filters, section="agentes")
         date_start, date_end = AdminDashboardService._resolved_date_window(
             filters.date_start,
             filters.date_end,
+            filters.day,
         )
+        ranking_payload = AdminDashboardService.agentes(filters)
+        if metric == "agentes:volume_total":
+            rows: list[dict[str, object]] = []
+            for item in ranking_payload["ranking"]:
+                rows.extend(
+                    AdminDashboardService._agents_details(
+                        filters,
+                        f"agente:{item['agent_id']}:volume",
+                    )
+                )
+            return rows
+        if metric == "agentes:inativos":
+            rows: list[dict[str, object]] = []
+            for item in ranking_payload["ranking"]:
+                rows.extend(
+                    AdminDashboardService._agents_details(
+                        filters,
+                        f"agente:{item['agent_id']}:status:{Associado.Status.INATIVO}",
+                    )
+                )
+            return rows
+        if metric == "agentes:devolvidos":
+            rows: list[dict[str, object]] = []
+            for item in ranking_payload["ranking"]:
+                rows.extend(
+                    AdminDashboardService._agents_details(
+                        filters,
+                        f"agente:{item['agent_id']}:devolvidos",
+                    )
+                )
+            return rows
+        if metric == "agentes:renovados":
+            rows: list[dict[str, object]] = []
+            for item in ranking_payload["ranking"]:
+                rows.extend(
+                    AdminDashboardService._agents_details(
+                        filters,
+                        f"agente:{item['agent_id']}:renovados",
+                    )
+                )
+            return rows
+        if metric == "agentes:aptos_renovar":
+            rows: list[dict[str, object]] = []
+            for item in ranking_payload["ranking"]:
+                rows.extend(
+                    AdminDashboardService._agents_details(
+                        filters,
+                        f"agente:{item['agent_id']}:aptos_renovar",
+                    )
+                )
+            return rows
         if metric == "agentes_no_ranking":
             return [
                 {
@@ -1399,16 +1971,16 @@ class AdminDashboardService:
                     "contrato_codigo": "",
                     "etapa": "ranking",
                     "competencia": "",
-                    "valor": value_or_none(Decimal(str(item["efetivados"]))),
+                    "valor": value_or_none(Decimal(str(item["volume_financeiro"]))),
                     "origem": "Agente no ranking",
                     "data_referencia": "",
                     "observacao": "Agente com atividade no periodo.",
                 }
-                for item in AdminDashboardService.agentes(filters)["ranking"]
+                for item in ranking_payload["ranking"]
             ]
         if metric in {"efetivacoes_total", "media_efetivacoes"}:
             rows: list[dict[str, object]] = []
-            for item in AdminDashboardService.agentes(filters)["ranking"]:
+            for item in ranking_payload["ranking"]:
                 rows.extend(
                     AdminDashboardService._agents_details(
                         filters,
@@ -1417,14 +1989,36 @@ class AdminDashboardService:
                 )
             return rows
         if metric.startswith("agente:"):
-            _, agent_id, metric_key = metric.split(":")
+            metric_parts = metric.split(":")
+            agent_id = metric_parts[1]
+            metric_key = metric_parts[2]
             agent_filters = DashboardFilters(
                 competencia=filters.competencia,
                 date_start=date_start,
                 date_end=date_end,
+                day=filters.day,
                 agent_id=int(agent_id),
                 status=filters.status,
             )
+            if metric_key == "volume":
+                contracts = AdminDashboardService._contracts_base(int(agent_id)).filter(
+                    auxilio_liberado_em__gte=date_start,
+                    auxilio_liberado_em__lte=date_end,
+                    auxilio_liberado_em__isnull=False,
+                ).distinct()
+                contracts = AdminDashboardService._filter_contracts_by_associado_status(
+                    contracts,
+                    filters.status,
+                )
+                return [
+                    AdminDashboardService._detail_row_from_contract(
+                        contrato,
+                        origem="Volume financeiro do agente",
+                        valor=contrato.valor_liquido,
+                        data_referencia=contrato.auxilio_liberado_em,
+                    )
+                    for contrato in contracts
+                ]
             if metric_key == "efetivados":
                 contracts = AdminDashboardService._contracts_base(int(agent_id)).filter(
                     auxilio_liberado_em__gte=date_start,
@@ -1457,6 +2051,15 @@ class AdminDashboardService:
                     RenovacaoCicloService.listar_detalhes(competencia=filters.competencia),
                     int(agent_id),
                 )
+                rows = AdminDashboardService._filter_renewal_rows_by_status(
+                    rows,
+                    filters.status,
+                    int(agent_id),
+                )
+                rows = AdminDashboardService._filter_renewal_rows_by_day(
+                    rows,
+                    filters.day,
+                )
                 return [
                     AdminDashboardService._detail_row_from_renewal_row(
                         row,
@@ -1464,6 +2067,28 @@ class AdminDashboardService:
                     )
                     for row in rows
                     if row["status_visual"] == "ciclo_renovado" or row["gerou_encerramento"]
+                ]
+            if metric_key == "aptos_renovar":
+                rows = AdminDashboardService._filter_renewal_rows_by_agent(
+                    RenovacaoCicloService.listar_detalhes(competencia=filters.competencia),
+                    int(agent_id),
+                )
+                rows = AdminDashboardService._filter_renewal_rows_by_status(
+                    rows,
+                    filters.status,
+                    int(agent_id),
+                )
+                rows = AdminDashboardService._filter_renewal_rows_by_day(
+                    rows,
+                    filters.day,
+                )
+                return [
+                    AdminDashboardService._detail_row_from_renewal_row(
+                        row,
+                        origem="Apto a renovar do agente",
+                    )
+                    for row in rows
+                    if row["status_visual"] == "apto_a_renovar"
                 ]
             if metric_key == "em_processo":
                 associados = AdminDashboardService._associados_base(int(agent_id)).filter(
@@ -1479,6 +2104,14 @@ class AdminDashboardService:
                     )
                     for associado in associados
                 ]
+            if metric_key == "devolvidos":
+                return [
+                    AdminDashboardService._detail_row_from_devolucao(
+                        devolucao,
+                        origem="Devolucao vinculada ao agente",
+                    )
+                    for devolucao in AdminDashboardService._devolucoes_base(agent_filters)
+                ]
             if metric_key == "inadimplentes":
                 associados = AdminDashboardService._associados_base(int(agent_id)).filter(
                     agente_responsavel_id=int(agent_id),
@@ -1491,7 +2124,20 @@ class AdminDashboardService:
                     )
                     for associado in associados
                 ]
-            return AdminDashboardService._agents_details(agent_filters, f"agente:{agent_id}:efetivados")
+            if metric_key == "status" and len(metric_parts) == 4:
+                target_status = metric_parts[3]
+                associados = Associado.objects.filter(agente_responsavel_id=int(agent_id))
+                if filters.status:
+                    associados = associados.filter(status=filters.status)
+                associados = associados.filter(status=target_status)
+                return [
+                    AdminDashboardService._detail_row_from_associado(
+                        associado,
+                        origem=f"Status {target_status} do agente",
+                    )
+                    for associado in associados
+                ]
+            return AdminDashboardService._agents_details(agent_filters, f"agente:{agent_id}:volume")
         return []
 
 

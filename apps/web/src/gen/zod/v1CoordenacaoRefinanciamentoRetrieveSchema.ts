@@ -10,7 +10,7 @@ export const V1CoordenacaoRefinanciamentoRetrievePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("Um valor inteiro único que identifica este refinanciamento."),
+    .describe("A unique integer value identifying this refinanciamento."),
 });
 
 export const V1CoordenacaoRefinanciamentoRetrieve200Schema = z.lazy(

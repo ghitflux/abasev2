@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.associados.models import Associado
@@ -14,6 +15,11 @@ from apps.contratos.cycle_timeline import (
 )
 from apps.refinanciamento.models import Comprovante, Refinanciamento
 from apps.tesouraria.initial_payment import build_initial_payment_payload
+from apps.tesouraria.models import (
+    DevolucaoAssociado,
+    LiquidacaoContrato,
+)
+from core.file_references import build_filefield_reference
 
 from .models import Ciclo, Contrato, Parcela
 
@@ -110,6 +116,19 @@ class MovimentoFinanceiroAvulsoSerializer(MesNaoPagoSerializer):
     pass
 
 
+class ContratoAptoCycleSerializer(serializers.Serializer):
+    numero = serializers.IntegerField()
+    status = serializers.CharField()
+    status_visual_slug = serializers.CharField()
+    status_visual_label = serializers.CharField()
+    resumo_referencias = serializers.CharField()
+    parcelas_pagas = serializers.IntegerField()
+    parcelas_total = serializers.IntegerField()
+    valor_total = serializers.DecimalField(max_digits=10, decimal_places=2)
+    primeira_competencia_ciclo = serializers.DateField()
+    ultima_competencia_ciclo = serializers.DateField()
+
+
 class ProjectedComprovanteSerializer(serializers.Serializer):
     id = serializers.IntegerField(allow_null=True)
     tipo = serializers.CharField()
@@ -123,6 +142,7 @@ class ProjectedComprovanteSerializer(serializers.Serializer):
     size_bytes = serializers.IntegerField(allow_null=True)
     data_pagamento = serializers.DateTimeField(allow_null=True)
     origem = serializers.CharField()
+    status_validacao = serializers.CharField(required=False)
     created_at = serializers.DateTimeField(allow_null=True)
     legacy_comprovante_id = serializers.IntegerField(allow_null=True)
 
@@ -144,6 +164,78 @@ class EvidenceReferenceSerializer(serializers.Serializer):
 
 class InitialPaymentEvidenceSerializer(EvidenceReferenceSerializer):
     pass
+
+
+class ContractLiquidacaoUserSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    full_name = serializers.CharField(read_only=True)
+
+
+class ContractLiquidacaoComprovanteSerializer(serializers.Serializer):
+    nome = serializers.CharField(read_only=True)
+    url = serializers.CharField(read_only=True)
+    arquivo_referencia = serializers.CharField(read_only=True)
+    arquivo_disponivel_localmente = serializers.BooleanField(read_only=True)
+    tipo_referencia = serializers.CharField(read_only=True)
+
+
+class ContractLiquidacaoParcelaSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    numero = serializers.IntegerField(read_only=True)
+    referencia_mes = serializers.DateField(read_only=True)
+    valor = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    status = serializers.CharField(read_only=True)
+    data_vencimento = serializers.DateField(read_only=True, allow_null=True)
+    data_pagamento = serializers.DateField(read_only=True, allow_null=True)
+
+
+class ContractLiquidacaoSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    status = serializers.CharField(read_only=True)
+    data_liquidacao = serializers.DateField(read_only=True)
+    valor_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    observacao = serializers.CharField(read_only=True, allow_blank=True)
+    realizado_por = ContractLiquidacaoUserSerializer(read_only=True)
+    revertida_em = serializers.DateTimeField(read_only=True, allow_null=True)
+    revertida_por = ContractLiquidacaoUserSerializer(read_only=True, allow_null=True)
+    motivo_reversao = serializers.CharField(read_only=True, allow_blank=True)
+    comprovante = ContractLiquidacaoComprovanteSerializer(read_only=True, allow_null=True)
+    parcelas = ContractLiquidacaoParcelaSerializer(many=True, read_only=True)
+
+
+class ContractDevolucaoUserSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    full_name = serializers.CharField(read_only=True)
+
+
+class ContractDevolucaoComprovanteSerializer(serializers.Serializer):
+    nome = serializers.CharField(read_only=True)
+    url = serializers.CharField(read_only=True)
+    arquivo_referencia = serializers.CharField(read_only=True)
+    arquivo_disponivel_localmente = serializers.BooleanField(read_only=True)
+    tipo_referencia = serializers.CharField(read_only=True)
+
+
+class ContractDevolucaoSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    tipo = serializers.CharField(read_only=True)
+    status = serializers.CharField(read_only=True)
+    data_devolucao = serializers.DateField(read_only=True)
+    quantidade_parcelas = serializers.IntegerField(read_only=True)
+    valor = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    motivo = serializers.CharField(read_only=True)
+    competencia_referencia = serializers.DateField(read_only=True, allow_null=True)
+    nome = serializers.CharField(read_only=True)
+    cpf_cnpj = serializers.CharField(read_only=True)
+    matricula = serializers.CharField(read_only=True, allow_blank=True)
+    agente_nome = serializers.CharField(read_only=True, allow_blank=True)
+    contrato_codigo = serializers.CharField(read_only=True)
+    realizado_por = ContractDevolucaoUserSerializer(read_only=True)
+    revertida_em = serializers.DateTimeField(read_only=True, allow_null=True)
+    revertida_por = ContractDevolucaoUserSerializer(read_only=True, allow_null=True)
+    motivo_reversao = serializers.CharField(read_only=True, allow_blank=True)
+    comprovante = ContractDevolucaoComprovanteSerializer(read_only=True, allow_null=True)
+    anexos = ContractDevolucaoComprovanteSerializer(many=True, read_only=True)
 
 
 class ProjectedCicloSerializer(serializers.Serializer):
@@ -288,6 +380,8 @@ class ContratoResumoSerializer(serializers.ModelSerializer):
     pagamento_inicial_valor = serializers.SerializerMethodField()
     pagamento_inicial_paid_at = serializers.SerializerMethodField()
     pagamento_inicial_evidencias = serializers.SerializerMethodField()
+    liquidacao_contrato = serializers.SerializerMethodField()
+    devolucoes_associado = serializers.SerializerMethodField()
 
     class Meta:
         model = Contrato
@@ -321,6 +415,8 @@ class ContratoResumoSerializer(serializers.ModelSerializer):
             "pagamento_inicial_valor",
             "pagamento_inicial_paid_at",
             "pagamento_inicial_evidencias",
+            "liquidacao_contrato",
+            "devolucoes_associado",
             "status_renovacao",
             "refinanciamento_id",
             "possui_meses_nao_descontados",
@@ -339,6 +435,7 @@ class ContratoResumoSerializer(serializers.ModelSerializer):
             )
         return cache[obj.pk]
 
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
     def get_data_primeiro_ciclo_ativado(self, obj: Contrato):
         return get_contract_activation_payload(obj)["data_primeiro_ciclo_ativado"]
 
@@ -348,6 +445,7 @@ class ContratoResumoSerializer(serializers.ModelSerializer):
     def get_primeiro_ciclo_ativacao_inferida(self, obj: Contrato) -> bool:
         return bool(get_contract_activation_payload(obj)["primeiro_ciclo_ativacao_inferida"])
 
+    @extend_schema_field(ProjectedCicloSerializer(many=True))
     def get_ciclos(self, obj: Contrato):
         projection = _get_contract_projection(
             self.context,
@@ -370,10 +468,12 @@ class ContratoResumoSerializer(serializers.ModelSerializer):
             cycles = filtered_cycles
         return ProjectedCicloSerializer(cycles, many=True).data
 
+    @extend_schema_field(MesNaoPagoSerializer(many=True))
     def get_meses_nao_pagos(self, obj: Contrato):
         projection = _get_contract_projection(self.context, obj)
         return MesNaoPagoSerializer(projection["unpaid_months"], many=True).data
 
+    @extend_schema_field(MovimentoFinanceiroAvulsoSerializer(many=True))
     def get_movimentos_financeiros_avulsos(self, obj: Contrato):
         projection = _get_contract_projection(self.context, obj)
         return MovimentoFinanceiroAvulsoSerializer(
@@ -394,7 +494,8 @@ class ContratoResumoSerializer(serializers.ModelSerializer):
     def get_status_renovacao(self, obj: Contrato) -> str:
         return str(_get_contract_projection(self.context, obj)["status_renovacao"])
 
-    def get_refinanciamento_id(self, obj: Contrato):
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_refinanciamento_id(self, obj: Contrato) -> int | None:
         return _get_contract_projection(self.context, obj)["refinanciamento_id"]
 
     def get_status_visual_slug(self, obj: Contrato) -> str:
@@ -415,13 +516,16 @@ class ContratoResumoSerializer(serializers.ModelSerializer):
     def get_pagamento_inicial_status_label(self, obj: Contrato) -> str:
         return str(self._initial_payment_payload(obj).status_label)
 
-    def get_pagamento_inicial_valor(self, obj: Contrato):
+    @extend_schema_field(serializers.CharField(allow_null=True))
+    def get_pagamento_inicial_valor(self, obj: Contrato) -> str | None:
         valor = self._initial_payment_payload(obj).valor
         return f"{valor:.2f}" if valor is not None else None
 
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
     def get_pagamento_inicial_paid_at(self, obj: Contrato):
         return self._initial_payment_payload(obj).paid_at
 
+    @extend_schema_field(InitialPaymentEvidenceSerializer(many=True))
     def get_pagamento_inicial_evidencias(self, obj: Contrato):
         evidencias = self._initial_payment_payload(obj).evidencias
         if _is_agent_restricted(self.context):
@@ -434,6 +538,128 @@ class ContratoResumoSerializer(serializers.ModelSerializer):
         return InitialPaymentEvidenceSerializer(
             evidencias, many=True
         ).data
+
+    @extend_schema_field(ContractLiquidacaoSerializer(allow_null=True))
+    def get_liquidacao_contrato(self, obj: Contrato):
+        liquidacao = (
+            LiquidacaoContrato.objects.select_related("realizado_por", "revertida_por")
+            .prefetch_related("itens__parcela")
+            .filter(contrato=obj)
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        if liquidacao is None:
+            return None
+
+        comprovante = None
+        if liquidacao.comprovante:
+            reference = build_filefield_reference(
+                liquidacao.comprovante,
+                request=self.context.get("request"),
+                missing_type="legado_sem_arquivo",
+            )
+            comprovante = {
+                "nome": liquidacao.nome_comprovante
+                or liquidacao.comprovante.name.rsplit("/", 1)[-1],
+                "url": reference.url,
+                "arquivo_referencia": reference.arquivo_referencia,
+                "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
+                "tipo_referencia": reference.tipo_referencia,
+            }
+
+        payload = {
+            "id": liquidacao.id,
+            "status": liquidacao.status,
+            "data_liquidacao": liquidacao.data_liquidacao,
+            "valor_total": liquidacao.valor_total,
+            "observacao": liquidacao.observacao,
+            "realizado_por": liquidacao.realizado_por,
+            "revertida_em": liquidacao.revertida_em,
+            "revertida_por": liquidacao.revertida_por,
+            "motivo_reversao": liquidacao.motivo_reversao,
+            "comprovante": comprovante,
+            "parcelas": [
+                {
+                    "id": item.parcela_id,
+                    "numero": item.numero_parcela,
+                    "referencia_mes": item.referencia_mes,
+                    "valor": item.valor,
+                    "status": Parcela.Status.LIQUIDADA,
+                    "data_vencimento": getattr(item.parcela, "data_vencimento", None),
+                    "data_pagamento": liquidacao.data_liquidacao,
+                }
+                for item in liquidacao.itens.all()
+            ],
+        }
+        return ContractLiquidacaoSerializer(payload).data
+
+    @extend_schema_field(ContractDevolucaoSerializer(many=True))
+    def get_devolucoes_associado(self, obj: Contrato):
+        devolucoes = (
+            DevolucaoAssociado.objects.select_related("realizado_por", "revertida_por")
+            .prefetch_related("anexos")
+            .filter(contrato=obj)
+            .order_by("-data_devolucao", "-created_at", "-id")
+        )
+        payload = []
+        for devolucao in devolucoes:
+            comprovante = None
+            if devolucao.comprovante:
+                reference = build_filefield_reference(
+                    devolucao.comprovante,
+                    request=self.context.get("request"),
+                    missing_type="legado_sem_arquivo",
+                )
+                comprovante = {
+                    "nome": devolucao.nome_comprovante
+                    or devolucao.comprovante.name.rsplit("/", 1)[-1],
+                    "url": reference.url,
+                    "arquivo_referencia": reference.arquivo_referencia,
+                    "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
+                    "tipo_referencia": reference.tipo_referencia,
+                }
+            anexos = []
+            if comprovante:
+                anexos.append(comprovante)
+            for anexo in getattr(devolucao, "anexos", []).all():
+                reference = build_filefield_reference(
+                    anexo.arquivo,
+                    request=self.context.get("request"),
+                    missing_type="legado_sem_arquivo",
+                )
+                anexos.append(
+                    {
+                        "nome": anexo.nome_arquivo or anexo.arquivo.name.rsplit("/", 1)[-1],
+                        "url": reference.url,
+                        "arquivo_referencia": reference.arquivo_referencia,
+                        "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
+                        "tipo_referencia": reference.tipo_referencia,
+                    }
+                )
+            payload.append(
+                {
+                    "id": devolucao.id,
+                    "tipo": devolucao.tipo,
+                    "status": devolucao.status,
+                    "data_devolucao": devolucao.data_devolucao,
+                    "quantidade_parcelas": devolucao.quantidade_parcelas,
+                    "valor": devolucao.valor,
+                    "motivo": devolucao.motivo,
+                    "competencia_referencia": devolucao.competencia_referencia,
+                    "nome": devolucao.nome_snapshot,
+                    "cpf_cnpj": devolucao.cpf_cnpj_snapshot,
+                    "matricula": devolucao.matricula_snapshot,
+                    "agente_nome": devolucao.agente_snapshot,
+                    "contrato_codigo": devolucao.contrato_codigo_snapshot,
+                    "realizado_por": devolucao.realizado_por,
+                    "revertida_em": devolucao.revertida_em,
+                    "revertida_por": devolucao.revertida_por,
+                    "motivo_reversao": devolucao.motivo_reversao,
+                    "comprovante": comprovante,
+                    "anexos": anexos,
+                }
+            )
+        return ContractDevolucaoSerializer(payload, many=True).data
 
 
 class MensalidadesResumoSerializer(serializers.Serializer):
@@ -454,6 +680,14 @@ class ContratoListSerializer(serializers.ModelSerializer):
     pode_solicitar_refinanciamento = serializers.SerializerMethodField()
     status_renovacao = serializers.SerializerMethodField()
     refinanciamento_id = serializers.SerializerMethodField()
+    valor_auxilio_liberado = serializers.DecimalField(
+        source="margem_disponivel",
+        max_digits=10,
+        decimal_places=2,
+        read_only=True,
+    )
+    percentual_repasse = serializers.SerializerMethodField()
+    ciclo_apto = serializers.SerializerMethodField()
     status_visual_slug = serializers.SerializerMethodField()
     status_visual_label = serializers.SerializerMethodField()
     possui_meses_nao_descontados = serializers.SerializerMethodField()
@@ -477,6 +711,9 @@ class ContratoListSerializer(serializers.ModelSerializer):
             "comissao_agente",
             "mensalidades",
             "auxilio_liberado_em",
+            "valor_auxilio_liberado",
+            "percentual_repasse",
+            "ciclo_apto",
             "pode_solicitar_refinanciamento",
             "status_renovacao",
             "refinanciamento_id",
@@ -513,6 +750,44 @@ class ContratoListSerializer(serializers.ModelSerializer):
             return esteira.etapa_atual
         return "concluido" if obj.auxilio_liberado_em else "analise"
 
+    def get_percentual_repasse(self, obj: Contrato) -> str:
+        return f"{obj.associado.auxilio_taxa:.2f}"
+
+    @extend_schema_field(ContratoAptoCycleSerializer(allow_null=True))
+    def get_ciclo_apto(self, obj: Contrato) -> dict[str, object] | None:
+        projection = _get_contract_projection(self.context, obj)
+        cycles = list(sorted(projection["cycles"], key=lambda item: item["numero"]))
+        apt_cycle = next(
+            (
+                cycle
+                for cycle in reversed(cycles)
+                if cycle["status"] == Ciclo.Status.APTO_A_RENOVAR
+            ),
+            None,
+        )
+        if apt_cycle is None:
+            return None
+        parcelas = list(apt_cycle.get("parcelas", []))
+        return ContratoAptoCycleSerializer(
+            {
+                "numero": apt_cycle["numero"],
+                "status": apt_cycle["status"],
+                "status_visual_slug": apt_cycle["status_visual_slug"],
+                "status_visual_label": apt_cycle["status_visual_label"],
+                "resumo_referencias": apt_cycle["resumo_referencias"],
+                "parcelas_pagas": sum(
+                    1
+                    for parcela in parcelas
+                    if parcela["status"] == Parcela.Status.DESCONTADO
+                ),
+                "parcelas_total": len(parcelas),
+                "valor_total": apt_cycle["valor_total"],
+                "primeira_competencia_ciclo": apt_cycle["primeira_competencia_ciclo"],
+                "ultima_competencia_ciclo": apt_cycle["ultima_competencia_ciclo"],
+            }
+        ).data
+
+    @extend_schema_field(MensalidadesResumoSerializer)
     def get_mensalidades(self, obj: Contrato) -> dict[str, object]:
         projection = _get_contract_projection(self.context, obj)
         total = get_contract_cycle_size(obj)
@@ -546,7 +821,8 @@ class ContratoListSerializer(serializers.ModelSerializer):
     def get_status_renovacao(self, obj: Contrato) -> str:
         return str(_get_contract_projection(self.context, obj)["status_renovacao"])
 
-    def get_refinanciamento_id(self, obj: Contrato):
+    @extend_schema_field(serializers.IntegerField(allow_null=True))
+    def get_refinanciamento_id(self, obj: Contrato) -> int | None:
         return _get_contract_projection(self.context, obj)["refinanciamento_id"]
 
     def get_status_visual_slug(self, obj: Contrato) -> str:

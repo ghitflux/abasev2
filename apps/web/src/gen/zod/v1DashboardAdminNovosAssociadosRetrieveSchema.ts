@@ -11,6 +11,7 @@ export const V1DashboardAdminNovosAssociadosRetrieveQueryParamsSchema = z
     agent_id: z.optional(z.coerce.number().int()),
     date_end: z.optional(z.string()),
     date_start: z.optional(z.string()),
+    day: z.optional(z.string()),
     status: z.optional(z.string()),
   })
   .optional();

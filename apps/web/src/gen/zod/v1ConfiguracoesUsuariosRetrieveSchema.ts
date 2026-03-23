@@ -10,7 +10,7 @@ export const V1ConfiguracoesUsuariosRetrievePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("Um valor inteiro único que identifica este user."),
+    .describe("A unique integer value identifying this user."),
 });
 
 export const V1ConfiguracoesUsuariosRetrieve200Schema = z.lazy(

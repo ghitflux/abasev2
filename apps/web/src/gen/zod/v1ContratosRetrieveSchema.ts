@@ -10,7 +10,7 @@ export const V1ContratosRetrievePathParamsSchema = z.object({
   id: z.coerce
     .number()
     .int()
-    .describe("Um valor inteiro único que identifica este contrato."),
+    .describe("A unique integer value identifying this contrato."),
 });
 
 export const V1ContratosRetrieve200Schema = z.lazy(() => contratoListSchema);
