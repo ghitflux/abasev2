@@ -17,12 +17,14 @@ from apps.accounts.permissions import (
     IsCoordenadorOrTesoureiroOrAdmin,
     IsTesoureiroOrAdmin,
 )
+from apps.associados.models import Associado
 from apps.associados.serializers import DadosBancariosSerializer
 from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.financeiro.models import Despesa
 from apps.importacao.models import ArquivoRetornoItem, PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante
+from apps.tesouraria.initial_payment import build_initial_payment_payload
 from apps.tesouraria.models import (
     Confirmacao,
     DevolucaoAssociado,
@@ -49,6 +51,8 @@ from .serializers import (
     DespesaWriteSerializer,
     DarBaixaManualSerializer,
     EfetivarContratoSerializer,
+    ExcluirDevolucaoSerializer,
+    ExcluirLiquidacaoSerializer,
     LiquidacaoContratoListSerializer,
     LiquidacaoKpisSerializer,
     LiquidarContratoSerializer,
@@ -56,6 +60,7 @@ from .serializers import (
     ReverterLiquidacaoSerializer,
     ReverterDevolucaoSerializer,
     TesourariaContratoListSerializer,
+    SubstituirComprovanteSerializer,
 )
 from .services import (
     BaixaManualService,
@@ -92,6 +97,9 @@ class TesourariaContratoViewSet(
             data_fim=self.request.query_params.get("data_fim"),
             search=self.request.query_params.get("search"),
             pagamento=self.request.query_params.get("pagamento"),
+            agente=self.request.query_params.get("agente"),
+            status_contrato=self.request.query_params.get("status_contrato"),
+            situacao_esteira=self.request.query_params.get("situacao_esteira"),
         )
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser])
@@ -103,6 +111,19 @@ class TesourariaContratoViewSet(
             payload.validated_data["comprovante_associado"],
             payload.validated_data["comprovante_agente"],
             request.user,
+        )
+        serializer = self.get_serializer(contrato)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], parser_classes=[MultiPartParser], url_path="substituir-comprovante")
+    def substituir_comprovante(self, request, pk=None):
+        payload = SubstituirComprovanteSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        contrato = TesourariaService.substituir_comprovante(
+            pk,
+            papel=payload.validated_data["papel"],
+            arquivo=payload.validated_data["arquivo"],
+            user=request.user,
         )
         serializer = self.get_serializer(contrato)
         return Response(serializer.data)
@@ -226,6 +247,21 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
         if status_filter in {choice[0] for choice in Contrato.Status.choices}:
             queryset = queryset.filter(status=status_filter)
 
+        associado_status = (self.request.query_params.get("associado_status") or "").strip()
+        if associado_status in {choice[0] for choice in Associado.Status.choices}:
+            queryset = queryset.filter(associado__status=associado_status)
+
+        agente_filter = (self.request.query_params.get("agente") or "").strip()
+        if agente_filter and (user.has_role("ADMIN") or user.has_role("TESOUREIRO")):
+            if agente_filter.isdigit():
+                queryset = queryset.filter(agente_id=int(agente_filter))
+            else:
+                queryset = queryset.filter(
+                    Q(agente__first_name__icontains=agente_filter)
+                    | Q(agente__last_name__icontains=agente_filter)
+                    | Q(agente__email__icontains=agente_filter)
+                )
+
         return queryset
 
     def get_serializer_context(self):
@@ -256,6 +292,10 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
             for contrato in contratos
         }
         self._contract_projection_cache = projection_cache
+        initial_payment_status = (request.query_params.get("pagamento_inicial_status") or "").strip()
+        ciclos_filter = (request.query_params.get("numero_ciclos") or "").strip()
+        data_inicio = self.request.query_params.get("data_inicio")
+        data_fim = self.request.query_params.get("data_fim")
 
         def parcela_no_recorte(parcela: dict[str, object]) -> bool:
             if competencia is None:
@@ -280,6 +320,40 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
                     and contrato.data_contrato.month == competencia.month
                 )
             ]
+
+        if initial_payment_status:
+            contratos = [
+                contrato
+                for contrato in contratos
+                if build_initial_payment_payload(contrato).status == initial_payment_status
+            ]
+
+        if ciclos_filter.isdigit():
+            total_ciclos = int(ciclos_filter)
+            contratos = [
+                contrato
+                for contrato in contratos
+                if len(projection_cache[contrato.id]["cycles"]) == total_ciclos
+            ]
+
+        if data_inicio or data_fim:
+            data_inicio_dt = datetime.strptime(data_inicio, "%Y-%m-%d").date() if data_inicio else None
+            data_fim_dt = datetime.strptime(data_fim, "%Y-%m-%d").date() if data_fim else None
+
+            def within_date_range(contrato: Contrato) -> bool:
+                payload = build_initial_payment_payload(contrato)
+                reference = payload.paid_at
+                if reference is not None:
+                    reference_date = timezone.localtime(reference).date()
+                else:
+                    reference_date = contrato.data_contrato
+                if data_inicio_dt and reference_date < data_inicio_dt:
+                    return False
+                if data_fim_dt and reference_date > data_fim_dt:
+                    return False
+                return True
+
+            contratos = [contrato for contrato in contratos if within_date_range(contrato)]
 
         resumo = {
             "total": len(contratos),
@@ -458,6 +532,31 @@ class LiquidacaoContratoViewSet(mixins.ListModelMixin, GenericViewSet):
         serialized = self.get_serializer(row[:1], many=True).data
         return Response(serialized[0] if serialized else {"id": liquidacao.id})
 
+    @action(detail=True, methods=["post"], url_path="excluir")
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+            )
+        ]
+    )
+    def excluir(self, request, pk=None):
+        payload = ExcluirLiquidacaoSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        liquidacao = LiquidacaoContratoService.excluir_liquidacao(
+            int(pk),
+            motivo_exclusao=payload.validated_data["motivo_exclusao"],
+            user=request.user,
+        )
+        return Response(
+            {
+                "id": liquidacao.id,
+                "message": "Registro de liquidação excluído com sucesso.",
+            }
+        )
+
 
 class DevolucaoContratoViewSet(mixins.ListModelMixin, GenericViewSet):
     queryset = Contrato.objects.none()
@@ -583,6 +682,31 @@ class DevolucaoAssociadoViewSet(mixins.ListModelMixin, GenericViewSet):
             context=self.get_serializer_context(),
         ).data
         return Response(serialized[0] if serialized else {"id": devolucao.id})
+
+    @action(detail=True, methods=["post"], url_path="excluir")
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+            )
+        ]
+    )
+    def excluir(self, request, pk=None):
+        payload = ExcluirDevolucaoSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        devolucao = DevolucaoAssociadoService.excluir(
+            int(pk),
+            motivo_exclusao=payload.validated_data["motivo_exclusao"],
+            user=request.user,
+        )
+        return Response(
+            {
+                "id": devolucao.id,
+                "message": "Registro de devolução excluído com sucesso.",
+            }
+        )
 
 
 class DespesaViewSet(ModelViewSet):

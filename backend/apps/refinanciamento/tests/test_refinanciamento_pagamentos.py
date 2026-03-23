@@ -409,6 +409,47 @@ class RefinanciamentoPagamentosTestCase(TestCase):
             row["motivo_apto_renovacao"],
             "2/3 parcelas quitadas; última em previsão; ciclo 1 elegível",
         )
+        self.assertEqual(row["numero_ciclos"], 1)
+        self.assertEqual(len(row["comprovantes"]), 1)
+        self.assertEqual(row["comprovantes"][0]["tipo"], Comprovante.Tipo.TERMO_ANTECIPACAO)
+
+    def test_coordenacao_pode_encaminhar_renovacao_para_liquidacao(self):
+        contrato = self._create_contrato("73345678901")
+        self._create_pagamento(contrato, date(2026, 1, 1))
+        self._create_pagamento(contrato, date(2026, 2, 1))
+
+        solicitar = self._solicitar_refinanciamento(contrato)
+        refinanciamento_id = solicitar.json()["id"]
+        self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar_analise/",
+            {"observacao": "Analise concluida"},
+            format="json",
+        )
+
+        response = self.coord_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/encaminhar-liquidacao/",
+            {"observacao": "Encaminhado para liquidacao"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        refinanciamento = Refinanciamento.objects.get(pk=refinanciamento_id)
+        self.assertEqual(
+            refinanciamento.status,
+            Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
+        )
+        self.assertEqual(refinanciamento.coordenador_note, "Encaminhado para liquidacao")
+
+        fila_coord = self.coord_client.get("/api/v1/coordenacao/refinanciamento/")
+        self.assertEqual(fila_coord.status_code, 200, fila_coord.json())
+        self.assertEqual(fila_coord.json()["count"], 0)
+
+        fila_liquidacao = self.coord_client.get(
+            "/api/v1/coordenacao/refinanciados/",
+            {"status": "solicitado_para_liquidacao"},
+        )
+        self.assertEqual(fila_liquidacao.status_code, 200, fila_liquidacao.json())
+        self.assertEqual(fila_liquidacao.json()["count"], 1)
 
     def test_analise_lista_filtra_por_atribuicao(self):
         contrato = self._create_contrato("82345678901")

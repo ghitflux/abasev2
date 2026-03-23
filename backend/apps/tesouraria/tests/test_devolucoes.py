@@ -304,3 +304,34 @@ class DevolucaoAssociadoViewSetTestCase(TestCase):
             len(payload["contratos"][0]["devolucoes_associado"][0]["anexos"]),
             1,
         )
+
+    def test_admin_pode_excluir_devolucao(self):
+        associado, contrato, _parcela = self._create_contract_fixture(cpf="77852621373")
+        devolucao = DevolucaoAssociado.objects.create(
+            contrato=contrato,
+            associado=associado,
+            tipo=DevolucaoAssociado.Tipo.PAGAMENTO_INDEVIDO,
+            data_devolucao=date(2026, 3, 21),
+            valor=Decimal("150.00"),
+            motivo="Registro para exclusão.",
+            comprovante=SimpleUploadedFile("excluir.pdf", b"arquivo", content_type="application/pdf"),
+            nome_comprovante="excluir.pdf",
+            nome_snapshot=associado.nome_completo,
+            cpf_cnpj_snapshot=associado.cpf_cnpj,
+            matricula_snapshot=associado.matricula_orgao,
+            agente_snapshot=self.agente.full_name,
+            contrato_codigo_snapshot=contrato.codigo,
+            realizado_por=self.tesoureiro,
+        )
+
+        response = self.admin_client.post(
+            f"/api/v1/tesouraria/devolucoes/{devolucao.id}/excluir/",
+            {"motivo_exclusao": "Registro duplicado."},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        devolucao.refresh_from_db()
+        self.assertFalse(DevolucaoAssociado.objects.filter(pk=devolucao.pk).exists())
+        self.assertIsNotNone(devolucao.revertida_em)
+        self.assertIsNotNone(devolucao.deleted_at)

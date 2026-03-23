@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { LoaderCircleIcon } from "lucide-react";
+import { FileTextIcon, LoaderCircleIcon } from "lucide-react";
 
 import type { AssociadoDetail, RefinanciamentoItem } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
+import { buildBackendFileUrl } from "@/lib/backend-files";
 import { formatDateTime, formatMonthYear } from "@/lib/formatters";
 import {
   AssociadoContractsOverview,
@@ -49,6 +50,41 @@ function SummaryItem({
   );
 }
 
+function RefinanciamentoAttachmentCard({
+  attachment,
+}: {
+  attachment: RefinanciamentoItem["comprovantes"][number];
+}) {
+  const title =
+    attachment.nome_original || attachment.arquivo_referencia || "Documento";
+  const subtitle = attachment.tipo.replaceAll("_", " ");
+
+  if (attachment.arquivo_disponivel_localmente) {
+    return (
+      <a
+        href={buildBackendFileUrl(attachment.arquivo)}
+        target="_blank"
+        rel="noreferrer"
+        className="rounded-2xl border border-border/60 bg-background/60 p-4 transition hover:border-primary/50"
+      >
+        <div className="flex items-center gap-2">
+          <FileTextIcon className="size-4 text-primary" />
+          <p className="text-sm font-medium capitalize">{subtitle}</p>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">{title}</p>
+      </a>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 p-4">
+      <p className="text-sm font-medium capitalize">{subtitle}</p>
+      <p className="mt-2 text-xs text-muted-foreground">{title}</p>
+      <p className="mt-2 text-[11px] text-amber-200">Referência de arquivo legado</p>
+    </div>
+  );
+}
+
 export function RefinanciamentoDetalhesDialog({
   open,
   associadoId,
@@ -78,6 +114,15 @@ export function RefinanciamentoDetalhesDialog({
 
   const associado = associadoQuery.data;
   const refinanciamento = refinanciamentoQuery.data;
+  const solicitacaoAttachments = React.useMemo(
+    () =>
+      (refinanciamento?.comprovantes ?? []).filter(
+        (attachment) =>
+          attachment.tipo === "termo_antecipacao" ||
+          attachment.origem === "solicitacao_renovacao",
+      ),
+    [refinanciamento?.comprovantes],
+  );
 
   return (
     <>
@@ -182,6 +227,27 @@ export function RefinanciamentoDetalhesDialog({
                     </div>
                   ) : null}
                 </section>
+
+                {solicitacaoAttachments.length ? (
+                  <section className="rounded-[1.5rem] border border-border/60 bg-card/60 p-5">
+                    <div className="space-y-1">
+                      <h2 className="text-base font-semibold text-foreground">
+                        Anexos da solicitação de renovação
+                      </h2>
+                      <p className="text-sm text-muted-foreground">
+                        Termo e documentos enviados junto com o pedido do agente.
+                      </p>
+                    </div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      {solicitacaoAttachments.map((attachment) => (
+                        <RefinanciamentoAttachmentCard
+                          key={attachment.id}
+                          attachment={attachment}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
 
                 <AssociadoContractsOverview
                   associado={associado}

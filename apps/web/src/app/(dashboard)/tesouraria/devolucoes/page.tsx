@@ -10,6 +10,7 @@ import {
   ReceiptTextIcon,
   RotateCcwIcon,
   SlidersHorizontalIcon,
+  Trash2Icon,
   WalletCardsIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -179,6 +180,8 @@ export default function DevolucoesAssociadoPage() {
     null,
   );
   const [motivoReversao, setMotivoReversao] = React.useState("");
+  const [deleteTarget, setDeleteTarget] = React.useState<DevolucaoAssociadoItem | null>(null);
+  const [motivoExclusao, setMotivoExclusao] = React.useState("");
 
   React.useEffect(() => {
     setPage(1);
@@ -260,6 +263,25 @@ export default function DevolucoesAssociadoPage() {
       toast.error(
         error instanceof Error ? error.message : "Não foi possível reverter a devolução.",
       );
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async ({ id, motivo }: { id: number; motivo: string }) =>
+      apiFetch<{ message: string }>(`tesouraria/devolucoes/${id}/excluir/`, {
+        method: "POST",
+        body: { motivo_exclusao: motivo },
+      }),
+    onSuccess: () => {
+      toast.success("Registro de devolução excluído com sucesso.");
+      setDeleteTarget(null);
+      setMotivoExclusao("");
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-devolucoes"] });
+      void queryClient.invalidateQueries({ queryKey: ["associados"] });
+      void queryClient.invalidateQueries({ queryKey: ["contratos"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Não foi possível excluir a devolução.");
     },
   });
 
@@ -422,6 +444,19 @@ export default function DevolucoesAssociadoPage() {
               <Button size="sm" variant="outline" onClick={() => setReverterTarget(row)}>
                 <RotateCcwIcon className="mr-1.5 size-3.5" />
                 Reverter
+              </Button>
+            ) : null}
+            {isAdmin ? (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => {
+                  setDeleteTarget(row);
+                  setMotivoExclusao("");
+                }}
+              >
+                <Trash2Icon className="mr-1.5 size-3.5" />
+                Excluir
               </Button>
             ) : null}
           </div>
@@ -904,6 +939,81 @@ export default function DevolucoesAssociadoPage() {
               }
             >
               Reverter
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+            setMotivoExclusao("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Excluir devolução</DialogTitle>
+            <DialogDescription>
+              {deleteTarget ? (
+                <>
+                  O registro de devolução de <strong>{deleteTarget.nome}</strong> será removido do
+                  histórico ativo da tesouraria.
+                </>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 rounded-2xl border border-border/60 bg-card/60 p-4">
+            {deleteTarget ? (
+              <>
+                <div className="space-y-1 text-sm">
+                  <p className="font-medium">
+                    {formatCurrency(deleteTarget.valor)} ·{" "}
+                    {deleteTarget.tipo.replaceAll("_", " ")}
+                  </p>
+                  <p className="text-muted-foreground">
+                    {deleteTarget.quantidade_parcelas} parcela(s) ·{" "}
+                    {formatDate(deleteTarget.data_devolucao)}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Motivo da exclusão *</Label>
+                  <Textarea
+                    value={motivoExclusao}
+                    onChange={(event) => setMotivoExclusao(event.target.value)}
+                    className="min-h-24"
+                    placeholder="Explique por que este registro deve ser excluído..."
+                  />
+                </div>
+              </>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteTarget(null);
+                setMotivoExclusao("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteMutation.isPending || !deleteTarget || !motivoExclusao.trim()}
+              onClick={() => {
+                if (!deleteTarget || !motivoExclusao.trim()) {
+                  return;
+                }
+                deleteMutation.mutate({
+                  id: deleteTarget.id,
+                  motivo: motivoExclusao.trim(),
+                });
+              }}
+            >
+              Excluir devolução
             </Button>
           </DialogFooter>
         </DialogContent>

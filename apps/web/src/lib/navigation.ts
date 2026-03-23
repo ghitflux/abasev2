@@ -154,15 +154,24 @@ function isTesoureiroAssociadoDetailPath(pathname: string) {
 }
 
 function isCoordenadorBaixaManualPath(pathname: string) {
-  return matchesPathPrefix(pathname, "/tesouraria/baixa-manual");
+  return matchesAnyPathPrefix(pathname, [
+    "/tesouraria/baixa-manual",
+    "/tesouraria/inadimplentes",
+  ]);
 }
 
 function isCoordenadorLiquidacoesPath(pathname: string) {
-  return matchesPathPrefix(pathname, "/tesouraria/liquidacoes");
+  return matchesAnyPathPrefix(pathname, [
+    "/tesouraria/liquidacoes",
+    "/tesouraria/liquidacao",
+  ]);
 }
 
 function isCoordenadorDevolucoesPath(pathname: string) {
-  return matchesPathPrefix(pathname, "/tesouraria/devolucoes");
+  return matchesAnyPathPrefix(pathname, [
+    "/tesouraria/devolucoes",
+    "/tesouraria/devolucao",
+  ]);
 }
 
 export const navigationSections: NavigationSection[] = [
@@ -462,6 +471,10 @@ function normalizeRelativePath(value?: string | null) {
 function matchesPathPrefix(pathname: string, prefix: string) {
   if (prefix === "/") return true;
   return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
+function matchesAnyPathPrefix(pathname: string, prefixes: string[]) {
+  return prefixes.some((prefix) => matchesPathPrefix(pathname, prefix));
 }
 
 export function canAccessPath(path: string, roles: Role[] = []) {

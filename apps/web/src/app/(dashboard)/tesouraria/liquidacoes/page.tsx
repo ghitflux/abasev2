@@ -10,6 +10,7 @@ import {
   HandCoinsIcon,
   ReceiptTextIcon,
   RotateCcwIcon,
+  Trash2Icon,
   WalletCardsIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -129,6 +130,8 @@ export default function LiquidacoesTesourariaPage() {
   const [liquidarState, setLiquidarState] = React.useState<LiquidarState | null>(null);
   const [reverterTarget, setReverterTarget] = React.useState<LiquidacaoContratoItem | null>(null);
   const [motivoReversao, setMotivoReversao] = React.useState("");
+  const [deleteTarget, setDeleteTarget] = React.useState<LiquidacaoContratoItem | null>(null);
+  const [motivoExclusao, setMotivoExclusao] = React.useState("");
 
   React.useEffect(() => {
     setPage(1);
@@ -194,6 +197,25 @@ export default function LiquidacoesTesourariaPage() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Não foi possível reverter a liquidação.");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async ({ liquidacaoId, motivo }: { liquidacaoId: number; motivo: string }) =>
+      apiFetch<{ message: string }>(`tesouraria/liquidacoes/${liquidacaoId}/excluir`, {
+        method: "POST",
+        body: { motivo_exclusao: motivo },
+      }),
+    onSuccess: () => {
+      toast.success("Registro de liquidação excluído com sucesso.");
+      setDeleteTarget(null);
+      setMotivoExclusao("");
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-liquidacoes"] });
+      void queryClient.invalidateQueries({ queryKey: ["associados"] });
+      void queryClient.invalidateQueries({ queryKey: ["contratos"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Não foi possível excluir a liquidação.");
     },
   });
 
@@ -298,6 +320,19 @@ export default function LiquidacoesTesourariaPage() {
               <Button size="sm" variant="outline" onClick={() => setReverterTarget(row)}>
                 <RotateCcwIcon className="mr-1.5 size-3.5" />
                 Reverter
+              </Button>
+            ) : null}
+            {tab === "liquidado" && isAdmin && row.liquidacao_id ? (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => {
+                  setDeleteTarget(row);
+                  setMotivoExclusao("");
+                }}
+              >
+                <Trash2Icon className="mr-1.5 size-3.5" />
+                Excluir
               </Button>
             ) : null}
           </div>
@@ -674,6 +709,87 @@ export default function LiquidacoesTesourariaPage() {
               }}
             >
               Confirmar reversão
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeleteTarget(null);
+            setMotivoExclusao("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Excluir liquidação</DialogTitle>
+            <DialogDescription>
+              {deleteTarget ? (
+                <>
+                  O registro de liquidação de <strong>{deleteTarget.nome}</strong> será excluído
+                  da tesouraria. Se ainda estiver ativo, o sistema vai reverter o efeito da
+                  liquidação antes de remover o registro.
+                </>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 rounded-2xl border border-border/60 bg-card/60 p-4">
+            {deleteTarget ? (
+              <>
+                <div className="space-y-1 text-sm">
+                  <p className="font-medium">
+                    {deleteTarget.contrato_codigo} · {formatCurrency(deleteTarget.valor_total)}
+                  </p>
+                  <p className="text-muted-foreground">
+                    {deleteTarget.quantidade_parcelas} parcela(s) ·{" "}
+                    {deleteTarget.data_liquidacao
+                      ? formatDate(deleteTarget.data_liquidacao)
+                      : "sem data de liquidação"}
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Motivo da exclusão *</Label>
+                  <Textarea
+                    value={motivoExclusao}
+                    onChange={(event) => setMotivoExclusao(event.target.value)}
+                    className="min-h-24"
+                    placeholder="Explique por que este registro deve ser excluído..."
+                  />
+                </div>
+              </>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDeleteTarget(null);
+                setMotivoExclusao("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={
+                deleteMutation.isPending ||
+                !deleteTarget?.liquidacao_id ||
+                !motivoExclusao.trim()
+              }
+              onClick={() => {
+                if (!deleteTarget?.liquidacao_id || !motivoExclusao.trim()) {
+                  return;
+                }
+                deleteMutation.mutate({
+                  liquidacaoId: deleteTarget.liquidacao_id,
+                  motivo: motivoExclusao.trim(),
+                });
+              }}
+            >
+              Excluir liquidação
             </Button>
           </DialogFooter>
         </DialogContent>

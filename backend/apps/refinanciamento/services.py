@@ -11,7 +11,7 @@ from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.cycle_timeline import get_contract_cycle_size
 from apps.contratos.models import Contrato, Parcela
-from apps.esteira.models import Transicao
+from apps.esteira.models import EsteiraItem, Transicao
 from apps.importacao.models import PagamentoMensalidade
 from apps.tesouraria.models import Pagamento
 
@@ -129,6 +129,50 @@ class RefinanciamentoService:
             realizado_por=user,
             observacao=observacao,
         )
+
+    @staticmethod
+    def _mover_esteira_para_tesouraria(
+        contrato: Contrato,
+        user,
+        *,
+        acao: str,
+        observacao: str,
+    ) -> bool:
+        esteira_item = getattr(contrato.associado, "esteira_item", None)
+        if not esteira_item:
+            return False
+
+        de_etapa = esteira_item.etapa_atual
+        de_situacao = esteira_item.status
+        if (
+            de_etapa == EsteiraItem.Etapa.TESOURARIA
+            and de_situacao == EsteiraItem.Situacao.AGUARDANDO
+        ):
+            return True
+
+        esteira_item.etapa_atual = EsteiraItem.Etapa.TESOURARIA
+        esteira_item.status = EsteiraItem.Situacao.AGUARDANDO
+        esteira_item.tesoureiro_responsavel = None
+        esteira_item.save(
+            update_fields=[
+                "etapa_atual",
+                "status",
+                "tesoureiro_responsavel",
+                "updated_at",
+            ]
+        )
+
+        Transicao.objects.create(
+            esteira_item=esteira_item,
+            acao=acao,
+            de_status=de_etapa,
+            para_status=EsteiraItem.Etapa.TESOURARIA,
+            de_situacao=de_situacao,
+            para_situacao=EsteiraItem.Situacao.AGUARDANDO,
+            realizado_por=user,
+            observacao=observacao,
+        )
+        return True
 
     @staticmethod
     def _active_operational_refinanciamento(contrato: Contrato) -> Refinanciamento | None:
@@ -336,12 +380,67 @@ class RefinanciamentoService:
             update_fields=["status", "aprovado_por", "coordenador_note", "updated_at"]
         )
 
-        RefinanciamentoService._registrar_auditoria(
+        observacao_auditoria = (
+            "Coordenação validou os anexos e encaminhou a renovação para a tesouraria."
+        )
+        if not RefinanciamentoService._mover_esteira_para_tesouraria(
             refinanciamento.contrato_origem,
             user,
-            "aprovar_renovacao_coordenacao",
-            "Coordenação validou os anexos e encaminhou a renovação para a tesouraria.",
+            acao="aprovar_renovacao_coordenacao",
+            observacao=observacao_auditoria,
+        ):
+            RefinanciamentoService._registrar_auditoria(
+                refinanciamento.contrato_origem,
+                user,
+                "aprovar_renovacao_coordenacao",
+                observacao_auditoria,
+            )
+        return refinanciamento
+
+    @staticmethod
+    @transaction.atomic
+    def encaminhar_para_liquidacao(
+        refinanciamento_id: int,
+        user,
+        observacao: str = "",
+    ) -> Refinanciamento:
+        refinanciamento = RefinanciamentoService._get_refinanciamento(refinanciamento_id)
+        if _normalize_status(refinanciamento.status) not in {
+            Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+            Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+        }:
+            raise ValidationError(
+                "Somente renovações em validação ou já encaminhadas podem seguir para liquidação."
+            )
+
+        mensagem = (
+            observacao.strip()
+            or "Renovação cancelada pela coordenação e enviada para a fila de liquidação."
         )
+        refinanciamento.status = Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO
+        refinanciamento.coordenador_note = mensagem
+        refinanciamento.observacao = mensagem
+        refinanciamento.save(
+            update_fields=[
+                "status",
+                "coordenador_note",
+                "observacao",
+                "updated_at",
+            ]
+        )
+
+        if not RefinanciamentoService._mover_esteira_para_tesouraria(
+            refinanciamento.contrato_origem,
+            user,
+            acao="encaminhar_liquidacao_renovacao",
+            observacao=mensagem,
+        ):
+            RefinanciamentoService._registrar_auditoria(
+                refinanciamento.contrato_origem,
+                user,
+                "encaminhar_liquidacao_renovacao",
+                mensagem,
+            )
         return refinanciamento
 
     @staticmethod

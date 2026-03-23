@@ -25,6 +25,7 @@ from .serializers import (
     AprovarEmMassaRefinanciamentoSerializer,
     BloquearRefinanciamentoSerializer,
     DesativarRefinanciamentoSerializer,
+    EncaminharLiquidacaoRefinanciamentoSerializer,
     EfetivarRefinanciamentoSerializer,
     ElegibilidadeRefinanciamentoSerializer,
     RefinanciamentoDetailSerializer,
@@ -238,7 +239,13 @@ class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
     def get_permissions(self):
         if self.action in {"solicitar", "solicitar_liquidacao", "eligibilidade"}:
             return [permissions.IsAuthenticated(), IsAgenteOrAdmin()]
-        if self.action in ["aprovar", "bloquear", "reverter", "desativar"]:
+        if self.action in [
+            "aprovar",
+            "bloquear",
+            "reverter",
+            "desativar",
+            "encaminhar_liquidacao",
+        ]:
             return [permissions.IsAuthenticated(), IsCoordenadorOrAdmin()]
         if self.action in ["assumir_analise", "aprovar_analise"]:
             return [permissions.IsAuthenticated(), IsAnalistaOrAdmin()]
@@ -283,6 +290,20 @@ class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
         payload = AprovarRefinanciamentoSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         refinanciamento = RefinanciamentoService.aprovar(
+            int(pk),
+            request.user,
+            payload.validated_data.get("observacao", ""),
+        )
+        serializer = RefinanciamentoDetailSerializer(
+            refinanciamento, context=self.get_serializer_context()
+        )
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="encaminhar-liquidacao")
+    def encaminhar_liquidacao(self, request, pk=None):
+        payload = EncaminharLiquidacaoRefinanciamentoSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        refinanciamento = RefinanciamentoService.encaminhar_para_liquidacao(
             int(pk),
             request.user,
             payload.validated_data.get("observacao", ""),
@@ -369,7 +390,9 @@ class CoordenadorRefinanciadosViewSet(BaseRefinanciamentoViewSet):
         queryset = super().get_queryset().filter(
             status__in=[
                 Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+                Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
                 Refinanciamento.Status.EFETIVADO,
+                Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
             ]
         )
         year = self.request.query_params.get("year")
@@ -385,8 +408,6 @@ class CoordenadorRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
         queryset = super().get_queryset().filter(
             status__in=[
                 Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
-                Refinanciamento.Status.BLOQUEADO,
-                Refinanciamento.Status.REVERTIDO,
             ]
         )
         year = self.request.query_params.get("year")

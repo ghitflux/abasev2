@@ -12,6 +12,16 @@ from rest_framework.exceptions import ValidationError
 from apps.contratos.models import Contrato
 
 from .models import DevolucaoAssociado, DevolucaoAssociadoAnexo
+
+
+def _append_note(base: str, note: str) -> str:
+    if not base:
+        return note
+    if note in base:
+        return base
+    return f"{base}\n{note}"
+
+
 @dataclass(frozen=True)
 class DevolucaoListPayload:
     rows: list[dict[str, object]]
@@ -281,6 +291,47 @@ class DevolucaoAssociadoService:
                 "revertida_em",
                 "revertida_por",
                 "motivo_reversao",
+                "updated_at",
+            ]
+        )
+        devolucao.refresh_from_db()
+        return devolucao
+
+    @classmethod
+    @transaction.atomic
+    def excluir(
+        cls,
+        devolucao_id: int,
+        *,
+        motivo_exclusao: str,
+        user,
+    ) -> DevolucaoAssociado:
+        if not (getattr(user, "is_superuser", False) or user.has_role("ADMIN")):
+            raise ValidationError("A exclusão de devolução é restrita a administradores.")
+
+        devolucao = (
+            DevolucaoAssociado.all_objects.select_for_update()
+            .prefetch_related("anexos")
+            .filter(pk=devolucao_id, deleted_at__isnull=True)
+            .first()
+        )
+        if devolucao is None:
+            raise ValidationError("Registro de devolução não encontrado.")
+
+        motivo = motivo_exclusao.strip()
+        now = timezone.now()
+        if not devolucao.revertida_em:
+            devolucao.revertida_em = now
+            devolucao.revertida_por = user
+        devolucao.motivo_reversao = _append_note(devolucao.motivo_reversao, motivo)
+        devolucao.anexos.update(deleted_at=now, updated_at=now)
+        devolucao.deleted_at = now
+        devolucao.save(
+            update_fields=[
+                "revertida_em",
+                "revertida_por",
+                "motivo_reversao",
+                "deleted_at",
                 "updated_at",
             ]
         )

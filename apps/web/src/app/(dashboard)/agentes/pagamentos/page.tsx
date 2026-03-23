@@ -21,6 +21,7 @@ import { parseMonthValue } from "@/lib/date-value";
 import { formatCurrency, formatDate, formatDateTime, formatMonthYear } from "@/lib/formatters";
 import { maskCPFCNPJ } from "@/lib/masks";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { usePermissions } from "@/hooks/use-permissions";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import StatusBadge from "@/components/custom/status-badge";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
@@ -56,6 +57,30 @@ const STATUS_OPTIONS = [
   { value: "em_analise", label: "Em análise" },
   { value: "encerrado", label: "Encerrado" },
   { value: "cancelado", label: "Cancelado" },
+];
+
+const ASSOCIADO_STATUS_OPTIONS = [
+  { value: "todos", label: "Todos associados" },
+  { value: "ativo", label: "Associado ativo" },
+  { value: "em_analise", label: "Em análise" },
+  { value: "inativo", label: "Inativo" },
+];
+
+const PAGAMENTO_INICIAL_OPTIONS = [
+  { value: "todos", label: "Todos pagamentos iniciais" },
+  { value: "pago", label: "Pago" },
+  { value: "pendente", label: "Pendente" },
+  { value: "cancelado", label: "Cancelado" },
+  { value: "sem_pagamento_inicial", label: "Sem pagamento inicial" },
+];
+
+const NUMERO_CICLOS_OPTIONS = [
+  { value: "todos", label: "Todos ciclos" },
+  { value: "1", label: "1 ciclo" },
+  { value: "2", label: "2 ciclos" },
+  { value: "3", label: "3 ciclos" },
+  { value: "4", label: "4 ciclos" },
+  { value: "5", label: "5 ciclos" },
 ];
 
 function ComprovanteChip({
@@ -100,16 +125,38 @@ function ComprovanteChip({
 
 export default function PagamentosPage() {
   const queryClient = useQueryClient();
+  const { hasRole } = usePermissions();
+  const canFilterAgent = hasRole("ADMIN") || hasRole("TESOUREIRO");
   const [search, setSearch] = React.useState("");
   const [status, setStatus] = React.useState("todos");
   const [mes, setMes] = React.useState("");
+  const [agente, setAgente] = React.useState("");
+  const [associadoStatus, setAssociadoStatus] = React.useState("todos");
+  const [pagamentoInicialStatus, setPagamentoInicialStatus] = React.useState("todos");
+  const [numeroCiclos, setNumeroCiclos] = React.useState("todos");
+  const [dataInicio, setDataInicio] = React.useState("");
+  const [dataFim, setDataFim] = React.useState("");
   const [pageSize, setPageSize] = React.useState("15");
   const [page, setPage] = React.useState(1);
   const debouncedSearch = useDebouncedValue(search, 300);
+  const debouncedAgente = useDebouncedValue(agente, 300);
   const markedUnreadCountRef = React.useRef(0);
 
   const query = useQuery({
-    queryKey: ["agente-pagamentos", page, pageSize, debouncedSearch, status, mes],
+    queryKey: [
+      "agente-pagamentos",
+      page,
+      pageSize,
+      debouncedSearch,
+      status,
+      mes,
+      debouncedAgente,
+      associadoStatus,
+      pagamentoInicialStatus,
+      numeroCiclos,
+      dataInicio,
+      dataFim,
+    ],
     queryFn: () =>
       apiFetch<PaginatedPagamentosAgenteResponse>("agente/pagamentos", {
         query: {
@@ -118,6 +165,16 @@ export default function PagamentosPage() {
           search: debouncedSearch || undefined,
           status: status === "todos" ? undefined : status,
           mes: mes || undefined,
+          agente: canFilterAgent ? debouncedAgente || undefined : undefined,
+          associado_status:
+            associadoStatus === "todos" ? undefined : associadoStatus,
+          pagamento_inicial_status:
+            pagamentoInicialStatus === "todos"
+              ? undefined
+              : pagamentoInicialStatus,
+          numero_ciclos: numeroCiclos === "todos" ? undefined : numeroCiclos,
+          data_inicio: dataInicio || undefined,
+          data_fim: dataFim || undefined,
         },
       }),
   });
@@ -182,6 +239,13 @@ export default function PagamentosPage() {
               Assinado em {formatDate(row.data_contrato)}
             </p>
           </div>
+        ),
+      },
+      {
+        id: "agente",
+        header: "Agente",
+        cell: (row) => (
+          <p className="text-sm text-muted-foreground">{row.agente_nome || "—"}</p>
         ),
       },
       {
@@ -305,7 +369,7 @@ export default function PagamentosPage() {
         )}
       </section>
 
-      <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 xl:grid-cols-[minmax(0,1fr)_180px_160px_160px_auto_auto]">
+      <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 xl:grid-cols-[minmax(0,1.3fr)_repeat(6,minmax(0,0.72fr))_auto_auto]">
         <Input
           value={search}
           onChange={(event) => {
@@ -315,6 +379,19 @@ export default function PagamentosPage() {
           placeholder="Nome, CPF, matrícula ou código do contrato..."
           className="rounded-2xl border-border/60 bg-card/60"
         />
+        {canFilterAgent ? (
+          <Input
+            value={agente}
+            onChange={(event) => {
+              setAgente(event.target.value);
+              setPage(1);
+            }}
+            placeholder="Filtrar por agente"
+            className="rounded-2xl border-border/60 bg-card/60"
+          />
+        ) : (
+          <div />
+        )}
         <Select
           value={status}
           onValueChange={(value) => {
@@ -333,6 +410,60 @@ export default function PagamentosPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select
+          value={associadoStatus}
+          onValueChange={(value) => {
+            setAssociadoStatus(value);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="rounded-2xl bg-card/60">
+            <SelectValue placeholder="Status do associado" />
+          </SelectTrigger>
+          <SelectContent>
+            {ASSOCIADO_STATUS_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={pagamentoInicialStatus}
+          onValueChange={(value) => {
+            setPagamentoInicialStatus(value);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="rounded-2xl bg-card/60">
+            <SelectValue placeholder="Pagamento inicial" />
+          </SelectTrigger>
+          <SelectContent>
+            {PAGAMENTO_INICIAL_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={numeroCiclos}
+          onValueChange={(value) => {
+            setNumeroCiclos(value);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="rounded-2xl bg-card/60">
+            <SelectValue placeholder="Número de ciclos" />
+          </SelectTrigger>
+          <SelectContent>
+            {NUMERO_CICLOS_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <CalendarCompetencia
           value={parseMonthValue(mes)}
           onChange={(value) => {
@@ -340,6 +471,24 @@ export default function PagamentosPage() {
             setPage(1);
           }}
           className="rounded-2xl"
+        />
+        <Input
+          type="date"
+          value={dataInicio}
+          onChange={(event) => {
+            setDataInicio(event.target.value);
+            setPage(1);
+          }}
+          className="rounded-2xl border-border/60 bg-card/60"
+        />
+        <Input
+          type="date"
+          value={dataFim}
+          onChange={(event) => {
+            setDataFim(event.target.value);
+            setPage(1);
+          }}
+          className="rounded-2xl border-border/60 bg-card/60"
         />
         <Select
           value={pageSize}
@@ -364,6 +513,12 @@ export default function PagamentosPage() {
             setSearch("");
             setStatus("todos");
             setMes("");
+            setAgente("");
+            setAssociadoStatus("todos");
+            setPagamentoInicialStatus("todos");
+            setNumeroCiclos("todos");
+            setDataInicio("");
+            setDataFim("");
             setPageSize("15");
             setPage(1);
           }}

@@ -1,13 +1,13 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { format } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDaysIcon,
   EyeIcon,
   FileDownIcon,
+  SlidersHorizontalIcon,
   PaperclipIcon,
   LockIcon,
   Trash2Icon,
@@ -18,14 +18,11 @@ import { toast } from "sonner";
 import type { PaginatedResponse, TesourariaContratoItem } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
-import {
-  formatCurrency,
-  formatDate,
-  formatLongMonthYear,
-} from "@/lib/formatters";
+import { formatCurrency, formatDateTime, formatLongMonthYear } from "@/lib/formatters";
 import { maskCPFCNPJ } from "@/lib/masks";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import StatusBadge from "@/components/custom/status-badge";
+import AssociadoDetailsDialog from "@/components/associados/associado-details-dialog";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +37,23 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 
 const comprovanteAccept = {
@@ -52,16 +66,22 @@ const PAGE_SIZE = 5;
 
 type DraftMap = Record<number, { associado?: File; agente?: File }>;
 type TesourariaPagamentoFilter = "pendente" | "concluido" | "cancelado" | "processado";
+type AdvancedFiltersDraft = {
+  dataInicio: string;
+  dataFim: string;
+  agente: string;
+  statusContrato: string;
+  situacaoEsteira: string;
+};
 
-function toIsoDate(value?: Date) {
-  if (!value) return undefined;
-  return format(value, "yyyy-MM-dd");
-}
-
-function compactFileName(name?: string, maxLength = 26) {
-  if (!name) return "Arquivo disponível";
-  if (name.length <= maxLength) return name;
-  return `${name.slice(0, maxLength - 3)}...`;
+function countAdvancedFilters(filters: AdvancedFiltersDraft) {
+  return [
+    Boolean(filters.dataInicio),
+    Boolean(filters.dataFim),
+    Boolean(filters.agente),
+    filters.statusContrato !== "todos",
+    filters.situacaoEsteira !== "todos",
+  ].filter(Boolean).length;
 }
 
 function useTesourariaQuery({
@@ -69,11 +89,21 @@ function useTesourariaQuery({
   competencia,
   search,
   pagamento,
+  dataInicio,
+  dataFim,
+  agente,
+  statusContrato,
+  situacaoEsteira,
 }: {
   page: number;
   competencia: Date;
   search: string;
   pagamento: TesourariaPagamentoFilter;
+  dataInicio: string;
+  dataFim: string;
+  agente: string;
+  statusContrato: string;
+  situacaoEsteira: string;
 }) {
   return useQuery({
     queryKey: [
@@ -82,6 +112,11 @@ function useTesourariaQuery({
       page,
       competencia.toISOString(),
       search,
+      dataInicio,
+      dataFim,
+      agente,
+      statusContrato,
+      situacaoEsteira,
     ],
     queryFn: () =>
       apiFetch<PaginatedResponse<TesourariaContratoItem>>("tesouraria/contratos", {
@@ -91,6 +126,11 @@ function useTesourariaQuery({
           competencia: format(competencia, "yyyy-MM"),
           pagamento,
           search: search || undefined,
+          data_inicio: dataInicio || undefined,
+          data_fim: dataFim || undefined,
+          agente: agente || undefined,
+          status_contrato: statusContrato === "todos" ? undefined : statusContrato,
+          situacao_esteira: situacaoEsteira === "todos" ? undefined : situacaoEsteira,
         },
       }),
   });
@@ -104,28 +144,56 @@ export default function TesourariaPage() {
   const [pagePaid, setPagePaid] = React.useState(1);
   const [pageCanceled, setPageCanceled] = React.useState(1);
   const [showOnlyPending, setShowOnlyPending] = React.useState(false);
+  const [dataInicio, setDataInicio] = React.useState("");
+  const [dataFim, setDataFim] = React.useState("");
+  const [agenteFiltro, setAgenteFiltro] = React.useState("");
+  const [statusContrato, setStatusContrato] = React.useState("todos");
+  const [situacaoEsteira, setSituacaoEsteira] = React.useState("todos");
+  const [draftAdvancedFilters, setDraftAdvancedFilters] = React.useState<AdvancedFiltersDraft>({
+    dataInicio: "",
+    dataFim: "",
+    agente: "",
+    statusContrato: "todos",
+    situacaoEsteira: "todos",
+  });
   const [drafts, setDrafts] = React.useState<DraftMap>({});
   const [freezeTarget, setFreezeTarget] = React.useState<TesourariaContratoItem | null>(null);
   const [freezeReason, setFreezeReason] = React.useState("");
   const [bankTarget, setBankTarget] = React.useState<TesourariaContratoItem | null>(null);
+  const [detailTarget, setDetailTarget] = React.useState<TesourariaContratoItem | null>(null);
 
   const pendingQuery = useTesourariaQuery({
     page: pagePending,
     competencia,
     search,
     pagamento: "pendente",
+    dataInicio,
+    dataFim,
+    agente: agenteFiltro,
+    statusContrato,
+    situacaoEsteira,
   });
   const paidQuery = useTesourariaQuery({
     page: pagePaid,
     competencia,
     search,
     pagamento: "concluido",
+    dataInicio,
+    dataFim,
+    agente: agenteFiltro,
+    statusContrato,
+    situacaoEsteira,
   });
   const canceledQuery = useTesourariaQuery({
     page: pageCanceled,
     competencia,
     search,
     pagamento: "cancelado",
+    dataInicio,
+    dataFim,
+    agente: agenteFiltro,
+    statusContrato,
+    situacaoEsteira,
   });
 
   const efetivarMutation = useMutation({
@@ -177,77 +245,145 @@ export default function TesourariaPage() {
     },
   });
 
+  const substituirComprovanteMutation = useMutation({
+    mutationFn: async ({
+      contratoId,
+      papel,
+      arquivo,
+    }: {
+      contratoId: number;
+      papel: "associado" | "agente";
+      arquivo: File;
+    }) => {
+      const formData = new FormData();
+      formData.set("papel", papel);
+      formData.set("arquivo", arquivo);
+      return apiFetch<TesourariaContratoItem>(
+        `tesouraria/contratos/${contratoId}/substituir-comprovante`,
+        {
+          method: "POST",
+          formData,
+        },
+      );
+    },
+    onSuccess: () => {
+      toast.success("Comprovante substituído.");
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-contratos"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao substituir o comprovante.",
+      );
+    },
+  });
+
   const columns = React.useMemo<DataTableColumn<TesourariaContratoItem>[]>(
     () => [
       {
-        id: "nome",
-        header: "Nome",
-        cell: (row) => <p className="font-medium">{row.nome}</p>,
-      },
-      {
-        id: "matricula",
-        header: "Matrícula do Servidor",
-        cell: (row) =>
-          row.matricula ? (
-            <CopySnippet label="Matrícula do Servidor" value={row.matricula} mono inline />
-          ) : (
-            "—"
-          ),
-      },
-      {
-        id: "cpf",
-        header: "CPF",
-        cell: (row) => (
-          <CopySnippet
-            label="CPF"
-            value={maskCPFCNPJ(row.cpf_cnpj)}
-            mono
-            inline
-          />
-        ),
-      },
-      {
-        id: "agente",
-        header: "Agente",
-        cell: (row) => (
-          <div>
-            <p className="font-medium">{row.agente_nome || "Sem agente"}</p>
-            <p className="text-xs text-muted-foreground">
-              Repasse: {row.percentual_repasse}%
-            </p>
-          </div>
-        ),
-      },
-      {
-        id: "valores",
-        header: "Valor Aux. Liberado / Comissão",
-        cell: (row) => (
-          <div className="space-y-1">
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-muted-foreground">Aux. liberado</span>
-              <span className="font-medium">{formatCurrency(row.margem_disponivel)}</span>
+        id: "anexos",
+        header: "Anexos",
+        cell: (row) => {
+          const associadoComprovante = row.comprovantes.find(
+            (item) => item.papel === "associado",
+          );
+          const agenteComprovante = row.comprovantes.find((item) => item.papel === "agente");
+          const draft = drafts[row.id] ?? {};
+          const canEfetivar = row.status === "pendente" || row.status === "congelado";
+          const isEfetivando =
+            efetivarMutation.isPending && efetivarMutation.variables?.contratoId === row.id;
+          const isSubstituindo =
+            substituirComprovanteMutation.isPending &&
+            substituirComprovanteMutation.variables?.contratoId === row.id;
+
+          return (
+            <div className="flex min-w-[13rem] flex-col gap-2">
+              <div className="grid gap-2">
+                <ComprovanteSlot
+                  compact
+                  label="Associado"
+                  existingUrl={
+                    associadoComprovante?.arquivo_disponivel_localmente
+                      ? associadoComprovante.arquivo
+                      : undefined
+                  }
+                  existingName={associadoComprovante?.nome_original}
+                  draftFile={draft.associado}
+                  disabled={isEfetivando || isSubstituindo}
+                  isProcessing={isEfetivando || isSubstituindo}
+                  onSelect={(file) => {
+                    if (canEfetivar) {
+                      setDrafts((current) => ({
+                        ...current,
+                        [row.id]: { ...current[row.id], associado: file },
+                      }));
+                      return;
+                    }
+                    substituirComprovanteMutation.mutate({
+                      contratoId: row.id,
+                      papel: "associado",
+                      arquivo: file,
+                    });
+                  }}
+                  onClear={() =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [row.id]: { ...current[row.id], associado: undefined },
+                    }))
+                  }
+                />
+                <ComprovanteSlot
+                  compact
+                  label="Agente"
+                  existingUrl={
+                    agenteComprovante?.arquivo_disponivel_localmente
+                      ? agenteComprovante.arquivo
+                      : undefined
+                  }
+                  existingName={agenteComprovante?.nome_original}
+                  draftFile={draft.agente}
+                  disabled={isEfetivando || isSubstituindo}
+                  isProcessing={isEfetivando || isSubstituindo}
+                  onSelect={(file) => {
+                    if (canEfetivar) {
+                      setDrafts((current) => ({
+                        ...current,
+                        [row.id]: { ...current[row.id], agente: file },
+                      }));
+                      return;
+                    }
+                    substituirComprovanteMutation.mutate({
+                      contratoId: row.id,
+                      papel: "agente",
+                      arquivo: file,
+                    });
+                  }}
+                  onClear={() =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [row.id]: { ...current[row.id], agente: undefined },
+                    }))
+                  }
+                />
+              </div>
+              {canEfetivar && draft.associado && draft.agente ? (
+                <Button
+                  size="sm"
+                  className="self-start"
+                  onClick={() =>
+                    efetivarMutation.mutate({
+                      contratoId: row.id,
+                      associado: draft.associado!,
+                      agente: draft.agente!,
+                    })
+                  }
+                  disabled={efetivarMutation.isPending}
+                >
+                  Efetivar agora
+                </Button>
+              ) : null}
             </div>
-            <div className="flex items-center justify-between gap-3 text-sm">
-              <span className="text-muted-foreground">Comissão</span>
-              <span className="font-medium">{formatCurrency(row.comissao_agente)}</span>
-            </div>
-          </div>
-        ),
-      },
-      {
-        id: "pix",
-        header: "Chave PIX",
-        cell: (row) => row.chave_pix || "—",
-      },
-      {
-        id: "data",
-        header: "Data/Hora",
-        cell: (row) => formatDate(row.data_assinatura),
-      },
-      {
-        id: "status",
-        header: "Status",
-        cell: (row) => <StatusBadge status={row.status} />,
+          );
+        },
       },
       {
         id: "dados_bancarios",
@@ -260,6 +396,11 @@ export default function TesourariaPage() {
         ),
       },
       {
+        id: "pix",
+        header: "Chave PIX",
+        cell: (row) => row.chave_pix || "—",
+      },
+      {
         id: "acao",
         header: "Ação",
         cell: (row) => {
@@ -267,11 +408,9 @@ export default function TesourariaPage() {
 
           return (
             <div className="flex min-w-52 flex-wrap gap-2">
-              <Button asChild size="sm" variant="outline">
-                <Link href={`/associados/${row.associado_id}`}>
-                  <EyeIcon className="size-4" />
-                  Ver detalhes
-                </Link>
+              <Button size="sm" variant="outline" onClick={() => setDetailTarget(row)}>
+                <EyeIcon className="size-4" />
+                Ver detalhes
               </Button>
               <Button
                 size="sm"
@@ -288,90 +427,71 @@ export default function TesourariaPage() {
         },
       },
       {
-        id: "anexos",
-        header: "Anexos",
-        cell: (row) => {
-          const associados = row.comprovantes.find((item) => item.papel === "associado");
-          const agente = row.comprovantes.find((item) => item.papel === "agente");
-          const draft = drafts[row.id] ?? {};
-          const canUpload = row.status === "pendente" || row.status === "congelado";
-          const isEfetivando =
-            efetivarMutation.isPending && efetivarMutation.variables?.contratoId === row.id;
-
-          return (
-            <div className="flex min-w-[18rem] flex-col gap-2">
-              <div className="grid gap-2 xl:grid-cols-2">
-                <ComprovanteSlot
-                  compact
-                  label="Associado"
-                  existingUrl={
-                    associados?.arquivo_disponivel_localmente ? associados.arquivo : undefined
-                  }
-                  existingName={associados?.nome_original}
-                  draftFile={draft.associado}
-                  disabled={!canUpload || isEfetivando}
-                  isProcessing={isEfetivando}
-                  onSelect={(file) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [row.id]: { ...current[row.id], associado: file },
-                    }))
-                  }
-                  onClear={() =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [row.id]: { ...current[row.id], associado: undefined },
-                    }))
-                  }
-                />
-                <ComprovanteSlot
-                  compact
-                  label="Agente"
-                  existingUrl={agente?.arquivo_disponivel_localmente ? agente.arquivo : undefined}
-                  existingName={agente?.nome_original}
-                  draftFile={draft.agente}
-                  disabled={!canUpload || isEfetivando}
-                  isProcessing={isEfetivando}
-                  onSelect={(file) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [row.id]: { ...current[row.id], agente: file },
-                    }))
-                  }
-                  onClear={() =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [row.id]: { ...current[row.id], agente: undefined },
-                    }))
-                  }
-                />
-              </div>
-              {draft.associado && draft.agente ? (
-                <Button
-                  size="sm"
-                  className="self-start"
-                  onClick={() =>
-                    efetivarMutation.mutate({
-                      contratoId: row.id,
-                      associado: draft.associado!,
-                      agente: draft.agente!,
-                    })
-                  }
-                  disabled={efetivarMutation.isPending}
-                >
-                  Efetivar agora
-                </Button>
+        id: "nome",
+        header: "Nome",
+        cell: (row) => <p className="font-medium">{row.nome}</p>,
+      },
+      {
+        id: "matricula_cpf",
+        header: "Matrícula / CPF",
+        cell: (row) => (
+          <div className="space-y-1">
+            <div>
+              {row.matricula ? (
+                <CopySnippet label="Matrícula" value={row.matricula} mono inline />
               ) : (
-                <p className="text-xs text-muted-foreground">
-                  Envie os dois anexos para efetivar.
-                </p>
+                <span className="text-muted-foreground">—</span>
               )}
             </div>
-          );
-        },
+            <CopySnippet
+              label="CPF"
+              value={maskCPFCNPJ(row.cpf_cnpj)}
+              mono
+              inline
+            />
+          </div>
+        ),
+      },
+      {
+        id: "agente",
+        header: "Agente",
+        cell: (row) => (
+          <div>
+            <p className="font-medium">{row.agente_nome || "Sem agente"}</p>
+            <p className="text-xs text-muted-foreground">
+              Repasse: {row.percentual_repasse}%
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "valores",
+        header: "Aux. / Comissão",
+        cell: (row) => (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-muted-foreground">Aux. liberado</span>
+              <span className="font-medium">{formatCurrency(row.margem_disponivel)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-muted-foreground">Comissão</span>
+              <span className="font-medium">{formatCurrency(row.comissao_agente)}</span>
+            </div>
+          </div>
+        ),
+      },
+      {
+        id: "data",
+        header: "Data/Hora",
+        cell: (row) => formatDateTime(row.data_assinatura),
+      },
+      {
+        id: "status",
+        header: "Status",
+        cell: (row) => <StatusBadge status={row.status} />,
       },
     ],
-    [drafts, efetivarMutation, setBankTarget],
+    [drafts, efetivarMutation, substituirComprovanteMutation],
   );
 
   const handleRefresh = () => {
@@ -390,6 +510,13 @@ export default function TesourariaPage() {
   const pendingRows = pendingQuery.data?.results ?? [];
   const paidRows = paidQuery.data?.results ?? [];
   const canceledRows = canceledQuery.data?.results ?? [];
+  const activeAdvancedFiltersCount = countAdvancedFilters({
+    dataInicio,
+    dataFim,
+    agente: agenteFiltro,
+    statusContrato,
+    situacaoEsteira,
+  });
 
   return (
     <div className="space-y-6">
@@ -442,14 +569,201 @@ export default function TesourariaPage() {
         </Card>
       </section>
 
-      <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
+      <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
         <Input
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           placeholder="Buscar por nome, CPF/CNPJ, matrícula ou código do contrato"
           className="rounded-2xl border-border/60 bg-card/60"
         />
-        <Button onClick={handleRefresh}>Aplicar</Button>
+        <Sheet
+          onOpenChange={(open) => {
+            if (open) {
+              setDraftAdvancedFilters({
+                dataInicio,
+                dataFim,
+                agente: agenteFiltro,
+                statusContrato,
+                situacaoEsteira,
+              });
+            }
+          }}
+        >
+          <SheetTrigger asChild>
+            <Button variant="outline" className="rounded-2xl">
+              <SlidersHorizontalIcon className="size-4" />
+              Filtros avançados
+              {activeAdvancedFiltersCount ? (
+                <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-primary">
+                  {activeAdvancedFiltersCount}
+                </Badge>
+              ) : null}
+            </Button>
+          </SheetTrigger>
+          <SheetContent className="w-full border-l border-border/60 sm:max-w-xl">
+            <SheetHeader>
+              <SheetTitle>Filtros avançados</SheetTitle>
+              <SheetDescription>
+                Filtre por período, agente, status do contrato e situação operacional.
+              </SheetDescription>
+            </SheetHeader>
+
+            <div className="space-y-5 overflow-y-auto px-4 pb-4">
+              <FilterField label="Agente">
+                <Input
+                  value={draftAdvancedFilters.agente}
+                  onChange={(event) =>
+                    setDraftAdvancedFilters((current) => ({
+                      ...current,
+                      agente: event.target.value,
+                    }))
+                  }
+                  placeholder="Nome ou e-mail do agente"
+                  className="rounded-2xl border-border/60 bg-card/60"
+                />
+              </FilterField>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <FilterField label="Data inicial">
+                  <Input
+                    type="date"
+                    value={draftAdvancedFilters.dataInicio}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((current) => ({
+                        ...current,
+                        dataInicio: event.target.value,
+                      }))
+                    }
+                    className="rounded-2xl border-border/60 bg-card/60"
+                  />
+                </FilterField>
+
+                <FilterField label="Data final">
+                  <Input
+                    type="date"
+                    value={draftAdvancedFilters.dataFim}
+                    onChange={(event) =>
+                      setDraftAdvancedFilters((current) => ({
+                        ...current,
+                        dataFim: event.target.value,
+                      }))
+                    }
+                    className="rounded-2xl border-border/60 bg-card/60"
+                  />
+                </FilterField>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <FilterField label="Status do contrato">
+                  <Select
+                    value={draftAdvancedFilters.statusContrato}
+                    onValueChange={(value) =>
+                      setDraftAdvancedFilters((current) => ({
+                        ...current,
+                        statusContrato: value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="rounded-2xl bg-card/60">
+                      <SelectValue placeholder="Todos contratos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos contratos</SelectItem>
+                      <SelectItem value="em_analise">Em análise</SelectItem>
+                      <SelectItem value="ativo">Ativos</SelectItem>
+                      <SelectItem value="encerrado">Encerrados</SelectItem>
+                      <SelectItem value="cancelado">Cancelados</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FilterField>
+
+                <FilterField label="Situação operacional">
+                  <Select
+                    value={draftAdvancedFilters.situacaoEsteira}
+                    onValueChange={(value) =>
+                      setDraftAdvancedFilters((current) => ({
+                        ...current,
+                        situacaoEsteira: value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="rounded-2xl bg-card/60">
+                      <SelectValue placeholder="Todas situações" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todas situações</SelectItem>
+                      <SelectItem value="aguardando">Aguardando</SelectItem>
+                      <SelectItem value="em_andamento">Em andamento</SelectItem>
+                      <SelectItem value="aprovado">Aprovados</SelectItem>
+                      <SelectItem value="pendenciado">Pendenciados</SelectItem>
+                      <SelectItem value="rejeitado">Rejeitados</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FilterField>
+              </div>
+            </div>
+
+            <SheetFooter className="border-t border-border/60">
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => {
+                  setAgenteFiltro("");
+                  setDataInicio("");
+                  setDataFim("");
+                  setStatusContrato("todos");
+                  setSituacaoEsteira("todos");
+                  setDraftAdvancedFilters({
+                    dataInicio: "",
+                    dataFim: "",
+                    agente: "",
+                    statusContrato: "todos",
+                    situacaoEsteira: "todos",
+                  });
+                  handleRefresh();
+                }}
+              >
+                Limpar avançados
+              </Button>
+              <SheetClose asChild>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setAgenteFiltro(draftAdvancedFilters.agente);
+                    setDataInicio(draftAdvancedFilters.dataInicio);
+                    setDataFim(draftAdvancedFilters.dataFim);
+                    setStatusContrato(draftAdvancedFilters.statusContrato);
+                    setSituacaoEsteira(draftAdvancedFilters.situacaoEsteira);
+                    handleRefresh();
+                  }}
+                >
+                  Aplicar
+                </Button>
+              </SheetClose>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setSearch("");
+            setAgenteFiltro("");
+            setDataInicio("");
+            setDataFim("");
+            setStatusContrato("todos");
+            setSituacaoEsteira("todos");
+            setDraftAdvancedFilters({
+              dataInicio: "",
+              dataFim: "",
+              agente: "",
+              statusContrato: "todos",
+              situacaoEsteira: "todos",
+            });
+            handleRefresh();
+          }}
+        >
+          Limpar
+        </Button>
       </section>
 
       <section className="space-y-4">
@@ -582,6 +896,27 @@ export default function TesourariaPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AssociadoDetailsDialog
+        open={!!detailTarget}
+        onOpenChange={(open) => !open && setDetailTarget(null)}
+        associadoId={detailTarget?.associado_id ?? null}
+        description="Consulta expandida do associado, contratos e ciclos diretamente na fila de novos contratos."
+      />
+    </div>
+  );
+}
+
+function FilterField({
+  label,
+  children,
+}: React.PropsWithChildren<{ label: string }>) {
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
+        {label}
+      </p>
+      {children}
     </div>
   );
 }
@@ -631,11 +966,12 @@ function ComprovanteSlot({
 
   const displayName = draftFile?.name || existingName;
   const displayUrl = draftFile ? undefined : existingUrl;
+  const primaryActionLabel = label;
 
   return (
     <div
       className={compact
-        ? "rounded-xl border border-border/60 bg-background/40 p-2.5"
+        ? "rounded-xl border border-border/60 bg-background/40 p-2"
         : "rounded-2xl border border-border/60 bg-background/40 p-3"}
     >
       <input
@@ -646,54 +982,91 @@ function ComprovanteSlot({
         disabled={!canReplace}
         onChange={handleFileSelection}
       />
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-          {label}
-        </p>
-        {draftFile ? (
-          <Button size="icon-sm" variant="ghost" onClick={onClear}>
-            <Trash2Icon className="size-4" />
-          </Button>
-        ) : null}
-      </div>
-      <div className="space-y-2">
-        {displayName ? (
-          <div className="space-y-1 text-sm">
-            <p className="font-medium" title={displayName}>
-              {compact ? compactFileName(displayName) : displayName}
-            </p>
-            {draftFile ? (
-              <p className="text-xs text-muted-foreground">
-                {(draftFile.size / 1024 / 1024).toFixed(2)} MB pronto para envio.
-              </p>
-            ) : (
-              <p className="text-xs text-muted-foreground">Arquivo já anexado.</p>
-            )}
-          </div>
-        ) : (
-          <p className="text-xs text-muted-foreground">Nenhum arquivo enviado.</p>
-        )}
-
-        <div className="flex flex-wrap gap-2">
+      {compact ? (
+        <div className="space-y-2">
           {displayUrl ? (
-            <Button asChild size="sm" variant="outline">
-              <a
-                href={buildBackendFileUrl(displayUrl)}
-                target="_blank"
-                rel="noreferrer"
-              >
+            <Button asChild size="xs" variant="outline" className="w-full justify-start">
+              <a href={buildBackendFileUrl(displayUrl)} target="_blank" rel="noreferrer">
                 <PaperclipIcon className="size-4" />
-                Ver arquivo
+                {primaryActionLabel}
               </a>
             </Button>
-          ) : null}
-          <Button size="sm" variant="outline" onClick={openPicker} disabled={!canReplace}>
-            <UploadIcon className="size-4" />
-            {draftFile ? "Trocar" : displayUrl ? "Substituir" : "Enviar"}
-          </Button>
+          ) : (
+            <Button
+              size="xs"
+              variant="outline"
+              className="w-full justify-start"
+              onClick={openPicker}
+              disabled={!canReplace}
+            >
+              <UploadIcon className="size-4" />
+              {primaryActionLabel}
+            </Button>
+          )}
+          <div className="flex gap-2">
+            <Button
+              size="xs"
+              variant="outline"
+              className="flex-1"
+              onClick={openPicker}
+              disabled={!canReplace}
+            >
+              <UploadIcon className="size-4" />
+              {displayName ? "Substituir" : "Enviar"}
+            </Button>
+            {draftFile ? (
+              <Button size="icon-sm" variant="ghost" onClick={onClear}>
+                <Trash2Icon className="size-4" />
+              </Button>
+            ) : null}
+          </div>
         </div>
-        <p className="text-[11px] text-muted-foreground">PDF, JPG ou PNG até 5 MB.</p>
-      </div>
+      ) : (
+        <div className="space-y-2">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+              {label}
+            </p>
+            {draftFile ? (
+              <Button size="icon-sm" variant="ghost" onClick={onClear}>
+                <Trash2Icon className="size-4" />
+              </Button>
+            ) : null}
+          </div>
+          {displayName ? (
+            <div className="space-y-1 text-sm">
+              <p className="font-medium" title={displayName}>
+                {displayName}
+              </p>
+              {draftFile ? (
+                <p className="text-xs text-muted-foreground">
+                  {(draftFile.size / 1024 / 1024).toFixed(2)} MB pronto para envio.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">Arquivo já anexado.</p>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Nenhum arquivo enviado.</p>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            {displayUrl ? (
+              <Button asChild size="sm" variant="outline">
+                <a href={buildBackendFileUrl(displayUrl)} target="_blank" rel="noreferrer">
+                  <PaperclipIcon className="size-4" />
+                  Ver arquivo
+                </a>
+              </Button>
+            ) : null}
+            <Button size="sm" variant="outline" onClick={openPicker} disabled={!canReplace}>
+              <UploadIcon className="size-4" />
+              {draftFile ? "Trocar" : displayUrl ? "Substituir" : "Enviar"}
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">PDF, JPG ou PNG até 5 MB.</p>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,25 +1,41 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   EyeIcon,
+  FileTextIcon,
   PrinterIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import type { PaginatedResponse, RefinanciamentoItem } from "@/lib/api/types";
+import type {
+  ComprovanteResumo,
+  PaginatedResponse,
+  RefinanciamentoItem,
+} from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
+import { buildBackendFileUrl } from "@/lib/backend-files";
 import { formatMonthYear } from "@/lib/formatters";
 import { RefinanciamentoDetalhesDialog } from "@/components/refinanciamento/refinanciamento-detalhes-dialog";
 import MultiSelect from "@/components/custom/multi-select";
-import SearchableSelect, { type SelectOption } from "@/components/custom/searchable-select";
+import SearchableSelect, {
+  type SelectOption,
+} from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -70,9 +86,6 @@ const STATUS_OPTIONS: SelectOption[] = [
     value: "aprovado_analise_renovacao",
     label: "Aguardando validação da coordenação",
   },
-  { value: "aprovado_para_renovacao", label: "Enviado para tesouraria" },
-  { value: "bloqueado", label: "Bloqueado" },
-  { value: "revertido", label: "Revertido" },
 ];
 
 const ORIGIN_OPTIONS: SelectOption[] = [
@@ -118,19 +131,73 @@ function isBulkEligible(item: RefinanciamentoItem) {
   return item.status === "aprovado_analise_renovacao";
 }
 
+function getSolicitacaoAttachment(
+  comprovantes: RefinanciamentoItem["comprovantes"],
+) {
+  return (
+    comprovantes.find(
+      (comprovante) =>
+        comprovante.tipo === "termo_antecipacao" ||
+        comprovante.origem === "solicitacao_renovacao",
+    ) ?? null
+  );
+}
+
+function AttachmentCell({
+  comprovante,
+}: {
+  comprovante: ComprovanteResumo | null;
+}) {
+  if (!comprovante) {
+    return (
+      <span className="text-xs text-muted-foreground">
+        Sem termo anexado.
+      </span>
+    );
+  }
+
+  if (comprovante.arquivo_disponivel_localmente) {
+    return (
+      <Button asChild size="sm" variant="outline">
+        <a
+          href={buildBackendFileUrl(comprovante.arquivo)}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <FileTextIcon className="size-4" />
+          Ver termo
+        </a>
+      </Button>
+    );
+  }
+
+  return (
+    <span
+      className="inline-flex rounded-full border border-dashed border-border/60 px-3 py-1 text-xs text-muted-foreground"
+      title={comprovante.arquivo_referencia}
+    >
+      Referência legado
+    </span>
+  );
+}
+
 export default function CoordenacaoRefinanciamentoPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const [filters, setFilters] = React.useState<CoordAdvancedFilters>(INITIAL_FILTERS);
-  const [draftFilters, setDraftFilters] = React.useState<CoordAdvancedFilters>(INITIAL_FILTERS);
+  const [draftFilters, setDraftFilters] = React.useState<CoordAdvancedFilters>(
+    INITIAL_FILTERS,
+  );
   const [dialogState, setDialogState] = React.useState<DialogState>(null);
   const [observacao, setObservacao] = React.useState("");
   const [selectedIds, setSelectedIds] = React.useState<number[]>([]);
   const [bulkDialogOpen, setBulkDialogOpen] = React.useState(false);
   const [bulkConfirmText, setBulkConfirmText] = React.useState("");
   const [detailItem, setDetailItem] = React.useState<RefinanciamentoItem | null>(null);
+  const [liquidacaoTarget, setLiquidacaoTarget] =
+    React.useState<RefinanciamentoItem | null>(null);
 
   const refinanciamentoQuery = useQuery({
     queryKey: [
@@ -175,7 +242,7 @@ export default function CoordenacaoRefinanciamentoPage() {
         body,
       }),
     onSuccess: () => {
-      toast.success("Ação de coordenação concluída.");
+      toast.success("Renovação enviada para a tesouraria.");
       setDialogState(null);
       setObservacao("");
       void queryClient.invalidateQueries({ queryKey: ["coordenacao-refinanciamento"] });
@@ -185,7 +252,32 @@ export default function CoordenacaoRefinanciamentoPage() {
       void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos"] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao processar refinanciamento.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao aprovar a renovação.",
+      );
+    },
+  });
+
+  const liquidacaoMutation = useMutation({
+    mutationFn: async (id: number) =>
+      apiFetch<RefinanciamentoItem>(`refinanciamentos/${id}/encaminhar-liquidacao`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      toast.success("Contrato enviado para a fila de liquidação pendente.");
+      setLiquidacaoTarget(null);
+      void queryClient.invalidateQueries({ queryKey: ["coordenacao-refinanciamento"] });
+      void queryClient.invalidateQueries({ queryKey: ["coordenacao-refinanciados"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-liquidacoes"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao encaminhar para liquidação.",
+      );
     },
   });
 
@@ -208,7 +300,8 @@ export default function CoordenacaoRefinanciamentoPage() {
         toast.error(
           `${payload.success_count} validações concluídas e ${payload.failure_count} falhas.`,
           {
-            description: failureSummary.join(" | ") || "Algumas linhas mudaram de status.",
+            description:
+              failureSummary.join(" | ") || "Algumas linhas mudaram de status.",
           },
         );
       } else {
@@ -228,12 +321,12 @@ export default function CoordenacaoRefinanciamentoPage() {
 
   const rows = refinanciamentoQuery.data?.results ?? [];
   const totalCount = refinanciamentoQuery.data?.count ?? 0;
-  const aptos = rows.filter(isBulkEligible).length;
   const selectableRows = rows.filter(isBulkEligible);
   const allSelected =
     selectableRows.length > 0 &&
     selectableRows.every((item) => selectedIds.includes(item.id));
-  const someSelected = selectableRows.some((item) => selectedIds.includes(item.id)) && !allSelected;
+  const someSelected =
+    selectableRows.some((item) => selectedIds.includes(item.id)) && !allSelected;
   const activeAdvancedFiltersCount = countActiveFilters(filters);
 
   React.useEffect(() => {
@@ -270,7 +363,9 @@ export default function CoordenacaoRefinanciamentoPage() {
             checked={allSelected ? true : someSelected ? "indeterminate" : false}
             onCheckedChange={(checked) => {
               const shouldSelect = checked === true;
-              setSelectedIds(shouldSelect ? selectableRows.map((item) => item.id) : []);
+              setSelectedIds(
+                shouldSelect ? selectableRows.map((item) => item.id) : [],
+              );
             }}
             aria-label="Selecionar página atual"
           />
@@ -294,9 +389,14 @@ export default function CoordenacaoRefinanciamentoPage() {
       {
         id: "associado",
         header: "Associado",
+        cell: (row) => <p className="font-medium">{row.associado_nome}</p>,
+      },
+      {
+        id: "matricula_cpf",
+        header: "Matrícula / CPF",
         cell: (row) => (
           <div className="space-y-1">
-            <p className="font-medium">{row.associado_nome}</p>
+            <p>{row.matricula_display || row.matricula || "—"}</p>
             <CopySnippet label="CPF" value={row.cpf_cnpj} mono inline />
           </div>
         ),
@@ -318,61 +418,66 @@ export default function CoordenacaoRefinanciamentoPage() {
         cell: (row) => `${row.mensalidades_pagas}/${row.mensalidades_total}`,
       },
       {
-        id: "motivo",
-        header: "Motivo",
+        id: "ciclos",
+        header: "Nº de ciclos",
+        cell: (row) => row.numero_ciclos,
+      },
+      {
+        id: "status",
+        header: "Status / Motivo",
+        cellClassName: "min-w-[240px]",
         cell: (row) => (
-          <p className="max-w-sm text-sm text-muted-foreground">
-            {row.motivo_apto_renovacao}
-          </p>
+          <div className="space-y-2">
+            <StatusBadge status={row.status} />
+            <p className="text-xs text-muted-foreground">
+              {row.analista_note?.trim() || row.motivo_apto_renovacao}
+            </p>
+          </div>
         ),
       },
       {
-        id: "refin",
-        header: "Refinanciamento",
+        id: "anexo",
+        header: "Anexo",
         cell: (row) => (
-          <Badge className="rounded-full bg-sky-500/15 text-sky-200">
-            {row.refinanciamento_numero}
-          </Badge>
+          <AttachmentCell
+            comprovante={getSolicitacaoAttachment(row.comprovantes)}
+          />
         ),
       },
       {
         id: "acao",
         header: "Ações",
-        cell: (row) =>
-          row.status !== "aprovado_analise_renovacao" ? (
-            <div className="space-y-2">
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => setDetailItem(row)}>
-                  <EyeIcon className="size-4" />
-                  Detalhes
-                </Button>
-                <StatusBadge status={row.status} />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {row.coordenador_note || row.motivo_bloqueio || "Sem observação registrada."}
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" onClick={() => setDetailItem(row)}>
-                <EyeIcon className="size-4" />
-                Detalhes
-              </Button>
-              <Button size="sm" onClick={() => setDialogState({ mode: "aprovar", item: row })}>
-                Aprovar e enviar para tesouraria
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link
-                  href={`/tesouraria/liquidacoes?status=elegivel&contrato=${row.contrato_id}&origem=renovacao&refinanciamento=${row.id}`}
-                >
-                  Liquidar contrato
-                </Link>
-              </Button>
-            </div>
-          ),
+        cellClassName: "min-w-[280px]",
+        cell: (row) => (
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => setDetailItem(row)}>
+              <EyeIcon className="size-4" />
+              Ver detalhes
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => setDialogState({ mode: "aprovar", item: row })}
+            >
+              Aprovar e enviar para tesouraria
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setLiquidacaoTarget(row)}
+            >
+              Liquidar contrato
+            </Button>
+          </div>
+        ),
       },
     ],
-    [allSelected, selectableRows, selectedIds, someSelected, toggleSelection],
+    [
+      allSelected,
+      selectableRows,
+      selectedIds,
+      someSelected,
+      toggleSelection,
+    ],
   );
 
   return (
@@ -380,17 +485,10 @@ export default function CoordenacaoRefinanciamentoPage() {
       <section className="rounded-[1.75rem] border border-border/60 bg-card/70 p-6">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="space-y-2">
-            <div className="flex flex-wrap gap-2">
-              <Button asChild variant="outline">
-                <Link href="/coordenacao/refinanciados">Refinanciados</Link>
-              </Button>
-              <Button asChild>
-                <Link href="/coordenacao/refinanciamento">Refinanciamento</Link>
-              </Button>
-            </div>
-            <h1 className="text-3xl font-semibold">Refinanciamento em aprovação</h1>
+            <h1 className="text-3xl font-semibold">Aptos a renovar</h1>
             <p className="text-sm text-muted-foreground">
-              Fila de coordenação para renovações já aprovadas pelo analista. Total: {totalCount} | Pendentes de validação: {aptos}
+              Fila de coordenação com renovações enviadas pelo analista. Pendentes
+              de validação: {totalCount}
             </p>
           </div>
           <Button variant="outline" onClick={() => window.print()}>
@@ -407,7 +505,7 @@ export default function CoordenacaoRefinanciamentoPage() {
             setSearch(event.target.value);
             setPage(1);
           }}
-          placeholder="Buscar por associado, CPF ou agente"
+          placeholder="Buscar por associado, CPF, matrícula, contrato ou agente"
           className="rounded-2xl border-border/60 bg-card/60"
         />
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
@@ -416,131 +514,139 @@ export default function CoordenacaoRefinanciamentoPage() {
               <SlidersHorizontalIcon className="size-4" />
               Filtros avançados
               {activeAdvancedFiltersCount ? (
-                <Badge className="ml-1 rounded-full bg-primary/15 text-primary">
+                <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-[11px] text-primary">
                   {activeAdvancedFiltersCount}
                 </Badge>
               ) : null}
             </Button>
           </SheetTrigger>
           <SheetContent className="w-full border-l border-border/60 bg-background/95 sm:max-w-xl">
-            <SheetHeader>
+            <SheetHeader className="border-b border-border/60">
               <SheetTitle>Filtros avançados</SheetTitle>
             </SheetHeader>
-            <div className="mt-8 space-y-6">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Ano</p>
-                  <Input
-                    value={draftFilters.year}
-                    onChange={(event) =>
-                      setDraftFilters((current) => ({
-                        ...current,
-                        year: event.target.value,
-                      }))
-                    }
-                    placeholder="2026"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Agente</p>
-                  <Input
-                    value={draftFilters.agent}
-                    onChange={(event) =>
-                      setDraftFilters((current) => ({
-                        ...current,
-                        agent: event.target.value,
-                      }))
-                    }
-                    placeholder="Nome do agente"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Competência inicial</p>
-                  <Input
-                    type="month"
-                    value={draftFilters.competenciaStart}
-                    onChange={(event) =>
-                      setDraftFilters((current) => ({
-                        ...current,
-                        competenciaStart: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Competência final</p>
-                  <Input
-                    type="month"
-                    value={draftFilters.competenciaEnd}
-                    onChange={(event) =>
-                      setDraftFilters((current) => ({
-                        ...current,
-                        competenciaEnd: event.target.value,
-                      }))
-                    }
-                  />
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="flex-1 overflow-y-auto px-4 py-4">
+                <div className="space-y-6">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Ano</p>
+                      <Input
+                        value={draftFilters.year}
+                        onChange={(event) =>
+                          setDraftFilters((current) => ({
+                            ...current,
+                            year: event.target.value,
+                          }))
+                        }
+                        placeholder="2026"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Agente</p>
+                      <Input
+                        value={draftFilters.agent}
+                        onChange={(event) =>
+                          setDraftFilters((current) => ({
+                            ...current,
+                            agent: event.target.value,
+                          }))
+                        }
+                        placeholder="Nome do agente"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Competência inicial</p>
+                      <Input
+                        type="month"
+                        value={draftFilters.competenciaStart}
+                        onChange={(event) =>
+                          setDraftFilters((current) => ({
+                            ...current,
+                            competenciaStart: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Competência final</p>
+                      <Input
+                        type="month"
+                        value={draftFilters.competenciaEnd}
+                        onChange={(event) =>
+                          setDraftFilters((current) => ({
+                            ...current,
+                            competenciaEnd: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Status</p>
+                    <MultiSelect
+                      options={STATUS_OPTIONS}
+                      value={draftFilters.statuses}
+                      onChange={(statuses) =>
+                        setDraftFilters((current) => ({ ...current, statuses }))
+                      }
+                      placeholder="Todos os status"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Origem</p>
+                    <MultiSelect
+                      options={ORIGIN_OPTIONS}
+                      value={draftFilters.origins}
+                      onChange={(origins) =>
+                        setDraftFilters((current) => ({ ...current, origins }))
+                      }
+                      placeholder="Todas as origens"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Faixa de elegibilidade</p>
+                    <SearchableSelect
+                      options={ELIGIBILITY_OPTIONS}
+                      value={draftFilters.eligibilityBand}
+                      onChange={(eligibilityBand) =>
+                        setDraftFilters((current) => ({
+                          ...current,
+                          eligibilityBand,
+                        }))
+                      }
+                      placeholder="Todas as faixas"
+                      clearValue=""
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Status</p>
-                <MultiSelect
-                  options={STATUS_OPTIONS}
-                  value={draftFilters.statuses}
-                  onChange={(statuses) =>
-                    setDraftFilters((current) => ({ ...current, statuses }))
-                  }
-                  placeholder="Todos os status"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Origem</p>
-                <MultiSelect
-                  options={ORIGIN_OPTIONS}
-                  value={draftFilters.origins}
-                  onChange={(origins) =>
-                    setDraftFilters((current) => ({ ...current, origins }))
-                  }
-                  placeholder="Todas as origens"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <p className="text-sm font-medium">Faixa de elegibilidade</p>
-                <SearchableSelect
-                  options={ELIGIBILITY_OPTIONS}
-                  value={draftFilters.eligibilityBand}
-                  onChange={(eligibilityBand) =>
-                    setDraftFilters((current) => ({ ...current, eligibilityBand }))
-                  }
-                  placeholder="Todas as faixas"
-                  clearValue=""
-                />
-              </div>
+              <SheetFooter className="border-t border-border/60 sm:flex-row sm:justify-between">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDraftFilters(INITIAL_FILTERS);
+                    setFilters(INITIAL_FILTERS);
+                    setPage(1);
+                    setSheetOpen(false);
+                  }}
+                >
+                  Limpar filtros
+                </Button>
+                <Button
+                  onClick={() => {
+                    setFilters(draftFilters);
+                    setPage(1);
+                    setSheetOpen(false);
+                  }}
+                >
+                  Aplicar filtros
+                </Button>
+              </SheetFooter>
             </div>
-            <SheetFooter className="mt-8 flex-row gap-3 sm:justify-between">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setDraftFilters(INITIAL_FILTERS);
-                  setFilters(INITIAL_FILTERS);
-                  setPage(1);
-                  setSheetOpen(false);
-                }}
-              >
-                Limpar filtros
-              </Button>
-              <Button
-                onClick={() => {
-                  setFilters(draftFilters);
-                  setPage(1);
-                  setSheetOpen(false);
-                }}
-              >
-                Aplicar filtros
-              </Button>
-            </SheetFooter>
           </SheetContent>
         </Sheet>
       </section>
@@ -548,7 +654,11 @@ export default function CoordenacaoRefinanciamentoPage() {
       {selectedIds.length ? (
         <section className="flex flex-col gap-3 rounded-[1.5rem] border border-primary/30 bg-primary/5 p-4 lg:flex-row lg:items-center lg:justify-between">
           <p className="text-sm text-foreground">
-            {selectedIds.length} {selectedIds.length === 1 ? "linha selecionada" : "linhas selecionadas"} na página atual.
+            {selectedIds.length}{" "}
+            {selectedIds.length === 1
+              ? "linha selecionada"
+              : "linhas selecionadas"}{" "}
+            na página atual.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => setSelectedIds([])}>
@@ -567,7 +677,7 @@ export default function CoordenacaoRefinanciamentoPage() {
         currentPage={page}
         totalPages={Math.max(1, Math.ceil(totalCount / 20))}
         onPageChange={setPage}
-        emptyMessage="Nenhuma solicitação pendente para coordenação."
+        emptyMessage="Nenhuma renovação enviada pelo analista foi encontrada."
         loading={refinanciamentoQuery.isLoading}
         skeletonRows={6}
       />
@@ -577,7 +687,8 @@ export default function CoordenacaoRefinanciamentoPage() {
           <DialogHeader>
             <DialogTitle>Aprovar renovação</DialogTitle>
             <DialogDescription>
-              A coordenação valida os anexos do agente e envia a renovação para a tesouraria.
+              A coordenação valida o termo anexado e envia a renovação para a
+              tesouraria.
             </DialogDescription>
           </DialogHeader>
 
@@ -612,7 +723,7 @@ export default function CoordenacaoRefinanciamentoPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Enviar renovações para tesouraria</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação é sensível e valida apenas as linhas selecionadas da página atual.
+              Esta ação valida apenas as linhas selecionadas da página atual.
               Digite <strong>CONFIRMAR</strong> para continuar.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -635,13 +746,44 @@ export default function CoordenacaoRefinanciamentoPage() {
               Cancelar
             </AlertDialogCancel>
             <AlertDialogAction
-              disabled={bulkConfirmText.trim().toUpperCase() !== "CONFIRMAR" || bulkApproveMutation.isPending}
+              disabled={
+                bulkConfirmText.trim().toUpperCase() !== "CONFIRMAR" ||
+                bulkApproveMutation.isPending
+              }
               onClick={(event) => {
                 event.preventDefault();
                 bulkApproveMutation.mutate(selectedIds);
               }}
             >
               Confirmar envio em massa
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!liquidacaoTarget}
+        onOpenChange={(open) => !open && setLiquidacaoTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Enviar contrato para liquidação</AlertDialogTitle>
+            <AlertDialogDescription>
+              O contrato sairá da fila da coordenação e será movido para a fila
+              de liquidações pendentes da tesouraria.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={liquidacaoMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                if (!liquidacaoTarget) return;
+                liquidacaoMutation.mutate(liquidacaoTarget.id);
+              }}
+            >
+              Confirmar envio
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

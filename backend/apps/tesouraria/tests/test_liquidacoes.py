@@ -347,3 +347,44 @@ class LiquidacaoContratoViewSetTestCase(TestCase):
 
         self.assertEqual(reverse_response.status_code, 400, reverse_response.json())
         self.assertIn("Não é possível reverter", str(reverse_response.json()))
+
+    def test_admin_pode_excluir_liquidacao(self):
+        associado, contrato = self._create_contract_fixture(cpf="77852621372")
+        liquidar_response = self.tes_client.post(
+            f"/api/v1/tesouraria/liquidacoes/{contrato.id}/liquidar/",
+            {
+                "data_liquidacao": "2026-03-21",
+                "valor_total": "600.00",
+                "observacao": "Liquidação para exclusão.",
+                "comprovante": SimpleUploadedFile(
+                    "liquidacao-excluir.pdf",
+                    b"arquivo",
+                    content_type="application/pdf",
+                ),
+            },
+        )
+        self.assertEqual(liquidar_response.status_code, 201, liquidar_response.json())
+        liquidacao_id = liquidar_response.json()["liquidacao_id"]
+
+        response = self.admin_client.post(
+            f"/api/v1/tesouraria/liquidacoes/{liquidacao_id}/excluir/",
+            {"motivo_exclusao": "Registro duplicado."},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        contrato.refresh_from_db()
+        associado.refresh_from_db()
+        parcelas = list(Parcela.objects.filter(ciclo__contrato=contrato).order_by("numero"))
+        liquidacao = LiquidacaoContrato.all_objects.get(pk=liquidacao_id)
+
+        self.assertEqual(contrato.status, Contrato.Status.ATIVO)
+        self.assertEqual(associado.status, Associado.Status.ATIVO)
+        self.assertNotIn(
+            Parcela.Status.LIQUIDADA,
+            [parcela.status for parcela in parcelas],
+        )
+        self.assertFalse(LiquidacaoContrato.objects.filter(pk=liquidacao_id).exists())
+        self.assertIsNotNone(liquidacao.revertida_em)
+        self.assertIsNotNone(liquidacao.deleted_at)
+        self.assertEqual(liquidacao.itens.filter(deleted_at__isnull=True).count(), 0)

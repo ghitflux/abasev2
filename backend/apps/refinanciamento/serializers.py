@@ -117,6 +117,7 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
     itens = serializers.SerializerMethodField()
     mensalidades_pagas = serializers.SerializerMethodField()
     mensalidades_total = serializers.SerializerMethodField()
+    numero_ciclos = serializers.SerializerMethodField()
     refinanciamento_numero = serializers.SerializerMethodField()
     auditoria = serializers.SerializerMethodField()
     pagamento_status = serializers.SerializerMethodField()
@@ -158,6 +159,7 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
             "itens",
             "mensalidades_pagas",
             "mensalidades_total",
+            "numero_ciclos",
             "refinanciamento_numero",
             "pagamento_status",
             "legacy_refinanciamento_id",
@@ -235,6 +237,11 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
             return get_contract_cycle_size(obj.contrato_origem)
         itens = self._itens_refinanciamento(obj)
         return max(len(itens), 3)
+
+    def get_numero_ciclos(self, obj: Refinanciamento) -> int:
+        if obj.ciclo_origem_id and obj.ciclo_origem is not None:
+            return obj.ciclo_origem.numero or 1
+        return 1
 
     def get_matricula_display(self, obj: Refinanciamento) -> str:
         return obj.associado.matricula_display
@@ -330,7 +337,7 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
 
     def get_motivo_apto_renovacao(self, obj: Refinanciamento) -> str:
         if obj.status == Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO:
-            return "Liquidação solicitada pelo agente; aguardando tratativa da tesouraria."
+            return "Contrato encaminhado para a fila de liquidação; aguardando tratativa da tesouraria."
         total = self.get_mensalidades_total(obj)
         pagas = min(self.get_mensalidades_pagas(obj), total)
         ciclo_numero = obj.ciclo_origem.numero if obj.ciclo_origem_id else 1
@@ -368,6 +375,10 @@ class SolicitarRefinanciamentoSerializer(serializers.Serializer):
 
 class SolicitarLiquidacaoRefinanciamentoSerializer(serializers.Serializer):
     pass
+
+
+class EncaminharLiquidacaoRefinanciamentoSerializer(serializers.Serializer):
+    observacao = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class AprovarRefinanciamentoSerializer(serializers.Serializer):

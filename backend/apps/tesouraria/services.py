@@ -39,6 +39,9 @@ class TesourariaService:
         data_fim: str | None = None,
         search: str | None = None,
         pagamento: str | None = None,
+        agente: str | None = None,
+        status_contrato: str | None = None,
+        situacao_esteira: str | None = None,
     ):
         queryset = (
             Contrato.objects.select_related(
@@ -109,7 +112,28 @@ class TesourariaService:
                 Q(associado__nome_completo__icontains=search)
                 | Q(associado__cpf_cnpj__icontains=search)
                 | Q(codigo__icontains=search)
+                | Q(associado__matricula__icontains=search)
             )
+
+        if agente:
+            agente_term = agente.strip()
+            if agente_term:
+                if agente_term.isdigit():
+                    queryset = queryset.filter(agente_id=int(agente_term))
+                else:
+                    queryset = queryset.filter(
+                        Q(agente__first_name__icontains=agente_term)
+                        | Q(agente__last_name__icontains=agente_term)
+                        | Q(agente__email__icontains=agente_term)
+                    )
+
+        if status_contrato and status_contrato in {choice[0] for choice in Contrato.Status.choices}:
+            queryset = queryset.filter(status=status_contrato)
+
+        if situacao_esteira and situacao_esteira in {
+            choice[0] for choice in EsteiraItem.Situacao.choices
+        }:
+            queryset = queryset.filter(associado__esteira_item__status=situacao_esteira)
 
         return queryset
 
@@ -253,6 +277,44 @@ class TesourariaService:
     def obter_dados_bancarios(contrato_id):
         contrato = TesourariaService._get_contrato(int(contrato_id))
         return contrato.associado.build_dados_bancarios_payload()
+
+    @staticmethod
+    @transaction.atomic
+    def substituir_comprovante(contrato_id, *, papel: str, arquivo, user):
+        contrato = TesourariaService._get_contrato(int(contrato_id))
+        comprovante = (
+            contrato.comprovantes.filter(
+                refinanciamento__isnull=True,
+                origem=Comprovante.Origem.EFETIVACAO_CONTRATO,
+                papel=papel,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if comprovante is None:
+            raise ValidationError("Comprovante não encontrado para substituição.")
+
+        comprovante.arquivo = arquivo
+        comprovante.nome_original = getattr(arquivo, "name", "")
+        comprovante.mime = getattr(arquivo, "content_type", "") or ""
+        comprovante.size_bytes = getattr(arquivo, "size", None)
+        comprovante.arquivo_referencia_path = ""
+        comprovante.enviado_por = user
+        if comprovante.data_pagamento is None:
+            comprovante.data_pagamento = timezone.now()
+        comprovante.save(
+            update_fields=[
+                "arquivo",
+                "nome_original",
+                "mime",
+                "size_bytes",
+                "arquivo_referencia_path",
+                "enviado_por",
+                "data_pagamento",
+                "updated_at",
+            ]
+        )
+        return contrato
 
 
 class ConfirmacaoService:

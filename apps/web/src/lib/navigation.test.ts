@@ -160,8 +160,11 @@ describe("navigation", () => {
     expect(
       tesourariaChildren.find((item) => item.href === "/tesouraria/devolucoes")?.title,
     ).toBe("Devoluções");
+    expect(canAccessPath("/tesouraria/inadimplentes", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/tesouraria/liquidacoes", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/tesouraria/liquidacao", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/tesouraria/devolucoes", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/tesouraria/devolucao", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/tesouraria/confirmacoes", ["ADMIN"])).toBe(false);
     expect(canAccessPath("/tesouraria/confirmacoes", ["TESOUREIRO"])).toBe(false);
   });

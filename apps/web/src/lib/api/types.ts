@@ -1013,6 +1013,7 @@ export type RefinanciamentoItem = {
   }>;
   mensalidades_pagas: number;
   mensalidades_total: number;
+  numero_ciclos: number;
   refinanciamento_numero: number;
   pagamento_status: string;
   legacy_refinanciamento_id?: number | null;
@@ -1070,6 +1071,7 @@ export type PagamentoAgenteItem = {
   nome: string;
   cpf_cnpj: string;
   contrato_codigo: string;
+  agente_nome: string;
   status_contrato: string;
   status_visual_slug: string;
   status_visual_label: string;

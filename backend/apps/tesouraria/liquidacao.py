@@ -532,3 +532,50 @@ class LiquidacaoContratoService:
         rebuild_contract_cycle_state(contrato, execute=True)
         liquidacao.refresh_from_db()
         return liquidacao
+
+    @classmethod
+    @transaction.atomic
+    def excluir_liquidacao(
+        cls,
+        liquidacao_id: int,
+        *,
+        motivo_exclusao: str,
+        user,
+    ) -> LiquidacaoContrato:
+        if not (getattr(user, "is_superuser", False) or user.has_role("ADMIN")):
+            raise ValidationError("A exclusão de liquidação é restrita a administradores.")
+
+        liquidacao = (
+            LiquidacaoContrato.all_objects.select_for_update()
+            .select_related("contrato__associado")
+            .prefetch_related("itens", "anexos")
+            .filter(pk=liquidacao_id, deleted_at__isnull=True)
+            .first()
+        )
+        if liquidacao is None:
+            raise ValidationError("Registro de liquidação não encontrado.")
+
+        motivo = motivo_exclusao.strip()
+        if not liquidacao.revertida_em:
+            cls.reverter_liquidacao(
+                liquidacao.contrato_id,
+                motivo_reversao=motivo,
+                user=user,
+            )
+            liquidacao = (
+                LiquidacaoContrato.all_objects.select_for_update()
+                .select_related("contrato__associado")
+                .prefetch_related("itens", "anexos")
+                .get(pk=liquidacao_id)
+            )
+        else:
+            liquidacao.motivo_reversao = _append_note(liquidacao.motivo_reversao, motivo)
+            liquidacao.save(update_fields=["motivo_reversao", "updated_at"])
+
+        now = timezone.now()
+        liquidacao.itens.update(deleted_at=now, updated_at=now)
+        liquidacao.anexos.update(deleted_at=now, updated_at=now)
+        liquidacao.deleted_at = now
+        liquidacao.save(update_fields=["deleted_at", "updated_at"])
+        liquidacao.refresh_from_db()
+        return liquidacao

@@ -99,6 +99,8 @@ import {
 } from "@/lib/importacao-financeiro";
 import { maskCPFCNPJ } from "@/lib/masks";
 import { cn } from "@/lib/utils";
+import { usePermissions } from "@/hooks/use-permissions";
+import RenovacaoAdminEditDialog from "@/components/refinanciamento/renovacao-admin-edit-dialog";
 
 const STATUS_OPTIONS = [
   { value: "todos", label: "Todos os status" },
@@ -2568,6 +2570,8 @@ function MonitoringCard({
 }
 
 export default function RenovacaoCiclosPage() {
+  const { hasRole } = usePermissions();
+  const isAdmin = hasRole("ADMIN");
   const monthsQuery = useV1RenovacaoCiclosMesesList(undefined, {
     query: {
       staleTime: 5 * 60 * 1000,
@@ -2589,6 +2593,8 @@ export default function RenovacaoCiclosPage() {
     React.useState<CycleMetricDialogConfig | null>(null);
   const [monitoringMetricDialogConfig, setMonitoringMetricDialogConfig] =
     React.useState<CycleMetricDialogConfig | null>(null);
+  const [renewalEditTarget, setRenewalEditTarget] =
+    React.useState<EnrichedCycleItem | null>(null);
   const [advancedFilters, setAdvancedFilters] = React.useState<AdvancedFilters>({
     periodPreset: "todos",
     dateStart: "",
@@ -3008,6 +3014,27 @@ export default function RenovacaoCiclosPage() {
       cell: (row) => <StatusBadge status={row.status_visual} />,
     },
   ];
+
+  if (isAdmin) {
+    columns.push({
+      id: "acoes",
+      header: "Ação",
+      cell: (row) => (
+        <Button
+          variant="outline"
+          size="sm"
+          className="rounded-2xl"
+          onClick={(event) => {
+            event.stopPropagation();
+            setRenewalEditTarget(row);
+          }}
+        >
+          Reeditar
+        </Button>
+      ),
+      headerClassName: "w-[10%]",
+    });
+  }
 
   return (
     <div className="space-y-8 pb-10">
@@ -3601,6 +3628,19 @@ export default function RenovacaoCiclosPage() {
                               Abrir associado
                             </Link>
                           </Button>
+                          {isAdmin ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="rounded-2xl"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setRenewalEditTarget(row);
+                              }}
+                            >
+                              Reeditar renovação
+                            </Button>
+                          ) : null}
                         </div>
                       </div>
                     </div>
@@ -3789,6 +3829,19 @@ export default function RenovacaoCiclosPage() {
             />
           </div>
         )}
+      />
+
+      <RenovacaoAdminEditDialog
+        open={Boolean(renewalEditTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRenewalEditTarget(null);
+          }
+        }}
+        associadoId={renewalEditTarget?.associado_id ?? null}
+        contractId={renewalEditTarget?.contratoReferenciaRenovacaoId ?? null}
+        contractCode={renewalEditTarget?.contratoReferenciaRenovacaoCodigo}
+        associadoNome={renewalEditTarget?.nome_associado}
       />
     </div>
   );

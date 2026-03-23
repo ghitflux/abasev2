@@ -15,6 +15,7 @@ from apps.contratos.parcela_detail import _query_actual_parcela, _query_retorno_
 from apps.contratos.models import Contrato, Parcela
 from apps.financeiro.models import Despesa
 from apps.importacao.models import ArquivoRetorno, PagamentoMensalidade
+from apps.refinanciamento.models import Comprovante
 from apps.refinanciamento.serializers import ComprovanteResumoSerializer
 from apps.tesouraria.initial_payment import build_initial_payment_payload
 from apps.tesouraria.payment_evidence import (
@@ -67,7 +68,7 @@ class TesourariaContratoListSerializer(serializers.Serializer):
     matricula = serializers.SerializerMethodField()
     chave_pix = serializers.SerializerMethodField()
     codigo = serializers.CharField(read_only=True)
-    data_assinatura = serializers.DateField(source="data_contrato", read_only=True)
+    data_assinatura = serializers.DateTimeField(source="created_at", read_only=True)
     status = serializers.SerializerMethodField()
     agente = SimpleUserSerializer(read_only=True)
     agente_nome = serializers.CharField(source="agente.full_name", read_only=True)
@@ -128,6 +129,16 @@ class TesourariaContratoListSerializer(serializers.Serializer):
 class EfetivarContratoSerializer(serializers.Serializer):
     comprovante_associado = serializers.FileField(required=True)
     comprovante_agente = serializers.FileField(required=True)
+
+
+class SubstituirComprovanteSerializer(serializers.Serializer):
+    papel = serializers.ChoiceField(
+        choices=[
+            Comprovante.Papel.ASSOCIADO,
+            Comprovante.Papel.AGENTE,
+        ]
+    )
+    arquivo = serializers.FileField(required=True)
 
 
 class CongelarContratoSerializer(serializers.Serializer):
@@ -246,6 +257,7 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
     nome = serializers.CharField(source="associado.nome_completo", read_only=True)
     cpf_cnpj = serializers.CharField(source="associado.cpf_cnpj", read_only=True)
     contrato_codigo = serializers.CharField(source="codigo", read_only=True)
+    agente_nome = serializers.CharField(source="agente.full_name", read_only=True, default="")
     status_contrato = serializers.CharField(source="status", read_only=True)
     status_visual_slug = serializers.SerializerMethodField()
     status_visual_label = serializers.SerializerMethodField()
@@ -269,6 +281,7 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
             "nome",
             "cpf_cnpj",
             "contrato_codigo",
+            "agente_nome",
             "status_contrato",
             "status_visual_slug",
             "status_visual_label",
@@ -630,6 +643,10 @@ class ReverterLiquidacaoSerializer(serializers.Serializer):
     motivo_reversao = serializers.CharField(required=True, allow_blank=False)
 
 
+class ExcluirLiquidacaoSerializer(serializers.Serializer):
+    motivo_exclusao = serializers.CharField(required=True, allow_blank=False)
+
+
 class DevolucaoContratoListSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     contrato_id = serializers.IntegerField(read_only=True)
@@ -768,6 +785,10 @@ class RegistrarDevolucaoSerializer(serializers.Serializer):
 
 class ReverterDevolucaoSerializer(serializers.Serializer):
     motivo_reversao = serializers.CharField(required=True, allow_blank=False)
+
+
+class ExcluirDevolucaoSerializer(serializers.Serializer):
+    motivo_exclusao = serializers.CharField(required=True, allow_blank=False)
 
 
 class DespesaAnexoSerializer(serializers.Serializer):
