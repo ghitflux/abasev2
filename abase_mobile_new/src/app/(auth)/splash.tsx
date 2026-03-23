@@ -35,7 +35,7 @@ export default function SplashScreen() {
 
     if (token) {
       didNav.current = true;
-      router.replace('/(app)/(tabs)/');
+      router.replace('/(app)/(tabs)');
       return;
     }
 

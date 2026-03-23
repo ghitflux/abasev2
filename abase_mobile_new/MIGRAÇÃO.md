@@ -90,7 +90,7 @@ Todos os endpoints do legado foram mantidos **exatamente iguais** (compatibilida
 |---|---|---|
 | Login | `/api/login` | POST |
 | Logout | `/api/logout` | POST |
-| Home/Bootstrap | `/api/home` | GET |
+| Home/Bootstrap | `/api/v1/app/me/` | GET |
 | Me | `/api/me` | GET |
 | Register | `/api/auth/register` | POST |
 | Forgot password | `/api/auth/forgot-password` | POST |
@@ -123,7 +123,7 @@ Novos endpoints Django (v1):
 ## Decisões Técnicas
 
 ### `expo-secure-store` em vez de `AsyncStorage`
-Armazena `{ token, user, roles }` com criptografia nativa. Limite de ~2KB no iOS, por isso o `bootstrap` (dados da home) **não** é armazenado — é re-fetchado via `GET /api/home` ao reabrir o app.
+Armazena credenciais e sessão com criptografia nativa. O `bootstrap` (dados da home) **não** é armazenado — é re-fetchado via `GET /api/v1/app/me/` ao reabrir o app.
 
 ### Axios interceptor
 ```ts
@@ -327,7 +327,7 @@ eas build --platform all --profile production
 Arquivo `.env` na raiz de `abase_mobile_new/`:
 
 ```env
-EXPO_PUBLIC_API_BASE_URL=https://www.abasepiaui.com/api
+EXPO_PUBLIC_API_BASE_URL=https://abasepiaui.cloud/api/v1
 ```
 
 O prefixo `EXPO_PUBLIC_` é obrigatório para que a variável fique disponível no bundle cliente (Metro bundler).

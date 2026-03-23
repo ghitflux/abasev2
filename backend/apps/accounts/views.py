@@ -1,8 +1,12 @@
 from django.conf import settings
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
@@ -10,7 +14,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from core.pagination import StandardResultsSetPagination
 
-from .models import Role, User
+from .mobile_legacy_auth import build_password_reset_request, consume_password_reset_token
+from .models import PasswordResetRequest, Role, User
 from .permissions import IsCoordenadorOrAdmin
 from .serializers import (
     AdminUserCreateSerializer,
@@ -22,6 +27,9 @@ from .serializers import (
     PasswordResetRequestSerializer,
     PasswordResetResultSerializer,
     RefreshSerializer,
+    SelfServiceForgotPasswordSerializer,
+    SelfServiceRegisterSerializer,
+    SelfServiceResetPasswordSerializer,
     UserSerializer,
     get_manageable_role_codes,
     is_manageable_user_for_manager,
@@ -61,6 +69,114 @@ class LogoutView(APIView):
             token = RefreshToken(refresh)
             token.blacklist()
         return Response(status=status.HTTP_205_RESET_CONTENT)
+
+
+class RegisterView(APIView):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    @extend_schema(request=SelfServiceRegisterSerializer, responses={201: SelfServiceRegisterSerializer})
+    def post(self, request):
+        serializer = SelfServiceRegisterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.save(), status=status.HTTP_201_CREATED)
+
+
+class ForgotPasswordView(APIView):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    @extend_schema(
+        request=SelfServiceForgotPasswordSerializer,
+        responses={200: PasswordResetResultSerializer},
+    )
+    def post(self, request):
+        serializer = SelfServiceForgotPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = User.all_objects.filter(
+            email__iexact=serializer.validated_data["email"].strip().lower(),
+            deleted_at__isnull=True,
+        ).first()
+        if user is not None and user.is_active:
+            build_password_reset_request(user=user, request=request)
+
+        return Response(
+            {
+                "ok": True,
+                "message": "Se o e-mail existir, um código de redefinição foi enviado.",
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ResetPasswordView(APIView):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    @extend_schema(
+        request=SelfServiceResetPasswordSerializer,
+        responses={200: PasswordResetResultSerializer},
+    )
+    @transaction.atomic
+    def post(self, request):
+        serializer = SelfServiceResetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            email = (serializer.validated_data.get("email") or "").strip().lower()
+            if email:
+                reset_request = consume_password_reset_token(
+                    email=email,
+                    token=serializer.validated_data["token"],
+                )
+            else:
+                reset_request = (
+                    PasswordResetRequest.objects.select_related("user")
+                    .filter(
+                        token=serializer.validated_data["token"],
+                        used_at__isnull=True,
+                        deleted_at__isnull=True,
+                    )
+                    .order_by("-created_at")
+                    .first()
+                )
+                if reset_request is None or not reset_request.is_active:
+                    raise AuthenticationFailed("Token de redefinição inválido ou expirado.")
+                reset_request.used_at = timezone.now()
+                reset_request.save(update_fields=["used_at", "updated_at"])
+        except AuthenticationFailed as exc:
+            return Response(
+                {
+                    "ok": False,
+                    "message": str(exc.detail),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = reset_request.user
+        try:
+            validate_password(serializer.validated_data["password"], user=user)
+        except DjangoValidationError as exc:
+            return Response(
+                {
+                    "ok": False,
+                    "message": " ".join(exc.messages),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user.set_password(serializer.validated_data["password"])
+        user.must_set_password = False
+        user.save(update_fields=["password", "must_set_password", "updated_at"])
+
+        return Response(
+            {
+                "ok": True,
+                "message": "Senha atualizada com sucesso.",
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class MeView(APIView):

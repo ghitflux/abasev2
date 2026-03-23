@@ -29,7 +29,7 @@ export type IssuesResponse = {
 };
 
 export async function fetchPendencias(): Promise<IssuesResponse> {
-  const raw = await get<any>(ENDPOINTS.a2IssuesMy);
+  const raw = await get<any>(ENDPOINTS.appPendencias);
   return {
     issues: Array.isArray(raw?.issues) ? raw.issues : [],
     cadastro: raw?.cadastro ?? null,

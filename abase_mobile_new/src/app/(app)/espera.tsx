@@ -85,7 +85,7 @@ export default function EsperaScreen() {
         return;
       }
       if (r.aprovado) {
-        router.replace('/(app)/(tabs)/');
+        router.replace('/(app)/(tabs)');
         return;
       }
     } catch (e: any) {

@@ -43,10 +43,18 @@ from apps.refinanciamento.views import (
 )
 from apps.associados.mobile_views import (
     AppAntecipacaoView,
+    AppAuxilio2ChargeView,
+    AppAuxilio2ResumoView,
+    AppAuxilio2StatusView,
+    AppCadastroCheckCpfView,
+    AppCadastroView,
+    AppContatoView,
     AppDocumentosView,
     AppMensalidadesView,
     AppMeView,
     AppPendenciasView,
+    AppPendenciasReuploadsView,
+    AppTermosAceiteView,
 )
 from apps.associados.mobile_legacy_views import (
     LegacyAntecipacaoHistoricoView,
@@ -202,6 +210,38 @@ urlpatterns = [
     path("api/v1/app/antecipacao/", AppAntecipacaoView.as_view(), name="app-antecipacao"),
     path("api/v1/app/pendencias/", AppPendenciasView.as_view(), name="app-pendencias"),
     path("api/v1/app/documentos/", AppDocumentosView.as_view(), name="app-documentos"),
+    path("api/v1/app/cadastro/", AppCadastroView.as_view(), name="app-cadastro"),
+    path(
+        "api/v1/app/cadastro/check-cpf/",
+        AppCadastroCheckCpfView.as_view(),
+        name="app-cadastro-check-cpf",
+    ),
+    path(
+        "api/v1/app/pendencias/reuploads/",
+        AppPendenciasReuploadsView.as_view(),
+        name="app-pendencias-reuploads",
+    ),
+    path(
+        "api/v1/app/termos/aceite/",
+        AppTermosAceiteView.as_view(),
+        name="app-termos-aceite",
+    ),
+    path("api/v1/app/contato/", AppContatoView.as_view(), name="app-contato"),
+    path(
+        "api/v1/app/auxilio2/status/",
+        AppAuxilio2StatusView.as_view(),
+        name="app-auxilio2-status",
+    ),
+    path(
+        "api/v1/app/auxilio2/resumo/",
+        AppAuxilio2ResumoView.as_view(),
+        name="app-auxilio2-resumo",
+    ),
+    path(
+        "api/v1/app/auxilio2/charge/",
+        AppAuxilio2ChargeView.as_view(),
+        name="app-auxilio2-charge",
+    ),
     # Mobile legacy facade
     path("api/login", LegacyLoginView.as_view(), name="legacy-mobile-login"),
     path("api/logout", LegacyLogoutView.as_view(), name="legacy-mobile-logout"),

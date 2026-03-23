@@ -1,5 +1,6 @@
 import { get } from './client';
 import { ENDPOINTS } from './constants';
+import { fetchHome } from './authService';
 import { onlyDigits } from '@/utils/format';
 
 export type CicloStatus = {
@@ -66,7 +67,7 @@ function normalizeHistorico(json: any): HistoricoResponse {
 }
 
 export async function getCicloStatus(): Promise<CicloStatus> {
-  const h = await get<any>(ENDPOINTS.home);
+  const h = await fetchHome();
   const prazo = Number(h?.resumo?.prazo ?? 0);
   const pagas = Number(h?.resumo?.parcelas_pagas ?? 0);
   let p = Number(h?.resumo?.percentual_pago ?? 0);
@@ -86,15 +87,7 @@ export async function getHistoricoAntecipacoes(params?: {
   if (params?.cpf) queryParams.cpf = onlyDigits(params.cpf);
 
   try {
-    const json = await get<any>(ENDPOINTS.antecipacaoHistorico, queryParams);
-    const norm = normalizeHistorico(json);
-    if (norm.items.length > 0) return norm;
-  } catch {
-    // fallback silencioso
-  }
-
-  try {
-    const json = await get<any>(ENDPOINTS.v1Antecipacao);
+    const json = await get<any>(ENDPOINTS.appAntecipacao, queryParams);
     return normalizeHistorico(json);
   } catch {
     return { items: [] };

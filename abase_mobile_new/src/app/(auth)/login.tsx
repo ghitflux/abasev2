@@ -98,7 +98,7 @@ export default function LoginScreen() {
       const authPayload = await loginApi(payload);
       await login(authPayload);
       await persistRememberState(isEmail, loginDigits);
-      router.replace('/(app)/(tabs)/');
+      router.replace('/(app)/(tabs)');
     } catch (e: any) {
       const msg = e?.message || 'Falha ao entrar. Verifique seus dados e sua conexão.';
       Alert.alert('Erro', msg);

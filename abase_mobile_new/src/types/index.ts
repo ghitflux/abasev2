@@ -71,6 +71,11 @@ export type Bootstrap = {
   dados_bancarios: DadosBancarios;
   contratos: Contrato[];
   resumo: Resumo;
+  proximaRef?: {
+    mesLabel: string;
+    dataLabel: string;
+    iso?: string;
+  } | null;
   termo_adesao: TermoAdesao;
   aceite_termos?: boolean;
   cadastro?: {
@@ -82,43 +87,54 @@ export type Bootstrap = {
     geral?: string | null;
     juridico?: string | null;
   };
+  issues?: Issue[];
+  pendencias?: Issue[];
+  permissions?: {
+    auxilio1?: boolean;
+    auxilio2?: boolean;
+  };
+  auxilios?: {
+    auxilio1?: { allowed?: boolean; status?: string };
+    auxilio2?: { allowed?: boolean; status?: string };
+  };
+  termos?: {
+    adesao_admin_url?: string | null;
+    antecipacao_admin_url?: string | null;
+    adesaoUrl?: string | null;
+    antecipacaoUrl?: string | null;
+    adesao_user_uploaded?: boolean;
+    antecipacao_user_uploaded?: boolean;
+    adesaoUserUploaded?: boolean;
+    antecipacaoUserUploaded?: boolean;
+  };
+  exists?: boolean;
+  status?: string;
+  basic_complete?: boolean;
+  complete?: boolean;
 };
 
 export type AuthPayload = {
   user: User;
   token: string;
+  refreshToken?: string | null;
   roles: Roles;
   bootstrap?: Bootstrap | null;
 };
 
 export type LoginResponse = {
-  ok: boolean;
-  token: string;
-  token_type: 'Bearer';
+  access: string;
+  refresh: string;
   user: User;
-  roles: Roles;
-  pessoa: Pessoa;
-  vinculo_publico: VinculoPublico;
-  dados_bancarios: DadosBancarios;
-  contratos: Contrato[];
-  resumo: Resumo;
-  termo_adesao: TermoAdesao;
-  aceite_termos?: boolean;
-  cadastro?: Bootstrap['cadastro'];
-  whatsapps?: Bootstrap['whatsapps'];
+  roles?: Roles;
 };
 
-export type HomeResponse = LoginResponse;
-
-export type MeResponse = {
-  ok: boolean;
-  user: User;
-  roles: Roles;
-  agente: any | null;
-  vinculo_publico: VinculoPublico;
-  dados_bancarios: DadosBancarios;
-  termo_adesao: TermoAdesao;
+export type HomeResponse = Bootstrap & {
+  ok?: boolean;
+  user?: User;
+  roles?: Roles;
 };
+
+export type MeResponse = HomeResponse;
 
 export type RegisterParams = {
   name: string;
@@ -133,6 +149,7 @@ export type RegisterResponse = {
   ok: boolean;
   message?: string;
   token?: string;
+  refreshToken?: string | null;
   user?: User;
   roles?: Roles;
   [key: string]: any;

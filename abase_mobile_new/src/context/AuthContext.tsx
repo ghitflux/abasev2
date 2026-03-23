@@ -1,10 +1,17 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import type { User, Roles, Bootstrap, AuthPayload } from '@/types';
+import {
+  SESSION_KEY,
+  clearStoredTokens,
+  persistTokens,
+  readValidStoredTokens,
+} from '@/services/api/session';
 
 type AuthState = {
   user: User | null;
   token: string | null;
+  refreshToken: string | null;
   roles: Roles;
   bootstrap: Bootstrap | null;
 };
@@ -19,15 +26,14 @@ type AuthContextType = AuthState & {
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
 
-// Armazenamos token, user e roles no SecureStore (respeita limite de 2KB do iOS)
-// Bootstrap é re-fetchado no app resume via /api/home
-const TOKEN_KEY = '@Abase:token';
-const SESSION_KEY = '@Abase:session'; // { user, roles }
+// Armazenamos access/refresh token, user e roles no SecureStore.
+// Bootstrap é re-fetchado pelo app em /api/v1/app/me/.
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<AuthState>({
     user: null,
     token: null,
+    refreshToken: null,
     roles: [],
     bootstrap: null,
   });
@@ -37,14 +43,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     (async () => {
       try {
-        const [token, sessionRaw] = await Promise.all([
-          SecureStore.getItemAsync(TOKEN_KEY),
+        const [{ accessToken, refreshToken }, sessionRaw] = await Promise.all([
+          readValidStoredTokens(),
           SecureStore.getItemAsync(SESSION_KEY),
         ]);
-        if (token) {
+
+        if (accessToken && refreshToken) {
           const session = sessionRaw ? (JSON.parse(sessionRaw) as { user: User; roles: Roles }) : null;
           setState({
-            token,
+            token: accessToken,
+            refreshToken,
             user: session?.user ?? null,
             roles: session?.roles ?? [],
             bootstrap: null, // será re-fetchado pelo app quando necessário
@@ -62,13 +70,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const next: AuthState = {
       user: data.user,
       token: data.token,
+      refreshToken: data.refreshToken ?? null,
       roles: data.roles || [],
       bootstrap: data.bootstrap || null,
     };
     setState(next);
     // Persiste token e sessão separadamente para respeitar limite de 2KB
     await Promise.all([
-      SecureStore.setItemAsync(TOKEN_KEY, data.token).catch(() => {}),
+      persistTokens(data.token, data.refreshToken ?? null),
       SecureStore.setItemAsync(
         SESSION_KEY,
         JSON.stringify({ user: data.user, roles: data.roles || [] }),
@@ -77,9 +86,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    setState({ user: null, token: null, roles: [], bootstrap: null });
+    setState({ user: null, token: null, refreshToken: null, roles: [], bootstrap: null });
     await Promise.all([
-      SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {}),
+      clearStoredTokens(),
       SecureStore.deleteItemAsync(SESSION_KEY).catch(() => {}),
     ]);
   };

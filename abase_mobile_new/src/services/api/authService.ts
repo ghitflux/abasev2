@@ -1,5 +1,6 @@
 import { get, post } from './client';
-import { ENDPOINTS, BASE_URL } from './constants';
+import { ENDPOINTS } from './constants';
+import { clearStoredTokens, getStoredRefreshToken, persistTokens } from './session';
 import type {
   LoginResponse,
   HomeResponse,
@@ -9,6 +10,7 @@ import type {
   AuthPayload,
   Bootstrap,
   PerfilData,
+  Roles,
 } from '@/types';
 import {
   onlyDigits,
@@ -16,10 +18,74 @@ import {
   maskDocHideMiddle,
   formatPhoneBR,
 } from '@/utils/format';
+export type { PerfilData } from '@/types';
 
-function withTokenQuery(url: string, token: string) {
-  const sep = url.includes('?') ? '&' : '?';
-  return `${url}${sep}token=${encodeURIComponent(token)}`;
+function normalizeBootstrap(payload: HomeResponse | null | undefined): Bootstrap {
+  return {
+    pessoa: payload?.pessoa ?? {
+      nome_razao_social: '',
+      documento: '',
+      email: '',
+      celular: '',
+      orgao_publico: '',
+      cidade: '',
+      uf: '',
+    },
+    vinculo_publico: payload?.vinculo_publico ?? {
+      orgao_publico: '',
+      situacao_servidor: '',
+      matricula: '',
+    },
+    dados_bancarios: payload?.dados_bancarios ?? {
+      banco: '',
+      agencia: '',
+      conta: '',
+      tipo_conta: '',
+      chave_pix: '',
+    },
+    contratos: payload?.contratos || [],
+    resumo: payload?.resumo ?? {
+      prazo: 0,
+      parcela_valor: 0,
+      total_financiado: 0,
+      status_contrato: 'Sem contrato',
+      parcelas_pagas: 0,
+      parcelas_restantes: 0,
+      atraso: 0,
+      abertas_total: 0,
+      total_pago: 0,
+      restante: 0,
+      percentual_pago: 0,
+      elegivel_antecipacao: false,
+      mensalidade: 0,
+    },
+    proximaRef: (payload as any)?.proximaRef ?? null,
+    termo_adesao: payload?.termo_adesao ?? null,
+    aceite_termos: payload?.aceite_termos,
+    cadastro: payload?.cadastro,
+    whatsapps: payload?.whatsapps,
+    issues: payload?.issues,
+    pendencias: payload?.pendencias,
+    permissions: payload?.permissions,
+    auxilios: payload?.auxilios,
+    termos: payload?.termos,
+    exists: payload?.exists,
+    status: payload?.status,
+    basic_complete: payload?.basic_complete,
+    complete: payload?.complete,
+  };
+}
+
+async function fetchBootstrap(): Promise<HomeResponse> {
+  return get<HomeResponse>(ENDPOINTS.appMe);
+}
+
+function resolveRoles(home: HomeResponse | null | undefined, login: LoginResponse): Roles {
+  const fromHome = home?.roles;
+  if (Array.isArray(fromHome) && fromHome.length > 0) return fromHome;
+  if (Array.isArray(login.roles) && login.roles.length > 0) return login.roles;
+  const fromUser = (login.user as any)?.roles;
+  return Array.isArray(fromUser) ? fromUser : [];
 }
 
 export async function loginApi(params: {
@@ -34,55 +100,53 @@ export async function loginApi(params: {
     password: isEmail ? (params.password ?? '') : onlyDigits(params.password ?? ''),
   };
 
-  const r = await post<LoginResponse>(ENDPOINTS.login, payload);
+  const r = await post<LoginResponse>(ENDPOINTS.authLogin, payload);
+  await persistTokens(r.access, r.refresh);
 
-  return {
-    token: r.token,
-    user: r.user,
-    roles: r.roles ?? [],
-    bootstrap: {
-      pessoa: r.pessoa,
-      vinculo_publico: r.vinculo_publico,
-      dados_bancarios: r.dados_bancarios,
-      contratos: r.contratos || [],
-      resumo: r.resumo,
-      termo_adesao: r.termo_adesao ?? null,
-      aceite_termos: r.aceite_termos,
-      cadastro: r.cadastro,
-      whatsapps: r.whatsapps,
-    },
-  };
+  try {
+    const home = await fetchBootstrap();
+    return {
+      token: r.access,
+      refreshToken: r.refresh,
+      user: home?.user ?? r.user,
+      roles: resolveRoles(home, r),
+      bootstrap: normalizeBootstrap(home),
+    };
+  } catch (error) {
+    await clearStoredTokens();
+    throw error;
+  }
 }
 
 export async function logoutApi(): Promise<void> {
   try {
-    await post<{ ok: boolean }>(ENDPOINTS.logout);
+    const refreshToken = await getStoredRefreshToken();
+    if (!refreshToken) return;
+    await post(ENDPOINTS.authLogout, { refresh: refreshToken });
   } catch {
     // idempotente
   }
 }
 
 export async function fetchHome(): Promise<Bootstrap> {
-  const r = await get<HomeResponse>(ENDPOINTS.home);
-  return {
-    pessoa: r.pessoa,
-    vinculo_publico: r.vinculo_publico,
-    dados_bancarios: r.dados_bancarios,
-    contratos: r.contratos || [],
-    resumo: r.resumo,
-    termo_adesao: r.termo_adesao ?? null,
-    aceite_termos: r.aceite_termos,
-    cadastro: r.cadastro,
-    whatsapps: r.whatsapps,
-  };
+  const response = await fetchBootstrap();
+  return normalizeBootstrap(response);
 }
 
 export async function fetchMe(): Promise<MeResponse> {
-  return get<MeResponse>(ENDPOINTS.me);
+  return get<MeResponse>(ENDPOINTS.appMe);
 }
 
 export async function registerApi(params: RegisterParams): Promise<RegisterResponse> {
-  return post<RegisterResponse>(ENDPOINTS.register, params);
+  const response = await post<any>(ENDPOINTS.register, params);
+  return {
+    ok: Boolean(response?.ok ?? true),
+    message: response?.message,
+    token: response?.access,
+    refreshToken: response?.refresh ?? null,
+    user: response?.user,
+    roles: response?.roles ?? response?.user?.roles ?? [],
+  };
 }
 
 export async function forgotPasswordApi(email: string): Promise<{ ok: boolean; message?: string }> {
@@ -93,54 +157,19 @@ export async function resetPasswordApi(params: {
   token: string;
   password: string;
   password_confirmation: string;
+  email?: string;
 }): Promise<{ ok: boolean; message?: string }> {
   return post(ENDPOINTS.resetPassword, params);
 }
 
 export async function getPerfilData(): Promise<PerfilData> {
-  const home = await fetchHome().catch(() => null as any);
+  const home = await fetchHome();
 
-  let pessoaFromAssoc: any = null;
-  try {
-    const assoc = await get<any>(ENDPOINTS.associadoMe);
-    pessoaFromAssoc = assoc?.pessoa || null;
-  } catch {
-    pessoaFromAssoc = null;
-  }
-
-  let a2Cadastro: any = null;
-  try {
-    const cad = await get<any>(ENDPOINTS.a2Cadastro);
-    a2Cadastro = cad?.cadastro ?? cad ?? null;
-  } catch {
-    a2Cadastro = null;
-  }
-
-  const fullName =
-    pessoaFromAssoc?.nome_razao_social ||
-    a2Cadastro?.full_name ||
-    home?.pessoa?.nome_razao_social ||
-    'Associado';
-
-  const email =
-    pessoaFromAssoc?.email ||
-    a2Cadastro?.email ||
-    home?.pessoa?.email ||
-    '';
-
-  const phoneRaw =
-    a2Cadastro?.cellphone ||
-    pessoaFromAssoc?.celular ||
-    home?.pessoa?.celular ||
-    undefined;
-
+  const fullName = home?.pessoa?.nome_razao_social || 'Associado';
+  const email = home?.pessoa?.email || '';
+  const phoneRaw = home?.pessoa?.celular || undefined;
   const phone = phoneRaw ? formatPhoneBR(phoneRaw) : undefined;
-
-  const doc =
-    onlyDigits(a2Cadastro?.cpf_cnpj) ||
-    onlyDigits(pessoaFromAssoc?.documento) ||
-    onlyDigits(home?.pessoa?.documento) ||
-    undefined;
+  const doc = onlyDigits(home?.pessoa?.documento) || undefined;
 
   const pagas = Number(home?.resumo?.parcelas_pagas ?? 0);
   const prazo = Number(home?.resumo?.prazo ?? 0);
@@ -148,41 +177,16 @@ export async function getPerfilData(): Promise<PerfilData> {
   const rawStatus = String(home?.resumo?.status_contrato || '').toLowerCase();
   let statusLabel = 'Mensalidades à vencer';
   if (rawStatus.includes('conclu')) statusLabel = 'Concluído';
-  else if (rawStatus.includes('atras') || rawStatus.includes('inadimpl'))
+  else if (rawStatus.includes('atras') || rawStatus.includes('inadimpl')) {
     statusLabel = 'Em atraso';
-
-  const termoApiBase = `${BASE_URL}/associado/termo-adesao`;
-  const termoApiUrl = withTokenQuery(termoApiBase, token);
-
-  const homeHasTermo =
-    !!home?.termo_adesao &&
-    (typeof home?.termo_adesao?.relative_path === 'string' ||
-      typeof home?.termo_adesao?.url === 'string');
-
-  let termoUrl: string | null = homeHasTermo ? termoApiUrl : null;
-
-  if (!termoUrl) {
-    try {
-      const a2s = await get<any>(ENDPOINTS.associadoA2Status);
-      if (a2s?.termos?.adesao_admin_url || a2s?.termo_adesao || a2s?.termos?.adesao) {
-        termoUrl = termoApiUrl;
-      }
-    } catch {
-      try {
-        const a2s2 = await get<any>(ENDPOINTS.a2Status);
-        if (a2s2?.termos?.adesao_admin_url || a2s2?.termo_adesao || a2s2?.termos?.adesao) {
-          termoUrl = termoApiUrl;
-        }
-      } catch {
-        termoUrl = null;
-      }
-    }
   }
 
-  const termoName =
-    termoUrl
-      ? (home?.termo_adesao?.name as string) || 'termo_adesao.pdf'
-      : 'ADES.pdf';
+  const termoUrl =
+    home?.termo_adesao?.url ||
+    home?.termos?.adesao_admin_url ||
+    home?.termos?.adesaoUrl ||
+    null;
+  const termoName = home?.termo_adesao?.name || 'ADES.pdf';
 
   return {
     fullName,

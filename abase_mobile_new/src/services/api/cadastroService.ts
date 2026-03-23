@@ -96,27 +96,27 @@ export async function submitCadastroAssociadoBasico(
   payload: CadastroAssociadoPayload,
 ): Promise<any> {
   const fd = buildFormData(payload);
-  return postForm<any>(ENDPOINTS.a2AtualizarBasico, fd);
+  return postForm<any>(ENDPOINTS.appCadastro, fd);
 }
 
 export async function checkCpfDuplicadoBasico(cpf: string): Promise<{ exists: boolean }> {
-  return get<{ exists: boolean }>(ENDPOINTS.a2CheckCpf, { cpf });
+  return get<{ exists: boolean }>(ENDPOINTS.appCadastroCheckCpf, { cpf });
 }
 
 export async function getCadastroStatus(): Promise<any> {
-  return get<any>(ENDPOINTS.a2Status);
+  return get<any>(ENDPOINTS.appCadastro);
 }
 
 export async function getCadastroShowMy(): Promise<any> {
-  return get<any>(ENDPOINTS.a2Cadastro);
+  return get<any>(ENDPOINTS.appCadastro);
 }
 
 export async function getAssociadoDoisCadastro(): Promise<any> {
-  return get<any>(ENDPOINTS.a2Cadastro);
+  return get<any>(ENDPOINTS.appCadastro);
 }
 
 export async function getIssuesMy(): Promise<any> {
-  return get<any>(ENDPOINTS.a2IssuesMy);
+  return get<any>(ENDPOINTS.appPendencias);
 }
 
 export async function submitReuploadBasico(files: Record<string, LocalFile>): Promise<any> {
@@ -126,13 +126,13 @@ export async function submitReuploadBasico(files: Record<string, LocalFile>): Pr
       fd.append(key, { uri: file.uri, name: file.name, type: file.type } as any);
     }
   });
-  return postForm<any>(ENDPOINTS.a2Reuploads, fd);
+  return postForm<any>(ENDPOINTS.appPendenciasReuploads, fd);
 }
 
 export async function aceitarTermos(): Promise<any> {
-  return post<any>(ENDPOINTS.a2AceiteTermos, {});
+  return post<any>(ENDPOINTS.appTermosAceite, {});
 }
 
 export async function solicitarContato(mensagem?: string): Promise<any> {
-  return post<any>(ENDPOINTS.a2Contato, { mensagem: mensagem ?? '' });
+  return post<any>(ENDPOINTS.appContato, { mensagem: mensagem ?? '' });
 }

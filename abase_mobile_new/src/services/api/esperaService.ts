@@ -106,7 +106,7 @@ function isLiberadoLike(s?: string | null) {
 }
 
 export async function getEsperaResumo(): Promise<EsperaResumo> {
-  const status = await get<any>(ENDPOINTS.a2Cadastro);
+  const status = await get<any>(ENDPOINTS.appCadastro);
   const st = (status as any)?.status ?? 'Pendente';
   const norm = normalize(st);
   const exists = !!(status as any)?.exists;
@@ -220,9 +220,9 @@ export async function getEsperaResumo(): Promise<EsperaResumo> {
 }
 
 export async function aceitarTermos(): Promise<any> {
-  return post<any>(ENDPOINTS.a2AceiteTermos, {});
+  return post<any>(ENDPOINTS.appTermosAceite, {});
 }
 
 export async function solicitarContato(mensagem?: string): Promise<any> {
-  return post<any>(ENDPOINTS.a2Contato, { mensagem: mensagem ?? '' });
+  return post<any>(ENDPOINTS.appContato, { mensagem: mensagem ?? '' });
 }

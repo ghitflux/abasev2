@@ -52,7 +52,7 @@ export function computeNextRef(
 
 export async function getHomeIssues(): Promise<{ hasOpenIssues: boolean; openIssues: DocIssue[] }> {
   try {
-    const json = await get<any>(ENDPOINTS.a2IssuesMy);
+    const json = await get<any>(ENDPOINTS.appPendencias);
     const all: DocIssue[] = Array.isArray(json?.issues) ? json.issues : [];
     const openIssues = all.filter((it) =>
       OPEN_ISSUE_STATUSES.has(String(it?.status || '').toLowerCase()),

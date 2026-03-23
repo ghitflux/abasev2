@@ -131,18 +131,13 @@ export async function getMensalidades(params: {
   if (params.ref_from) queryParams.ref_from = params.ref_from;
   if (params.ref_to) queryParams.ref_to = params.ref_to;
 
-  try {
-    const json = await get<any>(ENDPOINTS.mensalidadesCiclo, queryParams);
-    return normalize(json);
-  } catch {
-    const json = await get<any>(ENDPOINTS.mensalidades, queryParams);
-    return normalize(json);
-  }
+  const json = await get<any>(ENDPOINTS.appMensalidades, queryParams);
+  return normalize(json);
 }
 
 export async function getMeuPerfil(): Promise<any | null> {
   try {
-    return await get<any>(ENDPOINTS.me);
+    return await get<any>(ENDPOINTS.appMe);
   } catch {
     return null;
   }

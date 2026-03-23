@@ -1,127 +1,45 @@
 """
 Views mobile self-service — /api/v1/app/
 
-Endpoints exclusivos para o app mobile do associado (role ASSOCIADO).
-Cada view resolve o associado vinculado ao request.user via user.associado.
+Os endpoints v1 preservam os contratos funcionais usados pelo app mobile novo,
+mas executam tudo pelo namespace unificado da API principal.
 """
 from __future__ import annotations
 
-from drf_spectacular.utils import extend_schema
+import json
+
+from django.db import transaction
+from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import permissions, serializers, status
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsAssociadoOrAdmin
-from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.accounts.serializers import get_user_role_codes
+from apps.contratos.models import Contrato
+from apps.esteira.models import DocIssue, DocReupload
 
-from .models import Associado, Documento
+from .mobile_legacy import (
+    build_antecipacao_payload,
+    build_auxilio2_payload,
+    build_bootstrap_payload,
+    build_issues_payload,
+    build_mensalidades_payload,
+    build_status_payload,
+    create_auxilio2_charge,
+    resolve_mobile_associado,
+)
+from .mobile_legacy_views import (
+    DOCUMENT_UPLOAD_FIELDS,
+    _merged_payload,
+    _resolve_or_create_associado,
+    _upsert_documento,
+)
+from .models import Associado
 from .serializers import DocumentoCreateSerializer
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _get_associado_or_404(user) -> Associado:
-    """Retorna o Associado vinculado ao user ou lança 404."""
-    from rest_framework.exceptions import NotFound
-
-    try:
-        return user.associado
-    except Associado.DoesNotExist:
-        raise NotFound("Nenhum associado vinculado a este usuário.")
-
-
-# ---------------------------------------------------------------------------
-# Serializers inline (leves, voltados para mobile)
-# ---------------------------------------------------------------------------
-
-class _ParcelaMobileSerializer(serializers.Serializer):
-    numero = serializers.IntegerField()
-    referencia_mes = serializers.DateField()
-    valor = serializers.DecimalField(max_digits=10, decimal_places=2)
-    data_vencimento = serializers.DateField()
-    status = serializers.CharField()
-    data_pagamento = serializers.DateField(allow_null=True)
-
-
-class _CicloMobileSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    numero = serializers.IntegerField()
-    data_inicio = serializers.DateField()
-    data_fim = serializers.DateField()
-    status = serializers.CharField()
-    valor_total = serializers.DecimalField(max_digits=10, decimal_places=2)
-    parcelas = _ParcelaMobileSerializer(many=True)
-
-
-class _ContratoResumoSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    codigo = serializers.CharField()
-    status = serializers.CharField()
-    prazo_meses = serializers.IntegerField()
-    valor_mensalidade = serializers.DecimalField(max_digits=10, decimal_places=2)
-    data_primeira_mensalidade = serializers.DateField(allow_null=True)
-
-
-class _AssociadoMobileSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    nome_completo = serializers.CharField()
-    cpf_cnpj = serializers.CharField()
-    matricula = serializers.CharField()
-    email = serializers.CharField()
-    telefone = serializers.CharField()
-    status = serializers.CharField()
-    orgao_publico = serializers.CharField()
-    cargo = serializers.CharField()
-
-
-class _PendenciaMobileSerializer(serializers.Serializer):
-    id = serializers.IntegerField()
-    tipo = serializers.CharField()
-    descricao = serializers.CharField()
-    status = serializers.CharField()
-    created_at = serializers.DateTimeField()
-
-
-class _ResumoFinanceiroMobileSerializer(serializers.Serializer):
-    parcelas_pagas = serializers.IntegerField()
-    parcelas_total = serializers.IntegerField()
-    valor_mensalidade = serializers.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        allow_null=True,
-    )
-    proximo_vencimento = serializers.DateField(allow_null=True)
-    em_atraso = serializers.IntegerField()
-
-
-class _AppMeResponseSerializer(serializers.Serializer):
-    associado = _AssociadoMobileSerializer()
-    contratos = _ContratoResumoSerializer(many=True)
-    resumo = _ResumoFinanceiroMobileSerializer()
-    pendencias = _PendenciaMobileSerializer(many=True)
-
-
-class _AppMensalidadesResponseSerializer(serializers.Serializer):
-    ciclos = _CicloMobileSerializer(many=True)
-
-
-class _AppAntecipacaoItemSerializer(serializers.Serializer):
-    referencia_mes = serializers.DateField()
-    valor = serializers.DecimalField(max_digits=10, decimal_places=2)
-    data_pagamento = serializers.DateField(allow_null=True)
-    numero_parcela = serializers.IntegerField()
-    ciclo_numero = serializers.IntegerField()
-
-
-class _AppAntecipacaoResponseSerializer(serializers.Serializer):
-    historico = _AppAntecipacaoItemSerializer(many=True)
-
-
-class _AppPendenciasResponseSerializer(serializers.Serializer):
-    pendencias = _PendenciaMobileSerializer(many=True)
 
 
 class _AppDocumentoUploadResponseSerializer(serializers.Serializer):
@@ -131,138 +49,79 @@ class _AppDocumentoUploadResponseSerializer(serializers.Serializer):
     observacao = serializers.CharField()
 
 
-# ---------------------------------------------------------------------------
-# AppMeView — GET /api/v1/app/me/
-# ---------------------------------------------------------------------------
+def _build_app_me_payload(request) -> dict[str, object]:
+    associado = resolve_mobile_associado(request.user)
+    bootstrap = build_bootstrap_payload(associado, request=request)
+    status_payload = build_status_payload(associado, request=request)
+    issues_payload = build_issues_payload(associado)
+
+    return {
+        "ok": True,
+        "user": {
+            "id": request.user.id,
+            "name": request.user.full_name or request.user.email,
+            "email": request.user.email,
+        },
+        "roles": get_user_role_codes(request.user),
+        **bootstrap,
+        "issues": issues_payload.get("issues", []),
+        "pendencias": issues_payload.get("issues", []),
+        "exists": status_payload.get("exists", False),
+        "status": status_payload.get("status"),
+        "basic_complete": status_payload.get("basic_complete", False),
+        "complete": status_payload.get("complete", False),
+        "permissions": status_payload.get("permissions", {}),
+        "auxilios": status_payload.get("auxilios", {}),
+        "termos": status_payload.get("termos", {}),
+    }
+
 
 class AppMeView(APIView):
-    """
-    Retorna os dados consolidados do associado logado:
-    dados pessoais, contratos resumidos, resumo financeiro e pendências.
-    """
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
-    @extend_schema(responses={200: _AppMeResponseSerializer})
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
-        associado = _get_associado_or_404(request.user)
+        return Response(_build_app_me_payload(request), status=status.HTTP_200_OK)
 
-        contratos_qs = (
-            Contrato.objects.filter(
-                associado=associado,
-            )
-            .exclude(status=Contrato.Status.CANCELADO)
-            .prefetch_related("ciclos__parcelas")
-            .order_by("-created_at")
-        )
-
-        contratos_data = _ContratoResumoSerializer(contratos_qs, many=True).data
-
-        # Resumo financeiro a partir das parcelas de todos os ciclos
-        resumo = _build_resumo(associado, contratos_qs)
-
-        # Pendências via esteira
-        pendencias_data = _build_pendencias(associado)
-
-        return Response(
-            {
-                "associado": _AssociadoMobileSerializer(associado).data,
-                "contratos": contratos_data,
-                "resumo": resumo,
-                "pendencias": pendencias_data,
-            }
-        )
-
-
-# ---------------------------------------------------------------------------
-# AppMensalidadesView — GET /api/v1/app/mensalidades/
-# ---------------------------------------------------------------------------
 
 class AppMensalidadesView(APIView):
-    """
-    Lista ciclos com parcelas do associado logado, agrupados por contrato.
-    """
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
-    @extend_schema(responses={200: _AppMensalidadesResponseSerializer})
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
-        associado = _get_associado_or_404(request.user)
-
-        ciclos = (
-            Ciclo.objects.filter(contrato__associado=associado)
-            .exclude(contrato__status=Contrato.Status.CANCELADO)
-            .select_related("contrato")
-            .prefetch_related("parcelas")
-            .order_by("-contrato_id", "-numero")
+        associado = resolve_mobile_associado(request.user)
+        return Response(
+            build_mensalidades_payload(
+                associado,
+                ref_from=request.query_params.get("ref_from"),
+                ref_to=request.query_params.get("ref_to"),
+            ),
+            status=status.HTTP_200_OK,
         )
 
-        data = _CicloMobileSerializer(ciclos, many=True).data
-        return Response({"ciclos": data})
-
-
-# ---------------------------------------------------------------------------
-# AppAntecipacaoView — GET /api/v1/app/antecipacao/
-# ---------------------------------------------------------------------------
 
 class AppAntecipacaoView(APIView):
-    """
-    Histórico de parcelas descontadas (pagas) do associado logado.
-    Simula o endpoint legado /api/app/antecipacao/historico.
-    """
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
-    @extend_schema(responses={200: _AppAntecipacaoResponseSerializer})
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
-        associado = _get_associado_or_404(request.user)
-
-        parcelas = (
-            Parcela.objects.filter(
-                ciclo__contrato__associado=associado,
-                status=Parcela.Status.DESCONTADO,
-            )
-            .select_related("ciclo")
-            .order_by("-data_pagamento", "-referencia_mes")
+        associado = resolve_mobile_associado(request.user)
+        return Response(
+            build_antecipacao_payload(associado),
+            status=status.HTTP_200_OK,
         )
 
-        historico = [
-            {
-                "referencia_mes": p.referencia_mes,
-                "valor": p.valor,
-                "data_pagamento": p.data_pagamento,
-                "numero_parcela": p.numero,
-                "ciclo_numero": p.ciclo.numero,
-            }
-            for p in parcelas
-        ]
-
-        return Response({"historico": historico})
-
-
-# ---------------------------------------------------------------------------
-# AppPendenciasView — GET /api/v1/app/pendencias/
-# ---------------------------------------------------------------------------
 
 class AppPendenciasView(APIView):
-    """
-    Pendências de documentos do associado logado via esteira.
-    """
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
-    @extend_schema(responses={200: _AppPendenciasResponseSerializer})
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
-        associado = _get_associado_or_404(request.user)
-        pendencias_data = _build_pendencias(associado)
-        return Response({"pendencias": pendencias_data})
+        associado = resolve_mobile_associado(request.user)
+        return Response(build_issues_payload(associado), status=status.HTTP_200_OK)
 
-
-# ---------------------------------------------------------------------------
-# AppDocumentosView — POST /api/v1/app/documentos/
-# ---------------------------------------------------------------------------
 
 class AppDocumentosView(APIView):
-    """
-    Upload de documento pelo próprio associado para resolver pendência.
-    Multipart: tipo, arquivo, observacao (opcional).
-    """
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
     parser_classes = [MultiPartParser]
 
@@ -271,7 +130,13 @@ class AppDocumentosView(APIView):
         responses={201: _AppDocumentoUploadResponseSerializer},
     )
     def post(self, request):
-        associado = _get_associado_or_404(request.user)
+        associado = resolve_mobile_associado(request.user)
+        if associado is None:
+            return Response(
+                {"ok": False, "message": "Cadastre seus dados antes de enviar documentos."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         serializer = DocumentoCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         doc = serializer.save(associado=associado)
@@ -286,59 +151,281 @@ class AppDocumentosView(APIView):
         )
 
 
-# ---------------------------------------------------------------------------
-# Helpers internos
-# ---------------------------------------------------------------------------
+class AppCadastroView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
-def _build_resumo(associado: Associado, contratos_qs) -> dict:
-    """Calcula resumo financeiro a partir dos contratos/ciclos/parcelas."""
-    from datetime import date
+    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT})
+    def get(self, request):
+        associado = resolve_mobile_associado(request.user)
+        return Response(
+            build_status_payload(associado, request=request),
+            status=status.HTTP_200_OK,
+        )
 
-    total_parcelas = 0
-    total_pagas = 0
-    total_em_atraso = 0
-    valor_mensalidade = None
-    proximo_vencimento = None
+    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT})
+    @transaction.atomic
+    def post(self, request):
+        payload = _merged_payload(request.data)
+        associado = _resolve_or_create_associado(request.user, payload)
 
-    for contrato in contratos_qs:
-        if valor_mensalidade is None:
-            valor_mensalidade = contrato.valor_mensalidade
-        for ciclo in contrato.ciclos.all():
-            for parcela in ciclo.parcelas.all():
-                total_parcelas += 1
-                if parcela.status == Parcela.Status.DESCONTADO:
-                    total_pagas += 1
-                if (
-                    parcela.status == Parcela.Status.EM_ABERTO
-                    and parcela.data_vencimento < date.today()
-                ):
-                    total_em_atraso += 1
-                # Próximo vencimento = menor data futura em aberto
-                if parcela.status == Parcela.Status.EM_ABERTO:
-                    if proximo_vencimento is None or parcela.data_vencimento < proximo_vencimento:
-                        proximo_vencimento = parcela.data_vencimento
+        for field_name, document_type in DOCUMENT_UPLOAD_FIELDS.items():
+            upload = request.FILES.get(field_name)
+            if upload is None:
+                continue
+            _upsert_documento(
+                associado=associado,
+                tipo=document_type,
+                upload=upload,
+                observacao="Documento enviado no fluxo mobile.",
+            )
 
-    return {
-        "parcelas_pagas": total_pagas,
-        "parcelas_total": total_parcelas,
-        "valor_mensalidade": valor_mensalidade,
-        "proximo_vencimento": proximo_vencimento,
-        "em_atraso": total_em_atraso,
-    }
+        return Response(
+            {
+                "ok": True,
+                "message": "Cadastro atualizado com sucesso.",
+                "cadastro": build_status_payload(associado, request=request).get("cadastro"),
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
-def _build_pendencias(associado: Associado) -> list:
-    """Retorna pendências da esteira do associado."""
-    esteira = associado.esteira
-    if not esteira:
-        return []
-    return [
-        {
-            "id": p.id,
-            "tipo": p.tipo,
-            "descricao": p.descricao,
-            "status": p.status,
-            "created_at": p.created_at,
+class AppCadastroCheckCpfView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    def get(self, request):
+        cpf = "".join(ch for ch in (request.query_params.get("cpf") or "") if ch.isdigit())
+        if not cpf:
+            return Response({"exists": False}, status=status.HTTP_200_OK)
+
+        associado = resolve_mobile_associado(request.user)
+        duplicate = Associado.all_objects.filter(cpf_cnpj=cpf).exclude(
+            pk=associado.pk if associado else None
+        ).first()
+        return Response(
+            {
+                "exists": duplicate is not None,
+                "data": None
+                if duplicate is None
+                else {
+                    "full_name": duplicate.nome_completo,
+                },
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AppPendenciasReuploadsView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
+    parser_classes = [MultiPartParser, FormParser]
+
+    @extend_schema(request=OpenApiTypes.OBJECT, responses={200: OpenApiTypes.OBJECT})
+    @transaction.atomic
+    def post(self, request):
+        associado = resolve_mobile_associado(request.user)
+        if associado is None:
+            return Response(
+                {"ok": False, "message": "Cadastre seus dados antes de reenviar documentos."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        issue_id = request.data.get("associadodois_doc_issue_id") or request.data.get("issue_id")
+        issue = None
+        if issue_id:
+            issue = DocIssue.objects.filter(pk=issue_id, associado=associado).first()
+            if issue is None:
+                return Response(
+                    {"ok": False, "message": "Pendência documental não encontrada."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+        saved_count = 0
+        notes = str(request.data.get("notes") or request.data.get("observacao") or "")
+        extras_raw = request.data.get("extras")
+        try:
+            extras = json.loads(extras_raw) if extras_raw else None
+        except json.JSONDecodeError:
+            extras = None
+
+        uploads_snapshot = list(issue.agent_uploads_json or []) if issue else []
+
+        for field_name, document_type in DOCUMENT_UPLOAD_FIELDS.items():
+            upload = request.FILES.get(field_name)
+            if upload is None:
+                continue
+
+            documento = _upsert_documento(
+                associado=associado,
+                tipo=document_type,
+                upload=upload,
+                observacao=notes or "Reenvio de documento pelo aplicativo.",
+            )
+            saved_count += 1
+
+            if issue is not None:
+                uploaded_at = timezone.now()
+                DocReupload.objects.create(
+                    doc_issue=issue,
+                    associado=associado,
+                    uploaded_by=request.user,
+                    cpf_cnpj=associado.cpf_cnpj,
+                    contrato_codigo=associado.contrato_codigo_contrato or "",
+                    file_original_name=upload.name,
+                    file_stored_name=documento.arquivo.name.split("/")[-1],
+                    file_relative_path=documento.arquivo.name,
+                    file_mime=getattr(upload, "content_type", "") or "",
+                    file_size_bytes=getattr(upload, "size", None),
+                    status=DocReupload.Status.RECEBIDO,
+                    uploaded_at=uploaded_at,
+                    notes=notes,
+                    extras=extras,
+                )
+                uploads_snapshot.append(
+                    {
+                        "field": field_name,
+                        "file_relative_path": documento.arquivo.name,
+                        "uploaded_at": uploaded_at.isoformat(),
+                        "notes": notes,
+                    }
+                )
+
+        if saved_count == 0:
+            return Response(
+                {"ok": False, "message": "Nenhum arquivo foi enviado."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if issue is not None:
+            issue.agent_uploads_json = uploads_snapshot
+            issue.save(update_fields=["agent_uploads_json", "updated_at"])
+
+        return Response(
+            {
+                "ok": True,
+                "message": "Arquivos recebidos com sucesso.",
+                "saved_count": saved_count,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class AppTermosAceiteView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="AppTermosAceiteResponse",
+                fields={
+                    "ok": serializers.BooleanField(),
+                    "aceite_termos": serializers.BooleanField(),
+                },
+            )
         }
-        for p in esteira.pendencias.all()
-    ]
+    )
+    @transaction.atomic
+    def post(self, request):
+        associado = resolve_mobile_associado(request.user)
+        if associado is None:
+            return Response(
+                {"ok": False, "message": "Cadastre seus dados antes de aceitar os termos."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        associado.aceite_termos = True
+        associado.save(update_fields=["aceite_termos", "updated_at"])
+        contrato = (
+            associado.contratos.exclude(status=Contrato.Status.CANCELADO)
+            .order_by("-created_at")
+            .first()
+        )
+        if contrato is not None:
+            contrato.termos_web = True
+            contrato.save(update_fields=["termos_web", "updated_at"])
+
+        return Response({"ok": True, "aceite_termos": True}, status=status.HTTP_200_OK)
+
+
+class AppContatoView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
+
+    @extend_schema(
+        responses={
+            200: inline_serializer(
+                name="AppContatoResponse",
+                fields={
+                    "ok": serializers.BooleanField(),
+                    "contato_status": serializers.CharField(),
+                },
+            )
+        }
+    )
+    @transaction.atomic
+    def post(self, request):
+        associado = resolve_mobile_associado(request.user)
+        if associado is None:
+            return Response(
+                {"ok": False, "message": "Cadastre seus dados antes de solicitar contato."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        associado.contato_status = "solicitado"
+        associado.contato_updated_at = timezone.now()
+        associado.save(update_fields=["contato_status", "contato_updated_at", "updated_at"])
+        contrato = (
+            associado.contratos.exclude(status=Contrato.Status.CANCELADO)
+            .order_by("-created_at")
+            .first()
+        )
+        if contrato is not None:
+            contrato.contato_web = True
+            contrato.save(update_fields=["contato_web", "updated_at"])
+
+        return Response(
+            {"ok": True, "contato_status": associado.contato_status},
+            status=status.HTTP_200_OK,
+        )
+
+
+class AppAuxilio2StatusView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    def get(self, request):
+        associado = resolve_mobile_associado(request.user)
+        return Response(
+            build_auxilio2_payload(request.user, associado=associado),
+            status=status.HTTP_200_OK,
+        )
+
+
+class AppAuxilio2ResumoView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    def get(self, request):
+        associado = resolve_mobile_associado(request.user)
+        return Response(
+            build_auxilio2_payload(request.user, associado=associado),
+            status=status.HTTP_200_OK,
+        )
+
+
+class AppAuxilio2ChargeView(APIView):
+    permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
+
+    @extend_schema(responses={200: OpenApiTypes.OBJECT})
+    @transaction.atomic
+    def post(self, request):
+        associado = resolve_mobile_associado(request.user)
+        charge = create_auxilio2_charge(request.user, associado=associado)
+        payload = build_auxilio2_payload(request.user, associado=associado)
+        return Response(
+            {
+                "ok": True,
+                **payload,
+                "filiacaoId": charge.id,
+            },
+            status=status.HTTP_200_OK,
+        )

@@ -22,15 +22,15 @@ export type AuxilioDoisResumo = {
 };
 
 export async function getAuxilioDoisStatus(): Promise<AuxilioDoisStatus> {
-  return get<AuxilioDoisStatus>(ENDPOINTS.a2Auxilio2Status);
+  return get<AuxilioDoisStatus>(ENDPOINTS.appAuxilio2Status);
 }
 
 export async function getAuxilioDoisResumo(): Promise<AuxilioDoisResumo> {
-  return get<AuxilioDoisResumo>(ENDPOINTS.a2Auxilio2Resumo);
+  return get<AuxilioDoisResumo>(ENDPOINTS.appAuxilio2Resumo);
 }
 
 export async function createAuxilioDoisCharge(): Promise<AuxilioDoisResumo> {
-  return post<AuxilioDoisResumo>(ENDPOINTS.a2Auxilio2Charge, {});
+  return post<AuxilioDoisResumo>(ENDPOINTS.appAuxilio2Charge, {});
 }
 
 /** Polling: aguarda status "pago" por até maxAttempts * intervalMs */

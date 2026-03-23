@@ -62,8 +62,8 @@ class IsCoordenadorOrTesoureiroOrAdmin(BaseRolePermission):
 
 
 class IsAssociado(BaseRolePermission):
-    allowed_roles = ("ASSOCIADO",)
+    allowed_roles = ("ASSOCIADO", "ASSOCIADODOIS")
 
 
 class IsAssociadoOrAdmin(BaseRolePermission):
-    allowed_roles = ("ASSOCIADO", "ADMIN")
+    allowed_roles = ("ASSOCIADO", "ASSOCIADODOIS", "ADMIN")

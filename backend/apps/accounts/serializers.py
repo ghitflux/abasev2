@@ -1,15 +1,19 @@
 import re
 
-from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils import timezone
 from rest_framework import serializers
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from .mobile_legacy_auth import (
+    authenticate_legacy_mobile_login,
+    ensure_self_service_roles,
+    split_name,
+)
 from .models import Role, User, UserRole
 
 
@@ -341,39 +345,109 @@ class PasswordResetRequestSerializer(serializers.Serializer):
         return attrs
 
 
+class SelfServiceRegisterSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=255)
+    email = serializers.EmailField()
+    password = serializers.CharField(trim_whitespace=False, write_only=True)
+    password_confirmation = serializers.CharField(trim_whitespace=False, write_only=True)
+    terms = serializers.BooleanField(required=False, default=False)
+    terms_version = serializers.CharField(required=False, allow_blank=True)
+
+    def validate_email(self, value: str):
+        normalized_email = User.objects.normalize_email(value.strip())
+        if User.all_objects.filter(email__iexact=normalized_email).exists():
+            raise serializers.ValidationError("Esse e-mail já possui cadastro em nosso sistema.")
+        return normalized_email
+
+    def validate(self, attrs):
+        password_serializer = PasswordResetRequestSerializer(
+            data={
+                "password": attrs["password"],
+                "password_confirm": attrs["password_confirmation"],
+            },
+            context={},
+        )
+        password_serializer.is_valid(raise_exception=True)
+        attrs["password"] = password_serializer.validated_data["password"]
+
+        if not attrs.get("terms"):
+            raise serializers.ValidationError(
+                {"terms": "É necessário aceitar os termos para criar a conta."}
+            )
+
+        return attrs
+
+    def create(self, validated_data):
+        first_name, last_name = split_name(validated_data["name"])
+        user = User.objects.create_user(
+            email=validated_data["email"],
+            password=validated_data["password"],
+            first_name=first_name,
+            last_name=last_name,
+            is_active=True,
+            must_set_password=False,
+        )
+        roles = ensure_self_service_roles(user, include_legacy_alias=True)
+        refresh = RefreshToken.for_user(user)
+        return {
+            "ok": True,
+            "message": "Conta criada com sucesso.",
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "user": UserSerializer(user).data,
+            "roles": roles,
+        }
+
+
+class SelfServiceForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class SelfServiceResetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=False, allow_blank=True)
+    token = serializers.CharField()
+    password = serializers.CharField(trim_whitespace=False, write_only=True)
+    password_confirmation = serializers.CharField(trim_whitespace=False, write_only=True)
+
+    def validate(self, attrs):
+        password_serializer = PasswordResetRequestSerializer(
+            data={
+                "password": attrs["password"],
+                "password_confirm": attrs["password_confirmation"],
+            },
+            context={},
+        )
+        password_serializer.is_valid(raise_exception=True)
+        attrs["password"] = password_serializer.validated_data["password"]
+        return attrs
+
+
 class LoginSerializer(serializers.Serializer):
+    login = serializers.CharField(required=False, allow_blank=True)
     email = serializers.EmailField(required=False, allow_blank=True)
     cpf = serializers.CharField(required=False, allow_blank=True)
     password = serializers.CharField(trim_whitespace=False)
 
     def validate(self, attrs):
         request = self.context.get("request")
+        login = (attrs.get("login") or "").strip()
         email = (attrs.get("email") or "").strip()
         cpf = _only_digits(attrs.get("cpf") or "")
         password = attrs["password"]
 
-        if not email and not cpf:
+        login_value = login or email or cpf
+        if not login_value:
             raise serializers.ValidationError("Informe email ou CPF.")
 
-        if cpf and not email:
-            # Login via CPF: resolve o e-mail do usuário vinculado ao associado
-            from apps.associados.models import Associado  # noqa: PLC0415
+        try:
+            user, _associado = authenticate_legacy_mobile_login(
+                login=login_value,
+                password=password,
+                request=request,
+            )
+        except AuthenticationFailed as exc:
+            raise serializers.ValidationError(str(exc.detail))
 
-            try:
-                associado = Associado.objects.select_related("user").get(cpf_cnpj=cpf)
-            except Associado.DoesNotExist:
-                raise serializers.ValidationError("Credenciais inválidas.")
-
-            if not associado.user:
-                raise serializers.ValidationError("Usuário não vinculado a este CPF.")
-
-            email = associado.user.email
-
-        user = authenticate(request=request, username=email, password=password)
-        if not user:
-            raise serializers.ValidationError("Credenciais inválidas.")
-        if not user.is_active:
-            raise serializers.ValidationError("Usuário inativo.")
         attrs["user"] = user
         return attrs
 
@@ -384,6 +458,7 @@ class LoginSerializer(serializers.Serializer):
             "access": str(refresh.access_token),
             "refresh": str(refresh),
             "user": UserSerializer(user).data,
+            "roles": get_user_role_codes(user),
         }
 
 

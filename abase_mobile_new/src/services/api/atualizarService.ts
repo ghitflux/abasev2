@@ -4,7 +4,7 @@ import type { LocalFile } from '@/types';
 import type { CadastroAssociadoPayload } from './cadastroService';
 
 export async function getCadastroStatus(): Promise<any> {
-  return get<any>(ENDPOINTS.a2Status);
+  return get<any>(ENDPOINTS.appCadastro);
 }
 
 export async function submitAtualizarBasico(
@@ -53,7 +53,7 @@ export async function submitAtualizarBasico(
     });
   }
 
-  return postForm<any>(ENDPOINTS.a2AtualizarBasico, fd);
+  return postForm<any>(ENDPOINTS.appCadastro, fd);
 }
 
 export async function uploadDocumento(tipo: string, file: LocalFile, observacao?: string): Promise<any> {
@@ -61,5 +61,5 @@ export async function uploadDocumento(tipo: string, file: LocalFile, observacao?
   fd.append('tipo', tipo);
   fd.append('arquivo', { uri: file.uri, name: file.name, type: file.type } as any);
   if (observacao) fd.append('observacao', observacao);
-  return postForm<any>(ENDPOINTS.v1Documentos, fd);
+  return postForm<any>(ENDPOINTS.appDocumentos, fd);
 }

@@ -1,9 +1,21 @@
-// HTTP client com axios + interceptor automático de Bearer token
-import axios, { type InternalAxiosRequestConfig } from 'axios';
-import * as SecureStore from 'expo-secure-store';
-import { BASE_URL } from './constants';
+import axios, {
+  AxiosError,
+  type AxiosRequestConfig,
+  type InternalAxiosRequestConfig,
+} from 'axios';
+import { ENDPOINTS, BASE_URL } from './constants';
+import {
+  ACCESS_TOKEN_KEY as TOKEN_KEY,
+  REFRESH_TOKEN_KEY,
+  clearStoredTokens,
+  getStoredAccessToken,
+  getStoredRefreshToken,
+  persistTokens,
+} from './session';
 
-export const TOKEN_KEY = '@Abase:token';
+type RetriableConfig = InternalAxiosRequestConfig & { _retry?: boolean };
+
+export { TOKEN_KEY, REFRESH_TOKEN_KEY };
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,
@@ -14,12 +26,58 @@ export const apiClient = axios.create({
   },
 });
 
-// Injeta Bearer token em cada requisição
+const refreshClient = axios.create({
+  baseURL: BASE_URL,
+  timeout: 30_000,
+  headers: {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+  },
+});
+
+let refreshPromise: Promise<string | null> | null = null;
+
+function isAuthUrl(url?: string) {
+  const value = String(url || '');
+  return value.includes('/auth/login/') || value.includes('/auth/refresh/');
+}
+
+async function refreshAccessToken() {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const refreshToken = await getStoredRefreshToken();
+    if (!refreshToken) return null;
+
+    try {
+      const response = await refreshClient.post<{ access?: string; refresh?: string }>(
+        ENDPOINTS.authRefresh,
+        { refresh: refreshToken },
+      );
+      const accessToken = response.data?.access ?? null;
+      if (!accessToken) {
+        await clearStoredTokens();
+        return null;
+      }
+      await persistTokens(accessToken, response.data?.refresh ?? refreshToken);
+      return accessToken;
+    } catch {
+      await clearStoredTokens();
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
 apiClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   try {
-    const token = await SecureStore.getItemAsync(TOKEN_KEY);
+    const token = await getStoredAccessToken();
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers = config.headers ?? {};
+      (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
     }
   } catch {
     // ignora falha de leitura
@@ -27,20 +85,41 @@ apiClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) =>
   return config;
 });
 
-// Normaliza erros de resposta
 apiClient.interceptors.response.use(
   (res) => res,
-  (error) => {
-    const data = error?.response?.data;
+  async (error: AxiosError<any>) => {
+    const originalRequest = error.config as RetriableConfig | undefined;
+
+    if (
+      error.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !isAuthUrl(originalRequest.url)
+    ) {
+      originalRequest._retry = true;
+      const nextAccessToken = await refreshAccessToken();
+      if (nextAccessToken) {
+        originalRequest.headers = originalRequest.headers ?? {};
+        (originalRequest.headers as Record<string, string>).Authorization =
+          `Bearer ${nextAccessToken}`;
+        return apiClient(originalRequest as AxiosRequestConfig);
+      }
+    }
+
+    const data = error.response?.data;
     const msg =
-      (typeof data === 'object' && (data?.message || data?.error)) ||
-      error?.message ||
+      (typeof data === 'object' &&
+        (data?.detail ||
+          data?.message ||
+          data?.error ||
+          data?.non_field_errors?.[0])) ||
+      error.message ||
       'Erro de rede. Verifique sua conexão.';
+
     return Promise.reject(new Error(msg));
   },
 );
 
-// Helpers tipados
 export async function get<T>(url: string, params?: Record<string, any>): Promise<T> {
   const res = await apiClient.get<T>(url, { params });
   return res.data;

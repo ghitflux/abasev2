@@ -53,8 +53,13 @@ export default function RegisterScreen() {
       });
 
       if (res?.token && res?.user) {
-        await login({ token: res.token, user: res.user, roles: res.roles || [] });
-        router.replace('/(app)/(tabs)/');
+        await login({
+          token: res.token,
+          refreshToken: res.refreshToken ?? null,
+          user: res.user,
+          roles: res.roles || [],
+        });
+        router.replace('/(app)/(tabs)');
       } else {
         Alert.alert('Conta criada!', res?.message || 'Conta criada com sucesso. Faça login para continuar.', [
           { text: 'Fazer login', onPress: () => router.replace('/(auth)/login') },

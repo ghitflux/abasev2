@@ -51,7 +51,8 @@ export default function PendenciasDocumentosScreen() {
   }, [token]);
 
   const latestId = useMemo(() => (issues.length ? issues[0].id : null), [issues]);
-  const canClick = (issue: DocIssue) => latestId === issue.id && REENVIAVEL.includes(issue.status);
+  const canClick = (issue: DocIssue) =>
+    latestId === issue.id && REENVIAVEL.includes(issue.status as IssueStatus);
 
   if (loading) {
     return (

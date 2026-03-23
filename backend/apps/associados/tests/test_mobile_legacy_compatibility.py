@@ -208,6 +208,21 @@ class MobileLegacyCompatibilityTestCase(TestCase):
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
         return token, response.json()
 
+    def login_v1(self, login=None, password=None):
+        response = self.client.post(
+            "/api/v1/auth/login/",
+            {
+                "login": login or self.associado.cpf_cnpj,
+                "password": password or self.associado.matricula_orgao,
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        access = payload["access"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+        return access, payload
+
     def test_legacy_login_and_core_endpoints(self):
         token, payload = self.login_legacy()
         self.assertTrue(payload["ok"])
@@ -402,4 +417,167 @@ class MobileLegacyCompatibilityTestCase(TestCase):
         )
         self.assertEqual(reset.status_code, 200, reset.json())
         registered_user = User.objects.get(email="novo@teste.local")
+        self.assertTrue(registered_user.check_password("NovaSenha@123"))
+
+    def test_v1_login_and_app_endpoints(self):
+        _access, payload = self.login_v1()
+        self.assertIn("refresh", payload)
+        self.assertIn("ASSOCIADO", payload["roles"])
+
+        me = self.client.get("/api/v1/app/me/")
+        self.assertEqual(me.status_code, 200, me.json())
+        self.assertEqual(me.json()["pessoa"]["documento"], self.associado.cpf_cnpj)
+        self.assertEqual(me.json()["resumo"]["parcelas_pagas"], 1)
+        self.assertEqual(me.json()["cadastro"]["auxilio1_status"], "liberado")
+        self.assertEqual(len(me.json()["issues"]), 1)
+
+        cadastro = self.client.get("/api/v1/app/cadastro/")
+        self.assertEqual(cadastro.status_code, 200, cadastro.json())
+        self.assertTrue(cadastro.json()["permissions"]["auxilio1"])
+        self.assertTrue(cadastro.json()["exists"])
+
+        pendencias = self.client.get("/api/v1/app/pendencias/")
+        self.assertEqual(pendencias.status_code, 200, pendencias.json())
+        self.assertEqual(len(pendencias.json()["issues"]), 1)
+        self.assertIn("doc_front", pendencias.json()["issues"][0]["required_docs"])
+
+        mensalidades = self.client.get("/api/v1/app/mensalidades/")
+        self.assertEqual(mensalidades.status_code, 200, mensalidades.json())
+        self.assertEqual(len(mensalidades.json()["parcelas"]), 3)
+
+        antecipacao = self.client.get("/api/v1/app/antecipacao/")
+        self.assertEqual(antecipacao.status_code, 200, antecipacao.json())
+        self.assertEqual(antecipacao.json()["historico"][0]["valor"], 500)
+
+    def test_v1_issue_reupload_terms_contact_auxilio2_and_logout(self):
+        _access, payload = self.login_v1(login=self.user.email, password="Senha@123")
+
+        reupload = self.client.post(
+            "/api/v1/app/pendencias/reuploads/",
+            {
+                "issue_id": self.issue.id,
+                "notes": "Reenvio mobile v1",
+                "cpf_frente": SimpleUploadedFile("cpf_frente_v1.jpg", b"123", content_type="image/jpeg"),
+                "comp_endereco": SimpleUploadedFile("comp_v1.png", b"456", content_type="image/png"),
+            },
+            format="multipart",
+        )
+        self.assertEqual(reupload.status_code, 200, reupload.json())
+        self.assertEqual(reupload.json()["saved_count"], 2)
+
+        aceite = self.client.post("/api/v1/app/termos/aceite/")
+        self.assertEqual(aceite.status_code, 200, aceite.json())
+
+        contato = self.client.post("/api/v1/app/contato/")
+        self.assertEqual(contato.status_code, 200, contato.json())
+
+        aux_status = self.client.get("/api/v1/app/auxilio2/status/")
+        self.assertEqual(aux_status.status_code, 200, aux_status.json())
+        self.assertEqual(aux_status.json()["status"], "bloqueado")
+
+        charge = self.client.post("/api/v1/app/auxilio2/charge/")
+        self.assertEqual(charge.status_code, 200, charge.json())
+        self.assertTrue(charge.json()["ok"])
+        self.assertEqual(charge.json()["status"], "pendente")
+        self.assertIsNotNone(charge.json()["chargeId"])
+
+        aux_resumo = self.client.get("/api/v1/app/auxilio2/resumo/")
+        self.assertEqual(aux_resumo.status_code, 200, aux_resumo.json())
+        self.assertEqual(aux_resumo.json()["status"], "pendente")
+
+        logout = self.client.post(
+            "/api/v1/auth/logout/",
+            {"refresh": payload["refresh"]},
+            format="json",
+        )
+        self.assertEqual(logout.status_code, 205)
+
+    def test_v1_register_update_basico_document_upload_and_password_reset(self):
+        register = self.client.post(
+            "/api/v1/auth/register/",
+            {
+                "name": "Novo Cadastro V1",
+                "email": "novo-v1@teste.local",
+                "password": "Senha@123",
+                "password_confirmation": "Senha@123",
+                "terms": True,
+                "terms_version": "1.0",
+            },
+            format="json",
+        )
+        self.assertEqual(register.status_code, 201, register.json())
+        self.assertTrue(register.json()["ok"])
+        self.assertIn("ASSOCIADODOIS", register.json()["roles"])
+        self.assertIn("ASSOCIADO", register.json()["roles"])
+
+        access = register.json()["access"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+        bootstrap = self.client.get("/api/v1/app/me/")
+        self.assertEqual(bootstrap.status_code, 200, bootstrap.json())
+        self.assertFalse(bootstrap.json()["exists"])
+
+        check_cpf = self.client.get("/api/v1/app/cadastro/check-cpf/", {"cpf": self.associado.cpf_cnpj})
+        self.assertEqual(check_cpf.status_code, 200, check_cpf.json())
+        self.assertTrue(check_cpf.json()["exists"])
+
+        atualizar = self.client.post(
+            "/api/v1/app/cadastro/",
+            {
+                "doc_type": "CPF",
+                "cpf_cnpj": "98765432100",
+                "full_name": "Novo Cadastro V1",
+                "birth_date": "01/02/1990",
+                "cep": "64000000",
+                "address": "Rua Nova",
+                "address_number": "100",
+                "neighborhood": "Centro",
+                "city": "Teresina",
+                "uf": "PI",
+                "cellphone": "86988887777",
+                "orgao_publico": "SEDUC",
+                "situacao_servidor": "Ativo",
+                "matricula_servidor_publico": "778899",
+                "email": "novo-v1@teste.local",
+                "bank_name": "104",
+                "bank_agency": "1111",
+                "bank_account": "22222-3",
+                "account_type": "corrente",
+                "pix_key": "98765432100",
+            },
+            format="multipart",
+        )
+        self.assertEqual(atualizar.status_code, 200, atualizar.json())
+        self.assertTrue(atualizar.json()["ok"])
+
+        documento = self.client.post(
+            "/api/v1/app/documentos/",
+            {
+                "tipo": Documento.Tipo.CONTRACHEQUE,
+                "arquivo": SimpleUploadedFile("contracheque.pdf", b"pdf", content_type="application/pdf"),
+                "observacao": "upload v1",
+            },
+            format="multipart",
+        )
+        self.assertEqual(documento.status_code, 201, documento.json())
+
+        forgot = self.client.post(
+            "/api/v1/auth/forgot-password/",
+            {"email": "novo-v1@teste.local"},
+            format="json",
+        )
+        self.assertEqual(forgot.status_code, 200, forgot.json())
+
+        reset_request = PasswordResetRequest.objects.get(email="novo-v1@teste.local")
+        reset = self.client.post(
+            "/api/v1/auth/reset-password/",
+            {
+                "token": reset_request.token,
+                "password": "NovaSenha@123",
+                "password_confirmation": "NovaSenha@123",
+            },
+            format="json",
+        )
+        self.assertEqual(reset.status_code, 200, reset.json())
+        registered_user = User.objects.get(email="novo-v1@teste.local")
         self.assertTrue(registered_user.check_password("NovaSenha@123"))

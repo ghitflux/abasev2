@@ -10,7 +10,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://www.abasepiaui.com/api"
+        "EXPO_PUBLIC_API_BASE_URL": "https://abasepiaui.cloud/api/v1"
       }
     },
     "preview": {
@@ -19,7 +19,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://www.abasepiaui.com/api"
+        "EXPO_PUBLIC_API_BASE_URL": "https://abasepiaui.cloud/api/v1"
       }
     },
     "production": {
@@ -28,7 +28,7 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://www.abasepiaui.com/api"
+        "EXPO_PUBLIC_API_BASE_URL": "https://abasepiaui.cloud/api/v1"
       }
     }
   },
