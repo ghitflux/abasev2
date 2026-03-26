@@ -1,0 +1,137 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "status": { "type": "string", "readOnly": true },
+    "data_liquidacao": { "type": "string", "format": "date", "readOnly": true },
+    "valor_total": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+      "readOnly": true
+    },
+    "observacao": { "type": "string", "readOnly": true },
+    "realizado_por": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "readOnly": true },
+            "full_name": { "type": "string", "readOnly": true }
+          },
+          "required": ["full_name", "id"],
+          "x-readme-ref-name": "ContractLiquidacaoUser"
+        }
+      ],
+      "readOnly": true
+    },
+    "revertida_em": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "nullable": true
+    },
+    "revertida_por": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "readOnly": true },
+            "full_name": { "type": "string", "readOnly": true }
+          },
+          "required": ["full_name", "id"],
+          "x-readme-ref-name": "ContractLiquidacaoUser"
+        }
+      ],
+      "readOnly": true,
+      "nullable": true
+    },
+    "motivo_reversao": { "type": "string", "readOnly": true },
+    "comprovante": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "nome": { "type": "string", "readOnly": true },
+            "url": { "type": "string", "readOnly": true },
+            "arquivo_referencia": { "type": "string", "readOnly": true },
+            "arquivo_disponivel_localmente": {
+              "type": "boolean",
+              "readOnly": true
+            },
+            "tipo_referencia": { "type": "string", "readOnly": true }
+          },
+          "required": [
+            "arquivo_disponivel_localmente",
+            "arquivo_referencia",
+            "nome",
+            "tipo_referencia",
+            "url"
+          ],
+          "x-readme-ref-name": "ContractLiquidacaoComprovante"
+        }
+      ],
+      "readOnly": true,
+      "nullable": true
+    },
+    "parcelas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "numero": { "type": "integer", "readOnly": true },
+          "referencia_mes": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true
+          },
+          "valor": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+            "readOnly": true
+          },
+          "status": { "type": "string", "readOnly": true },
+          "data_vencimento": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true,
+            "nullable": true
+          },
+          "data_pagamento": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true,
+            "nullable": true
+          }
+        },
+        "required": [
+          "data_pagamento",
+          "data_vencimento",
+          "id",
+          "numero",
+          "referencia_mes",
+          "status",
+          "valor"
+        ],
+        "x-readme-ref-name": "ContractLiquidacaoParcela"
+      },
+      "readOnly": true
+    }
+  },
+  "required": [
+    "comprovante",
+    "data_liquidacao",
+    "id",
+    "motivo_reversao",
+    "observacao",
+    "parcelas",
+    "realizado_por",
+    "revertida_em",
+    "revertida_por",
+    "status",
+    "valor_total"
+  ],
+  "x-readme-ref-name": "ContractLiquidacao"
+}

@@ -4,11 +4,13 @@
  */
 
 import * as z from "zod";
+import { legacyForgotPasswordSchema } from "./legacyForgotPasswordSchema.ts";
 
-/**
- * @description No response body
- */
-export const authForgotPasswordCreate200Schema = z.any();
+export const authForgotPasswordCreate200Schema = z.object({}).catchall(z.any());
+
+export const authForgotPasswordCreateMutationRequestSchema = z.lazy(
+  () => legacyForgotPasswordSchema,
+);
 
 export const authForgotPasswordCreateMutationResponseSchema = z.lazy(
   () => authForgotPasswordCreate200Schema,

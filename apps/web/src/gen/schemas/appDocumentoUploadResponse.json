@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer" },
+    "tipo": { "type": "string" },
+    "status": { "type": "string" },
+    "observacao": { "type": "string" }
+  },
+  "required": ["id", "observacao", "status", "tipo"],
+  "x-readme-ref-name": "_AppDocumentoUploadResponse"
+}

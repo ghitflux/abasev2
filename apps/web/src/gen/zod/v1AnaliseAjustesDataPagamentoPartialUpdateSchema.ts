@@ -9,7 +9,7 @@ import { patchedAnalisePagamentoDataSchema } from "./patchedAnalisePagamentoData
 
 export const V1AnaliseAjustesDataPagamentoPartialUpdatePathParamsSchema =
   z.object({
-    pagamento_id: z.string(),
+    pagamento_id: z.string().regex(/^\d+$/),
   });
 
 export const V1AnaliseAjustesDataPagamentoPartialUpdate200Schema = z.lazy(

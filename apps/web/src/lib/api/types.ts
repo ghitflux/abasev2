@@ -858,7 +858,7 @@ export type ConfirmacaoItem = {
 
 export type LiquidacaoContratoItem = {
   id: number;
-  contrato_id: number;
+  contrato_id: number | null;
   liquidacao_id: number | null;
   associado_id: number;
   nome: string;
@@ -867,10 +867,15 @@ export type LiquidacaoContratoItem = {
   agente_nome: string;
   contrato_codigo: string;
   quantidade_parcelas: number;
+  quantidade_parcelas_contrato: number;
   valor_total: string;
   referencia_inicial: string | null;
   referencia_final: string | null;
   status_liquidacao: string;
+  status_operacional: string;
+  pode_liquidar_agora: boolean;
+  status_associado: string;
+  status_associado_label: string;
   status_contrato: string;
   status_renovacao: string;
   origem_solicitacao: string;
@@ -886,6 +891,8 @@ export type LiquidacaoContratoItem = {
   pode_reverter: boolean;
 };
 
+export type LiquidacaoStatusAssociadoKpis = Record<string, number>;
+
 export type LiquidacaoKpis = {
   total_contratos: number;
   total_parcelas: number;
@@ -893,6 +900,9 @@ export type LiquidacaoKpis = {
   associados_impactados: number;
   revertidas: number;
   ativas: number;
+  liquidaveis_agora: number;
+  sem_parcelas_elegiveis: number;
+  por_status_associado: LiquidacaoStatusAssociadoKpis;
 };
 
 export type DevolucaoContratoItem = {

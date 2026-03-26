@@ -5,6 +5,7 @@
 
 export type V1AnaliseAjustesDestroyPathParams = {
   /**
+   * @pattern ^\d+$
    * @type string
    */
   pagamento_id: string;

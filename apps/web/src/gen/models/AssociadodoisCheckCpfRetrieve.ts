@@ -3,10 +3,9 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AssociadodoisCheckCpfRetrieve200 = any;
+export type AssociadodoisCheckCpfRetrieve200 = {
+  [key: string]: any;
+};
 
 export type AssociadodoisCheckCpfRetrieveQueryResponse =
   AssociadodoisCheckCpfRetrieve200;

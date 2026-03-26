@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "tipo": { "type": "string", "readOnly": true },
+    "status": { "type": "string", "readOnly": true },
+    "arquivo": { "type": "string", "readOnly": true },
+    "arquivo_referencia": { "type": "string", "readOnly": true },
+    "arquivo_disponivel_localmente": { "type": "boolean", "readOnly": true },
+    "tipo_referencia": { "type": "string", "readOnly": true },
+    "observacao": { "type": "string", "readOnly": true },
+    "nome_original": { "type": "string", "readOnly": true }
+  },
+  "required": [
+    "arquivo",
+    "arquivo_disponivel_localmente",
+    "arquivo_referencia",
+    "id",
+    "nome_original",
+    "observacao",
+    "status",
+    "tipo",
+    "tipo_referencia"
+  ],
+  "x-readme-ref-name": "DocumentoEsteira"
+}

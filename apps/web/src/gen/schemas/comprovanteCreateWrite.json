@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "ciclo_id": { "type": "integer" },
+    "motivo": { "type": "string" },
+    "tipo": { "type": "string" },
+    "papel": { "type": "string" },
+    "origem": { "type": "string" },
+    "status_validacao": { "type": "string" },
+    "data_pagamento": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+    }
+  },
+  "required": ["ciclo_id", "motivo"],
+  "x-readme-ref-name": "ComprovanteCreateWrite"
+}

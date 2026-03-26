@@ -3,10 +3,12 @@
  * Do not edit manually.
  */
 
-import type { ParaSituacaoEnum } from "./ParaSituacaoEnum.ts";
-import type { ParaStatusEnum } from "./ParaStatusEnum.ts";
+import type { ContratoEsteira } from "./ContratoEsteira.ts";
+import type { DocumentoEsteira } from "./DocumentoEsteira.ts";
+import type { EsteiraEtapaEnum } from "./EsteiraEtapaEnum.ts";
+import type { EsteiraSimpleUser } from "./EsteiraSimpleUser.ts";
+import type { EsteiraSituacaoEnum } from "./EsteiraSituacaoEnum.ts";
 import type { Pendencia } from "./Pendencia.ts";
-import type { SimpleUser } from "./SimpleUser.ts";
 import type { Transicao } from "./Transicao.ts";
 
 export type EsteiraDetail = {
@@ -22,77 +24,76 @@ export type EsteiraDetail = {
    * @type integer
    */
   readonly ordem: number;
+  readonly contrato: ContratoEsteira | null;
+  /**
+   * @type string, date
+   */
+  readonly data_assinatura: string | null;
+  /**
+   * @pattern ^-?\d{0,10}(?:\.\d{0,2})?$
+   * @type string, decimal
+   */
+  readonly valor_disponivel: string | null;
+  /**
+   * @pattern ^-?\d{0,10}(?:\.\d{0,2})?$
+   * @type string, decimal
+   */
+  readonly comissao_agente: string | null;
   /**
    * @type string
    */
-  readonly contrato: string;
+  readonly status_contrato: string | null;
   /**
    * @type string
    */
-  readonly data_assinatura: string;
+  readonly status_contrato_visual_slug: string | null;
   /**
    * @type string
    */
-  readonly valor_disponivel: string;
-  /**
-   * @type string
-   */
-  readonly comissao_agente: string;
-  /**
-   * @type string
-   */
-  readonly status_contrato: string;
-  /**
-   * @type string
-   */
-  readonly status_contrato_visual_slug: string;
-  /**
-   * @type string
-   */
-  readonly status_contrato_visual_label: string;
+  readonly status_contrato_visual_label: string | null;
   /**
    * @type string
    */
   readonly status_documentacao: string;
   /**
-   * @type string
+   * @type boolean
    */
-  readonly contato_web: string;
+  readonly contato_web: boolean;
   /**
-   * @type string
+   * @type boolean
    */
-  readonly termos_web: string;
-  readonly agente: SimpleUser;
+  readonly termos_web: boolean;
+  readonly agente: EsteiraSimpleUser;
   /**
    * @type string
    */
   readonly orgao_publico: string;
   /**
-   * @type string
+   * @type integer
    */
-  readonly documentos_count: string;
+  readonly documentos_count: number;
   /**
-   * @type string
+   * @type array
    */
-  readonly acoes_disponiveis: string;
+  readonly acoes_disponiveis: string[];
   /**
    * @description * `cadastro` - Cadastro\n* `analise` - Análise\n* `coordenacao` - Coordenação\n* `tesouraria` - Tesouraria\n* `concluido` - Concluído
    * @type string | undefined
    */
-  etapa_atual?: ParaStatusEnum;
+  etapa_atual?: EsteiraEtapaEnum;
   /**
    * @description * `aguardando` - Aguardando\n* `em_andamento` - Em andamento\n* `pendenciado` - Pendenciado\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado
    * @type string | undefined
    */
-  status?: ParaSituacaoEnum;
+  status?: EsteiraSituacaoEnum;
   /**
    * @type string, date-time
    */
   assumido_em?: string | null;
   /**
-   * @type string
+   * @type array
    */
-  readonly documentos: string;
+  readonly documentos: DocumentoEsteira[];
   /**
    * @type array
    */

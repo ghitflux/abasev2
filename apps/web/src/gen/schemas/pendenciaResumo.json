@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "tipo": { "type": "string", "readOnly": true },
+    "descricao": { "type": "string", "readOnly": true },
+    "status": { "type": "string", "readOnly": true },
+    "created_at": { "type": "string", "format": "date-time", "readOnly": true }
+  },
+  "required": ["created_at", "descricao", "id", "status", "tipo"],
+  "x-readme-ref-name": "PendenciaResumo"
+}

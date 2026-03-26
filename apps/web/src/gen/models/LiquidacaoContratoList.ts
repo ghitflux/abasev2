@@ -3,6 +3,7 @@
  * Do not edit manually.
  */
 
+import type { LiquidacaoAnexo } from "./LiquidacaoAnexo.ts";
 import type { LiquidacaoComprovante } from "./LiquidacaoComprovante.ts";
 import type { LiquidacaoParcela } from "./LiquidacaoParcela.ts";
 import type { SimpleUser } from "./SimpleUser.ts";
@@ -49,6 +50,10 @@ export type LiquidacaoContratoList = {
    */
   readonly quantidade_parcelas: number;
   /**
+   * @type integer
+   */
+  readonly quantidade_parcelas_contrato: number;
+  /**
    * @pattern ^-?\d{0,10}(?:\.\d{0,2})?$
    * @type string, decimal
    */
@@ -68,7 +73,27 @@ export type LiquidacaoContratoList = {
   /**
    * @type string
    */
+  readonly status_operacional: string;
+  /**
+   * @type boolean
+   */
+  readonly pode_liquidar_agora: boolean;
+  /**
+   * @type string
+   */
+  readonly status_associado: string;
+  /**
+   * @type string
+   */
   readonly status_contrato: string;
+  /**
+   * @type string
+   */
+  readonly status_renovacao: string;
+  /**
+   * @type string
+   */
+  readonly origem_solicitacao: string;
   /**
    * @type string, date
    */
@@ -88,6 +113,10 @@ export type LiquidacaoContratoList = {
    */
   readonly motivo_reversao: string;
   readonly comprovante: LiquidacaoComprovante | null;
+  /**
+   * @type array
+   */
+  readonly anexos: LiquidacaoAnexo[];
   /**
    * @type array
    */

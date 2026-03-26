@@ -5,7 +5,9 @@
 
 import type { AssociadoContrato } from "./AssociadoContrato.ts";
 import type { ContratoAgente } from "./ContratoAgente.ts";
-import type { ContratoListStatusEnum } from "./ContratoListStatusEnum.ts";
+import type { ContratoAptoCycle } from "./ContratoAptoCycle.ts";
+import type { ContratoStatusEnum } from "./ContratoStatusEnum.ts";
+import type { MensalidadesResumo } from "./MensalidadesResumo.ts";
 
 export type ContratoList = {
   /**
@@ -23,7 +25,7 @@ export type ContratoList = {
    * @description * `rascunho` - Rascunho\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `encerrado` - Encerrado\n* `cancelado` - Cancelado
    * @type string | undefined
    */
-  status?: ContratoListStatusEnum;
+  status?: ContratoStatusEnum;
   /**
    * @type string
    */
@@ -58,14 +60,21 @@ export type ContratoList = {
    * @type string | undefined, decimal
    */
   comissao_agente?: string;
-  /**
-   * @type string
-   */
-  readonly mensalidades: string;
+  readonly mensalidades: MensalidadesResumo;
   /**
    * @type string, date
    */
   auxilio_liberado_em?: string | null;
+  /**
+   * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
+   * @type string, decimal
+   */
+  readonly valor_auxilio_liberado: string;
+  /**
+   * @type string
+   */
+  readonly percentual_repasse: string;
+  readonly ciclo_apto: ContratoAptoCycle | null;
   /**
    * @type boolean
    */
@@ -75,9 +84,9 @@ export type ContratoList = {
    */
   readonly status_renovacao: string;
   /**
-   * @type string
+   * @type integer
    */
-  readonly refinanciamento_id: string;
+  readonly refinanciamento_id: number | null;
   /**
    * @type boolean
    */

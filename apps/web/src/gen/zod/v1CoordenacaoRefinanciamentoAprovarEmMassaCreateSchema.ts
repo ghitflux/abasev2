@@ -34,6 +34,7 @@ export const V1CoordenacaoRefinanciamentoAprovarEmMassaCreateMutationRequestSche
       itens: true,
       mensalidades_pagas: true,
       mensalidades_total: true,
+      numero_ciclos: true,
       refinanciamento_numero: true,
       pagamento_status: true,
       legacy_refinanciamento_id: true,

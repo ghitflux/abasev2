@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "string" },
+    "nome": { "type": "string" },
+    "url": { "type": "string" },
+    "arquivo_referencia": { "type": "string" },
+    "arquivo_disponivel_localmente": { "type": "boolean" },
+    "tipo_referencia": { "type": "string" },
+    "origem": { "type": "string" },
+    "papel": { "type": "string" },
+    "tipo": { "type": "string" },
+    "status": { "type": "string" },
+    "competencia": { "type": "string", "format": "date", "nullable": true },
+    "created_at": { "type": "string", "format": "date-time", "nullable": true }
+  },
+  "required": [
+    "arquivo_disponivel_localmente",
+    "arquivo_referencia",
+    "competencia",
+    "created_at",
+    "id",
+    "nome",
+    "origem",
+    "papel",
+    "status",
+    "tipo",
+    "tipo_referencia",
+    "url"
+  ],
+  "x-readme-ref-name": "InitialPaymentEvidence"
+}

@@ -4,12 +4,14 @@
  */
 
 import * as z from "zod";
+import { legacyRegisterSchema } from "./legacyRegisterSchema.ts";
 
-/**
- * @description No response body
- */
-export const authRegisterCreate200Schema = z.any();
+export const authRegisterCreate201Schema = z.object({}).catchall(z.any());
+
+export const authRegisterCreateMutationRequestSchema = z.lazy(
+  () => legacyRegisterSchema,
+);
 
 export const authRegisterCreateMutationResponseSchema = z.lazy(
-  () => authRegisterCreate200Schema,
+  () => authRegisterCreate201Schema,
 );

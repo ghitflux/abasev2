@@ -1,6 +1,7 @@
 {
   "type": "object",
   "properties": {
+    "login": { "type": "string" },
     "email": { "type": "string", "format": "email" },
     "cpf": { "type": "string" },
     "password": { "type": "string" }

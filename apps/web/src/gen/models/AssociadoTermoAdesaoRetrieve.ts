@@ -3,15 +3,11 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AssociadoTermoAdesaoRetrieve200 = any;
+export type AssociadoTermoAdesaoRetrieve302 = string;
 
-export type AssociadoTermoAdesaoRetrieveQueryResponse =
-  AssociadoTermoAdesaoRetrieve200;
+export type AssociadoTermoAdesaoRetrieveQueryResponse = any;
 
 export type AssociadoTermoAdesaoRetrieveQuery = {
-  Response: AssociadoTermoAdesaoRetrieve200;
+  Response: any;
   Errors: any;
 };

@@ -17,7 +17,6 @@ function getV1AppPendenciasRetrieveUrl() {
 }
 
 /**
- * @description Pendências de documentos do associado logado via esteira.
  * {@link /api/v1/app/pendencias/}
  */
 export async function v1AppPendenciasRetrieve(

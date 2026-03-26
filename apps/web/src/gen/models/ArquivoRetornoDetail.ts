@@ -3,8 +3,8 @@
  * Do not edit manually.
  */
 
-import type { FormatoEnum } from "./FormatoEnum.ts";
-import type { Status200Enum } from "./Status200Enum.ts";
+import type { ArquivoRetornoFormatoEnum } from "./ArquivoRetornoFormatoEnum.ts";
+import type { ArquivoRetornoStatusEnum } from "./ArquivoRetornoStatusEnum.ts";
 
 export type ArquivoRetornoDetail = {
   /**
@@ -20,7 +20,7 @@ export type ArquivoRetornoDetail = {
    * @description * `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX\n* `man` - Manual
    * @type string
    */
-  formato: FormatoEnum;
+  formato: ArquivoRetornoFormatoEnum;
   /**
    * @type string
    */
@@ -61,7 +61,7 @@ export type ArquivoRetornoDetail = {
    * @description * `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro
    * @type string | undefined
    */
-  status?: Status200Enum;
+  status?: ArquivoRetornoStatusEnum;
   /**
    * @type object
    */

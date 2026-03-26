@@ -4,14 +4,14 @@
  */
 
 import * as z from "zod";
-import { formatoEnumSchema } from "./formatoEnumSchema.ts";
-import { status200EnumSchema } from "./status200EnumSchema.ts";
+import { arquivoRetornoFormatoEnumSchema } from "./arquivoRetornoFormatoEnumSchema.ts";
+import { arquivoRetornoStatusEnumSchema } from "./arquivoRetornoStatusEnumSchema.ts";
 
 export const arquivoRetornoDetailSchema = z.object({
   id: z.int(),
   arquivo_nome: z.string().max(255),
   get formato() {
-    return formatoEnumSchema.describe(
+    return arquivoRetornoFormatoEnumSchema.describe(
       "* `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX\n* `man` - Manual",
     );
   },
@@ -23,7 +23,7 @@ export const arquivoRetornoDetailSchema = z.object({
   nao_encontrados: z.optional(z.int().min(0).max(4294967295)),
   erros: z.optional(z.int().min(0).max(4294967295)),
   get status() {
-    return status200EnumSchema
+    return arquivoRetornoStatusEnumSchema
       .describe(
         "* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro",
       )

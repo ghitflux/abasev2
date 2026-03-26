@@ -4,9 +4,9 @@
  */
 
 import type { BlankEnum } from "./BlankEnum.ts";
-import type { ParaSituacaoEnum } from "./ParaSituacaoEnum.ts";
-import type { ParaStatusEnum } from "./ParaStatusEnum.ts";
-import type { SimpleUser } from "./SimpleUser.ts";
+import type { EsteiraEtapaEnum } from "./EsteiraEtapaEnum.ts";
+import type { EsteiraSimpleUser } from "./EsteiraSimpleUser.ts";
+import type { EsteiraSituacaoEnum } from "./EsteiraSituacaoEnum.ts";
 
 export type Transicao = {
   /**
@@ -22,14 +22,14 @@ export type Transicao = {
    * @description * `cadastro` - Cadastro\n* `analise` - Análise\n* `coordenacao` - Coordenação\n* `tesouraria` - Tesouraria\n* `concluido` - Concluído
    * @type string
    */
-  de_status: ParaStatusEnum;
+  de_status: EsteiraEtapaEnum;
   /**
    * @description * `cadastro` - Cadastro\n* `analise` - Análise\n* `coordenacao` - Coordenação\n* `tesouraria` - Tesouraria\n* `concluido` - Concluído
    * @type string
    */
-  para_status: ParaStatusEnum;
-  de_situacao?: ParaSituacaoEnum | BlankEnum;
-  para_situacao?: ParaSituacaoEnum | BlankEnum;
+  para_status: EsteiraEtapaEnum;
+  de_situacao?: EsteiraSituacaoEnum | BlankEnum;
+  para_situacao?: EsteiraSituacaoEnum | BlankEnum;
   /**
    * @type string | undefined
    */
@@ -38,5 +38,5 @@ export type Transicao = {
    * @type string | undefined, date-time
    */
   realizado_em?: string;
-  readonly realizado_por: SimpleUser;
+  readonly realizado_por: EsteiraSimpleUser;
 };

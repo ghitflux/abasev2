@@ -4,12 +4,16 @@
  */
 
 import fetch from "@kubb/plugin-client/clients/axios";
-import type { AssociadodoisReuploadsCreateMutationResponse } from "../models/AssociadodoisReuploadsCreate.ts";
+import type {
+  AssociadodoisReuploadsCreateMutationRequest,
+  AssociadodoisReuploadsCreateMutationResponse,
+} from "../models/AssociadodoisReuploadsCreate.ts";
 import type {
   Client,
   RequestConfig,
   ResponseErrorConfig,
 } from "@kubb/plugin-client/clients/axios";
+import { buildFormData } from "../.kubb/config.ts";
 
 function getAssociadodoisReuploadsCreateUrl() {
   const res = { method: "POST", url: `/api/associadodois/reuploads` as const };
@@ -20,17 +24,23 @@ function getAssociadodoisReuploadsCreateUrl() {
  * {@link /api/associadodois/reuploads}
  */
 export async function associadodoisReuploadsCreate(
-  config: Partial<RequestConfig> & { client?: Client } = {},
+  data?: AssociadodoisReuploadsCreateMutationRequest,
+  config: Partial<
+    RequestConfig<AssociadodoisReuploadsCreateMutationRequest>
+  > & { client?: Client } = {},
 ) {
   const { client: request = fetch, ...requestConfig } = config;
 
+  const requestData = data;
+  const formData = buildFormData(requestData);
   const res = await request<
     AssociadodoisReuploadsCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    unknown
+    AssociadodoisReuploadsCreateMutationRequest
   >({
     method: "POST",
     url: getAssociadodoisReuploadsCreateUrl().url.toString(),
+    data: formData as FormData,
     ...requestConfig,
   });
   return res.data;

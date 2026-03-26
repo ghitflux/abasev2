@@ -5,10 +5,9 @@
 
 import * as z from "zod";
 
-/**
- * @description No response body
- */
-export const associadodoisAuxilio2Charge30Create200Schema = z.any();
+export const associadodoisAuxilio2Charge30Create200Schema = z
+  .object({})
+  .catchall(z.any());
 
 export const associadodoisAuxilio2Charge30CreateMutationResponseSchema = z.lazy(
   () => associadodoisAuxilio2Charge30Create200Schema,

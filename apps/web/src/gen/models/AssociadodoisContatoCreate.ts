@@ -3,10 +3,9 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AssociadodoisContatoCreate200 = any;
+import type { LegacyContatoResponse } from "./LegacyContatoResponse.ts";
+
+export type AssociadodoisContatoCreate200 = LegacyContatoResponse;
 
 export type AssociadodoisContatoCreateMutationResponse =
   AssociadodoisContatoCreate200;

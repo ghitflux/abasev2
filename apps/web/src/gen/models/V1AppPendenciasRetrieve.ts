@@ -3,10 +3,9 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type V1AppPendenciasRetrieve200 = any;
+export type V1AppPendenciasRetrieve200 = {
+  [key: string]: any;
+};
 
 export type V1AppPendenciasRetrieveQueryResponse = V1AppPendenciasRetrieve200;
 

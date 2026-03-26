@@ -6,7 +6,9 @@
 import * as z from "zod";
 import { associadoContratoSchema } from "./associadoContratoSchema.ts";
 import { contratoAgenteSchema } from "./contratoAgenteSchema.ts";
-import { contratoListStatusEnumSchema } from "./contratoListStatusEnumSchema.ts";
+import { contratoAptoCycleSchema } from "./contratoAptoCycleSchema.ts";
+import { contratoStatusEnumSchema } from "./contratoStatusEnumSchema.ts";
+import { mensalidadesResumoSchema } from "./mensalidadesResumoSchema.ts";
 
 export const contratoListSchema = z.object({
   id: z.int(),
@@ -18,7 +20,7 @@ export const contratoListSchema = z.object({
     return contratoAgenteSchema;
   },
   get status() {
-    return contratoListStatusEnumSchema
+    return contratoStatusEnumSchema
       .describe(
         "* `rascunho` - Rascunho\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `encerrado` - Encerrado\n* `cancelado` - Cancelado",
       )
@@ -32,11 +34,18 @@ export const contratoListSchema = z.object({
   data_contrato: z.optional(z.iso.date()),
   valor_mensalidade: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
   comissao_agente: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
-  mensalidades: z.string(),
+  get mensalidades() {
+    return mensalidadesResumoSchema;
+  },
   auxilio_liberado_em: z.iso.date().nullish(),
+  valor_auxilio_liberado: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
+  percentual_repasse: z.string(),
+  get ciclo_apto() {
+    return contratoAptoCycleSchema.nullable();
+  },
   pode_solicitar_refinanciamento: z.boolean(),
   status_renovacao: z.string(),
-  refinanciamento_id: z.string(),
+  refinanciamento_id: z.nullable(z.int()),
   possui_meses_nao_descontados: z.boolean(),
   meses_nao_descontados_count: z.int(),
 });

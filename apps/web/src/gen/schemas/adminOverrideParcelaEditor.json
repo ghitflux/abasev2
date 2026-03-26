@@ -1,0 +1,43 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "nullable": true },
+    "numero": { "type": "integer" },
+    "referencia_mes": { "type": "string", "format": "date" },
+    "valor": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "data_vencimento": { "type": "string", "format": "date" },
+    "status": { "type": "string" },
+    "data_pagamento": { "type": "string", "format": "date", "nullable": true },
+    "observacao": { "type": "string" },
+    "layout_bucket": { "type": "string" },
+    "updated_at": { "type": "string", "format": "date-time", "nullable": true },
+    "financial_flags": {
+      "type": "object",
+      "properties": {
+        "tem_retorno": { "type": "boolean" },
+        "tem_baixa_manual": { "type": "boolean" },
+        "tem_liquidacao": { "type": "boolean" }
+      },
+      "required": ["tem_baixa_manual", "tem_liquidacao", "tem_retorno"],
+      "x-readme-ref-name": "AdminOverrideFinancialFlags"
+    }
+  },
+  "required": [
+    "data_pagamento",
+    "data_vencimento",
+    "financial_flags",
+    "id",
+    "layout_bucket",
+    "numero",
+    "observacao",
+    "referencia_mes",
+    "status",
+    "updated_at",
+    "valor"
+  ],
+  "x-readme-ref-name": "AdminOverrideParcelaEditor"
+}

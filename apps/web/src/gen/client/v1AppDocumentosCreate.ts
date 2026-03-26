@@ -4,12 +4,16 @@
  */
 
 import fetch from "@kubb/plugin-client/clients/axios";
-import type { V1AppDocumentosCreateMutationResponse } from "../models/V1AppDocumentosCreate.ts";
+import type {
+  V1AppDocumentosCreateMutationRequest,
+  V1AppDocumentosCreateMutationResponse,
+} from "../models/V1AppDocumentosCreate.ts";
 import type {
   Client,
   RequestConfig,
   ResponseErrorConfig,
 } from "@kubb/plugin-client/clients/axios";
+import { buildFormData } from "../.kubb/config.ts";
 
 function getV1AppDocumentosCreateUrl() {
   const res = { method: "POST", url: `/api/v1/app/documentos/` as const };
@@ -17,22 +21,26 @@ function getV1AppDocumentosCreateUrl() {
 }
 
 /**
- * @description Upload de documento pelo próprio associado para resolver pendência.
- * Multipart: tipo, arquivo, observacao (opcional).
  * {@link /api/v1/app/documentos/}
  */
 export async function v1AppDocumentosCreate(
-  config: Partial<RequestConfig> & { client?: Client } = {},
+  data: V1AppDocumentosCreateMutationRequest,
+  config: Partial<RequestConfig<V1AppDocumentosCreateMutationRequest>> & {
+    client?: Client;
+  } = {},
 ) {
   const { client: request = fetch, ...requestConfig } = config;
 
+  const requestData = data;
+  const formData = buildFormData(requestData);
   const res = await request<
     V1AppDocumentosCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    unknown
+    V1AppDocumentosCreateMutationRequest
   >({
     method: "POST",
     url: getV1AppDocumentosCreateUrl().url.toString(),
+    data: formData as FormData,
     ...requestConfig,
   });
   return res.data;

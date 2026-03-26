@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "nullable": true },
+    "associado": { "type": "integer", "nullable": true },
+    "banco": { "type": "string" },
+    "agencia": { "type": "string" },
+    "conta": { "type": "string" },
+    "tipo_conta": { "type": "string" },
+    "chave_pix": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time", "nullable": true },
+    "updated_at": { "type": "string", "format": "date-time", "nullable": true }
+  },
+  "x-readme-ref-name": "DadosBancarios"
+}

@@ -4,16 +4,64 @@
     "id": { "type": "integer", "readOnly": true },
     "associado_id": { "type": "integer", "readOnly": true },
     "ordem": { "type": "integer", "readOnly": true },
-    "contrato": { "type": "string", "readOnly": true },
-    "data_assinatura": { "type": "string", "readOnly": true },
-    "valor_disponivel": { "type": "string", "readOnly": true },
-    "comissao_agente": { "type": "string", "readOnly": true },
-    "status_contrato": { "type": "string", "readOnly": true },
-    "status_contrato_visual_slug": { "type": "string", "readOnly": true },
-    "status_contrato_visual_label": { "type": "string", "readOnly": true },
+    "contrato": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "codigo": { "type": "string", "readOnly": true },
+            "associado_nome": { "type": "string", "readOnly": true },
+            "cpf_cnpj": { "type": "string", "readOnly": true },
+            "matricula": { "type": "string", "readOnly": true },
+            "matricula_display": { "type": "string", "readOnly": true }
+          },
+          "required": [
+            "associado_nome",
+            "codigo",
+            "cpf_cnpj",
+            "matricula",
+            "matricula_display"
+          ],
+          "x-readme-ref-name": "ContratoEsteira"
+        }
+      ],
+      "nullable": true,
+      "readOnly": true
+    },
+    "data_assinatura": {
+      "type": "string",
+      "format": "date",
+      "nullable": true,
+      "readOnly": true
+    },
+    "valor_disponivel": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+      "nullable": true,
+      "readOnly": true
+    },
+    "comissao_agente": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+      "nullable": true,
+      "readOnly": true
+    },
+    "status_contrato": { "type": "string", "nullable": true, "readOnly": true },
+    "status_contrato_visual_slug": {
+      "type": "string",
+      "nullable": true,
+      "readOnly": true
+    },
+    "status_contrato_visual_label": {
+      "type": "string",
+      "nullable": true,
+      "readOnly": true
+    },
     "status_documentacao": { "type": "string", "readOnly": true },
-    "contato_web": { "type": "string", "readOnly": true },
-    "termos_web": { "type": "string", "readOnly": true },
+    "contato_web": { "type": "boolean", "readOnly": true },
+    "termos_web": { "type": "boolean", "readOnly": true },
     "agente": {
       "allOf": [
         {
@@ -23,19 +71,23 @@
             "full_name": { "type": "string", "readOnly": true }
           },
           "required": ["full_name", "id"],
-          "x-readme-ref-name": "SimpleUser"
+          "x-readme-ref-name": "EsteiraSimpleUser"
         }
       ],
       "readOnly": true
     },
     "orgao_publico": { "type": "string", "readOnly": true },
-    "documentos_count": { "type": "string", "readOnly": true },
-    "acoes_disponiveis": { "type": "string", "readOnly": true },
+    "documentos_count": { "type": "integer", "readOnly": true },
+    "acoes_disponiveis": {
+      "type": "array",
+      "items": { "type": "string" },
+      "readOnly": true
+    },
     "etapa_atual": {
       "enum": ["cadastro", "analise", "coordenacao", "tesouraria", "concluido"],
       "type": "string",
       "description": "* `cadastro` - Cadastro\n* `analise` - Análise\n* `coordenacao` - Coordenação\n* `tesouraria` - Tesouraria\n* `concluido` - Concluído",
-      "x-readme-ref-name": "ParaStatusEnum"
+      "x-readme-ref-name": "EsteiraEtapaEnum"
     },
     "status": {
       "enum": [
@@ -47,20 +99,58 @@
       ],
       "type": "string",
       "description": "* `aguardando` - Aguardando\n* `em_andamento` - Em andamento\n* `pendenciado` - Pendenciado\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
-      "x-readme-ref-name": "ParaSituacaoEnum"
+      "x-readme-ref-name": "EsteiraSituacaoEnum"
     },
     "assumido_em": {
       "type": "string",
       "format": "date-time",
       "nullable": true
     },
-    "documentos": { "type": "string", "readOnly": true },
+    "documentos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "tipo": { "type": "string", "readOnly": true },
+          "status": { "type": "string", "readOnly": true },
+          "arquivo": { "type": "string", "readOnly": true },
+          "arquivo_referencia": { "type": "string", "readOnly": true },
+          "arquivo_disponivel_localmente": {
+            "type": "boolean",
+            "readOnly": true
+          },
+          "tipo_referencia": { "type": "string", "readOnly": true },
+          "observacao": { "type": "string", "readOnly": true },
+          "nome_original": { "type": "string", "readOnly": true }
+        },
+        "required": [
+          "arquivo",
+          "arquivo_disponivel_localmente",
+          "arquivo_referencia",
+          "id",
+          "nome_original",
+          "observacao",
+          "status",
+          "tipo",
+          "tipo_referencia"
+        ],
+        "x-readme-ref-name": "DocumentoEsteira"
+      },
+      "readOnly": true
+    },
     "pendencias": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
           "id": { "type": "integer", "readOnly": true },
+          "esteira_item_id": { "type": "integer", "readOnly": true },
+          "associado_created_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
           "tipo": { "type": "string", "maxLength": 60 },
           "descricao": { "type": "string" },
           "status": {
@@ -75,7 +165,11 @@
           "matricula": { "type": "string", "readOnly": true },
           "matricula_display": { "type": "string", "readOnly": true },
           "cpf_cnpj": { "type": "string", "readOnly": true },
-          "contrato_codigo": { "type": "string", "readOnly": true },
+          "contrato_codigo": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -88,12 +182,14 @@
           }
         },
         "required": [
+          "associado_created_at",
           "associado_id",
           "associado_nome",
           "contrato_codigo",
           "cpf_cnpj",
           "created_at",
           "descricao",
+          "esteira_item_id",
           "id",
           "matricula",
           "matricula_display"
@@ -119,7 +215,7 @@
             ],
             "type": "string",
             "description": "* `cadastro` - Cadastro\n* `analise` - Análise\n* `coordenacao` - Coordenação\n* `tesouraria` - Tesouraria\n* `concluido` - Concluído",
-            "x-readme-ref-name": "ParaStatusEnum"
+            "x-readme-ref-name": "EsteiraEtapaEnum"
           },
           "para_status": {
             "enum": [
@@ -131,7 +227,7 @@
             ],
             "type": "string",
             "description": "* `cadastro` - Cadastro\n* `analise` - Análise\n* `coordenacao` - Coordenação\n* `tesouraria` - Tesouraria\n* `concluido` - Concluído",
-            "x-readme-ref-name": "ParaStatusEnum"
+            "x-readme-ref-name": "EsteiraEtapaEnum"
           },
           "de_situacao": {
             "oneOf": [
@@ -145,7 +241,7 @@
                 ],
                 "type": "string",
                 "description": "* `aguardando` - Aguardando\n* `em_andamento` - Em andamento\n* `pendenciado` - Pendenciado\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
-                "x-readme-ref-name": "ParaSituacaoEnum"
+                "x-readme-ref-name": "EsteiraSituacaoEnum"
               },
               { "enum": [""], "x-readme-ref-name": "BlankEnum" }
             ]
@@ -162,7 +258,7 @@
                 ],
                 "type": "string",
                 "description": "* `aguardando` - Aguardando\n* `em_andamento` - Em andamento\n* `pendenciado` - Pendenciado\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
-                "x-readme-ref-name": "ParaSituacaoEnum"
+                "x-readme-ref-name": "EsteiraSituacaoEnum"
               },
               { "enum": [""], "x-readme-ref-name": "BlankEnum" }
             ]
@@ -178,7 +274,7 @@
                   "full_name": { "type": "string", "readOnly": true }
                 },
                 "required": ["full_name", "id"],
-                "x-readme-ref-name": "SimpleUser"
+                "x-readme-ref-name": "EsteiraSimpleUser"
               }
             ],
             "readOnly": true

@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "celular": { "type": "string" },
+    "email": { "type": "string" },
+    "orgao_publico": { "type": "string" },
+    "situacao_servidor": { "type": "string" },
+    "matricula_servidor": { "type": "string" }
+  },
+  "x-readme-ref-name": "ContatoAdminWrite"
+}

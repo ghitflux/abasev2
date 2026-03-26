@@ -28,6 +28,11 @@ export type AgentePagamentoContrato = {
    */
   readonly contrato_codigo: string;
   /**
+   * @default ""
+   * @type string
+   */
+  readonly agente_nome: string;
+  /**
    * @type string
    */
   readonly status_contrato: string;
@@ -66,11 +71,11 @@ export type AgentePagamentoContrato = {
   /**
    * @type string
    */
-  readonly pagamento_inicial_valor: string;
+  readonly pagamento_inicial_valor: string | null;
   /**
-   * @type string
+   * @type string, date-time
    */
-  readonly pagamento_inicial_paid_at: string;
+  readonly pagamento_inicial_paid_at: string | null;
   /**
    * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
    * @type string | undefined, decimal

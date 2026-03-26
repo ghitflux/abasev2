@@ -37,7 +37,7 @@
             ],
             "type": "string",
             "description": "* `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente",
-            "x-readme-ref-name": "Status427Enum"
+            "x-readme-ref-name": "AssociadoStatusEnum"
           },
           "status_renovacao": { "type": "string", "readOnly": true },
           "status_visual_slug": { "type": "string", "readOnly": true },

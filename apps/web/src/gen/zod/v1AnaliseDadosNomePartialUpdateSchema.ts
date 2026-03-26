@@ -8,7 +8,7 @@ import { analiseDadosUpdateSchema } from "./analiseDadosUpdateSchema.ts";
 import { patchedAnaliseDadosUpdateSchema } from "./patchedAnaliseDadosUpdateSchema.ts";
 
 export const V1AnaliseDadosNomePartialUpdatePathParamsSchema = z.object({
-  associado_id: z.string(),
+  associado_id: z.string().regex(/^\d+$/),
 });
 
 export const V1AnaliseDadosNomePartialUpdate200Schema = z.lazy(

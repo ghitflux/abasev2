@@ -8,7 +8,10 @@ import { devolucaoContratoListSchema } from "./devolucaoContratoListSchema.ts";
 
 export const V1TesourariaDevolucoesContratosRegistrarCreatePathParamsSchema =
   z.object({
-    id: z.string(),
+    id: z.coerce
+      .number()
+      .int()
+      .describe("A unique integer value identifying this contrato."),
   });
 
 export const V1TesourariaDevolucoesContratosRegistrarCreate200Schema = z.lazy(

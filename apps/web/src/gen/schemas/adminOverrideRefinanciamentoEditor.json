@@ -1,0 +1,63 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "status": { "type": "string", "readOnly": true },
+    "competencia_solicitada": {
+      "type": "string",
+      "format": "date",
+      "readOnly": true
+    },
+    "valor_refinanciamento": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+      "readOnly": true
+    },
+    "repasse_agente": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+      "readOnly": true
+    },
+    "executado_em": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "nullable": true
+    },
+    "data_ativacao_ciclo": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "nullable": true
+    },
+    "motivo_bloqueio": { "type": "string", "readOnly": true },
+    "observacao": { "type": "string", "readOnly": true },
+    "analista_note": { "type": "string", "readOnly": true },
+    "coordenador_note": { "type": "string", "readOnly": true },
+    "reviewed_by_id": { "type": "integer", "readOnly": true, "nullable": true },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "nullable": true
+    }
+  },
+  "required": [
+    "analista_note",
+    "competencia_solicitada",
+    "coordenador_note",
+    "data_ativacao_ciclo",
+    "executado_em",
+    "id",
+    "motivo_bloqueio",
+    "observacao",
+    "repasse_agente",
+    "reviewed_by_id",
+    "status",
+    "updated_at",
+    "valor_refinanciamento"
+  ],
+  "x-readme-ref-name": "AdminOverrideRefinanciamentoEditor"
+}

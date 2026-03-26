@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "nullable": true },
+    "cycle_ref": { "type": "string" },
+    "cycle_id": { "type": "integer", "nullable": true },
+    "numero": { "type": "integer" },
+    "referencia_mes": { "type": "string", "format": "date" },
+    "valor": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "data_vencimento": { "type": "string", "format": "date" },
+    "status": { "type": "string" },
+    "data_pagamento": { "type": "string", "format": "date", "nullable": true },
+    "observacao": { "type": "string" },
+    "layout_bucket": { "type": "string" }
+  },
+  "required": [
+    "data_vencimento",
+    "numero",
+    "referencia_mes",
+    "status",
+    "valor"
+  ],
+  "x-readme-ref-name": "ParcelaLayoutWrite"
+}

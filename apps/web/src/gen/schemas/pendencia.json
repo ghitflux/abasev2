@@ -2,6 +2,12 @@
   "type": "object",
   "properties": {
     "id": { "type": "integer", "readOnly": true },
+    "esteira_item_id": { "type": "integer", "readOnly": true },
+    "associado_created_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true
+    },
     "tipo": { "type": "string", "maxLength": 60 },
     "descricao": { "type": "string" },
     "status": {
@@ -16,7 +22,7 @@
     "matricula": { "type": "string", "readOnly": true },
     "matricula_display": { "type": "string", "readOnly": true },
     "cpf_cnpj": { "type": "string", "readOnly": true },
-    "contrato_codigo": { "type": "string", "readOnly": true },
+    "contrato_codigo": { "type": "string", "nullable": true, "readOnly": true },
     "created_at": { "type": "string", "format": "date-time", "readOnly": true },
     "resolvida_em": {
       "type": "string",
@@ -25,12 +31,14 @@
     }
   },
   "required": [
+    "associado_created_at",
     "associado_id",
     "associado_nome",
     "contrato_codigo",
     "cpf_cnpj",
     "created_at",
     "descricao",
+    "esteira_item_id",
     "id",
     "matricula",
     "matricula_display"

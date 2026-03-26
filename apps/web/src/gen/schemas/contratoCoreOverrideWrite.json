@@ -1,0 +1,66 @@
+{
+  "type": "object",
+  "properties": {
+    "updated_at": { "type": "string", "format": "date-time", "nullable": true },
+    "motivo": { "type": "string" },
+    "status": { "type": "string" },
+    "contato_web": { "type": "boolean" },
+    "termos_web": { "type": "boolean" },
+    "agente_id": { "type": "integer", "nullable": true },
+    "valor_bruto": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "valor_liquido": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "valor_mensalidade": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "taxa_antecipacao": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,3}(?:\\.\\d{0,2})?$"
+    },
+    "margem_disponivel": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "valor_total_antecipacao": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "doacao_associado": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "comissao_agente": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "data_contrato": { "type": "string", "format": "date", "nullable": true },
+    "data_aprovacao": { "type": "string", "format": "date", "nullable": true },
+    "data_primeira_mensalidade": {
+      "type": "string",
+      "format": "date",
+      "nullable": true
+    },
+    "mes_averbacao": { "type": "string", "format": "date", "nullable": true },
+    "auxilio_liberado_em": {
+      "type": "string",
+      "format": "date",
+      "nullable": true
+    }
+  },
+  "required": ["motivo"],
+  "x-readme-ref-name": "ContratoCoreOverrideWrite"
+}

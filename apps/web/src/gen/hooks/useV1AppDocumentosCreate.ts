@@ -3,7 +3,10 @@
  * Do not edit manually.
  */
 
-import type { V1AppDocumentosCreateMutationResponse } from "../models/V1AppDocumentosCreate.ts";
+import type {
+  V1AppDocumentosCreateMutationRequest,
+  V1AppDocumentosCreateMutationResponse,
+} from "../models/V1AppDocumentosCreate.ts";
 import type {
   Client,
   RequestConfig,
@@ -25,25 +28,25 @@ export type V1AppDocumentosCreateMutationKey = ReturnType<
 >;
 
 export function v1AppDocumentosCreateMutationOptions<TContext = unknown>(
-  config: Partial<RequestConfig> & { client?: Client } = {},
+  config: Partial<RequestConfig<V1AppDocumentosCreateMutationRequest>> & {
+    client?: Client;
+  } = {},
 ) {
   const mutationKey = v1AppDocumentosCreateMutationKey();
   return mutationOptions<
     V1AppDocumentosCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: V1AppDocumentosCreateMutationRequest },
     TContext
   >({
     mutationKey,
-    mutationFn: async () => {
-      return v1AppDocumentosCreate(config);
+    mutationFn: async ({ data }) => {
+      return v1AppDocumentosCreate(data, config);
     },
   });
 }
 
 /**
- * @description Upload de documento pelo próprio associado para resolver pendência.
- * Multipart: tipo, arquivo, observacao (opcional).
  * {@link /api/v1/app/documentos/}
  */
 export function useV1AppDocumentosCreate<TContext>(
@@ -51,10 +54,12 @@ export function useV1AppDocumentosCreate<TContext>(
     mutation?: UseMutationOptions<
       V1AppDocumentosCreateMutationResponse,
       ResponseErrorConfig<Error>,
-      void,
+      { data: V1AppDocumentosCreateMutationRequest },
       TContext
     > & { client?: QueryClient };
-    client?: Partial<RequestConfig> & { client?: Client };
+    client?: Partial<RequestConfig<V1AppDocumentosCreateMutationRequest>> & {
+      client?: Client;
+    };
   } = {},
 ) {
   const { mutation = {}, client: config = {} } = options ?? {};
@@ -67,14 +72,14 @@ export function useV1AppDocumentosCreate<TContext>(
   ) as UseMutationOptions<
     V1AppDocumentosCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: V1AppDocumentosCreateMutationRequest },
     TContext
   >;
 
   return useMutation<
     V1AppDocumentosCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: V1AppDocumentosCreateMutationRequest },
     TContext
   >(
     {
@@ -86,7 +91,7 @@ export function useV1AppDocumentosCreate<TContext>(
   ) as UseMutationResult<
     V1AppDocumentosCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: V1AppDocumentosCreateMutationRequest },
     TContext
   >;
 }

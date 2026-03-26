@@ -3,10 +3,9 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AppMensalidadesRetrieve200 = any;
+export type AppMensalidadesRetrieve200 = {
+  [key: string]: any;
+};
 
 export type AppMensalidadesRetrieveQueryResponse = AppMensalidadesRetrieve200;
 

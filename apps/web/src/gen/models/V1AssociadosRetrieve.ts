@@ -3,6 +3,8 @@
  * Do not edit manually.
  */
 
+import type { AssociadoDetail } from "./AssociadoDetail.ts";
+
 export type V1AssociadosRetrievePathParams = {
   /**
    * @description A unique integer value identifying this associado.
@@ -11,10 +13,7 @@ export type V1AssociadosRetrievePathParams = {
   id: number;
 };
 
-/**
- * @description No response body
- */
-export type V1AssociadosRetrieve200 = any;
+export type V1AssociadosRetrieve200 = AssociadoDetail;
 
 export type V1AssociadosRetrieveQueryResponse = V1AssociadosRetrieve200;
 

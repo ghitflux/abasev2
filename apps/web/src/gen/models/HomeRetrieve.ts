@@ -3,10 +3,9 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type HomeRetrieve200 = any;
+export type HomeRetrieve200 = {
+  [key: string]: any;
+};
 
 export type HomeRetrieveQueryResponse = HomeRetrieve200;
 

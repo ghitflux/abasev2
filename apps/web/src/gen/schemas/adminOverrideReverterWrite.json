@@ -1,0 +1,6 @@
+{
+  "type": "object",
+  "properties": { "motivo_reversao": { "type": "string" } },
+  "required": ["motivo_reversao"],
+  "x-readme-ref-name": "AdminOverrideReverterWrite"
+}

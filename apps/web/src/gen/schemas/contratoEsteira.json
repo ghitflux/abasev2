@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "codigo": { "type": "string", "readOnly": true },
+    "associado_nome": { "type": "string", "readOnly": true },
+    "cpf_cnpj": { "type": "string", "readOnly": true },
+    "matricula": { "type": "string", "readOnly": true },
+    "matricula_display": { "type": "string", "readOnly": true }
+  },
+  "required": [
+    "associado_nome",
+    "codigo",
+    "cpf_cnpj",
+    "matricula",
+    "matricula_display"
+  ],
+  "x-readme-ref-name": "ContratoEsteira"
+}

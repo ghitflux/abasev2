@@ -4,12 +4,12 @@
  */
 
 import * as z from "zod";
+import { associadoStatusEnumSchema } from "./associadoStatusEnumSchema.ts";
 import { blankEnumSchema } from "./blankEnumSchema.ts";
 import { contatoHistoricoWriteSchema } from "./contatoHistoricoWriteSchema.ts";
 import { dadosBancariosWriteSchema } from "./dadosBancariosWriteSchema.ts";
 import { enderecoWriteSchema } from "./enderecoWriteSchema.ts";
 import { estadoCivilEnumSchema } from "./estadoCivilEnumSchema.ts";
-import { status427EnumSchema } from "./status427EnumSchema.ts";
 import { tipoDocumentoEnumSchema } from "./tipoDocumentoEnumSchema.ts";
 
 export const patchedAssociadoUpdateSchema = z.object({
@@ -31,7 +31,7 @@ export const patchedAssociadoUpdateSchema = z.object({
   },
   cargo: z.optional(z.string().max(120)),
   get status() {
-    return status427EnumSchema
+    return associadoStatusEnumSchema
       .describe(
         "* `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente",
       )

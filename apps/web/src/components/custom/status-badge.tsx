@@ -23,6 +23,8 @@ const STATUS_STYLES: Record<string, string> = {
   quitada: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
   liquidada: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
   liquidado: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
+  elegivel_agora:
+    "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
   ativa: "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/30",
   aberto: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   analise: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
@@ -60,6 +62,9 @@ const STATUS_STYLES: Record<string, string> = {
   bloqueado: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
   revertido: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
   revertida: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
+  sem_parcelas_elegiveis:
+    "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
+  sem_contrato: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
   fechado: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
   inativo: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
   suspenso: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",

@@ -3,15 +3,19 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AssociadodoisAtualizarBasicoCreate200 = any;
+export type AssociadodoisAtualizarBasicoCreate200 = {
+  [key: string]: any;
+};
+
+export type AssociadodoisAtualizarBasicoCreateMutationRequest = {
+  [key: string]: any;
+};
 
 export type AssociadodoisAtualizarBasicoCreateMutationResponse =
   AssociadodoisAtualizarBasicoCreate200;
 
 export type AssociadodoisAtualizarBasicoCreateMutation = {
   Response: AssociadodoisAtualizarBasicoCreate200;
+  Request: AssociadodoisAtualizarBasicoCreateMutationRequest;
   Errors: any;
 };

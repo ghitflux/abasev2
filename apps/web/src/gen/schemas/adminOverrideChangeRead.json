@@ -1,0 +1,27 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "entity_type": { "type": "string", "readOnly": true },
+    "entity_id": { "type": "integer", "readOnly": true },
+    "competencia_referencia": {
+      "type": "string",
+      "format": "date",
+      "readOnly": true,
+      "nullable": true
+    },
+    "resumo": { "type": "string", "readOnly": true },
+    "before_snapshot": { "readOnly": true },
+    "after_snapshot": { "readOnly": true }
+  },
+  "required": [
+    "after_snapshot",
+    "before_snapshot",
+    "competencia_referencia",
+    "entity_id",
+    "entity_type",
+    "id",
+    "resumo"
+  ],
+  "x-readme-ref-name": "AdminOverrideChangeRead"
+}

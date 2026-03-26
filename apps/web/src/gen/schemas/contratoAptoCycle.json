@@ -1,0 +1,32 @@
+{
+  "type": "object",
+  "properties": {
+    "numero": { "type": "integer" },
+    "status": { "type": "string" },
+    "status_visual_slug": { "type": "string" },
+    "status_visual_label": { "type": "string" },
+    "resumo_referencias": { "type": "string" },
+    "parcelas_pagas": { "type": "integer" },
+    "parcelas_total": { "type": "integer" },
+    "valor_total": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "primeira_competencia_ciclo": { "type": "string", "format": "date" },
+    "ultima_competencia_ciclo": { "type": "string", "format": "date" }
+  },
+  "required": [
+    "numero",
+    "parcelas_pagas",
+    "parcelas_total",
+    "primeira_competencia_ciclo",
+    "resumo_referencias",
+    "status",
+    "status_visual_label",
+    "status_visual_slug",
+    "ultima_competencia_ciclo",
+    "valor_total"
+  ],
+  "x-readme-ref-name": "ContratoAptoCycle"
+}

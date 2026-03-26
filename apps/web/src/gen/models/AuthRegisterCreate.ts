@@ -3,14 +3,18 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AuthRegisterCreate200 = any;
+import type { LegacyRegister } from "./LegacyRegister.ts";
 
-export type AuthRegisterCreateMutationResponse = AuthRegisterCreate200;
+export type AuthRegisterCreate201 = {
+  [key: string]: any;
+};
+
+export type AuthRegisterCreateMutationRequest = LegacyRegister;
+
+export type AuthRegisterCreateMutationResponse = AuthRegisterCreate201;
 
 export type AuthRegisterCreateMutation = {
-  Response: AuthRegisterCreate200;
+  Response: AuthRegisterCreate201;
+  Request: AuthRegisterCreateMutationRequest;
   Errors: any;
 };

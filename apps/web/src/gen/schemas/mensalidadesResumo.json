@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "pagas": { "type": "integer" },
+    "total": { "type": "integer" },
+    "descricao": { "type": "string" },
+    "apto_refinanciamento": { "type": "boolean" },
+    "refinanciamento_ativo": { "type": "boolean" }
+  },
+  "required": [
+    "apto_refinanciamento",
+    "descricao",
+    "pagas",
+    "refinanciamento_ativo",
+    "total"
+  ],
+  "x-readme-ref-name": "MensalidadesResumo"
+}

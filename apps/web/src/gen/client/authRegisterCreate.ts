@@ -4,7 +4,10 @@
  */
 
 import fetch from "@kubb/plugin-client/clients/axios";
-import type { AuthRegisterCreateMutationResponse } from "../models/AuthRegisterCreate.ts";
+import type {
+  AuthRegisterCreateMutationRequest,
+  AuthRegisterCreateMutationResponse,
+} from "../models/AuthRegisterCreate.ts";
 import type {
   Client,
   RequestConfig,
@@ -20,17 +23,23 @@ function getAuthRegisterCreateUrl() {
  * {@link /api/auth/register}
  */
 export async function authRegisterCreate(
-  config: Partial<RequestConfig> & { client?: Client } = {},
+  data: AuthRegisterCreateMutationRequest,
+  config: Partial<RequestConfig<AuthRegisterCreateMutationRequest>> & {
+    client?: Client;
+  } = {},
 ) {
   const { client: request = fetch, ...requestConfig } = config;
+
+  const requestData = data;
 
   const res = await request<
     AuthRegisterCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    unknown
+    AuthRegisterCreateMutationRequest
   >({
     method: "POST",
     url: getAuthRegisterCreateUrl().url.toString(),
+    data: requestData,
     ...requestConfig,
   });
   return res.data;

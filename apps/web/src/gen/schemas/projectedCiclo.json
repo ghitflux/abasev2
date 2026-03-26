@@ -1,0 +1,208 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer" },
+    "contrato_id": { "type": "integer" },
+    "contrato_codigo": { "type": "string" },
+    "contrato_status": { "type": "string" },
+    "numero": { "type": "integer" },
+    "data_inicio": { "type": "string", "format": "date" },
+    "data_fim": { "type": "string", "format": "date" },
+    "status": { "type": "string" },
+    "fase_ciclo": { "type": "string" },
+    "situacao_financeira": { "type": "string" },
+    "status_visual_slug": { "type": "string" },
+    "status_visual_label": { "type": "string" },
+    "valor_total": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "data_ativacao_ciclo": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+    },
+    "origem_data_ativacao": { "type": "string" },
+    "ativacao_inferida": { "type": "boolean" },
+    "data_solicitacao_renovacao": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+    },
+    "data_renovacao": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+    },
+    "origem_renovacao": { "type": "string" },
+    "primeira_competencia_ciclo": { "type": "string", "format": "date" },
+    "ultima_competencia_ciclo": { "type": "string", "format": "date" },
+    "resumo_referencias": { "type": "string" },
+    "refinanciamento_id": { "type": "integer", "nullable": true },
+    "legacy_refinanciamento_id": { "type": "integer", "nullable": true },
+    "comprovantes_ciclo": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "nullable": true },
+          "tipo": { "type": "string" },
+          "papel": { "type": "string" },
+          "arquivo": { "type": "string" },
+          "arquivo_referencia": { "type": "string" },
+          "arquivo_disponivel_localmente": { "type": "boolean" },
+          "tipo_referencia": { "type": "string" },
+          "nome_original": { "type": "string" },
+          "mime": { "type": "string" },
+          "size_bytes": { "type": "integer", "nullable": true },
+          "data_pagamento": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "origem": { "type": "string" },
+          "status_validacao": { "type": "string" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "legacy_comprovante_id": { "type": "integer", "nullable": true }
+        },
+        "required": [
+          "arquivo",
+          "arquivo_disponivel_localmente",
+          "arquivo_referencia",
+          "created_at",
+          "data_pagamento",
+          "id",
+          "legacy_comprovante_id",
+          "mime",
+          "nome_original",
+          "origem",
+          "papel",
+          "size_bytes",
+          "tipo",
+          "tipo_referencia"
+        ],
+        "x-readme-ref-name": "ProjectedComprovante"
+      }
+    },
+    "termo_antecipacao": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "nullable": true },
+            "tipo": { "type": "string" },
+            "papel": { "type": "string" },
+            "arquivo": { "type": "string" },
+            "arquivo_referencia": { "type": "string" },
+            "arquivo_disponivel_localmente": { "type": "boolean" },
+            "tipo_referencia": { "type": "string" },
+            "nome_original": { "type": "string" },
+            "mime": { "type": "string" },
+            "size_bytes": { "type": "integer", "nullable": true },
+            "data_pagamento": {
+              "type": "string",
+              "format": "date-time",
+              "nullable": true
+            },
+            "origem": { "type": "string" },
+            "status_validacao": { "type": "string" },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "nullable": true
+            },
+            "legacy_comprovante_id": { "type": "integer", "nullable": true }
+          },
+          "required": [
+            "arquivo",
+            "arquivo_disponivel_localmente",
+            "arquivo_referencia",
+            "created_at",
+            "data_pagamento",
+            "id",
+            "legacy_comprovante_id",
+            "mime",
+            "nome_original",
+            "origem",
+            "papel",
+            "size_bytes",
+            "tipo",
+            "tipo_referencia"
+          ],
+          "x-readme-ref-name": "ProjectedComprovante"
+        }
+      ],
+      "nullable": true
+    },
+    "parcelas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "numero": { "type": "integer" },
+          "referencia_mes": { "type": "string", "format": "date" },
+          "valor": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+          },
+          "data_vencimento": { "type": "string", "format": "date" },
+          "status": { "type": "string" },
+          "data_pagamento": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "observacao": { "type": "string" }
+        },
+        "required": [
+          "data_pagamento",
+          "data_vencimento",
+          "id",
+          "numero",
+          "observacao",
+          "referencia_mes",
+          "status",
+          "valor"
+        ],
+        "x-readme-ref-name": "ProjectedParcela"
+      }
+    }
+  },
+  "required": [
+    "ativacao_inferida",
+    "comprovantes_ciclo",
+    "contrato_codigo",
+    "contrato_id",
+    "contrato_status",
+    "data_ativacao_ciclo",
+    "data_fim",
+    "data_inicio",
+    "data_renovacao",
+    "data_solicitacao_renovacao",
+    "fase_ciclo",
+    "id",
+    "legacy_refinanciamento_id",
+    "numero",
+    "origem_data_ativacao",
+    "origem_renovacao",
+    "parcelas",
+    "primeira_competencia_ciclo",
+    "refinanciamento_id",
+    "resumo_referencias",
+    "situacao_financeira",
+    "status",
+    "status_visual_label",
+    "status_visual_slug",
+    "termo_antecipacao",
+    "ultima_competencia_ciclo",
+    "valor_total"
+  ],
+  "x-readme-ref-name": "ProjectedCiclo"
+}

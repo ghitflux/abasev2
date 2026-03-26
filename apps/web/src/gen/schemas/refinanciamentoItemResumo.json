@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer" },
+    "numero": { "type": "integer" },
+    "pagamento_mensalidade_id": { "type": "integer", "nullable": true },
+    "referencia_mes": { "type": "string", "format": "date" },
+    "valor": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+    },
+    "status": { "type": "string" }
+  },
+  "required": [
+    "id",
+    "numero",
+    "pagamento_mensalidade_id",
+    "referencia_mes",
+    "status",
+    "valor"
+  ],
+  "x-readme-ref-name": "RefinanciamentoItemResumo"
+}

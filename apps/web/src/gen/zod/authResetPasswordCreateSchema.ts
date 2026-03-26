@@ -4,11 +4,13 @@
  */
 
 import * as z from "zod";
+import { legacyResetPasswordSchema } from "./legacyResetPasswordSchema.ts";
 
-/**
- * @description No response body
- */
-export const authResetPasswordCreate200Schema = z.any();
+export const authResetPasswordCreate200Schema = z.object({}).catchall(z.any());
+
+export const authResetPasswordCreateMutationRequestSchema = z.lazy(
+  () => legacyResetPasswordSchema,
+);
 
 export const authResetPasswordCreateMutationResponseSchema = z.lazy(
   () => authResetPasswordCreate200Schema,

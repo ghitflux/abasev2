@@ -3,7 +3,10 @@
  * Do not edit manually.
  */
 
-import type { AssociadodoisReuploadsCreateMutationResponse } from "../models/AssociadodoisReuploadsCreate.ts";
+import type {
+  AssociadodoisReuploadsCreateMutationRequest,
+  AssociadodoisReuploadsCreateMutationResponse,
+} from "../models/AssociadodoisReuploadsCreate.ts";
 import type {
   Client,
   RequestConfig,
@@ -25,18 +28,20 @@ export type AssociadodoisReuploadsCreateMutationKey = ReturnType<
 >;
 
 export function associadodoisReuploadsCreateMutationOptions<TContext = unknown>(
-  config: Partial<RequestConfig> & { client?: Client } = {},
+  config: Partial<
+    RequestConfig<AssociadodoisReuploadsCreateMutationRequest>
+  > & { client?: Client } = {},
 ) {
   const mutationKey = associadodoisReuploadsCreateMutationKey();
   return mutationOptions<
     AssociadodoisReuploadsCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data?: AssociadodoisReuploadsCreateMutationRequest },
     TContext
   >({
     mutationKey,
-    mutationFn: async () => {
-      return associadodoisReuploadsCreate(config);
+    mutationFn: async ({ data }) => {
+      return associadodoisReuploadsCreate(data, config);
     },
   });
 }
@@ -49,10 +54,12 @@ export function useAssociadodoisReuploadsCreate<TContext>(
     mutation?: UseMutationOptions<
       AssociadodoisReuploadsCreateMutationResponse,
       ResponseErrorConfig<Error>,
-      void,
+      { data?: AssociadodoisReuploadsCreateMutationRequest },
       TContext
     > & { client?: QueryClient };
-    client?: Partial<RequestConfig> & { client?: Client };
+    client?: Partial<
+      RequestConfig<AssociadodoisReuploadsCreateMutationRequest>
+    > & { client?: Client };
   } = {},
 ) {
   const { mutation = {}, client: config = {} } = options ?? {};
@@ -65,14 +72,14 @@ export function useAssociadodoisReuploadsCreate<TContext>(
   ) as UseMutationOptions<
     AssociadodoisReuploadsCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data?: AssociadodoisReuploadsCreateMutationRequest },
     TContext
   >;
 
   return useMutation<
     AssociadodoisReuploadsCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data?: AssociadodoisReuploadsCreateMutationRequest },
     TContext
   >(
     {
@@ -84,7 +91,7 @@ export function useAssociadodoisReuploadsCreate<TContext>(
   ) as UseMutationResult<
     AssociadodoisReuploadsCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data?: AssociadodoisReuploadsCreateMutationRequest },
     TContext
   >;
 }

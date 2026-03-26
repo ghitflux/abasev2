@@ -27,7 +27,12 @@
       "nullable": true
     },
     "paid_at": { "type": "string", "format": "date-time", "nullable": true },
-    "referencia_at": { "type": "string", "readOnly": true },
+    "referencia_at": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "readOnly": true
+    },
     "created_at": { "type": "string", "format": "date-time" },
     "created_by_name": { "type": "string", "readOnly": true },
     "notes": { "type": "string" }

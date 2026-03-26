@@ -1,6 +1,0 @@
-{
-  "enum": ["fixa", "variavel"],
-  "type": "string",
-  "description": "* `fixa` - Fixa\n* `variavel` - Variável",
-  "x-readme-ref-name": "TipoEnum"
-}

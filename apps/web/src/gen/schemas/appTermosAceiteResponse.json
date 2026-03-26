@@ -1,0 +1,9 @@
+{
+  "type": "object",
+  "properties": {
+    "ok": { "type": "boolean" },
+    "aceite_termos": { "type": "boolean" }
+  },
+  "required": ["aceite_termos", "ok"],
+  "x-readme-ref-name": "AppTermosAceiteResponse"
+}

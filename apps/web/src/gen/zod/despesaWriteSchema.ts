@@ -5,9 +5,9 @@
 
 import * as z from "zod";
 import { blankEnumSchema } from "./blankEnumSchema.ts";
+import { despesaStatusEnumSchema } from "./despesaStatusEnumSchema.ts";
+import { despesaTipoEnumSchema } from "./despesaTipoEnumSchema.ts";
 import { recorrenciaEnumSchema } from "./recorrenciaEnumSchema.ts";
-import { status7A5EnumSchema } from "./status7A5EnumSchema.ts";
-import { tipoEnumSchema } from "./tipoEnumSchema.ts";
 
 export const despesaWriteSchema = z.object({
   categoria: z.string().max(100),
@@ -16,12 +16,12 @@ export const despesaWriteSchema = z.object({
   data_despesa: z.iso.date(),
   data_pagamento: z.iso.date().nullish(),
   get status() {
-    return status7A5EnumSchema
+    return despesaStatusEnumSchema
       .describe("* `pendente` - Pendente\n* `pago` - Pago")
       .optional();
   },
   get tipo() {
-    return z.union([tipoEnumSchema, blankEnumSchema]).optional();
+    return z.union([despesaTipoEnumSchema, blankEnumSchema]).optional();
   },
   get recorrencia() {
     return recorrenciaEnumSchema

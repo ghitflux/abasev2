@@ -4,7 +4,10 @@
  */
 
 import fetch from "@kubb/plugin-client/clients/axios";
-import type { AuthResetPasswordCreateMutationResponse } from "../models/AuthResetPasswordCreate.ts";
+import type {
+  AuthResetPasswordCreateMutationRequest,
+  AuthResetPasswordCreateMutationResponse,
+} from "../models/AuthResetPasswordCreate.ts";
 import type {
   Client,
   RequestConfig,
@@ -20,17 +23,23 @@ function getAuthResetPasswordCreateUrl() {
  * {@link /api/auth/reset-password}
  */
 export async function authResetPasswordCreate(
-  config: Partial<RequestConfig> & { client?: Client } = {},
+  data: AuthResetPasswordCreateMutationRequest,
+  config: Partial<RequestConfig<AuthResetPasswordCreateMutationRequest>> & {
+    client?: Client;
+  } = {},
 ) {
   const { client: request = fetch, ...requestConfig } = config;
+
+  const requestData = data;
 
   const res = await request<
     AuthResetPasswordCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    unknown
+    AuthResetPasswordCreateMutationRequest
   >({
     method: "POST",
     url: getAuthResetPasswordCreateUrl().url.toString(),
+    data: requestData,
     ...requestConfig,
   });
   return res.data;

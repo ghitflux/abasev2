@@ -1,0 +1,37 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "numero": { "type": "integer", "readOnly": true },
+    "referencia_mes": { "type": "string", "format": "date", "readOnly": true },
+    "valor": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+      "readOnly": true
+    },
+    "status": { "type": "string", "readOnly": true },
+    "data_vencimento": {
+      "type": "string",
+      "format": "date",
+      "readOnly": true,
+      "nullable": true
+    },
+    "data_pagamento": {
+      "type": "string",
+      "format": "date",
+      "readOnly": true,
+      "nullable": true
+    }
+  },
+  "required": [
+    "data_pagamento",
+    "data_vencimento",
+    "id",
+    "numero",
+    "referencia_mes",
+    "status",
+    "valor"
+  ],
+  "x-readme-ref-name": "ContractLiquidacaoParcela"
+}

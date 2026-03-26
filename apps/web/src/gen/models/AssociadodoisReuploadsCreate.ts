@@ -3,15 +3,19 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AssociadodoisReuploadsCreate200 = any;
+export type AssociadodoisReuploadsCreate200 = {
+  [key: string]: any;
+};
+
+export type AssociadodoisReuploadsCreateMutationRequest = {
+  [key: string]: any;
+};
 
 export type AssociadodoisReuploadsCreateMutationResponse =
   AssociadodoisReuploadsCreate200;
 
 export type AssociadodoisReuploadsCreateMutation = {
   Response: AssociadodoisReuploadsCreate200;
+  Request: AssociadodoisReuploadsCreateMutationRequest;
   Errors: any;
 };

@@ -1,0 +1,96 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "escopo": { "type": "string", "readOnly": true },
+    "resumo": { "type": "string", "readOnly": true },
+    "motivo": { "type": "string", "readOnly": true },
+    "confirmacao_dupla": { "type": "boolean", "readOnly": true },
+    "created_at": { "type": "string", "format": "date-time", "readOnly": true },
+    "realizado_por": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "readOnly": true },
+            "full_name": { "type": "string", "readOnly": true }
+          },
+          "required": ["full_name", "id"],
+          "x-readme-ref-name": "SimpleUser"
+        }
+      ],
+      "readOnly": true
+    },
+    "revertida_em": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "nullable": true
+    },
+    "revertida_por": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "readOnly": true },
+            "full_name": { "type": "string", "readOnly": true }
+          },
+          "required": ["full_name", "id"],
+          "x-readme-ref-name": "SimpleUser"
+        }
+      ],
+      "readOnly": true,
+      "nullable": true
+    },
+    "motivo_reversao": { "type": "string", "readOnly": true },
+    "before_snapshot": { "readOnly": true },
+    "after_snapshot": { "readOnly": true },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "entity_type": { "type": "string", "readOnly": true },
+          "entity_id": { "type": "integer", "readOnly": true },
+          "competencia_referencia": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true,
+            "nullable": true
+          },
+          "resumo": { "type": "string", "readOnly": true },
+          "before_snapshot": { "readOnly": true },
+          "after_snapshot": { "readOnly": true }
+        },
+        "required": [
+          "after_snapshot",
+          "before_snapshot",
+          "competencia_referencia",
+          "entity_id",
+          "entity_type",
+          "id",
+          "resumo"
+        ],
+        "x-readme-ref-name": "AdminOverrideChangeRead"
+      },
+      "readOnly": true
+    }
+  },
+  "required": [
+    "after_snapshot",
+    "before_snapshot",
+    "changes",
+    "confirmacao_dupla",
+    "created_at",
+    "escopo",
+    "id",
+    "motivo",
+    "motivo_reversao",
+    "realizado_por",
+    "resumo",
+    "revertida_em",
+    "revertida_por"
+  ],
+  "x-readme-ref-name": "AdminOverrideEventRead"
+}

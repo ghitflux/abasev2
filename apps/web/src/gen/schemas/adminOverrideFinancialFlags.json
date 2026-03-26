@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "tem_retorno": { "type": "boolean" },
+    "tem_baixa_manual": { "type": "boolean" },
+    "tem_liquidacao": { "type": "boolean" }
+  },
+  "required": ["tem_baixa_manual", "tem_liquidacao", "tem_retorno"],
+  "x-readme-ref-name": "AdminOverrideFinancialFlags"
+}

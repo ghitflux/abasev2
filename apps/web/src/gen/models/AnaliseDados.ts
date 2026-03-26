@@ -3,7 +3,7 @@
  * Do not edit manually.
  */
 
-import type { SimpleUser } from "./SimpleUser.ts";
+import type { EsteiraSimpleUser } from "./EsteiraSimpleUser.ts";
 
 export type AnaliseDados = {
   /**
@@ -29,7 +29,7 @@ export type AnaliseDados = {
    * @type string
    */
   readonly matricula_display: string;
-  readonly agente: SimpleUser;
+  readonly agente: EsteiraSimpleUser;
   /**
    * @type string
    */

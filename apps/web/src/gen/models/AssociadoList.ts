@@ -3,8 +3,8 @@
  * Do not edit manually.
  */
 
+import type { AssociadoStatusEnum } from "./AssociadoStatusEnum.ts";
 import type { SimpleUser } from "./SimpleUser.ts";
-import type { Status427Enum } from "./Status427Enum.ts";
 
 export type AssociadoList = {
   /**
@@ -39,7 +39,7 @@ export type AssociadoList = {
    * @description * `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente
    * @type string | undefined
    */
-  status?: Status427Enum;
+  status?: AssociadoStatusEnum;
   /**
    * @type string
    */

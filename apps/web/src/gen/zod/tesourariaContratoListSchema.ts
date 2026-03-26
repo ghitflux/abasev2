@@ -4,6 +4,8 @@
  */
 
 import * as z from "zod";
+import { comprovanteResumoSchema } from "./comprovanteResumoSchema.ts";
+import { dadosBancariosSchema } from "./dadosBancariosSchema.ts";
 import { simpleUserSchema } from "./simpleUserSchema.ts";
 
 export const tesourariaContratoListSchema = z.object({
@@ -14,7 +16,7 @@ export const tesourariaContratoListSchema = z.object({
   matricula: z.string(),
   chave_pix: z.string(),
   codigo: z.string(),
-  data_assinatura: z.iso.date(),
+  data_assinatura: z.iso.datetime(),
   status: z.string(),
   get agente() {
     return simpleUserSchema;
@@ -23,8 +25,12 @@ export const tesourariaContratoListSchema = z.object({
   percentual_repasse: z.string(),
   comissao_agente: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
   margem_disponivel: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
-  comprovantes: z.string(),
-  dados_bancarios: z.string(),
+  get comprovantes() {
+    return z.array(comprovanteResumoSchema);
+  },
+  get dados_bancarios() {
+    return dadosBancariosSchema.nullable();
+  },
   observacao_tesouraria: z.string(),
   etapa_atual: z.string(),
   situacao_esteira: z.string(),

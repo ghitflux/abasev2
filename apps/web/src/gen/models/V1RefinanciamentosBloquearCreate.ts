@@ -36,6 +36,7 @@ export type V1RefinanciamentosBloquearCreateMutationRequest = Omit<
   | "itens"
   | "mensalidades_pagas"
   | "mensalidades_total"
+  | "numero_ciclos"
   | "refinanciamento_numero"
   | "pagamento_status"
   | "legacy_refinanciamento_id"

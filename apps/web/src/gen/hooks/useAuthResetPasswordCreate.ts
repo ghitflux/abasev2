@@ -3,7 +3,10 @@
  * Do not edit manually.
  */
 
-import type { AuthResetPasswordCreateMutationResponse } from "../models/AuthResetPasswordCreate.ts";
+import type {
+  AuthResetPasswordCreateMutationRequest,
+  AuthResetPasswordCreateMutationResponse,
+} from "../models/AuthResetPasswordCreate.ts";
 import type {
   Client,
   RequestConfig,
@@ -25,18 +28,20 @@ export type AuthResetPasswordCreateMutationKey = ReturnType<
 >;
 
 export function authResetPasswordCreateMutationOptions<TContext = unknown>(
-  config: Partial<RequestConfig> & { client?: Client } = {},
+  config: Partial<RequestConfig<AuthResetPasswordCreateMutationRequest>> & {
+    client?: Client;
+  } = {},
 ) {
   const mutationKey = authResetPasswordCreateMutationKey();
   return mutationOptions<
     AuthResetPasswordCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: AuthResetPasswordCreateMutationRequest },
     TContext
   >({
     mutationKey,
-    mutationFn: async () => {
-      return authResetPasswordCreate(config);
+    mutationFn: async ({ data }) => {
+      return authResetPasswordCreate(data, config);
     },
   });
 }
@@ -49,10 +54,12 @@ export function useAuthResetPasswordCreate<TContext>(
     mutation?: UseMutationOptions<
       AuthResetPasswordCreateMutationResponse,
       ResponseErrorConfig<Error>,
-      void,
+      { data: AuthResetPasswordCreateMutationRequest },
       TContext
     > & { client?: QueryClient };
-    client?: Partial<RequestConfig> & { client?: Client };
+    client?: Partial<RequestConfig<AuthResetPasswordCreateMutationRequest>> & {
+      client?: Client;
+    };
   } = {},
 ) {
   const { mutation = {}, client: config = {} } = options ?? {};
@@ -65,14 +72,14 @@ export function useAuthResetPasswordCreate<TContext>(
   ) as UseMutationOptions<
     AuthResetPasswordCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: AuthResetPasswordCreateMutationRequest },
     TContext
   >;
 
   return useMutation<
     AuthResetPasswordCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: AuthResetPasswordCreateMutationRequest },
     TContext
   >(
     {
@@ -84,7 +91,7 @@ export function useAuthResetPasswordCreate<TContext>(
   ) as UseMutationResult<
     AuthResetPasswordCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: AuthResetPasswordCreateMutationRequest },
     TContext
   >;
 }

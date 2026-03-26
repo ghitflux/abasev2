@@ -3,15 +3,19 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AuthResetPasswordCreate200 = any;
+import type { LegacyResetPassword } from "./LegacyResetPassword.ts";
+
+export type AuthResetPasswordCreate200 = {
+  [key: string]: any;
+};
+
+export type AuthResetPasswordCreateMutationRequest = LegacyResetPassword;
 
 export type AuthResetPasswordCreateMutationResponse =
   AuthResetPasswordCreate200;
 
 export type AuthResetPasswordCreateMutation = {
   Response: AuthResetPasswordCreate200;
+  Request: AuthResetPasswordCreateMutationRequest;
   Errors: any;
 };

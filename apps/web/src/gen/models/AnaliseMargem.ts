@@ -3,7 +3,7 @@
  * Do not edit manually.
  */
 
-import type { SimpleUser } from "./SimpleUser.ts";
+import type { EsteiraSimpleUser } from "./EsteiraSimpleUser.ts";
 
 export type AnaliseMargem = {
   /**
@@ -27,7 +27,7 @@ export type AnaliseMargem = {
    * @type string
    */
   readonly cpf_cnpj: string;
-  readonly agente: SimpleUser;
+  readonly agente: EsteiraSimpleUser;
   /**
    * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
    * @type string | undefined, decimal

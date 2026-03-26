@@ -3,7 +3,10 @@
  * Do not edit manually.
  */
 
-import type { AssociadodoisAtualizarBasicoCreateMutationResponse } from "../models/AssociadodoisAtualizarBasicoCreate.ts";
+import type {
+  AssociadodoisAtualizarBasicoCreateMutationRequest,
+  AssociadodoisAtualizarBasicoCreateMutationResponse,
+} from "../models/AssociadodoisAtualizarBasicoCreate.ts";
 import type {
   Client,
   RequestConfig,
@@ -26,17 +29,21 @@ export type AssociadodoisAtualizarBasicoCreateMutationKey = ReturnType<
 
 export function associadodoisAtualizarBasicoCreateMutationOptions<
   TContext = unknown,
->(config: Partial<RequestConfig> & { client?: Client } = {}) {
+>(
+  config: Partial<
+    RequestConfig<AssociadodoisAtualizarBasicoCreateMutationRequest>
+  > & { client?: Client } = {},
+) {
   const mutationKey = associadodoisAtualizarBasicoCreateMutationKey();
   return mutationOptions<
     AssociadodoisAtualizarBasicoCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data?: AssociadodoisAtualizarBasicoCreateMutationRequest },
     TContext
   >({
     mutationKey,
-    mutationFn: async () => {
-      return associadodoisAtualizarBasicoCreate(config);
+    mutationFn: async ({ data }) => {
+      return associadodoisAtualizarBasicoCreate(data, config);
     },
   });
 }
@@ -49,10 +56,12 @@ export function useAssociadodoisAtualizarBasicoCreate<TContext>(
     mutation?: UseMutationOptions<
       AssociadodoisAtualizarBasicoCreateMutationResponse,
       ResponseErrorConfig<Error>,
-      void,
+      { data?: AssociadodoisAtualizarBasicoCreateMutationRequest },
       TContext
     > & { client?: QueryClient };
-    client?: Partial<RequestConfig> & { client?: Client };
+    client?: Partial<
+      RequestConfig<AssociadodoisAtualizarBasicoCreateMutationRequest>
+    > & { client?: Client };
   } = {},
 ) {
   const { mutation = {}, client: config = {} } = options ?? {};
@@ -66,14 +75,14 @@ export function useAssociadodoisAtualizarBasicoCreate<TContext>(
   ) as UseMutationOptions<
     AssociadodoisAtualizarBasicoCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data?: AssociadodoisAtualizarBasicoCreateMutationRequest },
     TContext
   >;
 
   return useMutation<
     AssociadodoisAtualizarBasicoCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data?: AssociadodoisAtualizarBasicoCreateMutationRequest },
     TContext
   >(
     {
@@ -85,7 +94,7 @@ export function useAssociadodoisAtualizarBasicoCreate<TContext>(
   ) as UseMutationResult<
     AssociadodoisAtualizarBasicoCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data?: AssociadodoisAtualizarBasicoCreateMutationRequest },
     TContext
   >;
 }

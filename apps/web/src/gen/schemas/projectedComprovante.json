@@ -1,0 +1,41 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "nullable": true },
+    "tipo": { "type": "string" },
+    "papel": { "type": "string" },
+    "arquivo": { "type": "string" },
+    "arquivo_referencia": { "type": "string" },
+    "arquivo_disponivel_localmente": { "type": "boolean" },
+    "tipo_referencia": { "type": "string" },
+    "nome_original": { "type": "string" },
+    "mime": { "type": "string" },
+    "size_bytes": { "type": "integer", "nullable": true },
+    "data_pagamento": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+    },
+    "origem": { "type": "string" },
+    "status_validacao": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time", "nullable": true },
+    "legacy_comprovante_id": { "type": "integer", "nullable": true }
+  },
+  "required": [
+    "arquivo",
+    "arquivo_disponivel_localmente",
+    "arquivo_referencia",
+    "created_at",
+    "data_pagamento",
+    "id",
+    "legacy_comprovante_id",
+    "mime",
+    "nome_original",
+    "origem",
+    "papel",
+    "size_bytes",
+    "tipo",
+    "tipo_referencia"
+  ],
+  "x-readme-ref-name": "ProjectedComprovante"
+}

@@ -7,7 +7,10 @@ import * as z from "zod";
 import { devolucaoAssociadoListSchema } from "./devolucaoAssociadoListSchema.ts";
 
 export const V1TesourariaDevolucoesReverterCreatePathParamsSchema = z.object({
-  id: z.string(),
+  id: z.coerce
+    .number()
+    .int()
+    .describe("A unique integer value identifying this devolucao associado."),
 });
 
 export const V1TesourariaDevolucoesReverterCreate200Schema = z.lazy(

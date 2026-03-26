@@ -20,6 +20,7 @@ export const V1AgentePagamentosNotificacoesMarcarLidasCreateMutationRequestSchem
       nome: true,
       cpf_cnpj: true,
       contrato_codigo: true,
+      agente_nome: true,
       status_contrato: true,
       status_visual_slug: true,
       status_visual_label: true,

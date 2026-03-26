@@ -8,6 +8,8 @@ import { pendenciaStatusEnumSchema } from "./pendenciaStatusEnumSchema.ts";
 
 export const pendenciaSchema = z.object({
   id: z.int(),
+  esteira_item_id: z.int(),
+  associado_created_at: z.iso.datetime(),
   tipo: z.optional(z.string().max(60)),
   descricao: z.string(),
   get status() {
@@ -23,7 +25,7 @@ export const pendenciaSchema = z.object({
   matricula: z.string(),
   matricula_display: z.string(),
   cpf_cnpj: z.string(),
-  contrato_codigo: z.string(),
+  contrato_codigo: z.nullable(z.string()),
   created_at: z.iso.datetime(),
   resolvida_em: z.iso.datetime().nullish(),
 });

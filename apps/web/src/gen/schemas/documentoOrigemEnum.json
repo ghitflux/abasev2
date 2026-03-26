@@ -1,0 +1,6 @@
+{
+  "enum": ["operacional", "legado_cadastro", "outro"],
+  "type": "string",
+  "description": "* `operacional` - Operacional\n* `legado_cadastro` - Legado cadastro\n* `outro` - Outro",
+  "x-readme-ref-name": "DocumentoOrigemEnum"
+}

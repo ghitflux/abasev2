@@ -3,10 +3,9 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AuthCheckEmailRetrieve200 = any;
+export type AuthCheckEmailRetrieve200 = {
+  [key: string]: any;
+};
 
 export type AuthCheckEmailRetrieveQueryResponse = AuthCheckEmailRetrieve200;
 

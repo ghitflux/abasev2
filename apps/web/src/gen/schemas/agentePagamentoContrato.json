@@ -6,6 +6,7 @@
     "nome": { "type": "string", "readOnly": true },
     "cpf_cnpj": { "type": "string", "readOnly": true },
     "contrato_codigo": { "type": "string", "readOnly": true },
+    "agente_nome": { "type": "string", "readOnly": true, "default": "" },
     "status_contrato": { "type": "string", "readOnly": true },
     "status_visual_slug": { "type": "string", "readOnly": true },
     "status_visual_label": { "type": "string", "readOnly": true },
@@ -19,8 +20,17 @@
     },
     "pagamento_inicial_status": { "type": "string", "readOnly": true },
     "pagamento_inicial_status_label": { "type": "string", "readOnly": true },
-    "pagamento_inicial_valor": { "type": "string", "readOnly": true },
-    "pagamento_inicial_paid_at": { "type": "string", "readOnly": true },
+    "pagamento_inicial_valor": {
+      "type": "string",
+      "nullable": true,
+      "readOnly": true
+    },
+    "pagamento_inicial_paid_at": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true,
+      "readOnly": true
+    },
     "valor_mensalidade": {
       "type": "string",
       "format": "decimal",
@@ -270,6 +280,7 @@
     }
   },
   "required": [
+    "agente_nome",
     "associado_id",
     "ciclos",
     "comprovantes_efetivacao",

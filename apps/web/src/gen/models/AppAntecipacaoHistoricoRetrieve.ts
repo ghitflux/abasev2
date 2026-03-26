@@ -3,10 +3,9 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AppAntecipacaoHistoricoRetrieve200 = any;
+export type AppAntecipacaoHistoricoRetrieve200 = {
+  [key: string]: any;
+};
 
 export type AppAntecipacaoHistoricoRetrieveQueryResponse =
   AppAntecipacaoHistoricoRetrieve200;

@@ -3,7 +3,10 @@
  * Do not edit manually.
  */
 
-import type { AppClientLogCreateMutationResponse } from "../models/AppClientLogCreate.ts";
+import type {
+  AppClientLogCreateMutationRequest,
+  AppClientLogCreateMutationResponse,
+} from "../models/AppClientLogCreate.ts";
 import type {
   Client,
   RequestConfig,
@@ -25,18 +28,20 @@ export type AppClientLogCreateMutationKey = ReturnType<
 >;
 
 export function appClientLogCreateMutationOptions<TContext = unknown>(
-  config: Partial<RequestConfig> & { client?: Client } = {},
+  config: Partial<RequestConfig<AppClientLogCreateMutationRequest>> & {
+    client?: Client;
+  } = {},
 ) {
   const mutationKey = appClientLogCreateMutationKey();
   return mutationOptions<
     AppClientLogCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data?: AppClientLogCreateMutationRequest },
     TContext
   >({
     mutationKey,
-    mutationFn: async () => {
-      return appClientLogCreate(config);
+    mutationFn: async ({ data }) => {
+      return appClientLogCreate(data, config);
     },
   });
 }
@@ -49,10 +54,12 @@ export function useAppClientLogCreate<TContext>(
     mutation?: UseMutationOptions<
       AppClientLogCreateMutationResponse,
       ResponseErrorConfig<Error>,
-      void,
+      { data?: AppClientLogCreateMutationRequest },
       TContext
     > & { client?: QueryClient };
-    client?: Partial<RequestConfig> & { client?: Client };
+    client?: Partial<RequestConfig<AppClientLogCreateMutationRequest>> & {
+      client?: Client;
+    };
   } = {},
 ) {
   const { mutation = {}, client: config = {} } = options ?? {};
@@ -65,14 +72,14 @@ export function useAppClientLogCreate<TContext>(
   ) as UseMutationOptions<
     AppClientLogCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data?: AppClientLogCreateMutationRequest },
     TContext
   >;
 
   return useMutation<
     AppClientLogCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data?: AppClientLogCreateMutationRequest },
     TContext
   >(
     {
@@ -84,7 +91,7 @@ export function useAppClientLogCreate<TContext>(
   ) as UseMutationResult<
     AppClientLogCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data?: AppClientLogCreateMutationRequest },
     TContext
   >;
 }

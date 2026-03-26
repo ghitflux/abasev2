@@ -34,6 +34,10 @@
           "agente_nome": { "type": "string", "readOnly": true },
           "contrato_codigo": { "type": "string", "readOnly": true },
           "quantidade_parcelas": { "type": "integer", "readOnly": true },
+          "quantidade_parcelas_contrato": {
+            "type": "integer",
+            "readOnly": true
+          },
           "valor_total": {
             "type": "string",
             "format": "decimal",
@@ -53,7 +57,12 @@
             "nullable": true
           },
           "status_liquidacao": { "type": "string", "readOnly": true },
+          "status_operacional": { "type": "string", "readOnly": true },
+          "pode_liquidar_agora": { "type": "boolean", "readOnly": true },
+          "status_associado": { "type": "string", "readOnly": true },
           "status_contrato": { "type": "string", "readOnly": true },
+          "status_renovacao": { "type": "string", "readOnly": true },
+          "origem_solicitacao": { "type": "string", "readOnly": true },
           "data_liquidacao": {
             "type": "string",
             "format": "date",
@@ -125,6 +134,31 @@
             "nullable": true,
             "readOnly": true
           },
+          "anexos": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "nome": { "type": "string", "readOnly": true },
+                "url": { "type": "string", "readOnly": true },
+                "arquivo_referencia": { "type": "string", "readOnly": true },
+                "arquivo_disponivel_localmente": {
+                  "type": "boolean",
+                  "readOnly": true
+                },
+                "tipo_referencia": { "type": "string", "readOnly": true }
+              },
+              "required": [
+                "arquivo_disponivel_localmente",
+                "arquivo_referencia",
+                "nome",
+                "tipo_referencia",
+                "url"
+              ],
+              "x-readme-ref-name": "LiquidacaoAnexo"
+            },
+            "readOnly": true
+          },
           "parcelas": {
             "type": "array",
             "items": {
@@ -176,6 +210,7 @@
         },
         "required": [
           "agente_nome",
+          "anexos",
           "associado_id",
           "comprovante",
           "contrato_codigo",
@@ -188,16 +223,22 @@
           "motivo_reversao",
           "nome",
           "observacao",
+          "origem_solicitacao",
           "parcelas",
+          "pode_liquidar_agora",
           "pode_reverter",
           "quantidade_parcelas",
+          "quantidade_parcelas_contrato",
           "realizado_por",
           "referencia_final",
           "referencia_inicial",
           "revertida_em",
           "revertida_por",
+          "status_associado",
           "status_contrato",
           "status_liquidacao",
+          "status_operacional",
+          "status_renovacao",
           "valor_total"
         ],
         "x-readme-ref-name": "LiquidacaoContratoList"

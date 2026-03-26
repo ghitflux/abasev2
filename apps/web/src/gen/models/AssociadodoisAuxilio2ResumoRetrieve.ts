@@ -3,10 +3,9 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AssociadodoisAuxilio2ResumoRetrieve200 = any;
+export type AssociadodoisAuxilio2ResumoRetrieve200 = {
+  [key: string]: any;
+};
 
 export type AssociadodoisAuxilio2ResumoRetrieveQueryResponse =
   AssociadodoisAuxilio2ResumoRetrieve200;

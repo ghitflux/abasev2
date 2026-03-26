@@ -7,9 +7,10 @@ import type { DevolucaoAssociadoList } from "./DevolucaoAssociadoList.ts";
 
 export type V1TesourariaDevolucoesReverterCreatePathParams = {
   /**
-   * @type string
+   * @description A unique integer value identifying this devolucao associado.
+   * @type integer
    */
-  id: string;
+  id: number;
 };
 
 export type V1TesourariaDevolucoesReverterCreate200 = DevolucaoAssociadoList;

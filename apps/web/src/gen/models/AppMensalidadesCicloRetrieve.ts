@@ -3,10 +3,9 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AppMensalidadesCicloRetrieve200 = any;
+export type AppMensalidadesCicloRetrieve200 = {
+  [key: string]: any;
+};
 
 export type AppMensalidadesCicloRetrieveQueryResponse =
   AppMensalidadesCicloRetrieve200;

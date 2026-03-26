@@ -21,7 +21,7 @@ export const analisePagamentoSchema = z.object({
     z.string().regex(/^-?\d{0,10}(?:\.\d{0,2})?$/),
   ),
   paid_at: z.nullable(z.iso.datetime()),
-  referencia_at: z.string(),
+  referencia_at: z.nullable(z.iso.datetime()),
   created_at: z.iso.datetime(),
   created_by_name: z.string(),
   notes: z.string(),

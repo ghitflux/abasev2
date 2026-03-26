@@ -4,11 +4,11 @@
  */
 
 import * as z from "zod";
+import { legacyAceiteTermosResponseSchema } from "./legacyAceiteTermosResponseSchema.ts";
 
-/**
- * @description No response body
- */
-export const associadodoisAceiteTermosCreate200Schema = z.any();
+export const associadodoisAceiteTermosCreate200Schema = z.lazy(
+  () => legacyAceiteTermosResponseSchema,
+);
 
 export const associadodoisAceiteTermosCreateMutationResponseSchema = z.lazy(
   () => associadodoisAceiteTermosCreate200Schema,

@@ -52,9 +52,9 @@ export type AnalisePagamento = {
    */
   paid_at: string | null;
   /**
-   * @type string
+   * @type string, date-time
    */
-  readonly referencia_at: string;
+  readonly referencia_at: string | null;
   /**
    * @type string, date-time
    */

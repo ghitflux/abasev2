@@ -5,10 +5,13 @@
 
 import * as z from "zod";
 
-/**
- * @description No response body
- */
-export const associadodoisReuploadsCreate200Schema = z.any();
+export const associadodoisReuploadsCreate200Schema = z
+  .object({})
+  .catchall(z.any());
+
+export const associadodoisReuploadsCreateMutationRequestSchema = z
+  .object({})
+  .catchall(z.any());
 
 export const associadodoisReuploadsCreateMutationResponseSchema = z.lazy(
   () => associadodoisReuploadsCreate200Schema,

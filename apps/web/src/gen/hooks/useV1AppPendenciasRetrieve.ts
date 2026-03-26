@@ -46,7 +46,6 @@ export function v1AppPendenciasRetrieveQueryOptions(
 }
 
 /**
- * @description Pendências de documentos do associado logado via esteira.
  * {@link /api/v1/app/pendencias/}
  */
 export function useV1AppPendenciasRetrieve<

@@ -4,7 +4,10 @@
  */
 
 import fetch from "@kubb/plugin-client/clients/axios";
-import type { LoginCreateMutationResponse } from "../models/LoginCreate.ts";
+import type {
+  LoginCreateMutationRequest,
+  LoginCreateMutationResponse,
+} from "../models/LoginCreate.ts";
 import type {
   Client,
   RequestConfig,
@@ -20,17 +23,23 @@ function getLoginCreateUrl() {
  * {@link /api/login}
  */
 export async function loginCreate(
-  config: Partial<RequestConfig> & { client?: Client } = {},
+  data: LoginCreateMutationRequest,
+  config: Partial<RequestConfig<LoginCreateMutationRequest>> & {
+    client?: Client;
+  } = {},
 ) {
   const { client: request = fetch, ...requestConfig } = config;
+
+  const requestData = data;
 
   const res = await request<
     LoginCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    unknown
+    LoginCreateMutationRequest
   >({
     method: "POST",
     url: getLoginCreateUrl().url.toString(),
+    data: requestData,
     ...requestConfig,
   });
   return res.data;

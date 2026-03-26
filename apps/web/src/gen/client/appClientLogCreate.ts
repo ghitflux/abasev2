@@ -4,7 +4,10 @@
  */
 
 import fetch from "@kubb/plugin-client/clients/axios";
-import type { AppClientLogCreateMutationResponse } from "../models/AppClientLogCreate.ts";
+import type {
+  AppClientLogCreateMutationRequest,
+  AppClientLogCreateMutationResponse,
+} from "../models/AppClientLogCreate.ts";
 import type {
   Client,
   RequestConfig,
@@ -20,17 +23,23 @@ function getAppClientLogCreateUrl() {
  * {@link /api/app/client-log}
  */
 export async function appClientLogCreate(
-  config: Partial<RequestConfig> & { client?: Client } = {},
+  data?: AppClientLogCreateMutationRequest,
+  config: Partial<RequestConfig<AppClientLogCreateMutationRequest>> & {
+    client?: Client;
+  } = {},
 ) {
   const { client: request = fetch, ...requestConfig } = config;
+
+  const requestData = data;
 
   const res = await request<
     AppClientLogCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    unknown
+    AppClientLogCreateMutationRequest
   >({
     method: "POST",
     url: getAppClientLogCreateUrl().url.toString(),
+    data: requestData,
     ...requestConfig,
   });
   return res.data;

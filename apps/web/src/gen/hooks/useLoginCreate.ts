@@ -3,7 +3,10 @@
  * Do not edit manually.
  */
 
-import type { LoginCreateMutationResponse } from "../models/LoginCreate.ts";
+import type {
+  LoginCreateMutationRequest,
+  LoginCreateMutationResponse,
+} from "../models/LoginCreate.ts";
 import type {
   Client,
   RequestConfig,
@@ -22,18 +25,20 @@ export const loginCreateMutationKey = () => [{ url: "/api/login" }] as const;
 export type LoginCreateMutationKey = ReturnType<typeof loginCreateMutationKey>;
 
 export function loginCreateMutationOptions<TContext = unknown>(
-  config: Partial<RequestConfig> & { client?: Client } = {},
+  config: Partial<RequestConfig<LoginCreateMutationRequest>> & {
+    client?: Client;
+  } = {},
 ) {
   const mutationKey = loginCreateMutationKey();
   return mutationOptions<
     LoginCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: LoginCreateMutationRequest },
     TContext
   >({
     mutationKey,
-    mutationFn: async () => {
-      return loginCreate(config);
+    mutationFn: async ({ data }) => {
+      return loginCreate(data, config);
     },
   });
 }
@@ -46,10 +51,12 @@ export function useLoginCreate<TContext>(
     mutation?: UseMutationOptions<
       LoginCreateMutationResponse,
       ResponseErrorConfig<Error>,
-      void,
+      { data: LoginCreateMutationRequest },
       TContext
     > & { client?: QueryClient };
-    client?: Partial<RequestConfig> & { client?: Client };
+    client?: Partial<RequestConfig<LoginCreateMutationRequest>> & {
+      client?: Client;
+    };
   } = {},
 ) {
   const { mutation = {}, client: config = {} } = options ?? {};
@@ -59,14 +66,14 @@ export function useLoginCreate<TContext>(
   const baseOptions = loginCreateMutationOptions(config) as UseMutationOptions<
     LoginCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: LoginCreateMutationRequest },
     TContext
   >;
 
   return useMutation<
     LoginCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: LoginCreateMutationRequest },
     TContext
   >(
     {
@@ -78,7 +85,7 @@ export function useLoginCreate<TContext>(
   ) as UseMutationResult<
     LoginCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: LoginCreateMutationRequest },
     TContext
   >;
 }

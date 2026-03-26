@@ -43,8 +43,6 @@ export function v1AppMeRetrieveQueryOptions(
 }
 
 /**
- * @description Retorna os dados consolidados do associado logado:
- * dados pessoais, contratos resumidos, resumo financeiro e pendências.
  * {@link /api/v1/app/me/}
  */
 export function useV1AppMeRetrieve<

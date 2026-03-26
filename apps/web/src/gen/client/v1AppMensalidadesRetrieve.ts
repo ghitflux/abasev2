@@ -17,7 +17,6 @@ function getV1AppMensalidadesRetrieveUrl() {
 }
 
 /**
- * @description Lista ciclos com parcelas do associado logado, agrupados por contrato.
  * {@link /api/v1/app/mensalidades/}
  */
 export async function v1AppMensalidadesRetrieve(

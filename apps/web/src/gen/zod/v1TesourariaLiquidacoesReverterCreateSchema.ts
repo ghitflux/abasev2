@@ -7,7 +7,10 @@ import * as z from "zod";
 import { liquidacaoContratoListSchema } from "./liquidacaoContratoListSchema.ts";
 
 export const V1TesourariaLiquidacoesReverterCreatePathParamsSchema = z.object({
-  id: z.string(),
+  id: z.coerce
+    .number()
+    .int()
+    .describe("A unique integer value identifying this liquidacao contrato."),
 });
 
 export const V1TesourariaLiquidacoesReverterCreate200Schema = z.lazy(
@@ -28,11 +31,17 @@ export const V1TesourariaLiquidacoesReverterCreateMutationRequestSchema = z
     agente_nome: true,
     contrato_codigo: true,
     quantidade_parcelas: true,
+    quantidade_parcelas_contrato: true,
     valor_total: true,
     referencia_inicial: true,
     referencia_final: true,
     status_liquidacao: true,
+    status_operacional: true,
+    pode_liquidar_agora: true,
+    status_associado: true,
     status_contrato: true,
+    status_renovacao: true,
+    origem_solicitacao: true,
     data_liquidacao: true,
     observacao: true,
     realizado_por: true,
@@ -40,6 +49,7 @@ export const V1TesourariaLiquidacoesReverterCreateMutationRequestSchema = z
     revertida_por: true,
     motivo_reversao: true,
     comprovante: true,
+    anexos: true,
     parcelas: true,
     pode_reverter: true,
   });

@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer" },
+    "contrato_id": { "type": "integer" },
+    "contrato_codigo": { "type": "string" },
+    "referencia_mes": { "type": "string", "format": "date" },
+    "valor": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "status": { "type": "string" },
+    "data_pagamento": { "type": "string", "format": "date", "nullable": true },
+    "observacao": { "type": "string" },
+    "source": { "type": "string" }
+  },
+  "required": [
+    "contrato_codigo",
+    "contrato_id",
+    "data_pagamento",
+    "id",
+    "observacao",
+    "referencia_mes",
+    "status",
+    "valor"
+  ],
+  "x-readme-ref-name": "MesNaoPago"
+}

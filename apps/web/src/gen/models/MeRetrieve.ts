@@ -3,10 +3,9 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type MeRetrieve200 = any;
+export type MeRetrieve200 = {
+  [key: string]: any;
+};
 
 export type MeRetrieveQueryResponse = MeRetrieve200;
 

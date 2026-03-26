@@ -32,6 +32,12 @@ class BaixaManual(BaseModel):
 
 
 class LiquidacaoContrato(BaseModel):
+    class OrigemSolicitacao(models.TextChoices):
+        AGENTE = "agente", "Agente"
+        COORDENACAO = "coordenacao", "Coordenação"
+        ADMINISTRACAO = "administracao", "Administração"
+        RENOVACAO = "renovacao", "Renovação"
+
     contrato = models.ForeignKey(
         "contratos.Contrato",
         on_delete=models.PROTECT,
@@ -46,6 +52,12 @@ class LiquidacaoContrato(BaseModel):
     valor_total = models.DecimalField(max_digits=12, decimal_places=2)
     comprovante = models.FileField(upload_to="liquidacoes_contrato/")
     nome_comprovante = models.CharField(max_length=255, blank=True)
+    origem_solicitacao = models.CharField(
+        max_length=20,
+        choices=OrigemSolicitacao.choices,
+        blank=True,
+        default="",
+    )
     observacao = models.TextField(blank=True)
     contrato_status_anterior = models.CharField(max_length=20, blank=True)
     associado_status_anterior = models.CharField(max_length=20, blank=True)

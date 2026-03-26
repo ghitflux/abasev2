@@ -3,10 +3,9 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type V1AppAntecipacaoRetrieve200 = any;
+export type V1AppAntecipacaoRetrieve200 = {
+  [key: string]: any;
+};
 
 export type V1AppAntecipacaoRetrieveQueryResponse = V1AppAntecipacaoRetrieve200;
 

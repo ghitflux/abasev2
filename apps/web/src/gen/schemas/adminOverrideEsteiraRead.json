@@ -1,0 +1,43 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "etapa_atual": { "type": "string", "readOnly": true },
+    "status": { "type": "string", "readOnly": true },
+    "prioridade": { "type": "integer", "readOnly": true },
+    "observacao": { "type": "string", "readOnly": true },
+    "analista_responsavel_id": {
+      "type": "integer",
+      "readOnly": true,
+      "nullable": true
+    },
+    "coordenador_responsavel_id": {
+      "type": "integer",
+      "readOnly": true,
+      "nullable": true
+    },
+    "tesoureiro_responsavel_id": {
+      "type": "integer",
+      "readOnly": true,
+      "nullable": true
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "nullable": true
+    }
+  },
+  "required": [
+    "analista_responsavel_id",
+    "coordenador_responsavel_id",
+    "etapa_atual",
+    "id",
+    "observacao",
+    "prioridade",
+    "status",
+    "tesoureiro_responsavel_id",
+    "updated_at"
+  ],
+  "x-readme-ref-name": "AdminOverrideEsteiraRead"
+}

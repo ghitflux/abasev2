@@ -4,11 +4,15 @@
  */
 
 import * as z from "zod";
+import { legacyClientLogResponseSchema } from "./legacyClientLogResponseSchema.ts";
 
-/**
- * @description No response body
- */
-export const appClientLogCreate200Schema = z.any();
+export const appClientLogCreate200Schema = z.lazy(
+  () => legacyClientLogResponseSchema,
+);
+
+export const appClientLogCreateMutationRequestSchema = z
+  .object({})
+  .catchall(z.any());
 
 export const appClientLogCreateMutationResponseSchema = z.lazy(
   () => appClientLogCreate200Schema,

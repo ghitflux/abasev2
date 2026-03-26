@@ -4,39 +4,42 @@
  */
 
 import * as z from "zod";
-import { paraSituacaoEnumSchema } from "./paraSituacaoEnumSchema.ts";
-import { paraStatusEnumSchema } from "./paraStatusEnumSchema.ts";
-import { simpleUserSchema } from "./simpleUserSchema.ts";
+import { contratoEsteiraSchema } from "./contratoEsteiraSchema.ts";
+import { esteiraEtapaEnumSchema } from "./esteiraEtapaEnumSchema.ts";
+import { esteiraSimpleUserSchema } from "./esteiraSimpleUserSchema.ts";
+import { esteiraSituacaoEnumSchema } from "./esteiraSituacaoEnumSchema.ts";
 
 export const esteiraListSchema = z.object({
   id: z.int(),
   associado_id: z.int(),
   ordem: z.int(),
-  contrato: z.string(),
-  data_assinatura: z.string(),
-  valor_disponivel: z.string(),
-  comissao_agente: z.string(),
-  status_contrato: z.string(),
-  status_contrato_visual_slug: z.string(),
-  status_contrato_visual_label: z.string(),
+  get contrato() {
+    return contratoEsteiraSchema.nullable();
+  },
+  data_assinatura: z.nullable(z.iso.date()),
+  valor_disponivel: z.nullable(z.string().regex(/^-?\d{0,10}(?:\.\d{0,2})?$/)),
+  comissao_agente: z.nullable(z.string().regex(/^-?\d{0,10}(?:\.\d{0,2})?$/)),
+  status_contrato: z.nullable(z.string()),
+  status_contrato_visual_slug: z.nullable(z.string()),
+  status_contrato_visual_label: z.nullable(z.string()),
   status_documentacao: z.string(),
-  contato_web: z.string(),
-  termos_web: z.string(),
+  contato_web: z.boolean(),
+  termos_web: z.boolean(),
   get agente() {
-    return simpleUserSchema;
+    return esteiraSimpleUserSchema;
   },
   orgao_publico: z.string(),
-  documentos_count: z.string(),
-  acoes_disponiveis: z.string(),
+  documentos_count: z.int(),
+  acoes_disponiveis: z.array(z.string()),
   get etapa_atual() {
-    return paraStatusEnumSchema
+    return esteiraEtapaEnumSchema
       .describe(
         "* `cadastro` - Cadastro\n* `analise` - Análise\n* `coordenacao` - Coordenação\n* `tesouraria` - Tesouraria\n* `concluido` - Concluído",
       )
       .optional();
   },
   get status() {
-    return paraSituacaoEnumSchema
+    return esteiraSituacaoEnumSchema
       .describe(
         "* `aguardando` - Aguardando\n* `em_andamento` - Em andamento\n* `pendenciado` - Pendenciado\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
       )

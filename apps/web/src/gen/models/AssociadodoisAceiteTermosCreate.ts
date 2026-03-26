@@ -3,10 +3,9 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AssociadodoisAceiteTermosCreate200 = any;
+import type { LegacyAceiteTermosResponse } from "./LegacyAceiteTermosResponse.ts";
+
+export type AssociadodoisAceiteTermosCreate200 = LegacyAceiteTermosResponse;
 
 export type AssociadodoisAceiteTermosCreateMutationResponse =
   AssociadodoisAceiteTermosCreate200;

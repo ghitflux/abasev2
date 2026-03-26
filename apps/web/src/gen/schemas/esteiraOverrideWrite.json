@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "updated_at": { "type": "string", "format": "date-time", "nullable": true },
+    "motivo": { "type": "string" },
+    "etapa_atual": { "type": "string" },
+    "status": { "type": "string" },
+    "prioridade": { "type": "integer" },
+    "observacao": { "type": "string" }
+  },
+  "required": ["motivo"],
+  "x-readme-ref-name": "EsteiraOverrideWrite"
+}

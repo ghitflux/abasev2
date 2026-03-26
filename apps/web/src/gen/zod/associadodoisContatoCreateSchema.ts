@@ -4,11 +4,11 @@
  */
 
 import * as z from "zod";
+import { legacyContatoResponseSchema } from "./legacyContatoResponseSchema.ts";
 
-/**
- * @description No response body
- */
-export const associadodoisContatoCreate200Schema = z.any();
+export const associadodoisContatoCreate200Schema = z.lazy(
+  () => legacyContatoResponseSchema,
+);
 
 export const associadodoisContatoCreateMutationResponseSchema = z.lazy(
   () => associadodoisContatoCreate200Schema,

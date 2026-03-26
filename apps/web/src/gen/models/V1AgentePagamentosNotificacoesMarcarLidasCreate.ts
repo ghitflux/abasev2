@@ -16,6 +16,7 @@ export type V1AgentePagamentosNotificacoesMarcarLidasCreateMutationRequest =
     | "nome"
     | "cpf_cnpj"
     | "contrato_codigo"
+    | "agente_nome"
     | "status_contrato"
     | "status_visual_slug"
     | "status_visual_label"

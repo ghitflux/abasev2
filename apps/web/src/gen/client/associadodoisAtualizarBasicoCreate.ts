@@ -4,7 +4,10 @@
  */
 
 import fetch from "@kubb/plugin-client/clients/axios";
-import type { AssociadodoisAtualizarBasicoCreateMutationResponse } from "../models/AssociadodoisAtualizarBasicoCreate.ts";
+import type {
+  AssociadodoisAtualizarBasicoCreateMutationRequest,
+  AssociadodoisAtualizarBasicoCreateMutationResponse,
+} from "../models/AssociadodoisAtualizarBasicoCreate.ts";
 import type {
   Client,
   RequestConfig,
@@ -23,17 +26,23 @@ function getAssociadodoisAtualizarBasicoCreateUrl() {
  * {@link /api/associadodois/atualizar-basico}
  */
 export async function associadodoisAtualizarBasicoCreate(
-  config: Partial<RequestConfig> & { client?: Client } = {},
+  data?: AssociadodoisAtualizarBasicoCreateMutationRequest,
+  config: Partial<
+    RequestConfig<AssociadodoisAtualizarBasicoCreateMutationRequest>
+  > & { client?: Client } = {},
 ) {
   const { client: request = fetch, ...requestConfig } = config;
+
+  const requestData = data;
 
   const res = await request<
     AssociadodoisAtualizarBasicoCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    unknown
+    AssociadodoisAtualizarBasicoCreateMutationRequest
   >({
     method: "POST",
     url: getAssociadodoisAtualizarBasicoCreateUrl().url.toString(),
+    data: requestData,
     ...requestConfig,
   });
   return res.data;

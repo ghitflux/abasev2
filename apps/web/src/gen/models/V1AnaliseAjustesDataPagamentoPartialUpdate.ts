@@ -8,6 +8,7 @@ import type { PatchedAnalisePagamentoData } from "./PatchedAnalisePagamentoData.
 
 export type V1AnaliseAjustesDataPagamentoPartialUpdatePathParams = {
   /**
+   * @pattern ^\d+$
    * @type string
    */
   pagamento_id: string;

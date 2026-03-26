@@ -4,7 +4,10 @@
  */
 
 import fetch from "@kubb/plugin-client/clients/axios";
-import type { AuthForgotPasswordCreateMutationResponse } from "../models/AuthForgotPasswordCreate.ts";
+import type {
+  AuthForgotPasswordCreateMutationRequest,
+  AuthForgotPasswordCreateMutationResponse,
+} from "../models/AuthForgotPasswordCreate.ts";
 import type {
   Client,
   RequestConfig,
@@ -20,17 +23,23 @@ function getAuthForgotPasswordCreateUrl() {
  * {@link /api/auth/forgot-password}
  */
 export async function authForgotPasswordCreate(
-  config: Partial<RequestConfig> & { client?: Client } = {},
+  data: AuthForgotPasswordCreateMutationRequest,
+  config: Partial<RequestConfig<AuthForgotPasswordCreateMutationRequest>> & {
+    client?: Client;
+  } = {},
 ) {
   const { client: request = fetch, ...requestConfig } = config;
+
+  const requestData = data;
 
   const res = await request<
     AuthForgotPasswordCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    unknown
+    AuthForgotPasswordCreateMutationRequest
   >({
     method: "POST",
     url: getAuthForgotPasswordCreateUrl().url.toString(),
+    data: requestData,
     ...requestConfig,
   });
   return res.data;

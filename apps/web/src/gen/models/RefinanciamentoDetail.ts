@@ -3,8 +3,11 @@
  * Do not edit manually.
  */
 
+import type { ComprovanteResumo } from "./ComprovanteResumo.ts";
+import type { RefinanciamentoAuditoria } from "./RefinanciamentoAuditoria.ts";
+import type { RefinanciamentoItemResumo } from "./RefinanciamentoItemResumo.ts";
+import type { RefinanciamentoStatusEnum } from "./RefinanciamentoStatusEnum.ts";
 import type { SimpleUser } from "./SimpleUser.ts";
-import type { Status0BbEnum } from "./Status0BbEnum.ts";
 
 export type RefinanciamentoDetail = {
   /**
@@ -50,10 +53,10 @@ export type RefinanciamentoDetail = {
    */
   competencia_solicitada: string;
   /**
-   * @description * `apto_a_renovar` - Apto a renovar\n* `em_analise_renovacao` - Em análise para renovação\n* `aprovado_analise_renovacao` - Aprovado pela análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado
+   * @description * `apto_a_renovar` - Apto a renovar\n* `solicitado_para_liquidacao` - Solicitado para liquidação\n* `em_analise_renovacao` - Em análise para renovação\n* `aprovado_analise_renovacao` - Aprovado pela análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado
    * @type string | undefined
    */
-  status?: Status0BbEnum;
+  status?: RefinanciamentoStatusEnum;
   /**
    * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
    * @type string | undefined, decimal
@@ -73,9 +76,9 @@ export type RefinanciamentoDetail = {
    */
   readonly referencias: string[];
   /**
-   * @type string
+   * @type array
    */
-  readonly itens: string;
+  readonly itens: RefinanciamentoItemResumo[];
   /**
    * @type integer
    */
@@ -84,6 +87,10 @@ export type RefinanciamentoDetail = {
    * @type integer
    */
   readonly mensalidades_total: number;
+  /**
+   * @type integer
+   */
+  readonly numero_ciclos: number;
   /**
    * @type integer
    */
@@ -101,9 +108,9 @@ export type RefinanciamentoDetail = {
    */
   readonly origem: string;
   /**
-   * @type string
+   * @type string, date-time
    */
-  readonly data_renovacao: string;
+  readonly data_renovacao: string | null;
   /**
    * @type string
    */
@@ -113,21 +120,21 @@ export type RefinanciamentoDetail = {
    */
   readonly motivo_apto_renovacao: string;
   /**
-   * @type string
+   * @type string, date-time
    */
-  readonly data_primeiro_ciclo_ativado: string;
+  readonly data_primeiro_ciclo_ativado: string | null;
   /**
-   * @type string
+   * @type string, date-time
    */
-  readonly data_ativacao_ciclo: string;
+  readonly data_ativacao_ciclo: string | null;
   /**
    * @type string
    */
   readonly origem_data_ativacao: string;
   /**
-   * @type string
+   * @type string, date-time
    */
-  readonly data_solicitacao_renovacao: string;
+  readonly data_solicitacao_renovacao: string | null;
   /**
    * @type boolean
    */
@@ -168,12 +175,9 @@ export type RefinanciamentoDetail = {
    * @type string, date-time
    */
   readonly updated_at: string;
+  readonly auditoria: RefinanciamentoAuditoria;
   /**
-   * @type string
+   * @type array
    */
-  readonly auditoria: string;
-  /**
-   * @type string
-   */
-  readonly comprovantes: string;
+  readonly comprovantes: ComprovanteResumo[];
 };

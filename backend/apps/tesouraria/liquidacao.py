@@ -10,7 +10,10 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.associados.models import Associado
-from apps.contratos.cycle_projection import build_contract_cycle_projection
+from apps.contratos.cycle_projection import (
+    build_contract_cycle_projection,
+    get_associado_visual_status_payload,
+)
 from apps.contratos.competencia import propagate_competencia_status
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Contrato, Parcela
@@ -25,8 +28,9 @@ ELIGIBLE_PARCELA_STATUSES = {
     Parcela.Status.EM_ABERTO,
     Parcela.Status.NAO_DESCONTADO,
 }
-
-
+LISTABLE_PARCELA_STATUSES = {
+    status for status, _label in Parcela.Status.choices if status != Parcela.Status.CANCELADO
+}
 def _month_matches(value: date | None, competencia: date | None) -> bool:
     if value is None or competencia is None:
         return False
@@ -49,18 +53,24 @@ class LiquidacaoListPayload:
 
 class LiquidacaoContratoService:
     @staticmethod
-    def _eligible_parcelas_for_contract(contrato: Contrato) -> list[Parcela]:
+    def _parcelas_for_contract(
+        contrato: Contrato,
+        *,
+        statuses: set[str] | None = None,
+    ) -> list[Parcela]:
         prefetched_cycles = getattr(contrato, "_prefetched_objects_cache", {}).get("ciclos")
         parcelas: list[Parcela] = []
         if prefetched_cycles is None:
+            queryset = Parcela.all_objects.filter(
+                ciclo__contrato=contrato,
+                deleted_at__isnull=True,
+            )
+            if statuses is None:
+                queryset = queryset.filter(status__in=LISTABLE_PARCELA_STATUSES)
+            else:
+                queryset = queryset.filter(status__in=statuses)
             parcelas = list(
-                Parcela.all_objects.filter(
-                    ciclo__contrato=contrato,
-                    deleted_at__isnull=True,
-                    status__in=ELIGIBLE_PARCELA_STATUSES,
-                )
-                .select_related("ciclo")
-                .order_by("referencia_mes", "numero", "id")
+                queryset.select_related("ciclo").order_by("referencia_mes", "numero", "id")
             )
         else:
             for ciclo in prefetched_cycles:
@@ -68,22 +78,34 @@ class LiquidacaoContratoService:
                     "parcelas"
                 )
                 if prefetched_parcelas is None:
+                    queryset = ciclo.parcelas.filter(deleted_at__isnull=True)
+                    if statuses is None:
+                        queryset = queryset.filter(status__in=LISTABLE_PARCELA_STATUSES)
+                    else:
+                        queryset = queryset.filter(status__in=statuses)
                     current = list(
-                        ciclo.parcelas.filter(
-                            deleted_at__isnull=True,
-                            status__in=ELIGIBLE_PARCELA_STATUSES,
-                        ).order_by("referencia_mes", "numero", "id")
+                        queryset.order_by("referencia_mes", "numero", "id")
                     )
                 else:
                     current = [
                         parcela
                         for parcela in prefetched_parcelas
                         if parcela.deleted_at is None
-                        and parcela.status in ELIGIBLE_PARCELA_STATUSES
+                        and (
+                            parcela.status in LISTABLE_PARCELA_STATUSES
+                            if statuses is None
+                            else parcela.status in statuses
+                        )
                     ]
-                    current.sort(key=lambda parcela: (parcela.referencia_mes, parcela.numero, parcela.id))
+                    current.sort(
+                        key=lambda parcela: (parcela.referencia_mes, parcela.numero, parcela.id)
+                    )
                 parcelas.extend(current)
         return parcelas
+
+    @classmethod
+    def _eligible_parcelas_for_contract(cls, contrato: Contrato) -> list[Parcela]:
+        return cls._parcelas_for_contract(contrato, statuses=ELIGIBLE_PARCELA_STATUSES)
 
     @staticmethod
     def _serialize_parcela(parcela: Parcela) -> dict[str, object]:
@@ -115,36 +137,124 @@ class LiquidacaoContratoService:
             "observacao": "Parcela liquidada pela tesouraria.",
         }
 
+    @staticmethod
+    def _resolve_solicitacao_origin(
+        *,
+        persisted_origin: str = "",
+        status_renovacao: str = "",
+    ) -> str:
+        if persisted_origin:
+            return persisted_origin
+        if status_renovacao == Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO:
+            return LiquidacaoContrato.OrigemSolicitacao.RENOVACAO
+        return ""
+
     @classmethod
-    def _serialize_eligible_contract(cls, contrato: Contrato) -> dict[str, object] | None:
-        parcelas = cls._eligible_parcelas_for_contract(contrato)
-        if not parcelas:
-            return None
-        projection = build_contract_cycle_projection(contrato)
+    def _contracts_for_associado(cls, associado: Associado) -> list[Contrato]:
+        prefetched = getattr(associado, "_prefetched_objects_cache", {}).get("contratos")
+        if prefetched is None:
+            return list(
+                Contrato.objects.select_related("agente")
+                .prefetch_related(
+                    Prefetch(
+                        "ciclos__parcelas",
+                        queryset=Parcela.all_objects.filter(
+                            deleted_at__isnull=True,
+                            status__in=LISTABLE_PARCELA_STATUSES,
+                        ).order_by("referencia_mes", "numero", "id"),
+                    )
+                )
+                .filter(associado=associado)
+                .order_by("-updated_at", "-id")
+            )
+
+        contratos = list(prefetched)
+        contratos.sort(
+            key=lambda contrato: (contrato.updated_at, contrato.id),
+            reverse=True,
+        )
+        return contratos
+
+    @classmethod
+    def _select_operational_contracts(
+        cls,
+        associado: Associado,
+    ) -> tuple[Contrato | None, Contrato | None]:
+        contratos = cls._contracts_for_associado(associado)
+        operational_contract = next(
+            (
+                contrato
+                for contrato in contratos
+                if contrato.status not in {Contrato.Status.ENCERRADO, Contrato.Status.CANCELADO}
+                and cls._eligible_parcelas_for_contract(contrato)
+            ),
+            None,
+        )
+        display_contract = operational_contract or next(
+            (
+                contrato
+                for contrato in contratos
+                if contrato.status not in {Contrato.Status.ENCERRADO, Contrato.Status.CANCELADO}
+            ),
+            None,
+        )
+        if display_contract is None:
+            display_contract = contratos[0] if contratos else None
+        return display_contract, operational_contract
+
+    @classmethod
+    def _serialize_operational_associado(cls, associado: Associado) -> dict[str, object]:
+        display_contract, operational_contract = cls._select_operational_contracts(associado)
+        associado_status = get_associado_visual_status_payload(associado)
+        parcelas_contrato = (
+            cls._parcelas_for_contract(display_contract) if display_contract else []
+        )
+        parcelas = (
+            cls._eligible_parcelas_for_contract(operational_contract)
+            if operational_contract
+            else []
+        )
+        projection = (
+            build_contract_cycle_projection(display_contract) if display_contract else {}
+        )
         status_renovacao = str(projection.get("status_renovacao") or "")
-        primeira_referencia = parcelas[0].referencia_mes
-        ultima_referencia = parcelas[-1].referencia_mes
+        pode_liquidar_agora = bool(parcelas)
+        if pode_liquidar_agora:
+            status_operacional = "elegivel_agora"
+        elif display_contract:
+            status_operacional = "sem_parcelas_elegiveis"
+        else:
+            status_operacional = "sem_contrato"
+        primeira_referencia = parcelas[0].referencia_mes if parcelas else None
+        ultima_referencia = parcelas[-1].referencia_mes if parcelas else None
         return {
-            "id": contrato.id,
-            "contrato_id": contrato.id,
+            "id": associado.id,
+            "contrato_id": display_contract.id if display_contract else None,
             "liquidacao_id": None,
-            "associado_id": contrato.associado_id,
-            "nome": contrato.associado.nome_completo,
-            "cpf_cnpj": contrato.associado.cpf_cnpj,
-            "matricula": contrato.associado.matricula_orgao or contrato.associado.matricula,
-            "agente_nome": contrato.agente.full_name if contrato.agente else "",
-            "contrato_codigo": contrato.codigo,
+            "associado_id": associado.id,
+            "nome": associado.nome_completo,
+            "cpf_cnpj": associado.cpf_cnpj,
+            "matricula": associado.matricula_orgao or associado.matricula,
+            "agente_nome": (
+                display_contract.agente.full_name
+                if display_contract and display_contract.agente
+                else ""
+            ),
+            "contrato_codigo": display_contract.codigo if display_contract else "",
             "quantidade_parcelas": len(parcelas),
+            "quantidade_parcelas_contrato": len(parcelas_contrato),
             "valor_total": sum((parcela.valor for parcela in parcelas), Decimal("0.00")),
             "referencia_inicial": primeira_referencia,
             "referencia_final": ultima_referencia,
-            "status_liquidacao": "elegivel",
-            "status_contrato": contrato.status,
+            "status_liquidacao": status_operacional,
+            "status_operacional": status_operacional,
+            "pode_liquidar_agora": pode_liquidar_agora,
+            "status_associado": str(associado_status.get("status_visual_slug") or ""),
+            "status_associado_label": str(associado_status.get("status_visual_label") or ""),
+            "status_contrato": display_contract.status if display_contract else "",
             "status_renovacao": status_renovacao,
-            "origem_solicitacao": (
-                "renovacao"
-                if status_renovacao == Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO
-                else ""
+            "origem_solicitacao": cls._resolve_solicitacao_origin(
+                status_renovacao=status_renovacao
             ),
             "data_liquidacao": None,
             "observacao": "",
@@ -154,12 +264,15 @@ class LiquidacaoContratoService:
             "motivo_reversao": "",
             "comprovante_obj": None,
             "nome_comprovante": "",
-            "parcelas": [cls._serialize_parcela(parcela) for parcela in parcelas],
+            "parcelas": [
+                cls._serialize_parcela(parcela) for parcela in parcelas_contrato
+            ],
         }
 
     @classmethod
     def _serialize_liquidacao(cls, liquidacao: LiquidacaoContrato) -> dict[str, object]:
         contrato = liquidacao.contrato
+        associado_status = get_associado_visual_status_payload(contrato.associado)
         projection = build_contract_cycle_projection(contrato)
         status_renovacao = str(projection.get("status_renovacao") or "")
         itens = sorted(
@@ -188,16 +301,20 @@ class LiquidacaoContratoService:
             "agente_nome": contrato.agente.full_name if contrato.agente else "",
             "contrato_codigo": contrato.codigo,
             "quantidade_parcelas": len(itens),
+            "quantidade_parcelas_contrato": len(itens),
             "valor_total": liquidacao.valor_total,
             "referencia_inicial": primeira_referencia,
             "referencia_final": ultima_referencia,
             "status_liquidacao": "revertida" if liquidacao.revertida_em else "liquidado",
+            "status_operacional": "revertida" if liquidacao.revertida_em else "liquidado",
+            "pode_liquidar_agora": False,
+            "status_associado": str(associado_status.get("status_visual_slug") or ""),
+            "status_associado_label": str(associado_status.get("status_visual_label") or ""),
             "status_contrato": contrato.status,
             "status_renovacao": status_renovacao,
-            "origem_solicitacao": (
-                "renovacao"
-                if status_renovacao == Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO
-                else ""
+            "origem_solicitacao": cls._resolve_solicitacao_origin(
+                persisted_origin=liquidacao.origem_solicitacao,
+                status_renovacao=status_renovacao,
             ),
             "data_liquidacao": liquidacao.data_liquidacao,
             "observacao": liquidacao.observacao,
@@ -217,6 +334,14 @@ class LiquidacaoContratoService:
     @staticmethod
     def _build_kpis(rows: list[dict[str, object]]) -> dict[str, object]:
         associados = {int(row["associado_id"]) for row in rows}
+        associados_por_status: dict[str, set[int]] = {}
+        for row in rows:
+            status_associado = str(row.get("status_associado") or "")
+            if not status_associado:
+                continue
+            associados_por_status.setdefault(status_associado, set()).add(
+                int(row["associado_id"])
+            )
         return {
             "total_contratos": len(rows),
             "total_parcelas": sum(int(row["quantidade_parcelas"]) for row in rows),
@@ -224,6 +349,18 @@ class LiquidacaoContratoService:
             "associados_impactados": len(associados),
             "revertidas": sum(1 for row in rows if row["status_liquidacao"] == "revertida"),
             "ativas": sum(1 for row in rows if row["status_liquidacao"] == "liquidado"),
+            "liquidaveis_agora": sum(
+                1 for row in rows if bool(row.get("pode_liquidar_agora"))
+            ),
+            "sem_parcelas_elegiveis": sum(
+                1
+                for row in rows
+                if row.get("status_operacional") == "sem_parcelas_elegiveis"
+            ),
+            "por_status_associado": {
+                status: len(associado_ids)
+                for status, associado_ids in sorted(associados_por_status.items())
+            },
         }
 
     @classmethod
@@ -280,48 +417,50 @@ class LiquidacaoContratoService:
             rows = [cls._serialize_liquidacao(item) for item in queryset]
             return LiquidacaoListPayload(rows=rows, kpis=cls._build_kpis(rows))
 
-        queryset = (
-            Contrato.objects.select_related("associado", "agente")
+        contract_queryset = (
+            Contrato.objects.select_related("agente")
             .prefetch_related(
                 Prefetch(
                     "ciclos__parcelas",
                     queryset=Parcela.all_objects.filter(
                         deleted_at__isnull=True,
-                        status__in=ELIGIBLE_PARCELA_STATUSES,
+                        status__in=LISTABLE_PARCELA_STATUSES,
                     ).order_by("referencia_mes", "numero", "id"),
                 )
             )
-            .filter(
-                status=Contrato.Status.ATIVO,
-                ciclos__parcelas__deleted_at__isnull=True,
-                ciclos__parcelas__status__in=ELIGIBLE_PARCELA_STATUSES,
+            .order_by("-updated_at", "-id")
+        )
+        queryset = (
+            Associado.objects.prefetch_related(
+                Prefetch(
+                    "contratos",
+                    queryset=contract_queryset,
+                )
             )
             .distinct()
-            .order_by("-updated_at", "-id")
+            .order_by("nome_completo", "id")
         )
         if search:
             queryset = queryset.filter(
-                Q(codigo__icontains=search)
-                | Q(associado__nome_completo__icontains=search)
-                | Q(associado__cpf_cnpj__icontains=search)
-                | Q(associado__matricula__icontains=search)
-                | Q(associado__matricula_orgao__icontains=search)
+                Q(nome_completo__icontains=search)
+                | Q(cpf_cnpj__icontains=search)
+                | Q(matricula__icontains=search)
+                | Q(matricula_orgao__icontains=search)
+                | Q(contratos__codigo__icontains=search)
             )
         if contract_id:
-            queryset = queryset.filter(pk=contract_id)
+            queryset = queryset.filter(contratos__pk=contract_id)
         if competencia:
             queryset = queryset.filter(
-                ciclos__parcelas__referencia_mes__year=competencia.year,
-                ciclos__parcelas__referencia_mes__month=competencia.month,
-                ciclos__parcelas__status__in=ELIGIBLE_PARCELA_STATUSES,
-                ciclos__parcelas__deleted_at__isnull=True,
+                contratos__ciclos__parcelas__referencia_mes__year=competencia.year,
+                contratos__ciclos__parcelas__referencia_mes__month=competencia.month,
+                contratos__ciclos__parcelas__status__in=LISTABLE_PARCELA_STATUSES,
+                contratos__ciclos__parcelas__deleted_at__isnull=True,
             )
 
         rows = []
-        for contrato in queryset:
-            row = cls._serialize_eligible_contract(contrato)
-            if row is not None:
-                rows.append(row)
+        for associado in queryset:
+            rows.append(cls._serialize_operational_associado(associado))
         return LiquidacaoListPayload(rows=rows, kpis=cls._build_kpis(rows))
 
     @classmethod
@@ -352,6 +491,7 @@ class LiquidacaoContratoService:
         contrato_id: int,
         *,
         comprovantes,
+        origem_solicitacao: str,
         data_liquidacao: date,
         valor_total: Decimal,
         observacao: str,
@@ -359,9 +499,7 @@ class LiquidacaoContratoService:
     ) -> LiquidacaoContrato:
         contrato = cls._get_contract_for_update(contrato_id)
         if contrato.status in {Contrato.Status.ENCERRADO, Contrato.Status.CANCELADO}:
-            raise ValidationError("Apenas contratos ativos podem ser liquidados.")
-        if contrato.status != Contrato.Status.ATIVO:
-            raise ValidationError("O contrato precisa estar ativo para ser liquidado.")
+            raise ValidationError("Contratos cancelados ou já encerrados não podem ser liquidados.")
         if LiquidacaoContrato.objects.filter(
             contrato=contrato,
             revertida_em__isnull=True,
@@ -383,6 +521,7 @@ class LiquidacaoContratoService:
             valor_total=valor_total,
             comprovante=comprovante_principal,
             nome_comprovante=getattr(comprovante_principal, "name", ""),
+            origem_solicitacao=origem_solicitacao,
             observacao=observacao or "",
             contrato_status_anterior=contrato.status,
             associado_status_anterior=contrato.associado.status,

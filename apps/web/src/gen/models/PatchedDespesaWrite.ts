@@ -4,9 +4,9 @@
  */
 
 import type { BlankEnum } from "./BlankEnum.ts";
+import type { DespesaStatusEnum } from "./DespesaStatusEnum.ts";
+import type { DespesaTipoEnum } from "./DespesaTipoEnum.ts";
 import type { RecorrenciaEnum } from "./RecorrenciaEnum.ts";
-import type { Status7A5Enum } from "./Status7A5Enum.ts";
-import type { TipoEnum } from "./TipoEnum.ts";
 
 export type PatchedDespesaWrite = {
   /**
@@ -36,8 +36,8 @@ export type PatchedDespesaWrite = {
    * @description * `pendente` - Pendente\n* `pago` - Pago
    * @type string | undefined
    */
-  status?: Status7A5Enum;
-  tipo?: TipoEnum | BlankEnum;
+  status?: DespesaStatusEnum;
+  tipo?: DespesaTipoEnum | BlankEnum;
   /**
    * @description * `nenhuma` - Nenhuma\n* `mensal` - Mensal\n* `trimestral` - Trimestral\n* `anual` - Anual
    * @type string | undefined

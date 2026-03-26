@@ -1,6 +1,0 @@
-{
-  "enum": ["pendente", "processando", "concluido", "erro"],
-  "type": "string",
-  "description": "* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro",
-  "x-readme-ref-name": "Status200Enum"
-}

@@ -116,6 +116,7 @@
           "status": {
             "enum": [
               "apto_a_renovar",
+              "solicitado_para_liquidacao",
               "em_analise_renovacao",
               "aprovado_analise_renovacao",
               "aprovado_para_renovacao",
@@ -131,8 +132,8 @@
               "rejeitado"
             ],
             "type": "string",
-            "description": "* `apto_a_renovar` - Apto a renovar\n* `em_analise_renovacao` - Em análise para renovação\n* `aprovado_analise_renovacao` - Aprovado pela análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
-            "x-readme-ref-name": "Status0bbEnum"
+            "description": "* `apto_a_renovar` - Apto a renovar\n* `solicitado_para_liquidacao` - Solicitado para liquidação\n* `em_analise_renovacao` - Em análise para renovação\n* `aprovado_analise_renovacao` - Aprovado pela análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
+            "x-readme-ref-name": "RefinanciamentoStatusEnum"
           },
           "valor_refinanciamento": {
             "type": "string",
@@ -150,20 +151,71 @@
             "items": { "type": "string" },
             "readOnly": true
           },
-          "itens": { "type": "string", "readOnly": true },
+          "itens": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "numero": { "type": "integer" },
+                "pagamento_mensalidade_id": {
+                  "type": "integer",
+                  "nullable": true
+                },
+                "referencia_mes": { "type": "string", "format": "date" },
+                "valor": {
+                  "type": "string",
+                  "format": "decimal",
+                  "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+                },
+                "status": { "type": "string" }
+              },
+              "required": [
+                "id",
+                "numero",
+                "pagamento_mensalidade_id",
+                "referencia_mes",
+                "status",
+                "valor"
+              ],
+              "x-readme-ref-name": "RefinanciamentoItemResumo"
+            },
+            "readOnly": true
+          },
           "mensalidades_pagas": { "type": "integer", "readOnly": true },
           "mensalidades_total": { "type": "integer", "readOnly": true },
+          "numero_ciclos": { "type": "integer", "readOnly": true },
           "refinanciamento_numero": { "type": "integer", "readOnly": true },
           "pagamento_status": { "type": "string", "readOnly": true },
           "legacy_refinanciamento_id": { "type": "integer", "readOnly": true },
           "origem": { "type": "string", "readOnly": true },
-          "data_renovacao": { "type": "string", "readOnly": true },
+          "data_renovacao": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true
+          },
           "origem_renovacao": { "type": "string", "readOnly": true },
           "motivo_apto_renovacao": { "type": "string", "readOnly": true },
-          "data_primeiro_ciclo_ativado": { "type": "string", "readOnly": true },
-          "data_ativacao_ciclo": { "type": "string", "readOnly": true },
+          "data_primeiro_ciclo_ativado": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true
+          },
+          "data_ativacao_ciclo": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true
+          },
           "origem_data_ativacao": { "type": "string", "readOnly": true },
-          "data_solicitacao_renovacao": { "type": "string", "readOnly": true },
+          "data_solicitacao_renovacao": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "readOnly": true
+          },
           "ativacao_inferida": { "type": "boolean", "readOnly": true },
           "etapa_operacional": { "type": "string", "readOnly": true },
           "motivo_bloqueio": { "type": "string" },
@@ -190,8 +242,210 @@
             "format": "date-time",
             "readOnly": true
           },
-          "auditoria": { "type": "string", "readOnly": true },
-          "comprovantes": { "type": "string", "readOnly": true }
+          "auditoria": {
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "solicitado_por": {
+                    "allOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "integer", "readOnly": true },
+                          "full_name": { "type": "string", "readOnly": true }
+                        },
+                        "required": ["full_name", "id"],
+                        "x-readme-ref-name": "SimpleUser"
+                      }
+                    ],
+                    "nullable": true
+                  },
+                  "aprovado_por": {
+                    "allOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "integer", "readOnly": true },
+                          "full_name": { "type": "string", "readOnly": true }
+                        },
+                        "required": ["full_name", "id"],
+                        "x-readme-ref-name": "SimpleUser"
+                      }
+                    ],
+                    "nullable": true
+                  },
+                  "bloqueado_por": {
+                    "allOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "integer", "readOnly": true },
+                          "full_name": { "type": "string", "readOnly": true }
+                        },
+                        "required": ["full_name", "id"],
+                        "x-readme-ref-name": "SimpleUser"
+                      }
+                    ],
+                    "nullable": true
+                  },
+                  "efetivado_por": {
+                    "allOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "integer", "readOnly": true },
+                          "full_name": { "type": "string", "readOnly": true }
+                        },
+                        "required": ["full_name", "id"],
+                        "x-readme-ref-name": "SimpleUser"
+                      }
+                    ],
+                    "nullable": true
+                  },
+                  "reviewed_by": {
+                    "allOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "id": { "type": "integer", "readOnly": true },
+                          "full_name": { "type": "string", "readOnly": true }
+                        },
+                        "required": ["full_name", "id"],
+                        "x-readme-ref-name": "SimpleUser"
+                      }
+                    ],
+                    "nullable": true
+                  },
+                  "reviewed_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "nullable": true
+                  },
+                  "analista_note": { "type": "string", "nullable": true },
+                  "coordenador_note": { "type": "string", "nullable": true },
+                  "observacao": { "type": "string", "nullable": true },
+                  "motivo_bloqueio": { "type": "string", "nullable": true }
+                },
+                "required": [
+                  "analista_note",
+                  "aprovado_por",
+                  "bloqueado_por",
+                  "coordenador_note",
+                  "efetivado_por",
+                  "motivo_bloqueio",
+                  "observacao",
+                  "reviewed_at",
+                  "reviewed_by",
+                  "solicitado_por"
+                ],
+                "x-readme-ref-name": "RefinanciamentoAuditoria"
+              }
+            ],
+            "readOnly": true
+          },
+          "comprovantes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer", "readOnly": true },
+                "refinanciamento": { "type": "integer", "nullable": true },
+                "contrato": { "type": "integer", "nullable": true },
+                "ciclo": { "type": "integer", "nullable": true },
+                "tipo": {
+                  "enum": [
+                    "pix",
+                    "contrato",
+                    "termo_antecipacao",
+                    "comprovante_pagamento_associado",
+                    "comprovante_pagamento_agente",
+                    "outro"
+                  ],
+                  "type": "string",
+                  "description": "* `pix` - PIX\n* `contrato` - Contrato\n* `termo_antecipacao` - Termo de antecipação\n* `comprovante_pagamento_associado` - Comprovante pagamento associado\n* `comprovante_pagamento_agente` - Comprovante pagamento agente\n* `outro` - Outro",
+                  "x-readme-ref-name": "ComprovanteTipoEnum"
+                },
+                "papel": {
+                  "enum": ["associado", "agente", "operacional"],
+                  "type": "string",
+                  "description": "* `associado` - Associado\n* `agente` - Agente\n* `operacional` - Operacional",
+                  "x-readme-ref-name": "ComprovantePapelEnum"
+                },
+                "arquivo": { "type": "string", "format": "uri" },
+                "arquivo_referencia": { "type": "string", "readOnly": true },
+                "arquivo_disponivel_localmente": {
+                  "type": "boolean",
+                  "readOnly": true
+                },
+                "tipo_referencia": { "type": "string", "readOnly": true },
+                "nome_original": { "type": "string", "maxLength": 255 },
+                "mime": { "type": "string", "maxLength": 120 },
+                "size_bytes": {
+                  "type": "integer",
+                  "maximum": 9223372036854776000,
+                  "minimum": -9223372036854776000,
+                  "format": "int64",
+                  "nullable": true
+                },
+                "data_pagamento": {
+                  "type": "string",
+                  "format": "date-time",
+                  "nullable": true
+                },
+                "origem": {
+                  "enum": [
+                    "efetivacao_contrato",
+                    "solicitacao_renovacao",
+                    "analise_renovacao",
+                    "tesouraria_renovacao",
+                    "legado",
+                    "outro"
+                  ],
+                  "type": "string",
+                  "description": "* `efetivacao_contrato` - Efetivação do contrato\n* `solicitacao_renovacao` - Solicitação de renovação\n* `analise_renovacao` - Análise da renovação\n* `tesouraria_renovacao` - Tesouraria da renovação\n* `legado` - Legado\n* `outro` - Outro",
+                  "x-readme-ref-name": "ComprovanteOrigemEnum"
+                },
+                "legacy_comprovante_id": {
+                  "type": "integer",
+                  "maximum": 4294967295,
+                  "minimum": 0,
+                  "format": "int64",
+                  "nullable": true
+                },
+                "enviado_por": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "integer", "readOnly": true },
+                        "full_name": { "type": "string", "readOnly": true }
+                      },
+                      "required": ["full_name", "id"],
+                      "x-readme-ref-name": "SimpleUser"
+                    }
+                  ],
+                  "readOnly": true
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "readOnly": true
+                }
+              },
+              "required": [
+                "arquivo",
+                "arquivo_disponivel_localmente",
+                "arquivo_referencia",
+                "created_at",
+                "enviado_por",
+                "id",
+                "tipo_referencia"
+              ],
+              "x-readme-ref-name": "ComprovanteResumo"
+            },
+            "readOnly": true
+          }
         },
         "required": [
           "agente",
@@ -222,6 +476,7 @@
           "mensalidades_pagas",
           "mensalidades_total",
           "motivo_apto_renovacao",
+          "numero_ciclos",
           "origem",
           "origem_data_ativacao",
           "origem_renovacao",

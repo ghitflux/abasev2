@@ -1,0 +1,19 @@
+{
+  "type": "object",
+  "properties": {
+    "updated_at": { "type": "string", "format": "date-time", "nullable": true },
+    "motivo": { "type": "string" },
+    "arquivo": { "type": "string", "format": "uri", "nullable": true },
+    "tipo": { "type": "string" },
+    "papel": { "type": "string" },
+    "origem": { "type": "string" },
+    "status_validacao": { "type": "string" },
+    "data_pagamento": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+    }
+  },
+  "required": ["motivo"],
+  "x-readme-ref-name": "ComprovanteVersionWrite"
+}

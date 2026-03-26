@@ -3,14 +3,18 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type LoginCreate200 = any;
+import type { LegacyLogin } from "./LegacyLogin.ts";
+
+export type LoginCreate200 = {
+  [key: string]: any;
+};
+
+export type LoginCreateMutationRequest = LegacyLogin;
 
 export type LoginCreateMutationResponse = LoginCreate200;
 
 export type LoginCreateMutation = {
   Response: LoginCreate200;
+  Request: LoginCreateMutationRequest;
   Errors: any;
 };

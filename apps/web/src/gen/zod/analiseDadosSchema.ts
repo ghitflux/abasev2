@@ -4,7 +4,7 @@
  */
 
 import * as z from "zod";
-import { simpleUserSchema } from "./simpleUserSchema.ts";
+import { esteiraSimpleUserSchema } from "./esteiraSimpleUserSchema.ts";
 
 export const analiseDadosSchema = z.object({
   id: z.int(),
@@ -13,7 +13,7 @@ export const analiseDadosSchema = z.object({
   matricula: z.optional(z.string().max(20)),
   matricula_display: z.string(),
   get agente() {
-    return simpleUserSchema;
+    return esteiraSimpleUserSchema;
   },
   contrato_codigo: z.nullable(z.string()),
   created_at: z.iso.datetime(),

@@ -4,12 +4,18 @@
  */
 
 import * as z from "zod";
+import { appDocumentoUploadResponseSchema } from "./appDocumentoUploadResponseSchema.ts";
+import { documentoCreateSchema } from "./documentoCreateSchema.ts";
 
-/**
- * @description No response body
- */
-export const V1AppDocumentosCreate200Schema = z.any();
+export const V1AppDocumentosCreate201Schema = z.lazy(
+  () => appDocumentoUploadResponseSchema,
+);
+
+export const V1AppDocumentosCreateMutationRequestSchema = z
+  .lazy(() => documentoCreateSchema)
+  .unwrap()
+  .omit({ id: true, status: true });
 
 export const V1AppDocumentosCreateMutationResponseSchema = z.lazy(
-  () => V1AppDocumentosCreate200Schema,
+  () => V1AppDocumentosCreate201Schema,
 );

@@ -7,9 +7,10 @@ import type { DevolucaoContratoList } from "./DevolucaoContratoList.ts";
 
 export type V1TesourariaDevolucoesContratosRegistrarCreatePathParams = {
   /**
-   * @type string
+   * @description A unique integer value identifying this contrato.
+   * @type integer
    */
-  id: string;
+  id: number;
 };
 
 export type V1TesourariaDevolucoesContratosRegistrarCreate200 =

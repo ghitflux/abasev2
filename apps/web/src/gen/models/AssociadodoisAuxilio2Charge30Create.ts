@@ -3,10 +3,9 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AssociadodoisAuxilio2Charge30Create200 = any;
+export type AssociadodoisAuxilio2Charge30Create200 = {
+  [key: string]: any;
+};
 
 export type AssociadodoisAuxilio2Charge30CreateMutationResponse =
   AssociadodoisAuxilio2Charge30Create200;

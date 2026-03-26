@@ -4,6 +4,7 @@
  */
 
 import * as z from "zod";
+import { liquidacaoAnexoSchema } from "./liquidacaoAnexoSchema.ts";
 import { liquidacaoComprovanteSchema } from "./liquidacaoComprovanteSchema.ts";
 import { liquidacaoParcelaSchema } from "./liquidacaoParcelaSchema.ts";
 import { simpleUserSchema } from "./simpleUserSchema.ts";
@@ -19,11 +20,17 @@ export const liquidacaoContratoListSchema = z.object({
   agente_nome: z.string(),
   contrato_codigo: z.string(),
   quantidade_parcelas: z.int(),
+  quantidade_parcelas_contrato: z.int(),
   valor_total: z.string().regex(/^-?\d{0,10}(?:\.\d{0,2})?$/),
   referencia_inicial: z.nullable(z.iso.date()),
   referencia_final: z.nullable(z.iso.date()),
   status_liquidacao: z.string(),
+  status_operacional: z.string(),
+  pode_liquidar_agora: z.boolean(),
+  status_associado: z.string(),
   status_contrato: z.string(),
+  status_renovacao: z.string(),
+  origem_solicitacao: z.string(),
   data_liquidacao: z.nullable(z.iso.date()),
   observacao: z.string(),
   get realizado_por() {
@@ -36,6 +43,9 @@ export const liquidacaoContratoListSchema = z.object({
   motivo_reversao: z.string(),
   get comprovante() {
     return liquidacaoComprovanteSchema.nullable();
+  },
+  get anexos() {
+    return z.array(liquidacaoAnexoSchema);
   },
   get parcelas() {
     return z.array(liquidacaoParcelaSchema);

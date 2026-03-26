@@ -4,7 +4,7 @@
  */
 
 import * as z from "zod";
-import { simpleUserSchema } from "./simpleUserSchema.ts";
+import { esteiraSimpleUserSchema } from "./esteiraSimpleUserSchema.ts";
 
 export const analiseMargemSchema = z.object({
   id: z.int(),
@@ -13,7 +13,7 @@ export const analiseMargemSchema = z.object({
   nome_completo: z.string(),
   cpf_cnpj: z.string(),
   get agente() {
-    return simpleUserSchema;
+    return esteiraSimpleUserSchema;
   },
   valor_bruto: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
   valor_liquido: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),

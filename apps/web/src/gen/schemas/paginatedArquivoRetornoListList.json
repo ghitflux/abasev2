@@ -26,7 +26,7 @@
             "enum": ["txt", "csv", "xlsx", "man"],
             "type": "string",
             "description": "* `txt` - TXT\n* `csv` - CSV\n* `xlsx` - XLSX\n* `man` - Manual",
-            "x-readme-ref-name": "FormatoEnum"
+            "x-readme-ref-name": "ArquivoRetornoFormatoEnum"
           },
           "sistema_origem": { "type": "string", "readOnly": true },
           "competencia": { "type": "string", "format": "date" },
@@ -59,7 +59,7 @@
             "enum": ["pendente", "processando", "concluido", "erro"],
             "type": "string",
             "description": "* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro",
-            "x-readme-ref-name": "Status200Enum"
+            "x-readme-ref-name": "ArquivoRetornoStatusEnum"
           },
           "resumo": {
             "type": "object",

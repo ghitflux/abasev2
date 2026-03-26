@@ -5,10 +5,7 @@
 
 import * as z from "zod";
 
-/**
- * @description No response body
- */
-export const V1AppMeRetrieve200Schema = z.any();
+export const V1AppMeRetrieve200Schema = z.object({}).catchall(z.any());
 
 export const V1AppMeRetrieveQueryResponseSchema = z.lazy(
   () => V1AppMeRetrieve200Schema,

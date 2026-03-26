@@ -4,8 +4,11 @@
  */
 
 import * as z from "zod";
+import { comprovanteResumoSchema } from "./comprovanteResumoSchema.ts";
+import { refinanciamentoAuditoriaSchema } from "./refinanciamentoAuditoriaSchema.ts";
+import { refinanciamentoItemResumoSchema } from "./refinanciamentoItemResumoSchema.ts";
+import { refinanciamentoStatusEnumSchema } from "./refinanciamentoStatusEnumSchema.ts";
 import { simpleUserSchema } from "./simpleUserSchema.ts";
-import { status0BbEnumSchema } from "./status0BbEnumSchema.ts";
 
 export const refinanciamentoDetailSchema = z.object({
   id: z.int(),
@@ -36,9 +39,9 @@ export const refinanciamentoDetailSchema = z.object({
   },
   competencia_solicitada: z.iso.date(),
   get status() {
-    return status0BbEnumSchema
+    return refinanciamentoStatusEnumSchema
       .describe(
-        "* `apto_a_renovar` - Apto a renovar\n* `em_analise_renovacao` - Em análise para renovação\n* `aprovado_analise_renovacao` - Aprovado pela análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
+        "* `apto_a_renovar` - Apto a renovar\n* `solicitado_para_liquidacao` - Solicitado para liquidação\n* `em_analise_renovacao` - Em análise para renovação\n* `aprovado_analise_renovacao` - Aprovado pela análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
       )
       .optional();
   },
@@ -48,20 +51,23 @@ export const refinanciamentoDetailSchema = z.object({
   repasse_agente: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
   ciclo_key: z.string(),
   referencias: z.array(z.string()),
-  itens: z.string(),
+  get itens() {
+    return z.array(refinanciamentoItemResumoSchema);
+  },
   mensalidades_pagas: z.int(),
   mensalidades_total: z.int(),
+  numero_ciclos: z.int(),
   refinanciamento_numero: z.int(),
   pagamento_status: z.string(),
   legacy_refinanciamento_id: z.int(),
   origem: z.string(),
-  data_renovacao: z.string(),
+  data_renovacao: z.nullable(z.iso.datetime()),
   origem_renovacao: z.string(),
   motivo_apto_renovacao: z.string(),
-  data_primeiro_ciclo_ativado: z.string(),
-  data_ativacao_ciclo: z.string(),
+  data_primeiro_ciclo_ativado: z.nullable(z.iso.datetime()),
+  data_ativacao_ciclo: z.nullable(z.iso.datetime()),
   origem_data_ativacao: z.string(),
-  data_solicitacao_renovacao: z.string(),
+  data_solicitacao_renovacao: z.nullable(z.iso.datetime()),
   ativacao_inferida: z.boolean(),
   etapa_operacional: z.string(),
   motivo_bloqueio: z.optional(z.string()),
@@ -72,6 +78,10 @@ export const refinanciamentoDetailSchema = z.object({
   executado_em: z.iso.datetime().nullish(),
   created_at: z.iso.datetime(),
   updated_at: z.iso.datetime(),
-  auditoria: z.string(),
-  comprovantes: z.string(),
+  get auditoria() {
+    return refinanciamentoAuditoriaSchema;
+  },
+  get comprovantes() {
+    return z.array(comprovanteResumoSchema);
+  },
 });

@@ -18,6 +18,7 @@ from apps.importacao.models import ArquivoRetorno, PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante
 from apps.refinanciamento.serializers import ComprovanteResumoSerializer
 from apps.tesouraria.initial_payment import build_initial_payment_payload
+from apps.tesouraria.models import LiquidacaoContrato
 from apps.tesouraria.payment_evidence import (
     build_competencia_evidence_payload,
     canonicalize_pagamentos,
@@ -534,20 +535,25 @@ class LiquidacaoAnexoSerializer(LiquidacaoComprovanteSerializer):
 
 class LiquidacaoContratoListSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
-    contrato_id = serializers.IntegerField(read_only=True)
+    contrato_id = serializers.IntegerField(read_only=True, allow_null=True)
     liquidacao_id = serializers.IntegerField(read_only=True, allow_null=True)
     associado_id = serializers.IntegerField(read_only=True)
     nome = serializers.CharField(read_only=True)
     cpf_cnpj = serializers.CharField(read_only=True)
     matricula = serializers.CharField(read_only=True)
     agente_nome = serializers.CharField(read_only=True, allow_blank=True)
-    contrato_codigo = serializers.CharField(read_only=True)
+    contrato_codigo = serializers.CharField(read_only=True, allow_blank=True)
     quantidade_parcelas = serializers.IntegerField(read_only=True)
+    quantidade_parcelas_contrato = serializers.IntegerField(read_only=True)
     valor_total = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
     referencia_inicial = serializers.DateField(read_only=True, allow_null=True)
     referencia_final = serializers.DateField(read_only=True, allow_null=True)
     status_liquidacao = serializers.CharField(read_only=True)
-    status_contrato = serializers.CharField(read_only=True)
+    status_operacional = serializers.CharField(read_only=True, allow_blank=True)
+    pode_liquidar_agora = serializers.BooleanField(read_only=True)
+    status_associado = serializers.CharField(read_only=True, allow_blank=True)
+    status_associado_label = serializers.CharField(read_only=True, allow_blank=True)
+    status_contrato = serializers.CharField(read_only=True, allow_blank=True)
     status_renovacao = serializers.CharField(read_only=True, allow_blank=True)
     origem_solicitacao = serializers.CharField(read_only=True, allow_blank=True)
     data_liquidacao = serializers.DateField(read_only=True, allow_null=True)
@@ -607,7 +613,6 @@ class LiquidacaoContratoListSerializer(serializers.Serializer):
     def get_pode_reverter(self, obj: dict[str, Any]) -> bool:
         return obj.get("status_liquidacao") == "liquidado"
 
-
 class LiquidacaoKpisSerializer(serializers.Serializer):
     total_contratos = serializers.IntegerField(read_only=True)
     total_parcelas = serializers.IntegerField(read_only=True)
@@ -615,9 +620,19 @@ class LiquidacaoKpisSerializer(serializers.Serializer):
     associados_impactados = serializers.IntegerField(read_only=True)
     revertidas = serializers.IntegerField(read_only=True)
     ativas = serializers.IntegerField(read_only=True)
+    liquidaveis_agora = serializers.IntegerField(read_only=True)
+    sem_parcelas_elegiveis = serializers.IntegerField(read_only=True)
+    por_status_associado = serializers.DictField(
+        child=serializers.IntegerField(read_only=True),
+        read_only=True,
+    )
 
 
 class LiquidarContratoSerializer(serializers.Serializer):
+    origem_solicitacao = serializers.ChoiceField(
+        choices=LiquidacaoContrato.OrigemSolicitacao.choices,
+        required=True,
+    )
     data_liquidacao = serializers.DateField(required=True)
     valor_total = serializers.DecimalField(max_digits=12, decimal_places=2, required=True)
     observacao = serializers.CharField(required=True, allow_blank=False)

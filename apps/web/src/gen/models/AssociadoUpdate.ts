@@ -3,12 +3,12 @@
  * Do not edit manually.
  */
 
+import type { AssociadoStatusEnum } from "./AssociadoStatusEnum.ts";
 import type { BlankEnum } from "./BlankEnum.ts";
 import type { ContatoHistoricoWrite } from "./ContatoHistoricoWrite.ts";
 import type { DadosBancariosWrite } from "./DadosBancariosWrite.ts";
 import type { EnderecoWrite } from "./EnderecoWrite.ts";
 import type { EstadoCivilEnum } from "./EstadoCivilEnum.ts";
-import type { Status427Enum } from "./Status427Enum.ts";
 import type { TipoDocumentoEnum } from "./TipoDocumentoEnum.ts";
 
 export type AssociadoUpdate = {
@@ -63,7 +63,7 @@ export type AssociadoUpdate = {
    * @description * `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente
    * @type string | undefined
    */
-  status?: Status427Enum;
+  status?: AssociadoStatusEnum;
   /**
    * @type string | undefined
    */

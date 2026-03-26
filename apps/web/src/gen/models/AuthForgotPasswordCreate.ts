@@ -3,15 +3,19 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AuthForgotPasswordCreate200 = any;
+import type { LegacyForgotPassword } from "./LegacyForgotPassword.ts";
+
+export type AuthForgotPasswordCreate200 = {
+  [key: string]: any;
+};
+
+export type AuthForgotPasswordCreateMutationRequest = LegacyForgotPassword;
 
 export type AuthForgotPasswordCreateMutationResponse =
   AuthForgotPasswordCreate200;
 
 export type AuthForgotPasswordCreateMutation = {
   Response: AuthForgotPasswordCreate200;
+  Request: AuthForgotPasswordCreateMutationRequest;
   Errors: any;
 };

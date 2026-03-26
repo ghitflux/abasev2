@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "nullable": true },
+    "client_key": { "type": "string" },
+    "numero": { "type": "integer" },
+    "data_inicio": { "type": "string", "format": "date" },
+    "data_fim": { "type": "string", "format": "date" },
+    "status": { "type": "string" },
+    "valor_total": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    }
+  },
+  "required": ["data_fim", "data_inicio", "numero", "status", "valor_total"],
+  "x-readme-ref-name": "CicloLayoutWrite"
+}

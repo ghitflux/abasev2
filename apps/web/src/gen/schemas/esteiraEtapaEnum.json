@@ -1,0 +1,6 @@
+{
+  "enum": ["cadastro", "analise", "coordenacao", "tesouraria", "concluido"],
+  "type": "string",
+  "description": "* `cadastro` - Cadastro\n* `analise` - Análise\n* `coordenacao` - Coordenação\n* `tesouraria` - Tesouraria\n* `concluido` - Concluído",
+  "x-readme-ref-name": "EsteiraEtapaEnum"
+}

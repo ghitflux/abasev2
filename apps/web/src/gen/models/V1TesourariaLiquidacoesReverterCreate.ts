@@ -7,9 +7,10 @@ import type { LiquidacaoContratoList } from "./LiquidacaoContratoList.ts";
 
 export type V1TesourariaLiquidacoesReverterCreatePathParams = {
   /**
-   * @type string
+   * @description A unique integer value identifying this liquidacao contrato.
+   * @type integer
    */
-  id: string;
+  id: number;
 };
 
 export type V1TesourariaLiquidacoesReverterCreate200 = LiquidacaoContratoList;
@@ -26,11 +27,17 @@ export type V1TesourariaLiquidacoesReverterCreateMutationRequest = Omit<
   | "agente_nome"
   | "contrato_codigo"
   | "quantidade_parcelas"
+  | "quantidade_parcelas_contrato"
   | "valor_total"
   | "referencia_inicial"
   | "referencia_final"
   | "status_liquidacao"
+  | "status_operacional"
+  | "pode_liquidar_agora"
+  | "status_associado"
   | "status_contrato"
+  | "status_renovacao"
+  | "origem_solicitacao"
   | "data_liquidacao"
   | "observacao"
   | "realizado_por"
@@ -38,6 +45,7 @@ export type V1TesourariaLiquidacoesReverterCreateMutationRequest = Omit<
   | "revertida_por"
   | "motivo_reversao"
   | "comprovante"
+  | "anexos"
   | "parcelas"
   | "pode_reverter"
 >;

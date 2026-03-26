@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "name": { "type": "string", "maxLength": 255 },
+    "email": { "type": "string", "format": "email" },
+    "password": { "type": "string", "writeOnly": true },
+    "password_confirmation": { "type": "string", "writeOnly": true },
+    "terms": { "type": "boolean", "default": false },
+    "terms_version": { "type": "string" }
+  },
+  "required": ["email", "name", "password", "password_confirmation"],
+  "x-readme-ref-name": "LegacyRegister"
+}

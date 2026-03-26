@@ -17,8 +17,6 @@ function getV1AppAntecipacaoRetrieveUrl() {
 }
 
 /**
- * @description Histórico de parcelas descontadas (pagas) do associado logado.
- * Simula o endpoint legado /api/app/antecipacao/historico.
  * {@link /api/v1/app/antecipacao/}
  */
 export async function v1AppAntecipacaoRetrieve(

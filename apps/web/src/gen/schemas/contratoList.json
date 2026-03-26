@@ -50,7 +50,7 @@
       "enum": ["rascunho", "em_analise", "ativo", "encerrado", "cancelado"],
       "type": "string",
       "description": "* `rascunho` - Rascunho\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `encerrado` - Encerrado\n* `cancelado` - Cancelado",
-      "x-readme-ref-name": "ContratoListStatusEnum"
+      "x-readme-ref-name": "ContratoStatusEnum"
     },
     "status_resumido": { "type": "string", "readOnly": true },
     "status_contrato_visual": { "type": "string", "readOnly": true },
@@ -68,25 +68,101 @@
       "format": "decimal",
       "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
     },
-    "mensalidades": { "type": "string", "readOnly": true },
+    "mensalidades": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "pagas": { "type": "integer" },
+            "total": { "type": "integer" },
+            "descricao": { "type": "string" },
+            "apto_refinanciamento": { "type": "boolean" },
+            "refinanciamento_ativo": { "type": "boolean" }
+          },
+          "required": [
+            "apto_refinanciamento",
+            "descricao",
+            "pagas",
+            "refinanciamento_ativo",
+            "total"
+          ],
+          "x-readme-ref-name": "MensalidadesResumo"
+        }
+      ],
+      "readOnly": true
+    },
     "auxilio_liberado_em": {
       "type": "string",
       "format": "date",
       "nullable": true
     },
+    "valor_auxilio_liberado": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+      "readOnly": true
+    },
+    "percentual_repasse": { "type": "string", "readOnly": true },
+    "ciclo_apto": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "numero": { "type": "integer" },
+            "status": { "type": "string" },
+            "status_visual_slug": { "type": "string" },
+            "status_visual_label": { "type": "string" },
+            "resumo_referencias": { "type": "string" },
+            "parcelas_pagas": { "type": "integer" },
+            "parcelas_total": { "type": "integer" },
+            "valor_total": {
+              "type": "string",
+              "format": "decimal",
+              "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+            },
+            "primeira_competencia_ciclo": {
+              "type": "string",
+              "format": "date"
+            },
+            "ultima_competencia_ciclo": { "type": "string", "format": "date" }
+          },
+          "required": [
+            "numero",
+            "parcelas_pagas",
+            "parcelas_total",
+            "primeira_competencia_ciclo",
+            "resumo_referencias",
+            "status",
+            "status_visual_label",
+            "status_visual_slug",
+            "ultima_competencia_ciclo",
+            "valor_total"
+          ],
+          "x-readme-ref-name": "ContratoAptoCycle"
+        }
+      ],
+      "nullable": true,
+      "readOnly": true
+    },
     "pode_solicitar_refinanciamento": { "type": "boolean", "readOnly": true },
     "status_renovacao": { "type": "string", "readOnly": true },
-    "refinanciamento_id": { "type": "string", "readOnly": true },
+    "refinanciamento_id": {
+      "type": "integer",
+      "nullable": true,
+      "readOnly": true
+    },
     "possui_meses_nao_descontados": { "type": "boolean", "readOnly": true },
     "meses_nao_descontados_count": { "type": "integer", "readOnly": true }
   },
   "required": [
     "agente",
     "associado",
+    "ciclo_apto",
     "etapa_fluxo",
     "id",
     "mensalidades",
     "meses_nao_descontados_count",
+    "percentual_repasse",
     "pode_solicitar_refinanciamento",
     "possui_meses_nao_descontados",
     "refinanciamento_id",
@@ -94,7 +170,8 @@
     "status_renovacao",
     "status_resumido",
     "status_visual_label",
-    "status_visual_slug"
+    "status_visual_slug",
+    "valor_auxilio_liberado"
   ],
   "x-readme-ref-name": "ContratoList"
 }

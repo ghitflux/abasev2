@@ -5,10 +5,7 @@
 
 import * as z from "zod";
 
-/**
- * @description No response body
- */
-export const authCheckEmailRetrieve200Schema = z.any();
+export const authCheckEmailRetrieve200Schema = z.object({}).catchall(z.any());
 
 export const authCheckEmailRetrieveQueryResponseSchema = z.lazy(
   () => authCheckEmailRetrieve200Schema,

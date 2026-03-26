@@ -5,32 +5,32 @@
 
 import * as z from "zod";
 import { blankEnumSchema } from "./blankEnumSchema.ts";
-import { paraSituacaoEnumSchema } from "./paraSituacaoEnumSchema.ts";
-import { paraStatusEnumSchema } from "./paraStatusEnumSchema.ts";
-import { simpleUserSchema } from "./simpleUserSchema.ts";
+import { esteiraEtapaEnumSchema } from "./esteiraEtapaEnumSchema.ts";
+import { esteiraSimpleUserSchema } from "./esteiraSimpleUserSchema.ts";
+import { esteiraSituacaoEnumSchema } from "./esteiraSituacaoEnumSchema.ts";
 
 export const transicaoSchema = z.object({
   id: z.int(),
   acao: z.optional(z.string().max(40)),
   get de_status() {
-    return paraStatusEnumSchema.describe(
+    return esteiraEtapaEnumSchema.describe(
       "* `cadastro` - Cadastro\n* `analise` - Análise\n* `coordenacao` - Coordenação\n* `tesouraria` - Tesouraria\n* `concluido` - Concluído",
     );
   },
   get para_status() {
-    return paraStatusEnumSchema.describe(
+    return esteiraEtapaEnumSchema.describe(
       "* `cadastro` - Cadastro\n* `analise` - Análise\n* `coordenacao` - Coordenação\n* `tesouraria` - Tesouraria\n* `concluido` - Concluído",
     );
   },
   get de_situacao() {
-    return z.union([paraSituacaoEnumSchema, blankEnumSchema]).optional();
+    return z.union([esteiraSituacaoEnumSchema, blankEnumSchema]).optional();
   },
   get para_situacao() {
-    return z.union([paraSituacaoEnumSchema, blankEnumSchema]).optional();
+    return z.union([esteiraSituacaoEnumSchema, blankEnumSchema]).optional();
   },
   observacao: z.optional(z.string()),
   realizado_em: z.optional(z.iso.datetime()),
   get realizado_por() {
-    return simpleUserSchema;
+    return esteiraSimpleUserSchema;
   },
 });

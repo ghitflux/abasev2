@@ -493,6 +493,7 @@ class LiquidacaoContratoViewSet(mixins.ListModelMixin, GenericViewSet):
         liquidacao = LiquidacaoContratoService.liquidar_contrato(
             int(pk),
             comprovantes=payload.validated_data["comprovantes"],
+            origem_solicitacao=payload.validated_data["origem_solicitacao"],
             data_liquidacao=payload.validated_data["data_liquidacao"],
             valor_total=payload.validated_data["valor_total"],
             observacao=payload.validated_data["observacao"],

@@ -5,10 +5,7 @@
 
 import * as z from "zod";
 
-/**
- * @description No response body
- */
-export const logoutCreate200Schema = z.any();
+export const logoutCreate200Schema = z.object({}).catchall(z.any());
 
 export const logoutCreateMutationResponseSchema = z.lazy(
   () => logoutCreate200Schema,

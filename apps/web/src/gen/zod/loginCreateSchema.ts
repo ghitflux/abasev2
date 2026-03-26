@@ -4,11 +4,11 @@
  */
 
 import * as z from "zod";
+import { legacyLoginSchema } from "./legacyLoginSchema.ts";
 
-/**
- * @description No response body
- */
-export const loginCreate200Schema = z.any();
+export const loginCreate200Schema = z.object({}).catchall(z.any());
+
+export const loginCreateMutationRequestSchema = z.lazy(() => legacyLoginSchema);
 
 export const loginCreateMutationResponseSchema = z.lazy(
   () => loginCreate200Schema,

@@ -1,0 +1,183 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "nullable": true },
+    "numero": { "type": "integer" },
+    "data_inicio": { "type": "string", "format": "date" },
+    "data_fim": { "type": "string", "format": "date" },
+    "status": { "type": "string" },
+    "valor_total": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "updated_at": { "type": "string", "format": "date-time", "nullable": true },
+    "comprovantes_ciclo": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "nullable": true },
+          "tipo": { "type": "string" },
+          "papel": { "type": "string" },
+          "arquivo": { "type": "string" },
+          "arquivo_referencia": { "type": "string" },
+          "arquivo_disponivel_localmente": { "type": "boolean" },
+          "tipo_referencia": { "type": "string" },
+          "nome_original": { "type": "string" },
+          "mime": { "type": "string" },
+          "size_bytes": { "type": "integer", "nullable": true },
+          "data_pagamento": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "origem": { "type": "string" },
+          "status_validacao": { "type": "string" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "legacy_comprovante_id": { "type": "integer", "nullable": true }
+        },
+        "required": [
+          "arquivo",
+          "arquivo_disponivel_localmente",
+          "arquivo_referencia",
+          "created_at",
+          "data_pagamento",
+          "id",
+          "legacy_comprovante_id",
+          "mime",
+          "nome_original",
+          "origem",
+          "papel",
+          "size_bytes",
+          "tipo",
+          "tipo_referencia"
+        ],
+        "x-readme-ref-name": "ProjectedComprovante"
+      },
+      "readOnly": true
+    },
+    "termo_antecipacao": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "nullable": true },
+            "tipo": { "type": "string" },
+            "papel": { "type": "string" },
+            "arquivo": { "type": "string" },
+            "arquivo_referencia": { "type": "string" },
+            "arquivo_disponivel_localmente": { "type": "boolean" },
+            "tipo_referencia": { "type": "string" },
+            "nome_original": { "type": "string" },
+            "mime": { "type": "string" },
+            "size_bytes": { "type": "integer", "nullable": true },
+            "data_pagamento": {
+              "type": "string",
+              "format": "date-time",
+              "nullable": true
+            },
+            "origem": { "type": "string" },
+            "status_validacao": { "type": "string" },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "nullable": true
+            },
+            "legacy_comprovante_id": { "type": "integer", "nullable": true }
+          },
+          "required": [
+            "arquivo",
+            "arquivo_disponivel_localmente",
+            "arquivo_referencia",
+            "created_at",
+            "data_pagamento",
+            "id",
+            "legacy_comprovante_id",
+            "mime",
+            "nome_original",
+            "origem",
+            "papel",
+            "size_bytes",
+            "tipo",
+            "tipo_referencia"
+          ],
+          "x-readme-ref-name": "ProjectedComprovante"
+        }
+      ],
+      "readOnly": true,
+      "nullable": true
+    },
+    "parcelas": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "nullable": true },
+          "numero": { "type": "integer" },
+          "referencia_mes": { "type": "string", "format": "date" },
+          "valor": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+          },
+          "data_vencimento": { "type": "string", "format": "date" },
+          "status": { "type": "string" },
+          "data_pagamento": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "observacao": { "type": "string" },
+          "layout_bucket": { "type": "string" },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "financial_flags": {
+            "type": "object",
+            "properties": {
+              "tem_retorno": { "type": "boolean" },
+              "tem_baixa_manual": { "type": "boolean" },
+              "tem_liquidacao": { "type": "boolean" }
+            },
+            "required": ["tem_baixa_manual", "tem_liquidacao", "tem_retorno"],
+            "x-readme-ref-name": "AdminOverrideFinancialFlags"
+          }
+        },
+        "required": [
+          "data_pagamento",
+          "data_vencimento",
+          "financial_flags",
+          "id",
+          "layout_bucket",
+          "numero",
+          "observacao",
+          "referencia_mes",
+          "status",
+          "updated_at",
+          "valor"
+        ],
+        "x-readme-ref-name": "AdminOverrideParcelaEditor"
+      }
+    }
+  },
+  "required": [
+    "comprovantes_ciclo",
+    "data_fim",
+    "data_inicio",
+    "id",
+    "numero",
+    "parcelas",
+    "status",
+    "termo_antecipacao",
+    "updated_at",
+    "valor_total"
+  ],
+  "x-readme-ref-name": "AdminOverrideCicloEditor"
+}

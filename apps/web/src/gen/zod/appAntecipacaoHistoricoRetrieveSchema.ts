@@ -5,10 +5,9 @@
 
 import * as z from "zod";
 
-/**
- * @description No response body
- */
-export const appAntecipacaoHistoricoRetrieve200Schema = z.any();
+export const appAntecipacaoHistoricoRetrieve200Schema = z
+  .object({})
+  .catchall(z.any());
 
 export const appAntecipacaoHistoricoRetrieveQueryResponseSchema = z.lazy(
   () => appAntecipacaoHistoricoRetrieve200Schema,

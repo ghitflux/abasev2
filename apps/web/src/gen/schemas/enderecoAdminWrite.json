@@ -1,0 +1,14 @@
+{
+  "type": "object",
+  "properties": {
+    "cep": { "type": "string" },
+    "logradouro": { "type": "string" },
+    "endereco": { "type": "string" },
+    "numero": { "type": "string" },
+    "complemento": { "type": "string" },
+    "bairro": { "type": "string" },
+    "cidade": { "type": "string" },
+    "uf": { "type": "string" }
+  },
+  "x-readme-ref-name": "EnderecoAdminWrite"
+}

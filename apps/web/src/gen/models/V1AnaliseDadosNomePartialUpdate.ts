@@ -8,6 +8,7 @@ import type { PatchedAnaliseDadosUpdate } from "./PatchedAnaliseDadosUpdate.ts";
 
 export type V1AnaliseDadosNomePartialUpdatePathParams = {
   /**
+   * @pattern ^\d+$
    * @type string
    */
   associado_id: string;

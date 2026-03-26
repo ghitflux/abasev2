@@ -3,14 +3,18 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type AppClientLogCreate200 = any;
+import type { LegacyClientLogResponse } from "./LegacyClientLogResponse.ts";
+
+export type AppClientLogCreate200 = LegacyClientLogResponse;
+
+export type AppClientLogCreateMutationRequest = {
+  [key: string]: any;
+};
 
 export type AppClientLogCreateMutationResponse = AppClientLogCreate200;
 
 export type AppClientLogCreateMutation = {
   Response: AppClientLogCreate200;
+  Request: AppClientLogCreateMutationRequest;
   Errors: any;
 };

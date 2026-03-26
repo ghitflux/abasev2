@@ -3,14 +3,20 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type V1AppDocumentosCreate200 = any;
+import type { AppDocumentoUploadResponse } from "./AppDocumentoUploadResponse.ts";
+import type { DocumentoCreate } from "./DocumentoCreate.ts";
 
-export type V1AppDocumentosCreateMutationResponse = V1AppDocumentosCreate200;
+export type V1AppDocumentosCreate201 = AppDocumentoUploadResponse;
+
+export type V1AppDocumentosCreateMutationRequest = Omit<
+  NonNullable<DocumentoCreate>,
+  "id" | "status"
+>;
+
+export type V1AppDocumentosCreateMutationResponse = V1AppDocumentosCreate201;
 
 export type V1AppDocumentosCreateMutation = {
-  Response: V1AppDocumentosCreate200;
+  Response: V1AppDocumentosCreate201;
+  Request: V1AppDocumentosCreateMutationRequest;
   Errors: any;
 };

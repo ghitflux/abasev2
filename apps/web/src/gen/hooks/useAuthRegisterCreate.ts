@@ -3,7 +3,10 @@
  * Do not edit manually.
  */
 
-import type { AuthRegisterCreateMutationResponse } from "../models/AuthRegisterCreate.ts";
+import type {
+  AuthRegisterCreateMutationRequest,
+  AuthRegisterCreateMutationResponse,
+} from "../models/AuthRegisterCreate.ts";
 import type {
   Client,
   RequestConfig,
@@ -25,18 +28,20 @@ export type AuthRegisterCreateMutationKey = ReturnType<
 >;
 
 export function authRegisterCreateMutationOptions<TContext = unknown>(
-  config: Partial<RequestConfig> & { client?: Client } = {},
+  config: Partial<RequestConfig<AuthRegisterCreateMutationRequest>> & {
+    client?: Client;
+  } = {},
 ) {
   const mutationKey = authRegisterCreateMutationKey();
   return mutationOptions<
     AuthRegisterCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: AuthRegisterCreateMutationRequest },
     TContext
   >({
     mutationKey,
-    mutationFn: async () => {
-      return authRegisterCreate(config);
+    mutationFn: async ({ data }) => {
+      return authRegisterCreate(data, config);
     },
   });
 }
@@ -49,10 +54,12 @@ export function useAuthRegisterCreate<TContext>(
     mutation?: UseMutationOptions<
       AuthRegisterCreateMutationResponse,
       ResponseErrorConfig<Error>,
-      void,
+      { data: AuthRegisterCreateMutationRequest },
       TContext
     > & { client?: QueryClient };
-    client?: Partial<RequestConfig> & { client?: Client };
+    client?: Partial<RequestConfig<AuthRegisterCreateMutationRequest>> & {
+      client?: Client;
+    };
   } = {},
 ) {
   const { mutation = {}, client: config = {} } = options ?? {};
@@ -65,14 +72,14 @@ export function useAuthRegisterCreate<TContext>(
   ) as UseMutationOptions<
     AuthRegisterCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: AuthRegisterCreateMutationRequest },
     TContext
   >;
 
   return useMutation<
     AuthRegisterCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: AuthRegisterCreateMutationRequest },
     TContext
   >(
     {
@@ -84,7 +91,7 @@ export function useAuthRegisterCreate<TContext>(
   ) as UseMutationResult<
     AuthRegisterCreateMutationResponse,
     ResponseErrorConfig<Error>,
-    void,
+    { data: AuthRegisterCreateMutationRequest },
     TContext
   >;
 }

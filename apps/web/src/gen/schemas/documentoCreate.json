@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "tipo": {
+      "enum": [
+        "rg",
+        "cpf",
+        "documento_frente",
+        "documento_verso",
+        "comprovante_residencia",
+        "divulgacao",
+        "contracheque",
+        "termo_adesao",
+        "termo_antecipacao",
+        "outro"
+      ],
+      "type": "string",
+      "description": "* `rg` - RG\n* `cpf` - CPF\n* `documento_frente` - Documento (frente)\n* `documento_verso` - Documento (verso)\n* `comprovante_residencia` - Comprovante de residência\n* `divulgacao` - Divulgação\n* `contracheque` - Contracheque\n* `termo_adesao` - Termo de adesão\n* `termo_antecipacao` - Termo de antecipação\n* `outro` - Outro",
+      "x-readme-ref-name": "DocumentoTipoEnum"
+    },
+    "arquivo": { "type": "string", "format": "uri" },
+    "status": {
+      "allOf": [
+        {
+          "enum": ["pendente", "aprovado", "rejeitado"],
+          "type": "string",
+          "description": "* `pendente` - Pendente\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
+          "x-readme-ref-name": "DocumentoStatusEnum"
+        }
+      ],
+      "readOnly": true
+    },
+    "observacao": { "type": "string" }
+  },
+  "required": ["arquivo", "id", "status", "tipo"],
+  "x-readme-ref-name": "DocumentoCreate"
+}

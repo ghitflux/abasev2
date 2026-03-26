@@ -15,7 +15,7 @@
             "full_name": { "type": "string", "readOnly": true }
           },
           "required": ["full_name", "id"],
-          "x-readme-ref-name": "SimpleUser"
+          "x-readme-ref-name": "EsteiraSimpleUser"
         }
       ],
       "readOnly": true

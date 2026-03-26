@@ -1,0 +1,12 @@
+{
+  "type": "object",
+  "properties": {
+    "updated_at": { "type": "string", "format": "date-time", "nullable": true },
+    "motivo": { "type": "string" },
+    "arquivo": { "type": "string", "format": "uri", "nullable": true },
+    "status": { "type": "string" },
+    "observacao": { "type": "string" }
+  },
+  "required": ["motivo"],
+  "x-readme-ref-name": "DocumentoVersionWrite"
+}

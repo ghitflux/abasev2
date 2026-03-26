@@ -1,0 +1,793 @@
+{
+  "type": "object",
+  "properties": {
+    "associado": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "readOnly": true },
+            "matricula": { "type": "string", "readOnly": true },
+            "tipo_documento": { "type": "string", "readOnly": true },
+            "nome_completo": { "type": "string", "readOnly": true },
+            "cpf_cnpj": { "type": "string", "readOnly": true },
+            "rg": { "type": "string", "readOnly": true },
+            "orgao_expedidor": { "type": "string", "readOnly": true },
+            "email": { "type": "string", "readOnly": true },
+            "telefone": { "type": "string", "readOnly": true },
+            "data_nascimento": {
+              "type": "string",
+              "format": "date",
+              "readOnly": true,
+              "nullable": true
+            },
+            "profissao": { "type": "string", "readOnly": true },
+            "estado_civil": { "type": "string", "readOnly": true },
+            "orgao_publico": { "type": "string", "readOnly": true },
+            "matricula_orgao": { "type": "string", "readOnly": true },
+            "cargo": { "type": "string", "readOnly": true },
+            "status": { "type": "string", "readOnly": true },
+            "observacao": { "type": "string", "readOnly": true },
+            "agente_responsavel_id": {
+              "type": "integer",
+              "readOnly": true,
+              "nullable": true
+            },
+            "percentual_repasse": { "type": "string", "readOnly": true },
+            "endereco": {
+              "allOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "integer", "nullable": true },
+                    "cep": { "type": "string" },
+                    "endereco": { "type": "string" },
+                    "numero": { "type": "string" },
+                    "complemento": { "type": "string" },
+                    "bairro": { "type": "string" },
+                    "cidade": { "type": "string" },
+                    "uf": { "type": "string" },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    }
+                  },
+                  "x-readme-ref-name": "Endereco"
+                }
+              ],
+              "readOnly": true,
+              "nullable": true
+            },
+            "dados_bancarios": {
+              "allOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "integer", "nullable": true },
+                    "associado": { "type": "integer", "nullable": true },
+                    "banco": { "type": "string" },
+                    "agencia": { "type": "string" },
+                    "conta": { "type": "string" },
+                    "tipo_conta": { "type": "string" },
+                    "chave_pix": { "type": "string" },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    }
+                  },
+                  "x-readme-ref-name": "DadosBancarios"
+                }
+              ],
+              "readOnly": true,
+              "nullable": true
+            },
+            "contato": {
+              "allOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "integer", "nullable": true },
+                    "associado": { "type": "integer", "nullable": true },
+                    "celular": { "type": "string" },
+                    "email": { "type": "string" },
+                    "orgao_publico": { "type": "string" },
+                    "situacao_servidor": { "type": "string" },
+                    "matricula_servidor": { "type": "string" },
+                    "nome_contato": { "type": "string" },
+                    "parentesco": { "type": "string" },
+                    "telefone_contato": { "type": "string" },
+                    "ultima_interacao_em": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "observacao": { "type": "string" },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "nullable": true
+                    }
+                  },
+                  "x-readme-ref-name": "ContatoHistorico"
+                }
+              ],
+              "readOnly": true,
+              "nullable": true
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "readOnly": true,
+              "nullable": true
+            }
+          },
+          "required": [
+            "agente_responsavel_id",
+            "cargo",
+            "contato",
+            "cpf_cnpj",
+            "dados_bancarios",
+            "data_nascimento",
+            "email",
+            "endereco",
+            "estado_civil",
+            "id",
+            "matricula",
+            "matricula_orgao",
+            "nome_completo",
+            "observacao",
+            "orgao_expedidor",
+            "orgao_publico",
+            "percentual_repasse",
+            "profissao",
+            "rg",
+            "status",
+            "telefone",
+            "tipo_documento",
+            "updated_at"
+          ],
+          "x-readme-ref-name": "AssociadoAdminSnapshot"
+        }
+      ],
+      "readOnly": true
+    },
+    "contratos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true,
+            "nullable": true
+          },
+          "codigo": { "type": "string", "readOnly": true },
+          "status": { "type": "string", "readOnly": true },
+          "valor_bruto": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+            "readOnly": true
+          },
+          "valor_liquido": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+            "readOnly": true
+          },
+          "valor_mensalidade": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+            "readOnly": true
+          },
+          "prazo_meses": { "type": "integer", "readOnly": true },
+          "taxa_antecipacao": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,3}(?:\\.\\d{0,2})?$",
+            "readOnly": true
+          },
+          "margem_disponivel": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+            "readOnly": true
+          },
+          "valor_total_antecipacao": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+            "readOnly": true
+          },
+          "doacao_associado": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+            "readOnly": true
+          },
+          "comissao_agente": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+            "readOnly": true
+          },
+          "data_contrato": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true,
+            "nullable": true
+          },
+          "data_aprovacao": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true,
+            "nullable": true
+          },
+          "data_primeira_mensalidade": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true,
+            "nullable": true
+          },
+          "mes_averbacao": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true,
+            "nullable": true
+          },
+          "auxilio_liberado_em": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true,
+            "nullable": true
+          },
+          "ciclos": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer", "nullable": true },
+                "numero": { "type": "integer" },
+                "data_inicio": { "type": "string", "format": "date" },
+                "data_fim": { "type": "string", "format": "date" },
+                "status": { "type": "string" },
+                "valor_total": {
+                  "type": "string",
+                  "format": "decimal",
+                  "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "nullable": true
+                },
+                "comprovantes_ciclo": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "integer", "nullable": true },
+                      "tipo": { "type": "string" },
+                      "papel": { "type": "string" },
+                      "arquivo": { "type": "string" },
+                      "arquivo_referencia": { "type": "string" },
+                      "arquivo_disponivel_localmente": { "type": "boolean" },
+                      "tipo_referencia": { "type": "string" },
+                      "nome_original": { "type": "string" },
+                      "mime": { "type": "string" },
+                      "size_bytes": { "type": "integer", "nullable": true },
+                      "data_pagamento": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                      },
+                      "origem": { "type": "string" },
+                      "status_validacao": { "type": "string" },
+                      "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                      },
+                      "legacy_comprovante_id": {
+                        "type": "integer",
+                        "nullable": true
+                      }
+                    },
+                    "required": [
+                      "arquivo",
+                      "arquivo_disponivel_localmente",
+                      "arquivo_referencia",
+                      "created_at",
+                      "data_pagamento",
+                      "id",
+                      "legacy_comprovante_id",
+                      "mime",
+                      "nome_original",
+                      "origem",
+                      "papel",
+                      "size_bytes",
+                      "tipo",
+                      "tipo_referencia"
+                    ],
+                    "x-readme-ref-name": "ProjectedComprovante"
+                  },
+                  "readOnly": true
+                },
+                "termo_antecipacao": {
+                  "allOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "id": { "type": "integer", "nullable": true },
+                        "tipo": { "type": "string" },
+                        "papel": { "type": "string" },
+                        "arquivo": { "type": "string" },
+                        "arquivo_referencia": { "type": "string" },
+                        "arquivo_disponivel_localmente": { "type": "boolean" },
+                        "tipo_referencia": { "type": "string" },
+                        "nome_original": { "type": "string" },
+                        "mime": { "type": "string" },
+                        "size_bytes": { "type": "integer", "nullable": true },
+                        "data_pagamento": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "origem": { "type": "string" },
+                        "status_validacao": { "type": "string" },
+                        "created_at": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "legacy_comprovante_id": {
+                          "type": "integer",
+                          "nullable": true
+                        }
+                      },
+                      "required": [
+                        "arquivo",
+                        "arquivo_disponivel_localmente",
+                        "arquivo_referencia",
+                        "created_at",
+                        "data_pagamento",
+                        "id",
+                        "legacy_comprovante_id",
+                        "mime",
+                        "nome_original",
+                        "origem",
+                        "papel",
+                        "size_bytes",
+                        "tipo",
+                        "tipo_referencia"
+                      ],
+                      "x-readme-ref-name": "ProjectedComprovante"
+                    }
+                  ],
+                  "readOnly": true,
+                  "nullable": true
+                },
+                "parcelas": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "integer", "nullable": true },
+                      "numero": { "type": "integer" },
+                      "referencia_mes": { "type": "string", "format": "date" },
+                      "valor": {
+                        "type": "string",
+                        "format": "decimal",
+                        "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+                      },
+                      "data_vencimento": { "type": "string", "format": "date" },
+                      "status": { "type": "string" },
+                      "data_pagamento": {
+                        "type": "string",
+                        "format": "date",
+                        "nullable": true
+                      },
+                      "observacao": { "type": "string" },
+                      "layout_bucket": { "type": "string" },
+                      "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": true
+                      },
+                      "financial_flags": {
+                        "type": "object",
+                        "properties": {
+                          "tem_retorno": { "type": "boolean" },
+                          "tem_baixa_manual": { "type": "boolean" },
+                          "tem_liquidacao": { "type": "boolean" }
+                        },
+                        "required": [
+                          "tem_baixa_manual",
+                          "tem_liquidacao",
+                          "tem_retorno"
+                        ],
+                        "x-readme-ref-name": "AdminOverrideFinancialFlags"
+                      }
+                    },
+                    "required": [
+                      "data_pagamento",
+                      "data_vencimento",
+                      "financial_flags",
+                      "id",
+                      "layout_bucket",
+                      "numero",
+                      "observacao",
+                      "referencia_mes",
+                      "status",
+                      "updated_at",
+                      "valor"
+                    ],
+                    "x-readme-ref-name": "AdminOverrideParcelaEditor"
+                  }
+                }
+              },
+              "required": [
+                "comprovantes_ciclo",
+                "data_fim",
+                "data_inicio",
+                "id",
+                "numero",
+                "parcelas",
+                "status",
+                "termo_antecipacao",
+                "updated_at",
+                "valor_total"
+              ],
+              "x-readme-ref-name": "AdminOverrideCicloEditor"
+            },
+            "readOnly": true
+          },
+          "meses_nao_pagos": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer", "nullable": true },
+                "numero": { "type": "integer" },
+                "referencia_mes": { "type": "string", "format": "date" },
+                "valor": {
+                  "type": "string",
+                  "format": "decimal",
+                  "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+                },
+                "data_vencimento": { "type": "string", "format": "date" },
+                "status": { "type": "string" },
+                "data_pagamento": {
+                  "type": "string",
+                  "format": "date",
+                  "nullable": true
+                },
+                "observacao": { "type": "string" },
+                "layout_bucket": { "type": "string" },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "nullable": true
+                },
+                "financial_flags": {
+                  "type": "object",
+                  "properties": {
+                    "tem_retorno": { "type": "boolean" },
+                    "tem_baixa_manual": { "type": "boolean" },
+                    "tem_liquidacao": { "type": "boolean" }
+                  },
+                  "required": [
+                    "tem_baixa_manual",
+                    "tem_liquidacao",
+                    "tem_retorno"
+                  ],
+                  "x-readme-ref-name": "AdminOverrideFinancialFlags"
+                }
+              },
+              "required": [
+                "data_pagamento",
+                "data_vencimento",
+                "financial_flags",
+                "id",
+                "layout_bucket",
+                "numero",
+                "observacao",
+                "referencia_mes",
+                "status",
+                "updated_at",
+                "valor"
+              ],
+              "x-readme-ref-name": "AdminOverrideParcelaEditor"
+            },
+            "readOnly": true
+          },
+          "movimentos_financeiros_avulsos": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer", "nullable": true },
+                "numero": { "type": "integer" },
+                "referencia_mes": { "type": "string", "format": "date" },
+                "valor": {
+                  "type": "string",
+                  "format": "decimal",
+                  "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+                },
+                "data_vencimento": { "type": "string", "format": "date" },
+                "status": { "type": "string" },
+                "data_pagamento": {
+                  "type": "string",
+                  "format": "date",
+                  "nullable": true
+                },
+                "observacao": { "type": "string" },
+                "layout_bucket": { "type": "string" },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "nullable": true
+                },
+                "financial_flags": {
+                  "type": "object",
+                  "properties": {
+                    "tem_retorno": { "type": "boolean" },
+                    "tem_baixa_manual": { "type": "boolean" },
+                    "tem_liquidacao": { "type": "boolean" }
+                  },
+                  "required": [
+                    "tem_baixa_manual",
+                    "tem_liquidacao",
+                    "tem_retorno"
+                  ],
+                  "x-readme-ref-name": "AdminOverrideFinancialFlags"
+                }
+              },
+              "required": [
+                "data_pagamento",
+                "data_vencimento",
+                "financial_flags",
+                "id",
+                "layout_bucket",
+                "numero",
+                "observacao",
+                "referencia_mes",
+                "status",
+                "updated_at",
+                "valor"
+              ],
+              "x-readme-ref-name": "AdminOverrideParcelaEditor"
+            },
+            "readOnly": true
+          },
+          "refinanciamento_ativo": {
+            "allOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer", "readOnly": true },
+                  "status": { "type": "string", "readOnly": true },
+                  "competencia_solicitada": {
+                    "type": "string",
+                    "format": "date",
+                    "readOnly": true
+                  },
+                  "valor_refinanciamento": {
+                    "type": "string",
+                    "format": "decimal",
+                    "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+                    "readOnly": true
+                  },
+                  "repasse_agente": {
+                    "type": "string",
+                    "format": "decimal",
+                    "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+                    "readOnly": true
+                  },
+                  "executado_em": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true,
+                    "nullable": true
+                  },
+                  "data_ativacao_ciclo": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true,
+                    "nullable": true
+                  },
+                  "motivo_bloqueio": { "type": "string", "readOnly": true },
+                  "observacao": { "type": "string", "readOnly": true },
+                  "analista_note": { "type": "string", "readOnly": true },
+                  "coordenador_note": { "type": "string", "readOnly": true },
+                  "reviewed_by_id": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "nullable": true
+                  },
+                  "updated_at": {
+                    "type": "string",
+                    "format": "date-time",
+                    "readOnly": true,
+                    "nullable": true
+                  }
+                },
+                "required": [
+                  "analista_note",
+                  "competencia_solicitada",
+                  "coordenador_note",
+                  "data_ativacao_ciclo",
+                  "executado_em",
+                  "id",
+                  "motivo_bloqueio",
+                  "observacao",
+                  "repasse_agente",
+                  "reviewed_by_id",
+                  "status",
+                  "updated_at",
+                  "valor_refinanciamento"
+                ],
+                "x-readme-ref-name": "AdminOverrideRefinanciamentoEditor"
+              }
+            ],
+            "readOnly": true,
+            "nullable": true
+          }
+        },
+        "required": [
+          "auxilio_liberado_em",
+          "ciclos",
+          "codigo",
+          "comissao_agente",
+          "data_aprovacao",
+          "data_contrato",
+          "data_primeira_mensalidade",
+          "doacao_associado",
+          "id",
+          "margem_disponivel",
+          "mes_averbacao",
+          "meses_nao_pagos",
+          "movimentos_financeiros_avulsos",
+          "prazo_meses",
+          "refinanciamento_ativo",
+          "status",
+          "taxa_antecipacao",
+          "updated_at",
+          "valor_bruto",
+          "valor_liquido",
+          "valor_mensalidade",
+          "valor_total_antecipacao"
+        ],
+        "x-readme-ref-name": "AdminOverrideContratoEditor"
+      },
+      "readOnly": true
+    },
+    "esteira": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "readOnly": true },
+            "etapa_atual": { "type": "string", "readOnly": true },
+            "status": { "type": "string", "readOnly": true },
+            "prioridade": { "type": "integer", "readOnly": true },
+            "observacao": { "type": "string", "readOnly": true },
+            "analista_responsavel_id": {
+              "type": "integer",
+              "readOnly": true,
+              "nullable": true
+            },
+            "coordenador_responsavel_id": {
+              "type": "integer",
+              "readOnly": true,
+              "nullable": true
+            },
+            "tesoureiro_responsavel_id": {
+              "type": "integer",
+              "readOnly": true,
+              "nullable": true
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "readOnly": true,
+              "nullable": true
+            }
+          },
+          "required": [
+            "analista_responsavel_id",
+            "coordenador_responsavel_id",
+            "etapa_atual",
+            "id",
+            "observacao",
+            "prioridade",
+            "status",
+            "tesoureiro_responsavel_id",
+            "updated_at"
+          ],
+          "x-readme-ref-name": "AdminOverrideEsteiraRead"
+        }
+      ],
+      "readOnly": true,
+      "nullable": true
+    },
+    "documentos": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "tipo": { "type": "string", "readOnly": true },
+          "status": { "type": "string", "readOnly": true },
+          "observacao": { "type": "string", "readOnly": true },
+          "origem": { "type": "string", "readOnly": true },
+          "nome_original": { "type": "string", "readOnly": true },
+          "arquivo_referencia": { "type": "string", "readOnly": true },
+          "arquivo_disponivel_localmente": {
+            "type": "boolean",
+            "readOnly": true
+          },
+          "tipo_referencia": { "type": "string", "readOnly": true },
+          "url": { "type": "string", "readOnly": true, "nullable": true },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true,
+            "nullable": true
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true,
+            "nullable": true
+          },
+          "deleted_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true,
+            "nullable": true
+          }
+        },
+        "required": [
+          "arquivo_disponivel_localmente",
+          "arquivo_referencia",
+          "created_at",
+          "deleted_at",
+          "id",
+          "nome_original",
+          "observacao",
+          "origem",
+          "status",
+          "tipo",
+          "tipo_referencia",
+          "updated_at",
+          "url"
+        ],
+        "x-readme-ref-name": "AdminOverrideDocumentoRead"
+      },
+      "readOnly": true
+    }
+  },
+  "required": ["associado", "contratos", "documentos", "esteira"],
+  "x-readme-ref-name": "AdminOverrideEditorPayload"
+}

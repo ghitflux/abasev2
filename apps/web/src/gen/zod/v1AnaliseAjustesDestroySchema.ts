@@ -6,7 +6,7 @@
 import * as z from "zod";
 
 export const V1AnaliseAjustesDestroyPathParamsSchema = z.object({
-  pagamento_id: z.string(),
+  pagamento_id: z.string().regex(/^\d+$/),
 });
 
 /**

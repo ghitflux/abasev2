@@ -5,11 +5,6 @@
 
 import * as z from "zod";
 
-/**
- * @description No response body
- */
-export const associadoTermoAdesaoRetrieve200Schema = z.any();
+export const associadoTermoAdesaoRetrieve302Schema = z.url();
 
-export const associadoTermoAdesaoRetrieveQueryResponseSchema = z.lazy(
-  () => associadoTermoAdesaoRetrieve200Schema,
-);
+export const associadoTermoAdesaoRetrieveQueryResponseSchema = z.any();

@@ -539,6 +539,7 @@ paths:
           - hi
           - hr
           - hsb
+          - ht
           - hu
           - hy
           - ia
@@ -630,7 +631,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -663,7 +664,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -684,7 +685,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -717,30 +718,30 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -754,6 +755,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaginatedAdminOverrideEventReadList'
           description: ''
+  /api/v1/admin-overrides/comprovantes/:
+    post:
+      operationId: admin_override_comprovante_create
+      tags:
+      - v1
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ComprovanteCreateWrite'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ComprovanteCreateWrite'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ComprovanteCreateWrite'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminOverrideEditorPayload'
+          description: ''
   /api/v1/admin-overrides/comprovantes/{id}/versionar/:
     post:
       operationId: admin_override_comprovante_versionar
@@ -762,7 +789,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este comprovante.
+        description: A unique integer value identifying this comprovante.
         required: true
       tags:
       - v1
@@ -795,7 +822,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -828,7 +855,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -861,7 +888,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este documento.
+        description: A unique integer value identifying this documento.
         required: true
       tags:
       - v1
@@ -894,7 +921,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este admin override event.
+        description: A unique integer value identifying this admin override event.
         required: true
       tags:
       - v1
@@ -927,7 +954,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -959,25 +986,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -1037,25 +1064,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -1213,25 +1240,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -1253,7 +1280,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -1283,9 +1310,6 @@ paths:
   /api/v1/app/antecipacao/:
     get:
       operationId: v1_app_antecipacao_retrieve
-      description: |-
-        Histórico de parcelas descontadas (pagas) do associado logado.
-        Simula o endpoint legado /api/app/antecipacao/historico.
       tags:
       - v1
       security:
@@ -1295,14 +1319,129 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/_AppAntecipacaoResponse'
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/app/auxilio2/charge/:
+    post:
+      operationId: v1_app_auxilio2_charge_create
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/app/auxilio2/resumo/:
+    get:
+      operationId: v1_app_auxilio2_resumo_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/app/auxilio2/status/:
+    get:
+      operationId: v1_app_auxilio2_status_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/app/cadastro/:
+    get:
+      operationId: v1_app_cadastro_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    post:
+      operationId: v1_app_cadastro_create
+      tags:
+      - v1
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/app/cadastro/check-cpf/:
+    get:
+      operationId: v1_app_cadastro_check_cpf_retrieve
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/app/contato/:
+    post:
+      operationId: v1_app_contato_create
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppContatoResponse'
           description: ''
   /api/v1/app/documentos/:
     post:
       operationId: v1_app_documentos_create
-      description: |-
-        Upload de documento pelo próprio associado para resolver pendência.
-        Multipart: tipo, arquivo, observacao (opcional).
       tags:
       - v1
       requestBody:
@@ -1323,9 +1462,6 @@ paths:
   /api/v1/app/me/:
     get:
       operationId: v1_app_me_retrieve
-      description: |-
-        Retorna os dados consolidados do associado logado:
-        dados pessoais, contratos resumidos, resumo financeiro e pendências.
       tags:
       - v1
       security:
@@ -1335,12 +1471,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/_AppMeResponse'
+                type: object
+                additionalProperties: {}
           description: ''
   /api/v1/app/mensalidades/:
     get:
       operationId: v1_app_mensalidades_retrieve
-      description: Lista ciclos com parcelas do associado logado, agrupados por contrato.
       tags:
       - v1
       security:
@@ -1350,12 +1486,12 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/_AppMensalidadesResponse'
+                type: object
+                additionalProperties: {}
           description: ''
   /api/v1/app/pendencias/:
     get:
       operationId: v1_app_pendencias_retrieve
-      description: Pendências de documentos do associado logado via esteira.
       tags:
       - v1
       security:
@@ -1365,7 +1501,47 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/_AppPendenciasResponse'
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/app/pendencias/reuploads/:
+    post:
+      operationId: v1_app_pendencias_reuploads_create
+      tags:
+      - v1
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/app/termos/aceite/:
+    post:
+      operationId: v1_app_termos_aceite_create
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AppTermosAceiteResponse'
           description: ''
   /api/v1/associados/:
     get:
@@ -1408,7 +1584,7 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - in: query
@@ -1419,13 +1595,13 @@ paths:
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - in: query
@@ -1436,7 +1612,7 @@ paths:
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       - in: query
@@ -1488,7 +1664,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -1508,7 +1684,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -1540,7 +1716,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -1571,7 +1747,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -1588,7 +1764,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -1609,7 +1785,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -1636,7 +1812,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -1690,6 +1866,32 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AssociadoUpdate'
+          description: ''
+  /api/v1/auth/forgot-password/:
+    post:
+      operationId: v1_auth_forgot_password_create
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelfServiceForgotPassword'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SelfServiceForgotPassword'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SelfServiceForgotPassword'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordResetResult'
           description: ''
   /api/v1/auth/login/:
     post:
@@ -1780,6 +1982,58 @@ paths:
               schema:
                 $ref: '#/components/schemas/Refresh'
           description: ''
+  /api/v1/auth/register/:
+    post:
+      operationId: v1_auth_register_create
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelfServiceRegister'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SelfServiceRegister'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SelfServiceRegister'
+        required: true
+      security:
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfServiceRegister'
+          description: ''
+  /api/v1/auth/reset-password/:
+    post:
+      operationId: v1_auth_reset_password_create
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SelfServiceResetPassword'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SelfServiceResetPassword'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SelfServiceResetPassword'
+        required: true
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasswordResetResult'
+          description: ''
   /api/v1/configuracoes/usuarios/:
     get:
       operationId: v1_configuracoes_usuarios_list
@@ -1787,25 +2041,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -1852,7 +2106,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este user.
+        description: A unique integer value identifying this user.
         required: true
       tags:
       - v1
@@ -1872,7 +2126,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este user.
+        description: A unique integer value identifying this user.
         required: true
       tags:
       - v1
@@ -1904,7 +2158,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este user.
+        description: A unique integer value identifying this user.
         required: true
       tags:
       - v1
@@ -1936,25 +2190,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -1976,7 +2230,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -2010,25 +2264,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -2050,7 +2304,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -2084,25 +2338,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -2124,7 +2378,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -2248,7 +2502,7 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - in: query
@@ -2262,7 +2516,7 @@ paths:
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       - in: query
@@ -2397,25 +2651,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -2437,7 +2691,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este esteira item.
+        description: A unique integer value identifying this esteira item.
         required: true
       tags:
       - v1
@@ -2458,7 +2712,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este esteira item.
+        description: A unique integer value identifying this esteira item.
         required: true
       tags:
       - v1
@@ -2490,7 +2744,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este esteira item.
+        description: A unique integer value identifying this esteira item.
         required: true
       tags:
       - v1
@@ -2514,6 +2768,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/EsteiraList'
           description: ''
+  /api/v1/esteira/{id}/correcao/:
+    get:
+      operationId: v1_esteira_correcao_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this esteira item.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EsteiraList'
+          description: ''
   /api/v1/esteira/{id}/pendenciar/:
     post:
       operationId: v1_esteira_pendenciar_create
@@ -2522,7 +2797,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este esteira item.
+        description: A unique integer value identifying this esteira item.
         required: true
       tags:
       - v1
@@ -2554,7 +2829,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este esteira item.
+        description: A unique integer value identifying this esteira item.
         required: true
       tags:
       - v1
@@ -2586,7 +2861,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este esteira item.
+        description: A unique integer value identifying this esteira item.
         required: true
       tags:
       - v1
@@ -2607,7 +2882,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este esteira item.
+        description: A unique integer value identifying this esteira item.
         required: true
       tags:
       - v1
@@ -2671,19 +2946,19 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - in: query
@@ -2694,7 +2969,7 @@ paths:
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -2716,7 +2991,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       tags:
       - v1
@@ -2737,30 +3012,30 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -2782,30 +3057,30 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -2827,30 +3102,30 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -2872,7 +3147,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       tags:
       - v1
@@ -2893,30 +3168,30 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -2938,30 +3213,30 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -2983,30 +3258,30 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3028,7 +3303,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       tags:
       - v1
@@ -3094,25 +3369,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3134,7 +3409,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3155,7 +3430,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3188,7 +3463,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3221,7 +3496,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3254,7 +3529,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3287,7 +3562,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3320,7 +3595,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3347,10 +3622,43 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefinanciamentoList'
+          description: ''
+  /api/v1/refinanciamentos/{id}/encaminhar-liquidacao/:
+    post:
+      operationId: v1_refinanciamentos_encaminhar_liquidacao_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this refinanciamento.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefinanciamentoList'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RefinanciamentoList'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RefinanciamentoList'
+        required: true
       security:
       - jwtAuth: []
       responses:
@@ -3368,7 +3676,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3401,7 +3709,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3411,6 +3719,39 @@ paths:
             schema:
               $ref: '#/components/schemas/RefinanciamentoList'
           application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RefinanciamentoList'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefinanciamentoList'
+          description: ''
+  /api/v1/refinanciamentos/{id}/solicitar-liquidacao/:
+    post:
+      operationId: v1_refinanciamentos_solicitar_liquidacao_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this refinanciamento.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefinanciamentoList'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RefinanciamentoList'
+          multipart/form-data:
             schema:
               $ref: '#/components/schemas/RefinanciamentoList'
         required: true
@@ -3444,13 +3785,13 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3474,7 +3815,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este relatorio gerado.
+        description: A unique integer value identifying this relatorio gerado.
         required: true
       tags:
       - v1
@@ -3538,7 +3879,7 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - in: query
@@ -3602,13 +3943,13 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3658,25 +3999,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3698,7 +4039,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este parcela.
+        description: A unique integer value identifying this parcela.
         required: true
       tags:
       - v1
@@ -3723,25 +4064,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3763,7 +4104,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este confirmacao.
+        description: A unique integer value identifying this confirmacao.
         required: true
       tags:
       - v1
@@ -3796,7 +4137,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este confirmacao.
+        description: A unique integer value identifying this confirmacao.
         required: true
       tags:
       - v1
@@ -3829,7 +4170,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este confirmacao.
+        description: A unique integer value identifying this confirmacao.
         required: true
       tags:
       - v1
@@ -3861,25 +4202,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3901,7 +4242,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -3922,7 +4263,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -3954,7 +4295,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -3975,7 +4316,33 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TesourariaContratoList'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TesourariaContratoList'
+          description: ''
+  /api/v1/tesouraria/contratos/{id}/substituir-comprovante/:
+    post:
+      operationId: v1_tesouraria_contratos_substituir_comprovante_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -4000,25 +4367,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -4062,7 +4429,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este despesa.
+        description: A unique integer value identifying this despesa.
         required: true
       tags:
       - v1
@@ -4082,7 +4449,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este despesa.
+        description: A unique integer value identifying this despesa.
         required: true
       tags:
       - v1
@@ -4111,7 +4478,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este despesa.
+        description: A unique integer value identifying this despesa.
         required: true
       tags:
       - v1
@@ -4139,7 +4506,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este despesa.
+        description: A unique integer value identifying this despesa.
         required: true
       tags:
       - v1
@@ -4156,7 +4523,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este despesa.
+        description: A unique integer value identifying this despesa.
         required: true
       tags:
       - v1
@@ -4185,25 +4552,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -4217,6 +4584,38 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaginatedDevolucaoAssociadoListList'
           description: ''
+  /api/v1/tesouraria/devolucoes/{id}/excluir/:
+    post:
+      operationId: v1_tesouraria_devolucoes_excluir_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this devolucao associado.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DevolucaoAssociadoList'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DevolucaoAssociadoList'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DevolucaoAssociadoList'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DevolucaoAssociadoList'
+          description: ''
   /api/v1/tesouraria/devolucoes/{id}/reverter/:
     post:
       operationId: v1_tesouraria_devolucoes_reverter_create
@@ -4225,7 +4624,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este devolucao associado.
+        description: A unique integer value identifying this devolucao associado.
         required: true
       tags:
       - v1
@@ -4256,25 +4655,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -4296,7 +4695,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -4327,25 +4726,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -4359,6 +4758,38 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaginatedLiquidacaoContratoListList'
           description: ''
+  /api/v1/tesouraria/liquidacoes/{id}/excluir/:
+    post:
+      operationId: v1_tesouraria_liquidacoes_excluir_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this liquidacao contrato.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LiquidacaoContratoList'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LiquidacaoContratoList'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LiquidacaoContratoList'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LiquidacaoContratoList'
+          description: ''
   /api/v1/tesouraria/liquidacoes/{id}/liquidar/:
     post:
       operationId: v1_tesouraria_liquidacoes_liquidar_create
@@ -4367,7 +4798,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este liquidacao contrato.
+        description: A unique integer value identifying this liquidacao contrato.
         required: true
       tags:
       - v1
@@ -4399,7 +4830,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este liquidacao contrato.
+        description: A unique integer value identifying this liquidacao contrato.
         required: true
       tags:
       - v1
@@ -4430,25 +4861,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -4470,7 +4901,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -4491,7 +4922,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -4582,17 +5013,29 @@ components:
           type: string
           format: date-time
           nullable: true
+        comprovantes_ciclo:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectedComprovante'
+          readOnly: true
+        termo_antecipacao:
+          allOf:
+          - $ref: '#/components/schemas/ProjectedComprovante'
+          readOnly: true
+          nullable: true
         parcelas:
           type: array
           items:
             $ref: '#/components/schemas/AdminOverrideParcelaEditor'
       required:
+      - comprovantes_ciclo
       - data_fim
       - data_inicio
       - id
       - numero
       - parcelas
       - status
+      - termo_antecipacao
       - updated_at
       - valor_total
     AdminOverrideContratoEditor:
@@ -5267,6 +5710,10 @@ components:
         contrato_codigo:
           type: string
           readOnly: true
+        agente_nome:
+          type: string
+          readOnly: true
+          default: ''
         status_contrato:
           type: string
           readOnly: true
@@ -5334,6 +5781,7 @@ components:
             $ref: '#/components/schemas/AgentePagamentoCiclo'
           readOnly: true
       required:
+      - agente_nome
       - associado_id
       - ciclos
       - comprovantes_efetivacao
@@ -5597,6 +6045,26 @@ components:
           type: string
       required:
       - new_date
+    AppContatoResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        contato_status:
+          type: string
+      required:
+      - contato_status
+      - ok
+    AppTermosAceiteResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+        aceite_termos:
+          type: boolean
+      required:
+      - aceite_termos
+      - ok
     ArquivoRetornoDetail:
       type: object
       properties:
@@ -6752,6 +7220,28 @@ components:
       - numero
       - status
       - valor_total
+    ComprovanteCreateWrite:
+      type: object
+      properties:
+        ciclo_id:
+          type: integer
+        motivo:
+          type: string
+        tipo:
+          type: string
+        papel:
+          type: string
+        origem:
+          type: string
+        status_validacao:
+          type: string
+        data_pagamento:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+      - ciclo_id
+      - motivo
     ComprovanteOrigemEnum:
       enum:
       - efetivacao_contrato
@@ -7272,6 +7762,44 @@ components:
       required:
       - full_name
       - id
+    ContratoAptoCycle:
+      type: object
+      properties:
+        numero:
+          type: integer
+        status:
+          type: string
+        status_visual_slug:
+          type: string
+        status_visual_label:
+          type: string
+        resumo_referencias:
+          type: string
+        parcelas_pagas:
+          type: integer
+        parcelas_total:
+          type: integer
+        valor_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        primeira_competencia_ciclo:
+          type: string
+          format: date
+        ultima_competencia_ciclo:
+          type: string
+          format: date
+      required:
+      - numero
+      - parcelas_pagas
+      - parcelas_total
+      - primeira_competencia_ciclo
+      - resumo_referencias
+      - status
+      - status_visual_label
+      - status_visual_slug
+      - ultima_competencia_ciclo
+      - valor_total
     ContratoCoreOverrideWrite:
       type: object
       properties:
@@ -7421,6 +7949,19 @@ components:
           type: string
           format: date
           nullable: true
+        valor_auxilio_liberado:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+        percentual_repasse:
+          type: string
+          readOnly: true
+        ciclo_apto:
+          allOf:
+          - $ref: '#/components/schemas/ContratoAptoCycle'
+          nullable: true
+          readOnly: true
         pode_solicitar_refinanciamento:
           type: boolean
           readOnly: true
@@ -7440,10 +7981,12 @@ components:
       required:
       - agente
       - associado
+      - ciclo_apto
       - etapa_fluxo
       - id
       - mensalidades
       - meses_nao_descontados_count
+      - percentual_repasse
       - pode_solicitar_refinanciamento
       - possui_meses_nao_descontados
       - refinanciamento_id
@@ -7452,6 +7995,7 @@ components:
       - status_resumido
       - status_visual_label
       - status_visual_slug
+      - valor_auxilio_liberado
     ContratoResumo:
       type: object
       properties:
@@ -9124,6 +9668,30 @@ components:
       - password
       - password_confirmation
       - token
+    LiquidacaoAnexo:
+      type: object
+      properties:
+        nome:
+          type: string
+          readOnly: true
+        url:
+          type: string
+          readOnly: true
+        arquivo_referencia:
+          type: string
+          readOnly: true
+        arquivo_disponivel_localmente:
+          type: boolean
+          readOnly: true
+        tipo_referencia:
+          type: string
+          readOnly: true
+      required:
+      - arquivo_disponivel_localmente
+      - arquivo_referencia
+      - nome
+      - tipo_referencia
+      - url
     LiquidacaoComprovante:
       type: object
       properties:
@@ -9182,6 +9750,9 @@ components:
         quantidade_parcelas:
           type: integer
           readOnly: true
+        quantidade_parcelas_contrato:
+          type: integer
+          readOnly: true
         valor_total:
           type: string
           format: decimal
@@ -9200,7 +9771,22 @@ components:
         status_liquidacao:
           type: string
           readOnly: true
+        status_operacional:
+          type: string
+          readOnly: true
+        pode_liquidar_agora:
+          type: boolean
+          readOnly: true
+        status_associado:
+          type: string
+          readOnly: true
         status_contrato:
+          type: string
+          readOnly: true
+        status_renovacao:
+          type: string
+          readOnly: true
+        origem_solicitacao:
           type: string
           readOnly: true
         data_liquidacao:
@@ -9234,6 +9820,11 @@ components:
           - $ref: '#/components/schemas/LiquidacaoComprovante'
           nullable: true
           readOnly: true
+        anexos:
+          type: array
+          items:
+            $ref: '#/components/schemas/LiquidacaoAnexo'
+          readOnly: true
         parcelas:
           type: array
           items:
@@ -9244,6 +9835,7 @@ components:
           readOnly: true
       required:
       - agente_nome
+      - anexos
       - associado_id
       - comprovante
       - contrato_codigo
@@ -9256,16 +9848,22 @@ components:
       - motivo_reversao
       - nome
       - observacao
+      - origem_solicitacao
       - parcelas
+      - pode_liquidar_agora
       - pode_reverter
       - quantidade_parcelas
+      - quantidade_parcelas_contrato
       - realizado_por
       - referencia_final
       - referencia_inicial
       - revertida_em
       - revertida_por
+      - status_associado
       - status_contrato
       - status_liquidacao
+      - status_operacional
+      - status_renovacao
       - valor_total
     LiquidacaoParcela:
       type: object
@@ -9313,6 +9911,8 @@ components:
     Login:
       type: object
       properties:
+        login:
+          type: string
         email:
           type: string
           format: email
@@ -10055,6 +10655,13 @@ components:
         id:
           type: integer
           readOnly: true
+        esteira_item_id:
+          type: integer
+          readOnly: true
+        associado_created_at:
+          type: string
+          format: date-time
+          readOnly: true
         tipo:
           type: string
           maxLength: 60
@@ -10092,12 +10699,14 @@ components:
           format: date-time
           nullable: true
       required:
+      - associado_created_at
       - associado_id
       - associado_nome
       - contrato_codigo
       - cpf_cnpj
       - created_at
       - descricao
+      - esteira_item_id
       - id
       - matricula
       - matricula_display
@@ -10475,6 +11084,9 @@ components:
         mensalidades_total:
           type: integer
           readOnly: true
+        numero_ciclos:
+          type: integer
+          readOnly: true
         refinanciamento_numero:
           type: integer
           readOnly: true
@@ -10584,6 +11196,7 @@ components:
       - mensalidades_pagas
       - mensalidades_total
       - motivo_apto_renovacao
+      - numero_ciclos
       - origem
       - origem_data_ativacao
       - origem_renovacao
@@ -10702,6 +11315,9 @@ components:
         mensalidades_total:
           type: integer
           readOnly: true
+        numero_ciclos:
+          type: integer
+          readOnly: true
         refinanciamento_numero:
           type: integer
           readOnly: true
@@ -10811,6 +11427,7 @@ components:
       - mensalidades_pagas
       - mensalidades_total
       - motivo_apto_renovacao
+      - numero_ciclos
       - origem
       - origem_data_ativacao
       - origem_renovacao
@@ -10867,6 +11484,7 @@ components:
     RefinanciamentoStatusEnum:
       enum:
       - apto_a_renovar
+      - solicitado_para_liquidacao
       - em_analise_renovacao
       - aprovado_analise_renovacao
       - aprovado_para_renovacao
@@ -10883,6 +11501,7 @@ components:
       type: string
       description: |-
         * `apto_a_renovar` - Apto a renovar
+        * `solicitado_para_liquidacao` - Solicitado para liquidação
         * `em_analise_renovacao` - Em análise para renovação
         * `aprovado_analise_renovacao` - Aprovado pela análise para renovação
         * `aprovado_para_renovacao` - Aprovado para renovação
@@ -11114,6 +11733,57 @@ components:
         * `nao_encontrado` - Não encontrado
         * `erro` - Erro
         * `ciclo_aberto` - Ciclo aberto
+    SelfServiceForgotPassword:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+      required:
+      - email
+    SelfServiceRegister:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          writeOnly: true
+        password_confirmation:
+          type: string
+          writeOnly: true
+        terms:
+          type: boolean
+          default: false
+        terms_version:
+          type: string
+      required:
+      - email
+      - name
+      - password
+      - password_confirmation
+    SelfServiceResetPassword:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        token:
+          type: string
+        password:
+          type: string
+          writeOnly: true
+        password_confirmation:
+          type: string
+          writeOnly: true
+      required:
+      - password
+      - password_confirmation
+      - token
     SimpleUser:
       type: object
       properties:
@@ -11172,7 +11842,7 @@ components:
           readOnly: true
         data_assinatura:
           type: string
-          format: date
+          format: date-time
           readOnly: true
         status:
           type: string
@@ -11363,39 +12033,6 @@ components:
       - id
       - primary_role
       - roles
-    _AppAntecipacaoItem:
-      type: object
-      properties:
-        referencia_mes:
-          type: string
-          format: date
-        valor:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
-        data_pagamento:
-          type: string
-          format: date
-          nullable: true
-        numero_parcela:
-          type: integer
-        ciclo_numero:
-          type: integer
-      required:
-      - ciclo_numero
-      - data_pagamento
-      - numero_parcela
-      - referencia_mes
-      - valor
-    _AppAntecipacaoResponse:
-      type: object
-      properties:
-        historico:
-          type: array
-          items:
-            $ref: '#/components/schemas/_AppAntecipacaoItem'
-      required:
-      - historico
     _AppDocumentoUploadResponse:
       type: object
       properties:
@@ -11412,204 +12049,6 @@ components:
       - observacao
       - status
       - tipo
-    _AppMeResponse:
-      type: object
-      properties:
-        associado:
-          $ref: '#/components/schemas/_AssociadoMobile'
-        contratos:
-          type: array
-          items:
-            $ref: '#/components/schemas/_ContratoResumo'
-        resumo:
-          $ref: '#/components/schemas/_ResumoFinanceiroMobile'
-        pendencias:
-          type: array
-          items:
-            $ref: '#/components/schemas/_PendenciaMobile'
-      required:
-      - associado
-      - contratos
-      - pendencias
-      - resumo
-    _AppMensalidadesResponse:
-      type: object
-      properties:
-        ciclos:
-          type: array
-          items:
-            $ref: '#/components/schemas/_CicloMobile'
-      required:
-      - ciclos
-    _AppPendenciasResponse:
-      type: object
-      properties:
-        pendencias:
-          type: array
-          items:
-            $ref: '#/components/schemas/_PendenciaMobile'
-      required:
-      - pendencias
-    _AssociadoMobile:
-      type: object
-      properties:
-        id:
-          type: integer
-        nome_completo:
-          type: string
-        cpf_cnpj:
-          type: string
-        matricula:
-          type: string
-        email:
-          type: string
-        telefone:
-          type: string
-        status:
-          type: string
-        orgao_publico:
-          type: string
-        cargo:
-          type: string
-      required:
-      - cargo
-      - cpf_cnpj
-      - email
-      - id
-      - matricula
-      - nome_completo
-      - orgao_publico
-      - status
-      - telefone
-    _CicloMobile:
-      type: object
-      properties:
-        id:
-          type: integer
-        numero:
-          type: integer
-        data_inicio:
-          type: string
-          format: date
-        data_fim:
-          type: string
-          format: date
-        status:
-          type: string
-        valor_total:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
-        parcelas:
-          type: array
-          items:
-            $ref: '#/components/schemas/_ParcelaMobile'
-      required:
-      - data_fim
-      - data_inicio
-      - id
-      - numero
-      - parcelas
-      - status
-      - valor_total
-    _ContratoResumo:
-      type: object
-      properties:
-        id:
-          type: integer
-        codigo:
-          type: string
-        status:
-          type: string
-        prazo_meses:
-          type: integer
-        valor_mensalidade:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
-        data_primeira_mensalidade:
-          type: string
-          format: date
-          nullable: true
-      required:
-      - codigo
-      - data_primeira_mensalidade
-      - id
-      - prazo_meses
-      - status
-      - valor_mensalidade
-    _ParcelaMobile:
-      type: object
-      properties:
-        numero:
-          type: integer
-        referencia_mes:
-          type: string
-          format: date
-        valor:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
-        data_vencimento:
-          type: string
-          format: date
-        status:
-          type: string
-        data_pagamento:
-          type: string
-          format: date
-          nullable: true
-      required:
-      - data_pagamento
-      - data_vencimento
-      - numero
-      - referencia_mes
-      - status
-      - valor
-    _PendenciaMobile:
-      type: object
-      properties:
-        id:
-          type: integer
-        tipo:
-          type: string
-        descricao:
-          type: string
-        status:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-      required:
-      - created_at
-      - descricao
-      - id
-      - status
-      - tipo
-    _ResumoFinanceiroMobile:
-      type: object
-      properties:
-        parcelas_pagas:
-          type: integer
-        parcelas_total:
-          type: integer
-        valor_mensalidade:
-          type: string
-          format: decimal
-          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
-          nullable: true
-        proximo_vencimento:
-          type: string
-          format: date
-          nullable: true
-        em_atraso:
-          type: integer
-      required:
-      - em_atraso
-      - parcelas_pagas
-      - parcelas_total
-      - proximo_vencimento
-      - valor_mensalidade
   securitySchemes:
     LegacyMobileToken:
       type: http

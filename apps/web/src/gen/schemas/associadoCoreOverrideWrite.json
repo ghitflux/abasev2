@@ -1,0 +1,92 @@
+{
+  "type": "object",
+  "properties": {
+    "updated_at": { "type": "string", "format": "date-time", "nullable": true },
+    "contrato_updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+    },
+    "motivo": { "type": "string" },
+    "nome_completo": { "type": "string" },
+    "rg": { "type": "string" },
+    "orgao_expedidor": { "type": "string" },
+    "profissao": { "type": "string" },
+    "estado_civil": { "type": "string" },
+    "cargo": { "type": "string" },
+    "status": { "type": "string" },
+    "observacao": { "type": "string" },
+    "data_nascimento": { "type": "string", "format": "date", "nullable": true },
+    "agente_responsavel_id": { "type": "integer", "nullable": true },
+    "percentual_repasse": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,4}(?:\\.\\d{0,2})?$"
+    },
+    "endereco": {
+      "type": "object",
+      "properties": {
+        "cep": { "type": "string" },
+        "logradouro": { "type": "string" },
+        "endereco": { "type": "string" },
+        "numero": { "type": "string" },
+        "complemento": { "type": "string" },
+        "bairro": { "type": "string" },
+        "cidade": { "type": "string" },
+        "uf": { "type": "string" }
+      },
+      "x-readme-ref-name": "EnderecoAdminWrite"
+    },
+    "dados_bancarios": {
+      "type": "object",
+      "properties": {
+        "banco": { "type": "string" },
+        "agencia": { "type": "string" },
+        "conta": { "type": "string" },
+        "tipo_conta": { "type": "string" },
+        "chave_pix": { "type": "string" }
+      },
+      "x-readme-ref-name": "DadosBancariosAdminWrite"
+    },
+    "contato": {
+      "type": "object",
+      "properties": {
+        "celular": { "type": "string" },
+        "email": { "type": "string" },
+        "orgao_publico": { "type": "string" },
+        "situacao_servidor": { "type": "string" },
+        "matricula_servidor": { "type": "string" }
+      },
+      "x-readme-ref-name": "ContatoAdminWrite"
+    },
+    "valor_bruto_total": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "valor_liquido": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "prazo_meses": { "type": "integer", "minimum": 1 },
+    "taxa_antecipacao": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,3}(?:\\.\\d{0,2})?$"
+    },
+    "mensalidade": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "margem_disponivel": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "status_contrato": { "type": "string" }
+  },
+  "required": ["motivo"],
+  "x-readme-ref-name": "AssociadoCoreOverrideWrite"
+}

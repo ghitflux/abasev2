@@ -11,6 +11,14 @@ export type Pendencia = {
    */
   readonly id: number;
   /**
+   * @type integer
+   */
+  readonly esteira_item_id: number;
+  /**
+   * @type string, date-time
+   */
+  readonly associado_created_at: string;
+  /**
    * @maxLength 60
    * @type string | undefined
    */
@@ -51,7 +59,7 @@ export type Pendencia = {
   /**
    * @type string
    */
-  readonly contrato_codigo: string;
+  readonly contrato_codigo: string | null;
   /**
    * @type string, date-time
    */

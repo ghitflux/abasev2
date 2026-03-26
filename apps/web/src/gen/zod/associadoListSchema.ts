@@ -4,8 +4,8 @@
  */
 
 import * as z from "zod";
+import { associadoStatusEnumSchema } from "./associadoStatusEnumSchema.ts";
 import { simpleUserSchema } from "./simpleUserSchema.ts";
-import { status427EnumSchema } from "./status427EnumSchema.ts";
 
 export const associadoListSchema = z.object({
   id: z.int(),
@@ -15,7 +15,7 @@ export const associadoListSchema = z.object({
   matricula_display: z.string(),
   cpf_cnpj: z.string().max(18),
   get status() {
-    return status427EnumSchema
+    return associadoStatusEnumSchema
       .describe(
         "* `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente",
       )

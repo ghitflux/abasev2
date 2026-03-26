@@ -1,0 +1,162 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "matricula": { "type": "string", "readOnly": true },
+    "tipo_documento": { "type": "string", "readOnly": true },
+    "nome_completo": { "type": "string", "readOnly": true },
+    "cpf_cnpj": { "type": "string", "readOnly": true },
+    "rg": { "type": "string", "readOnly": true },
+    "orgao_expedidor": { "type": "string", "readOnly": true },
+    "email": { "type": "string", "readOnly": true },
+    "telefone": { "type": "string", "readOnly": true },
+    "data_nascimento": {
+      "type": "string",
+      "format": "date",
+      "readOnly": true,
+      "nullable": true
+    },
+    "profissao": { "type": "string", "readOnly": true },
+    "estado_civil": { "type": "string", "readOnly": true },
+    "orgao_publico": { "type": "string", "readOnly": true },
+    "matricula_orgao": { "type": "string", "readOnly": true },
+    "cargo": { "type": "string", "readOnly": true },
+    "status": { "type": "string", "readOnly": true },
+    "observacao": { "type": "string", "readOnly": true },
+    "agente_responsavel_id": {
+      "type": "integer",
+      "readOnly": true,
+      "nullable": true
+    },
+    "percentual_repasse": { "type": "string", "readOnly": true },
+    "endereco": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "nullable": true },
+            "cep": { "type": "string" },
+            "endereco": { "type": "string" },
+            "numero": { "type": "string" },
+            "complemento": { "type": "string" },
+            "bairro": { "type": "string" },
+            "cidade": { "type": "string" },
+            "uf": { "type": "string" },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "nullable": true
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "nullable": true
+            }
+          },
+          "x-readme-ref-name": "Endereco"
+        }
+      ],
+      "readOnly": true,
+      "nullable": true
+    },
+    "dados_bancarios": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "nullable": true },
+            "associado": { "type": "integer", "nullable": true },
+            "banco": { "type": "string" },
+            "agencia": { "type": "string" },
+            "conta": { "type": "string" },
+            "tipo_conta": { "type": "string" },
+            "chave_pix": { "type": "string" },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "nullable": true
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "nullable": true
+            }
+          },
+          "x-readme-ref-name": "DadosBancarios"
+        }
+      ],
+      "readOnly": true,
+      "nullable": true
+    },
+    "contato": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "nullable": true },
+            "associado": { "type": "integer", "nullable": true },
+            "celular": { "type": "string" },
+            "email": { "type": "string" },
+            "orgao_publico": { "type": "string" },
+            "situacao_servidor": { "type": "string" },
+            "matricula_servidor": { "type": "string" },
+            "nome_contato": { "type": "string" },
+            "parentesco": { "type": "string" },
+            "telefone_contato": { "type": "string" },
+            "ultima_interacao_em": {
+              "type": "string",
+              "format": "date-time",
+              "nullable": true
+            },
+            "observacao": { "type": "string" },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "nullable": true
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "nullable": true
+            }
+          },
+          "x-readme-ref-name": "ContatoHistorico"
+        }
+      ],
+      "readOnly": true,
+      "nullable": true
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "nullable": true
+    }
+  },
+  "required": [
+    "agente_responsavel_id",
+    "cargo",
+    "contato",
+    "cpf_cnpj",
+    "dados_bancarios",
+    "data_nascimento",
+    "email",
+    "endereco",
+    "estado_civil",
+    "id",
+    "matricula",
+    "matricula_orgao",
+    "nome_completo",
+    "observacao",
+    "orgao_expedidor",
+    "orgao_publico",
+    "percentual_repasse",
+    "profissao",
+    "rg",
+    "status",
+    "telefone",
+    "tipo_documento",
+    "updated_at"
+  ],
+  "x-readme-ref-name": "AssociadoAdminSnapshot"
+}

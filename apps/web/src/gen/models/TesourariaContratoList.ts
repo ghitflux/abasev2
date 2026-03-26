@@ -3,6 +3,8 @@
  * Do not edit manually.
  */
 
+import type { ComprovanteResumo } from "./ComprovanteResumo.ts";
+import type { DadosBancarios } from "./DadosBancarios.ts";
 import type { SimpleUser } from "./SimpleUser.ts";
 
 export type TesourariaContratoList = {
@@ -35,7 +37,7 @@ export type TesourariaContratoList = {
    */
   readonly codigo: string;
   /**
-   * @type string, date
+   * @type string, date-time
    */
   readonly data_assinatura: string;
   /**
@@ -62,13 +64,10 @@ export type TesourariaContratoList = {
    */
   readonly margem_disponivel: string;
   /**
-   * @type string
+   * @type array
    */
-  readonly comprovantes: string;
-  /**
-   * @type string
-   */
-  readonly dados_bancarios: string;
+  readonly comprovantes: ComprovanteResumo[];
+  readonly dados_bancarios: DadosBancarios | null;
   /**
    * @type string
    */

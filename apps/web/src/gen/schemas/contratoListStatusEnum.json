@@ -1,6 +1,0 @@
-{
-  "enum": ["rascunho", "em_analise", "ativo", "encerrado", "cancelado"],
-  "type": "string",
-  "description": "* `rascunho` - Rascunho\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `encerrado` - Encerrado\n* `cancelado` - Cancelado",
-  "x-readme-ref-name": "ContratoListStatusEnum"
-}

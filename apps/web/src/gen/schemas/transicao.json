@@ -7,13 +7,13 @@
       "enum": ["cadastro", "analise", "coordenacao", "tesouraria", "concluido"],
       "type": "string",
       "description": "* `cadastro` - Cadastro\n* `analise` - Análise\n* `coordenacao` - Coordenação\n* `tesouraria` - Tesouraria\n* `concluido` - Concluído",
-      "x-readme-ref-name": "ParaStatusEnum"
+      "x-readme-ref-name": "EsteiraEtapaEnum"
     },
     "para_status": {
       "enum": ["cadastro", "analise", "coordenacao", "tesouraria", "concluido"],
       "type": "string",
       "description": "* `cadastro` - Cadastro\n* `analise` - Análise\n* `coordenacao` - Coordenação\n* `tesouraria` - Tesouraria\n* `concluido` - Concluído",
-      "x-readme-ref-name": "ParaStatusEnum"
+      "x-readme-ref-name": "EsteiraEtapaEnum"
     },
     "de_situacao": {
       "oneOf": [
@@ -27,7 +27,7 @@
           ],
           "type": "string",
           "description": "* `aguardando` - Aguardando\n* `em_andamento` - Em andamento\n* `pendenciado` - Pendenciado\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
-          "x-readme-ref-name": "ParaSituacaoEnum"
+          "x-readme-ref-name": "EsteiraSituacaoEnum"
         },
         { "enum": [""], "x-readme-ref-name": "BlankEnum" }
       ]
@@ -44,7 +44,7 @@
           ],
           "type": "string",
           "description": "* `aguardando` - Aguardando\n* `em_andamento` - Em andamento\n* `pendenciado` - Pendenciado\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
-          "x-readme-ref-name": "ParaSituacaoEnum"
+          "x-readme-ref-name": "EsteiraSituacaoEnum"
         },
         { "enum": [""], "x-readme-ref-name": "BlankEnum" }
       ]
@@ -60,7 +60,7 @@
             "full_name": { "type": "string", "readOnly": true }
           },
           "required": ["full_name", "id"],
-          "x-readme-ref-name": "SimpleUser"
+          "x-readme-ref-name": "EsteiraSimpleUser"
         }
       ],
       "readOnly": true

@@ -3,10 +3,9 @@
  * Do not edit manually.
  */
 
-/**
- * @description No response body
- */
-export type LogoutCreate200 = any;
+export type LogoutCreate200 = {
+  [key: string]: any;
+};
 
 export type LogoutCreateMutationResponse = LogoutCreate200;
 

@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "banco": { "type": "string" },
+    "agencia": { "type": "string" },
+    "conta": { "type": "string" },
+    "tipo_conta": { "type": "string" },
+    "chave_pix": { "type": "string" }
+  },
+  "x-readme-ref-name": "DadosBancariosAdminWrite"
+}

@@ -1,0 +1,49 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer", "readOnly": true },
+    "tipo": { "type": "string", "readOnly": true },
+    "status": { "type": "string", "readOnly": true },
+    "observacao": { "type": "string", "readOnly": true },
+    "origem": { "type": "string", "readOnly": true },
+    "nome_original": { "type": "string", "readOnly": true },
+    "arquivo_referencia": { "type": "string", "readOnly": true },
+    "arquivo_disponivel_localmente": { "type": "boolean", "readOnly": true },
+    "tipo_referencia": { "type": "string", "readOnly": true },
+    "url": { "type": "string", "readOnly": true, "nullable": true },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "nullable": true
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "nullable": true
+    },
+    "deleted_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "nullable": true
+    }
+  },
+  "required": [
+    "arquivo_disponivel_localmente",
+    "arquivo_referencia",
+    "created_at",
+    "deleted_at",
+    "id",
+    "nome_original",
+    "observacao",
+    "origem",
+    "status",
+    "tipo",
+    "tipo_referencia",
+    "updated_at",
+    "url"
+  ],
+  "x-readme-ref-name": "AdminOverrideDocumentoRead"
+}
