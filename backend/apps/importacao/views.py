@@ -6,7 +6,7 @@ from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, permissions
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.parsers import MultiPartParser
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from rest_framework.viewsets import GenericViewSet
@@ -14,14 +14,19 @@ from rest_framework.viewsets import GenericViewSet
 from apps.accounts.permissions import IsCoordenadorOrAdmin
 from core.pagination import StandardResultsSetPagination
 
-from .models import ArquivoRetorno, ArquivoRetornoItem
+from .duplicidade import DuplicidadeFinanceiraService
+from .models import ArquivoRetorno, ArquivoRetornoItem, DuplicidadeFinanceira
 from .financeiro import build_financeiro_payload
 from .serializers import (
     ArquivoRetornoDetailSerializer,
+    DuplicidadeFinanceiraDescartarSerializer,
     ArquivoRetornoFinanceiroPayloadSerializer,
     ArquivoRetornoItemSerializer,
     ArquivoRetornoListSerializer,
     ArquivoRetornoUploadSerializer,
+    DuplicidadeFinanceiraItemSerializer,
+    DuplicidadeFinanceiraKpisSerializer,
+    DuplicidadeFinanceiraResolverSerializer,
 )
 from .services import ArquivoRetornoService
 
@@ -95,6 +100,7 @@ class ArquivoRetornoViewSet(
             "descontados",
             "nao_descontados",
             "pendencias_manuais",
+            "duplicidades",
             "encerramentos",
             "novos_ciclos",
             "aptos_renovar",
@@ -181,6 +187,15 @@ class ArquivoRetornoViewSet(
 
     @extend_schema(responses=ArquivoRetornoItemSerializer(many=True))
     @action(detail=True, methods=["get"])
+    def duplicidades(self, request, pk=None):
+        queryset = self._filtrar_itens(
+            pk,
+            resultado=ArquivoRetornoItem.ResultadoProcessamento.DUPLICIDADE,
+        )
+        return self._paginate_items(queryset)
+
+    @extend_schema(responses=ArquivoRetornoItemSerializer(many=True))
+    @action(detail=True, methods=["get"])
     def encerramentos(self, request, pk=None):
         queryset = self._filtrar_itens(pk, gerou_encerramento=True)
         return self._paginate_items(queryset)
@@ -229,3 +244,65 @@ class ArquivoRetornoViewSet(
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
+
+
+class DuplicidadeFinanceiraViewSet(mixins.ListModelMixin, GenericViewSet):
+    queryset = DuplicidadeFinanceira.objects.none()
+    serializer_class = DuplicidadeFinanceiraItemSerializer
+    permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrAdmin]
+    pagination_class = StandardResultsSetPagination
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def list(self, request, *args, **kwargs):  # noqa: A003
+        competencia = parse_competencia_query(request.query_params.get("competencia"))
+        arquivo_retorno_id = request.query_params.get("arquivo_retorno_id")
+        payload = DuplicidadeFinanceiraService.listar(
+            search=(request.query_params.get("search") or "").strip() or None,
+            status=(request.query_params.get("status") or "").strip() or None,
+            motivo=(request.query_params.get("motivo") or "").strip() or None,
+            competencia=competencia,
+            agente=(request.query_params.get("agente") or "").strip() or None,
+            arquivo_retorno_id=int(arquivo_retorno_id) if (arquivo_retorno_id or "").isdigit() else None,
+        )
+        page = self.paginate_queryset(payload.rows)
+        serializer = self.get_serializer(page if page is not None else payload.rows, many=True)
+        kpis = DuplicidadeFinanceiraKpisSerializer(payload.kpis).data
+        if page is not None:
+            response = self.get_paginated_response(serializer.data)
+            response.data["kpis"] = kpis
+            return response
+        return Response({"results": serializer.data, "kpis": kpis})
+
+    @action(detail=True, methods=["post"], url_path="resolver-devolucao")
+    def resolver_devolucao(self, request, pk=None):
+        serializer = DuplicidadeFinanceiraResolverSerializer(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        duplicidade = DuplicidadeFinanceiraService.resolver_com_devolucao(
+            int(pk),
+            data_devolucao=serializer.validated_data["data_devolucao"],
+            valor=serializer.validated_data["valor"],
+            motivo=serializer.validated_data["motivo"],
+            comprovantes=serializer.validated_data["comprovantes"],
+            user=request.user,
+        )
+        payload = DuplicidadeFinanceiraService.listar().rows
+        row = [item for item in payload if item["id"] == duplicidade.id]
+        data = self.get_serializer(row[:1], many=True).data
+        return Response(data[0] if data else {"id": duplicidade.id})
+
+    @action(detail=True, methods=["post"], url_path="descartar")
+    def descartar(self, request, pk=None):
+        serializer = DuplicidadeFinanceiraDescartarSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        duplicidade = DuplicidadeFinanceiraService.descartar(
+            int(pk),
+            motivo=serializer.validated_data["motivo"],
+            user=request.user,
+        )
+        payload = DuplicidadeFinanceiraService.listar().rows
+        row = [item for item in payload if item["id"] == duplicidade.id]
+        data = self.get_serializer(row[:1], many=True).data
+        return Response(data[0] if data else {"id": duplicidade.id})

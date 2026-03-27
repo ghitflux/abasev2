@@ -57,13 +57,18 @@ class AssociadoViewSet(ModelViewSet):
             return AssociadoCreateSerializer
         return AssociadoUpdateSerializer
 
-    def get_queryset(self):
-        if getattr(self, "swagger_fake_view", False):
-            return Associado.objects.none()
+    def _base_queryset(self):
+        return Associado.objects.select_related("agente_responsavel").distinct()
 
-        queryset = (
-            Associado.objects.select_related(
-                "agente_responsavel",
+    def _list_queryset(self):
+        return self._base_queryset().prefetch_related(
+            Prefetch("contratos__ciclos__parcelas"),
+        )
+
+    def _detail_queryset(self):
+        return (
+            self._base_queryset()
+            .select_related(
                 "endereco",
                 "dados_bancarios",
                 "contato_historico",
@@ -88,8 +93,19 @@ class AssociadoViewSet(ModelViewSet):
                     queryset=Pagamento.all_objects.order_by("created_at", "id"),
                 ),
             )
-            .distinct()
         )
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Associado.objects.none()
+
+        if self.action in {"retrieve", "ciclos", "parcela_detalhe"}:
+            queryset = self._detail_queryset()
+        elif self.action == "list":
+            queryset = self._list_queryset()
+        else:
+            queryset = self._base_queryset()
+
         if self.action == "list":
             queryset = AssociadoService.buscar_com_contagens(queryset)
 

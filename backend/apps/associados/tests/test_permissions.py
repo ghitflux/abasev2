@@ -362,7 +362,18 @@ class AssociadoPermissionsTestCase(TestCase):
             "Selecione o agente responsável.",
         )
 
-    def test_admin_pode_definir_agente_e_repasse_na_criacao(self):
+    def test_admin_pode_definir_agente_e_comissao_vem_da_configuracao(self):
+        config_response = self.admin_client.post(
+            "/api/v1/configuracoes/comissoes/agentes/",
+            {
+                "agentes": [self.outro_agente.id],
+                "percentual": "12.50",
+                "motivo": "Comissão dedicada do agente.",
+            },
+            format="json",
+        )
+        self.assertEqual(config_response.status_code, 200, config_response.json())
+
         response = self.admin_client.post(
             "/api/v1/associados/",
             {
@@ -397,7 +408,7 @@ class AssociadoPermissionsTestCase(TestCase):
                 "mensalidade": "500.00",
                 "margem_disponivel": "900.00",
                 "agente_responsavel_id": self.outro_agente.id,
-                "percentual_repasse": "12.50",
+                "percentual_repasse": "99.99",
             },
             format="json",
         )

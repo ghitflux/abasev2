@@ -117,6 +117,8 @@ describe("navigation", () => {
       expect.arrayContaining([
         "Devoluções",
         "devoluções",
+        "duplicidades",
+        "duplicidade financeira",
         "devolucoes ao associado",
         "desconto indevido",
       ]),
@@ -180,12 +182,14 @@ describe("navigation", () => {
     expect(hrefs).toContain("/associados");
     expect(hrefs).toContain("/dashboard");
     expect(hrefs).toContain("/configuracoes/usuarios");
+    expect(hrefs).toContain("/configuracoes/comissoes");
     expect(hrefs).toContain("/importacao");
     expect(canAccessPath("/dashboard", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/associados", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/associados/123", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/associados/123/editar", ["COORDENADOR"])).toBe(false);
     expect(canAccessPath("/configuracoes/usuarios", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/configuracoes/comissoes", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/importacao", ["COORDENADOR"])).toBe(true);
   });
 

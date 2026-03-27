@@ -190,6 +190,67 @@ class AgenteMargemConfig(BaseModel):
         return f"{self.agente.email} - {self.percentual}%"
 
 
+class ConfiguracaoComissaoGlobal(BaseModel):
+    """Percentual global de comissão vigente para novos contratos."""
+
+    percentual = models.DecimalField(max_digits=6, decimal_places=2, default=10)
+    vigente_desde = models.DateTimeField(default=timezone.now)
+    vigente_ate = models.DateTimeField(null=True, blank=True)
+    updated_by = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="configuracoes_comissao_global_atualizadas",
+    )
+    motivo = models.CharField(max_length=190, blank=True)
+
+    class Meta:
+        ordering = ["-vigente_desde"]
+
+    def __str__(self) -> str:
+        return f"Global {self.percentual}%"
+
+
+class ConfiguracaoComissaoHistorico(BaseModel):
+    """Histórico das alterações de comissão global e individual."""
+
+    class Escopo(models.TextChoices):
+        GLOBAL = "global", "Global"
+        AGENTE = "agente", "Agente"
+
+    escopo = models.CharField(max_length=20, choices=Escopo.choices)
+    agente = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        related_name="configuracoes_comissao_historico",
+        null=True,
+        blank=True,
+    )
+    percentual_anterior = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    percentual_novo = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True
+    )
+    changed_by = models.ForeignKey(
+        User,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="configuracoes_comissao_alteradas",
+    )
+    motivo = models.CharField(max_length=190, blank=True)
+    meta = models.JSONField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        target = self.agente.email if self.agente_id else "global"
+        return f"{self.escopo}:{target} {self.percentual_anterior} -> {self.percentual_novo}"
+
+
 class AgenteMargemHistorico(BaseModel):
     """Histórico de alterações de margem de um agente (agente_margem_historicos)."""
 

@@ -69,6 +69,12 @@ class AnaliseViewSet(GenericViewSet):
             request.user,
             search=request.query_params.get("search"),
             competencia=request.query_params.get("competencia"),
+            agente=request.query_params.get("agente"),
+            analista=request.query_params.get("analista"),
+            etapa=request.query_params.get("etapa"),
+            status=request.query_params.get("status"),
+            data_inicio=request.query_params.get("data_inicio"),
+            data_fim=request.query_params.get("data_fim"),
         )
         return Response(payload)
 
@@ -79,6 +85,12 @@ class AnaliseViewSet(GenericViewSet):
             secao,
             request.user,
             search=request.query_params.get("search"),
+            agente=request.query_params.get("agente"),
+            analista=request.query_params.get("analista"),
+            etapa=request.query_params.get("etapa"),
+            status=request.query_params.get("status"),
+            data_inicio=request.query_params.get("data_inicio"),
+            data_fim=request.query_params.get("data_fim"),
         )
         return self._paginated_response(
             queryset,

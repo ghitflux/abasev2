@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2Icon, CreditCardIcon, FileTextIcon, MapPinIcon, SmartphoneIcon, Trash2Icon, UserIcon, WorkflowIcon } from "lucide-react";
+import { Building2Icon, CreditCardIcon, FileTextIcon, MapPinIcon, SaveIcon, SmartphoneIcon, Trash2Icon, UserIcon, WorkflowIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import type { AdminAssociadoEditorPayload, AdminOverrideHistoryEvent, AssociadoDetail } from "@/lib/api/types";
@@ -14,10 +15,15 @@ import {
   AssociadoDocumentsGrid,
 } from "@/components/associados/associado-contracts-overview";
 import AdminContractEditor from "@/components/associados/admin-contract-editor";
+import type {
+  AdminContractEditorHandle,
+  ContractEditorDirtyState,
+} from "@/components/associados/admin-contract-editor";
+import AdminOverrideConfirmDialog from "@/components/associados/admin-override-confirm-dialog";
 import AdminEsteiraEditor from "@/components/associados/admin-esteira-editor";
-import AdminFileManager from "@/components/associados/admin-file-manager";
-import AdminOverrideHistory from "@/components/associados/admin-override-history";
+import type { AdminEsteiraEditorHandle } from "@/components/associados/admin-esteira-editor";
 import { formatDate } from "@/lib/formatters";
+import { dashboardRetainedQueryOptions } from "@/lib/dashboard-query";
 import { usePermissions } from "@/hooks/use-permissions";
 import RoleGuard from "@/components/auth/role-guard";
 import {
@@ -42,9 +48,20 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 
+const AdminFileManager = dynamic(
+  () => import("@/components/associados/admin-file-manager"),
+);
+const AdminOverrideHistory = dynamic(
+  () => import("@/components/associados/admin-override-history"),
+);
+
 type AssociadoPageProps = {
   params: Promise<{ id: string }>;
 };
+
+function hasDirtyContractState(state?: ContractEditorDirtyState) {
+  return Boolean(state?.core || state?.cycles || state?.refinanciamento);
+}
 
 function AssociadoPageContent({ params }: AssociadoPageProps) {
   const { id } = React.use(params);
@@ -56,6 +73,13 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   const [adminMode, setAdminMode] = React.useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
   const [deleteConfirmed, setDeleteConfirmed] = React.useState(false);
+  const [saveAllOpen, setSaveAllOpen] = React.useState(false);
+  const contractEditorRefs = React.useRef<Record<number, AdminContractEditorHandle | null>>({});
+  const esteiraEditorRef = React.useRef<AdminEsteiraEditorHandle | null>(null);
+  const [contractDirtyState, setContractDirtyState] = React.useState<
+    Record<number, ContractEditorDirtyState>
+  >({});
+  const [esteiraDirty, setEsteiraDirty] = React.useState(false);
   const autoAdminEnabledRef = React.useRef(false);
   const { hasRole } = usePermissions();
   const queryClient = useQueryClient();
@@ -77,6 +101,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   const associadoQuery = useQuery({
     queryKey: ["associado", associadoId],
     queryFn: () => apiFetch<AssociadoDetail>(`associados/${associadoId}`),
+    ...dashboardRetainedQueryOptions,
   });
 
   const adminEditorQuery = useQuery({
@@ -84,6 +109,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
     queryFn: () =>
       apiFetch<AdminAssociadoEditorPayload>(`admin-overrides/associados/${associadoId}/editor/`),
     enabled: isAdmin && adminMode,
+    ...dashboardRetainedQueryOptions,
   });
 
   const adminHistoryQuery = useQuery({
@@ -91,6 +117,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
     queryFn: () =>
       apiFetch<AdminOverrideHistoryEvent[]>(`admin-overrides/associados/${associadoId}/history/`),
     enabled: isAdmin && adminMode,
+    ...dashboardRetainedQueryOptions,
   });
 
   const deleteAssociadoMutation = useMutation({
@@ -119,6 +146,115 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
       autoAdminEnabledRef.current = true;
     }
   }, [isAdmin, searchParams]);
+
+  React.useEffect(() => {
+    if (!adminMode) {
+      setContractDirtyState({});
+      setEsteiraDirty(false);
+    }
+  }, [adminMode]);
+
+  const hasUnsavedAdminChanges =
+    isAdmin &&
+    adminMode &&
+    (Object.values(contractDirtyState).some(hasDirtyContractState) || esteiraDirty);
+
+  const collectPendingAdminChanges = React.useCallback(() => {
+    const contratos = (adminEditorQuery.data?.contratos ?? [])
+      .map((contract) => contractEditorRefs.current[contract.id]?.getPendingChanges() ?? null)
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
+    const esteira = esteiraEditorRef.current?.getPendingChanges() ?? null;
+
+    return {
+      contratos,
+      esteira,
+    };
+  }, [adminEditorQuery.data?.contratos]);
+
+  const saveAllMutation = useMutation({
+    mutationFn: async (motivo: string) => {
+      const pending = collectPendingAdminChanges();
+      if (!pending.contratos.length && !pending.esteira) {
+        throw new Error("Nenhuma alteração pendente para salvar.");
+      }
+      return apiFetch<AdminAssociadoEditorPayload>(
+        `admin-overrides/associados/${associadoId}/save-all/`,
+        {
+          method: "POST",
+          body: {
+            motivo,
+            contratos: pending.contratos,
+            esteira: pending.esteira ?? undefined,
+          },
+        },
+      );
+    },
+    onSuccess: async (payload) => {
+      toast.success("Alterações administrativas salvas.");
+      queryClient.setQueryData(["admin-associado-editor", associadoId], payload);
+      setContractDirtyState({});
+      setEsteiraDirty(false);
+      await Promise.all([associadoQuery.refetch(), adminHistoryQuery.refetch()]);
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Falha ao salvar alterações administrativas.");
+    },
+  });
+
+  React.useEffect(() => {
+    if (!hasUnsavedAdminChanges) {
+      return;
+    }
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    const handleClickCapture = (event: MouseEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+
+      const anchor = target.closest("a[href]");
+      if (!(anchor instanceof HTMLAnchorElement)) {
+        return;
+      }
+
+      const href = anchor.getAttribute("href");
+      if (!href || href.startsWith("#") || anchor.target === "_blank") {
+        return;
+      }
+
+      const confirmed = window.confirm(
+        "Existem alterações administrativas não salvas. Deseja sair sem salvar?",
+      );
+      if (!confirmed) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("click", handleClickCapture, true);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("click", handleClickCapture, true);
+    };
+  }, [hasUnsavedAdminChanges]);
 
   if (associadoQuery.isLoading) {
     return <DetailRouteSkeleton />;
@@ -275,8 +411,17 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
                 {adminEditorQuery.data.contratos.map((contract) => (
                   <AdminContractEditor
                     key={`admin-${contract.id}`}
+                    ref={(instance) => {
+                      contractEditorRefs.current[contract.id] = instance;
+                    }}
                     associadoId={associadoId}
                     contract={contract}
+                    onDirtyChange={(state) =>
+                      setContractDirtyState((current) => ({
+                        ...current,
+                        [contract.id]: state,
+                      }))
+                    }
                     onPayloadRefresh={async (payload) => {
                       if (payload) {
                         queryClient.setQueryData(["admin-associado-editor", associadoId], payload);
@@ -322,7 +467,11 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           </AccordionTrigger>
           <AccordionContent className="space-y-4">
             {isAdmin && adminMode ? (
-              <AdminEsteiraEditor associadoId={associadoId} esteira={associado.esteira} />
+              <AdminEsteiraEditor
+                ref={esteiraEditorRef}
+                esteira={associado.esteira}
+                onDirtyChange={setEsteiraDirty}
+              />
             ) : null}
             <div className="flex flex-wrap items-center gap-3">
               <StatusBadge status={associado.esteira?.etapa_atual ?? "pendente"} />
@@ -361,6 +510,61 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           </AccordionItem>
         ) : null}
       </Accordion>
+      {hasUnsavedAdminChanges ? (
+        <div className="fixed inset-x-4 bottom-4 z-50 flex justify-center md:inset-x-auto md:right-6">
+          <div className="flex w-full max-w-2xl items-center justify-between gap-4 rounded-2xl border border-primary/30 bg-background/95 px-4 py-3 shadow-2xl shadow-black/40 backdrop-blur md:w-auto md:min-w-[32rem]">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground">
+                Alterações administrativas pendentes
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Salve contrato, ciclos, renovação e esteira em uma única ação.
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <StatusBadge
+                status="pendente"
+                label={`${Object.values(contractDirtyState).filter(hasDirtyContractState).length + (esteiraDirty ? 1 : 0)} bloco(s) pendente(s)`}
+              />
+              <Button
+                onClick={() => setSaveAllOpen(true)}
+                disabled={saveAllMutation.isPending}
+              >
+                <SaveIcon className="size-4" />
+                Salvar alterações
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      <AdminOverrideConfirmDialog
+        open={saveAllOpen}
+        onOpenChange={setSaveAllOpen}
+        title="Salvar alterações administrativas"
+        description="Todas as alterações pendentes do modo admin serão gravadas agora."
+        summary={
+          <div className="grid gap-2 text-sm">
+            <p>
+              Contratos pendentes:{" "}
+              <span className="font-medium text-foreground">
+                {Object.values(contractDirtyState).filter(hasDirtyContractState).length}
+              </span>
+            </p>
+            <p>
+              Esteira pendente:{" "}
+              <span className="font-medium text-foreground">
+                {esteiraDirty ? "Sim" : "Não"}
+              </span>
+            </p>
+          </div>
+        }
+        submitLabel="Salvar tudo"
+        isSubmitting={saveAllMutation.isPending}
+        onConfirm={async (motivo) => {
+          await saveAllMutation.mutateAsync(motivo);
+          setSaveAllOpen(false);
+        }}
+      />
       <ParcelaDetalheDialog
         associadoId={associadoId}
         target={selectedTarget}

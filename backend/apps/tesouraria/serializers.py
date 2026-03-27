@@ -674,6 +674,7 @@ class DevolucaoContratoListSerializer(serializers.Serializer):
     status_contrato = serializers.CharField(read_only=True)
     data_contrato = serializers.DateField(read_only=True)
     mes_averbacao = serializers.DateField(read_only=True, allow_null=True)
+    tipo_sugerido = serializers.CharField(read_only=True, allow_blank=True)
 
 
 class DevolucaoComprovanteSerializer(serializers.Serializer):
@@ -866,8 +867,129 @@ class DespesaKpisSerializer(serializers.Serializer):
     pendentes_anexo = serializers.IntegerField(read_only=True)
 
 
+class DespesaCategoriaSugestaoSerializer(serializers.Serializer):
+    categoria = serializers.CharField(read_only=True)
+    frequencia = serializers.IntegerField(read_only=True)
+
+
+class DespesaResultadoMensalRowSerializer(serializers.Serializer):
+    mes = serializers.DateField(read_only=True)
+    receitas = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    receitas_inadimplencia = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        read_only=True,
+    )
+    receitas_retorno = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        read_only=True,
+    )
+    despesas = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    despesas_manuais = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        read_only=True,
+    )
+    devolucoes = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    pagamentos_operacionais = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        read_only=True,
+    )
+    lucro = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    lucro_liquido = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+
+
+class DespesaResultadoMensalTotaisSerializer(serializers.Serializer):
+    receitas = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    despesas = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    lucro = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    lucro_liquido = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+
+
+class DespesaResultadoMensalSerializer(serializers.Serializer):
+    rows = DespesaResultadoMensalRowSerializer(many=True)
+    totais = DespesaResultadoMensalTotaisSerializer()
+
+
+class DespesaResultadoMensalResumoSerializer(serializers.Serializer):
+    receitas = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    receitas_inadimplencia = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        read_only=True,
+    )
+    receitas_retorno = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        read_only=True,
+    )
+    despesas = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    despesas_manuais = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        read_only=True,
+    )
+    devolucoes = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    pagamentos_operacionais = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        read_only=True,
+    )
+    lucro = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    lucro_liquido = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+
+
+class DespesaResultadoMensalReceitaDetalheSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    origem = serializers.CharField(read_only=True)
+    origem_label = serializers.CharField(read_only=True)
+    data = serializers.DateField(read_only=True)
+    referencia = serializers.DateField(read_only=True)
+    associado_nome = serializers.CharField(read_only=True)
+    cpf_cnpj = serializers.CharField(read_only=True)
+    matricula = serializers.CharField(read_only=True)
+    agente_nome = serializers.CharField(read_only=True)
+    descricao = serializers.CharField(read_only=True)
+    valor = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+
+
+class DespesaResultadoMensalDespesaDetalheSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    origem = serializers.CharField(read_only=True)
+    origem_label = serializers.CharField(read_only=True)
+    data = serializers.DateField(read_only=True)
+    titulo = serializers.CharField(read_only=True)
+    subtitulo = serializers.CharField(read_only=True)
+    descricao = serializers.CharField(read_only=True)
+    referencia = serializers.CharField(read_only=True)
+    valor = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+
+
+class DespesaResultadoMensalPagamentoDetalheSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    data = serializers.DateField(read_only=True)
+    favorecido = serializers.CharField(read_only=True)
+    cpf_cnpj = serializers.CharField(read_only=True)
+    agente_nome = serializers.CharField(read_only=True)
+    contrato_codigo = serializers.CharField(read_only=True)
+    origem = serializers.CharField(read_only=True)
+    origem_label = serializers.CharField(read_only=True)
+    valor = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+
+
+class DespesaResultadoMensalDetalheSerializer(serializers.Serializer):
+    mes = serializers.DateField(read_only=True)
+    resumo = DespesaResultadoMensalResumoSerializer()
+    receitas = DespesaResultadoMensalReceitaDetalheSerializer(many=True)
+    despesas = DespesaResultadoMensalDespesaDetalheSerializer(many=True)
+    pagamentos_operacionais = DespesaResultadoMensalPagamentoDetalheSerializer(many=True)
+
+
 class DespesaWriteSerializer(serializers.ModelSerializer):
     anexo = serializers.FileField(required=False, allow_null=True)
+    descricao = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     data_pagamento = serializers.DateField(required=False, allow_null=True)
     tipo = serializers.ChoiceField(
         choices=Despesa.Tipo.choices,
@@ -897,6 +1019,8 @@ class DespesaWriteSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         instance: Despesa | None = getattr(self, "instance", None)
+        if attrs.get("descricao") is None:
+            attrs["descricao"] = instance.descricao if instance else ""
         resolved_status = attrs.get(
             "status",
             instance.status if instance else Despesa.Status.PENDENTE,
@@ -922,6 +1046,7 @@ class DespesaWriteSerializer(serializers.ModelSerializer):
         anexo = validated_data.pop("anexo", None)
         request = self.context["request"]
         validated_data.setdefault("status", Despesa.Status.PENDENTE)
+        validated_data.setdefault("descricao", "")
         validated_data.setdefault("recorrencia", Despesa.Recorrencia.NENHUMA)
         validated_data.setdefault("recorrencia_ativa", True)
         despesa = Despesa(user=request.user, **validated_data)

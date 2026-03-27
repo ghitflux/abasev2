@@ -18,9 +18,17 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import type { DespesaItem, DespesaKpis, PaginatedResponse } from "@/lib/api/types";
+import type {
+  DespesaCategoriaSugestao,
+  DespesaItem,
+  DespesaKpis,
+  DespesaResultadoMensalDetalhePayload,
+  DespesaResultadoMensalPayload,
+  PaginatedResponse,
+} from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import {
   centsToDecimal,
   decimalToCents,
@@ -67,6 +75,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 
 const PAGE_SIZE = 10;
@@ -78,6 +95,13 @@ const comprovanteAccept = {
 
 type DespesaListResponse = PaginatedResponse<DespesaItem> & {
   kpis: DespesaKpis;
+};
+
+type DespesaTab = "lancamentos" | "resultado";
+type ResultadoDetalheTab = "geral" | "receitas" | "despesas";
+type ResultadoDetalheState = {
+  mes: string;
+  tab: ResultadoDetalheTab;
 };
 
 type DespesaFormState = {
@@ -115,7 +139,7 @@ const statusOptions = [
 
 const statusAnexoOptions = [
   { value: "todos", label: "Status do anexo" },
-  { value: "pendente", label: "Pendente de anexo" },
+  { value: "pendente", label: "Sem anexo" },
   { value: "anexado", label: "Anexado" },
 ];
 
@@ -205,8 +229,81 @@ function formatTipoLabel(value: string) {
   return labels[value] ?? "Não informado";
 }
 
+function formatResultadoMes(value: string) {
+  const parsed = parseIsoDate(value);
+  return parsed ? formatLongMonthYear(parsed) : value;
+}
+
+type ResultadoDetalheColumn<T> = {
+  id: string;
+  header: React.ReactNode;
+  cell: (item: T) => React.ReactNode;
+  className?: string;
+};
+
+function ResultadoDetalheTable<T extends { id: number | string }>({
+  title,
+  description,
+  columns,
+  rows,
+  emptyMessage,
+}: {
+  title: string;
+  description?: string;
+  columns: ResultadoDetalheColumn<T>[];
+  rows: T[];
+  emptyMessage: string;
+}) {
+  return (
+    <div className="space-y-3 rounded-[1.5rem] border border-border/60 bg-card/50 p-4">
+      <div>
+        <h3 className="text-sm font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+          {title}
+        </h3>
+        {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
+      </div>
+      <div className="overflow-hidden rounded-xl border border-border/60">
+        <Table>
+          <TableHeader>
+            <TableRow className="border-border/60 hover:bg-transparent">
+              {columns.map((column) => (
+                <TableHead
+                  key={column.id}
+                  className="h-11 px-4 text-[11px] uppercase tracking-[0.2em] text-muted-foreground"
+                >
+                  {column.header}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.length ? (
+              rows.map((row) => (
+                <TableRow key={row.id} className="border-border/60">
+                  {columns.map((column) => (
+                    <TableCell key={column.id} className={column.className}>
+                      {column.cell(row)}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow className="border-border/60">
+                <TableCell colSpan={columns.length} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                  {emptyMessage}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
 export default function TesourariaDespesasPage() {
   const queryClient = useQueryClient();
+  const [tab, setTab] = React.useState<DespesaTab>("lancamentos");
   const [competencia, setCompetencia] = React.useState(() => new Date());
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
@@ -223,6 +320,9 @@ export default function TesourariaDespesasPage() {
   const [uploadFile, setUploadFile] = React.useState<File | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<DespesaItem | null>(null);
   const [deleteConfirmed, setDeleteConfirmed] = React.useState(false);
+  const [resultadoDetalheState, setResultadoDetalheState] = React.useState<ResultadoDetalheState | null>(null);
+  const [resultadoDetalheTab, setResultadoDetalheTab] = React.useState<ResultadoDetalheTab>("geral");
+  const debouncedCategoriaSearch = useDebouncedValue(formState.categoria, 200);
 
   const despesasQuery = useQuery({
     queryKey: [
@@ -248,6 +348,46 @@ export default function TesourariaDespesasPage() {
       }),
   });
 
+  const categoriasQuery = useQuery({
+    queryKey: ["tesouraria-despesas-categorias", debouncedCategoriaSearch],
+    queryFn: () =>
+      apiFetch<DespesaCategoriaSugestao[]>("tesouraria/despesas/categorias", {
+        query: {
+          search: debouncedCategoriaSearch || undefined,
+        },
+      }),
+    staleTime: 60 * 1000,
+  });
+
+  const resultadoMensalQuery = useQuery({
+    queryKey: ["tesouraria-despesas-resultado", competencia.toISOString()],
+    queryFn: () =>
+      apiFetch<DespesaResultadoMensalPayload>("tesouraria/despesas/resultado-mensal", {
+        query: {
+          competencia: format(competencia, "yyyy-MM"),
+        },
+      }),
+    staleTime: 60 * 1000,
+  });
+
+  const resultadoDetalheQuery = useQuery({
+    queryKey: ["tesouraria-despesas-resultado-detalhe", resultadoDetalheState?.mes],
+    queryFn: () =>
+      apiFetch<DespesaResultadoMensalDetalhePayload>("tesouraria/despesas/resultado-mensal/detalhe", {
+        query: {
+          mes: resultadoDetalheState?.mes.slice(0, 7),
+        },
+      }),
+    enabled: Boolean(resultadoDetalheState?.mes),
+    staleTime: 60 * 1000,
+  });
+
+  React.useEffect(() => {
+    if (resultadoDetalheState) {
+      setResultadoDetalheTab(resultadoDetalheState.tab);
+    }
+  }, [resultadoDetalheState]);
+
   const saveMutation = useMutation({
     mutationFn: async ({
       values,
@@ -269,13 +409,11 @@ export default function TesourariaDespesasPage() {
       setExistingFormAttachment(null);
       setPage(1);
       toast.success(
-        !variables.values.id && payload.status_anexo === "pendente"
-          ? "Despesa lançada. Pendente de anexo."
-          : variables.values.id
-            ? "Despesa atualizada."
-            : "Despesa lançada com sucesso.",
+        variables.values.id ? "Despesa atualizada." : "Despesa lançada com sucesso.",
       );
       void queryClient.invalidateQueries({ queryKey: ["tesouraria-despesas"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-despesas-resultado"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-despesas-resultado-detalhe"] });
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Não foi possível salvar a despesa.");
@@ -296,6 +434,8 @@ export default function TesourariaDespesasPage() {
       setUploadFile(null);
       toast.success("Anexo atualizado com sucesso.");
       void queryClient.invalidateQueries({ queryKey: ["tesouraria-despesas"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-despesas-resultado"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-despesas-resultado-detalhe"] });
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Falha ao anexar comprovante.");
@@ -310,6 +450,8 @@ export default function TesourariaDespesasPage() {
     onSuccess: () => {
       toast.success("Despesa excluída.");
       void queryClient.invalidateQueries({ queryKey: ["tesouraria-despesas"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-despesas-resultado"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-despesas-resultado-detalhe"] });
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Falha ao excluir despesa.");
@@ -319,6 +461,192 @@ export default function TesourariaDespesasPage() {
   const rows = despesasQuery.data?.results ?? [];
   const totalPages = Math.max(1, Math.ceil((despesasQuery.data?.count ?? 0) / PAGE_SIZE));
   const kpis = despesasQuery.data?.kpis;
+  const categoriasSugeridas = categoriasQuery.data ?? [];
+  const resultadoRows = (resultadoMensalQuery.data?.rows ?? []).map((row, index) => ({
+    id: `${row.mes}-${index}`,
+    ...row,
+  }));
+  const resultadoTotais = resultadoMensalQuery.data?.totais;
+  const resultadoDetalhe = resultadoDetalheQuery.data;
+
+  const openResultadoDetalhe = React.useCallback(
+    (mes: string, nextTab: ResultadoDetalheTab) => {
+      setResultadoDetalheState({ mes, tab: nextTab });
+    },
+    [],
+  );
+
+  const composicaoGeralRows = React.useMemo(() => {
+    if (!resultadoDetalhe) {
+      return [];
+    }
+
+    const receitasManuais = resultadoDetalhe.receitas.filter(
+      (item) => item.origem === "inadimplencia_manual",
+    ).length;
+    const receitasRetorno = resultadoDetalhe.receitas.filter(
+      (item) => item.origem === "arquivo_retorno",
+    ).length;
+    const despesasManuais = resultadoDetalhe.despesas.filter(
+      (item) => item.origem === "despesa_manual",
+    ).length;
+    const devolucoes = resultadoDetalhe.despesas.filter((item) => item.origem === "devolucao").length;
+
+    return [
+      {
+        id: "receitas-inadimplencia",
+        grupo: "Receitas de inadimplência manual",
+        quantidade: receitasManuais,
+        valor: resultadoDetalhe.resumo.receitas_inadimplencia,
+      },
+      {
+        id: "receitas-retorno",
+        grupo: "Receitas de arquivo retorno",
+        quantidade: receitasRetorno,
+        valor: resultadoDetalhe.resumo.receitas_retorno,
+      },
+      {
+        id: "despesas-manuais",
+        grupo: "Despesas manuais",
+        quantidade: despesasManuais,
+        valor: resultadoDetalhe.resumo.despesas_manuais,
+      },
+      {
+        id: "devolucoes",
+        grupo: "Devoluções",
+        quantidade: devolucoes,
+        valor: resultadoDetalhe.resumo.devolucoes,
+      },
+      {
+        id: "pagamentos-operacionais",
+        grupo: "Pagamentos operacionais",
+        quantidade: resultadoDetalhe.pagamentos_operacionais.length,
+        valor: resultadoDetalhe.resumo.pagamentos_operacionais,
+      },
+    ];
+  }, [resultadoDetalhe]);
+
+  const receitasDetalheColumns = React.useMemo<ResultadoDetalheColumn<DespesaResultadoMensalDetalhePayload["receitas"][number]>[]>(
+    () => [
+      {
+        id: "data",
+        header: "Data",
+        cell: (item) => (
+          <div className="space-y-1">
+            <p className="font-medium">{formatDate(item.data)}</p>
+            <p className="text-xs text-muted-foreground">
+              Ref. {formatResultadoMes(item.referencia)}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "origem",
+        header: "Origem",
+        cell: (item) => (
+          <div className="space-y-1">
+            <StatusBadge status={item.origem} label={item.origem_label} />
+            <p className="text-xs text-muted-foreground">{item.descricao}</p>
+          </div>
+        ),
+      },
+      {
+        id: "associado",
+        header: "Associado",
+        cell: (item) => (
+          <div className="space-y-1">
+            <p className="font-medium">{item.associado_nome}</p>
+            <p className="text-xs text-muted-foreground">
+              {item.cpf_cnpj} {item.matricula ? `· ${item.matricula}` : ""}
+            </p>
+            <p className="text-xs text-muted-foreground">{item.agente_nome || "Sem agente"}</p>
+          </div>
+        ),
+      },
+      {
+        id: "valor",
+        header: "Valor",
+        className: "px-4 py-3 font-semibold",
+        cell: (item) => formatCurrency(item.valor),
+      },
+    ],
+    [],
+  );
+
+  const despesasDetalheColumns = React.useMemo<ResultadoDetalheColumn<DespesaResultadoMensalDetalhePayload["despesas"][number]>[]>(
+    () => [
+      {
+        id: "data",
+        header: "Data",
+        cell: (item) => formatDate(item.data),
+      },
+      {
+        id: "origem",
+        header: "Origem",
+        cell: (item) => <StatusBadge status={item.origem} label={item.origem_label} />,
+      },
+      {
+        id: "detalhe",
+        header: "Detalhe",
+        cell: (item) => (
+          <div className="space-y-1">
+            <p className="font-medium">{item.titulo}</p>
+            <p className="text-xs text-muted-foreground">{item.subtitulo}</p>
+            <p className="text-xs text-muted-foreground">{item.referencia}</p>
+            {item.descricao ? (
+              <p className="text-xs text-muted-foreground line-clamp-2">{item.descricao}</p>
+            ) : null}
+          </div>
+        ),
+      },
+      {
+        id: "valor",
+        header: "Valor",
+        className: "px-4 py-3 font-semibold",
+        cell: (item) => formatCurrency(item.valor),
+      },
+    ],
+    [],
+  );
+
+  const pagamentosOperacionaisColumns = React.useMemo<ResultadoDetalheColumn<DespesaResultadoMensalDetalhePayload["pagamentos_operacionais"][number]>[]>(
+    () => [
+      {
+        id: "data",
+        header: "Data",
+        cell: (item) => formatDate(item.data),
+      },
+      {
+        id: "favorecido",
+        header: "Favorecido",
+        cell: (item) => (
+          <div className="space-y-1">
+            <p className="font-medium">{item.favorecido}</p>
+            <p className="text-xs text-muted-foreground">{item.cpf_cnpj}</p>
+          </div>
+        ),
+      },
+      {
+        id: "referencia",
+        header: "Operação",
+        cell: (item) => (
+          <div className="space-y-1">
+            <p>{item.origem_label}</p>
+            <p className="text-xs text-muted-foreground">
+              {item.contrato_codigo || "Sem contrato"} {item.agente_nome ? `· ${item.agente_nome}` : ""}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "valor",
+        header: "Valor",
+        className: "px-4 py-3 font-semibold",
+        cell: (item) => formatCurrency(item.valor),
+      },
+    ],
+    [],
+  );
 
   const columns = React.useMemo<DataTableColumn<DespesaItem>[]>(
     () => [
@@ -328,7 +656,9 @@ export default function TesourariaDespesasPage() {
         cell: (row) => (
           <div className="min-w-72 space-y-1">
             <p className="font-semibold">{row.categoria}</p>
-            <p className="text-sm text-muted-foreground">{row.descricao}</p>
+            <p className="text-sm text-muted-foreground">
+              {row.descricao || "Sem descrição complementar."}
+            </p>
             {row.observacoes ? (
               <p className="text-xs text-muted-foreground line-clamp-2">{row.observacoes}</p>
             ) : null}
@@ -363,7 +693,7 @@ export default function TesourariaDespesasPage() {
             />
             <StatusBadge
               status={row.status_anexo === "anexado" ? "anexado" : "pendente"}
-              label={row.status_anexo === "anexado" ? "Anexado" : "Pendente de anexo"}
+              label={row.status_anexo === "anexado" ? "Anexado" : "Sem anexo"}
             />
           </div>
         ),
@@ -451,10 +781,83 @@ export default function TesourariaDespesasPage() {
     [deleteMutation],
   );
 
+  const resultadoColumns = React.useMemo<DataTableColumn<(typeof resultadoRows)[number]>[]>(
+    () => [
+      {
+        id: "mes",
+        header: "Mês",
+        cell: (row) => (
+          <button
+            type="button"
+            className="text-left font-semibold transition-colors hover:text-primary"
+            onClick={() => openResultadoDetalhe(row.mes, "geral")}
+          >
+            {formatResultadoMes(row.mes)}
+          </button>
+        ),
+      },
+      {
+        id: "receitas",
+        header: "Receitas",
+        cell: (row) => (
+          <button
+            type="button"
+            className="w-full text-left transition-colors hover:text-primary"
+            onClick={() => openResultadoDetalhe(row.mes, "receitas")}
+          >
+          <div className="space-y-1">
+            <p className="font-semibold">{formatCurrency(row.receitas)}</p>
+            <p className="text-xs text-muted-foreground">
+              Inadimplência {formatCurrency(row.receitas_inadimplencia)} + retorno{" "}
+              {formatCurrency(row.receitas_retorno)}
+            </p>
+          </div>
+          </button>
+        ),
+      },
+      {
+        id: "despesas",
+        header: "Despesas",
+        cell: (row) => (
+          <button
+            type="button"
+            className="w-full text-left transition-colors hover:text-primary"
+            onClick={() => openResultadoDetalhe(row.mes, "despesas")}
+          >
+          <div className="space-y-1">
+            <p className="font-semibold">{formatCurrency(row.despesas)}</p>
+            <p className="text-xs text-muted-foreground">
+              Manuais {formatCurrency(row.despesas_manuais)} + devoluções{" "}
+              {formatCurrency(row.devolucoes)}
+            </p>
+          </div>
+          </button>
+        ),
+      },
+      {
+        id: "lucro",
+        header: "Lucro",
+        cell: (row) => formatCurrency(row.lucro),
+      },
+      {
+        id: "lucro_liquido",
+        header: "Lucro líquido",
+        cell: (row) => (
+          <div className="space-y-1">
+            <p className="font-semibold">{formatCurrency(row.lucro_liquido)}</p>
+            <p className="text-xs text-muted-foreground">
+              Pagamentos operacionais {formatCurrency(row.pagamentos_operacionais)}
+            </p>
+          </div>
+        ),
+      },
+    ],
+    [openResultadoDetalhe],
+  );
+
   const canSubmitForm =
     Boolean(
       formState.categoria.trim() &&
-        formState.descricao.trim() &&
         formState.valor !== null &&
         formState.data_despesa &&
         (formState.status !== "pago" || formState.data_pagamento),
@@ -506,131 +909,338 @@ export default function TesourariaDespesasPage() {
         </Card>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <StatsCard
-          title="Total de despesas"
-          value={String(kpis?.total_despesas ?? 0)}
-          delta="Despesas no filtro atual"
-          icon={ClipboardListIcon}
-        />
-        <StatsCard
-          title="Valor total"
-          value={formatCurrency(kpis?.valor_total)}
-          delta="Soma das despesas filtradas"
-          icon={HandCoinsIcon}
-          tone="neutral"
-        />
-        <StatsCard
-          title="Valor pago"
-          value={formatCurrency(kpis?.valor_pago)}
-          delta="Total liquidado"
-          icon={TrendingDownIcon}
-          tone="positive"
-        />
-        <StatsCard
-          title="Valor pendente"
-          value={formatCurrency(kpis?.valor_pendente)}
-          delta="Ainda sem pagamento"
-          icon={AlertCircleIcon}
-          tone="warning"
-        />
-        <StatsCard
-          title="Pendentes de anexo"
-          value={String(kpis?.pendentes_anexo ?? 0)}
-          delta="Aguardando comprovante"
-          icon={UploadIcon}
-          tone="warning"
-        />
-      </section>
+      <Tabs value={tab} onValueChange={(value) => setTab(value as DespesaTab)} className="space-y-6">
+        <TabsList variant="line" className="justify-start">
+          <TabsTrigger value="lancamentos">Lançamentos</TabsTrigger>
+          <TabsTrigger value="resultado">Resultado mensal</TabsTrigger>
+        </TabsList>
 
-      <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 lg:grid-cols-[minmax(0,1fr)_180px_200px_180px_auto]">
-        <div className="relative">
-          <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setPage(1);
-            }}
-            placeholder="Buscar por categoria ou descrição"
-            className="rounded-2xl border-border/60 bg-card/60 pl-11"
+        <TabsContent value="lancamentos" className="mt-0 space-y-6">
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <StatsCard
+              title="Total de despesas"
+              value={String(kpis?.total_despesas ?? 0)}
+              delta="Despesas no filtro atual"
+              icon={ClipboardListIcon}
+            />
+            <StatsCard
+              title="Valor total"
+              value={formatCurrency(kpis?.valor_total)}
+              delta="Soma das despesas filtradas"
+              icon={HandCoinsIcon}
+              tone="neutral"
+            />
+            <StatsCard
+              title="Valor pago"
+              value={formatCurrency(kpis?.valor_pago)}
+              delta="Total liquidado"
+              icon={TrendingDownIcon}
+              tone="positive"
+            />
+            <StatsCard
+              title="Valor pendente"
+              value={formatCurrency(kpis?.valor_pendente)}
+              delta="Ainda sem pagamento"
+              icon={AlertCircleIcon}
+              tone="warning"
+            />
+            <StatsCard
+              title="Sem anexo"
+              value={String(kpis?.pendentes_anexo ?? 0)}
+              delta="Lançamentos sem comprovante"
+              icon={UploadIcon}
+              tone="warning"
+            />
+          </section>
+
+          <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 lg:grid-cols-[minmax(0,1fr)_180px_200px_180px_auto]">
+            <div className="relative">
+              <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(1);
+                }}
+                placeholder="Buscar por categoria ou descrição"
+                className="rounded-2xl border-border/60 bg-card/60 pl-11"
+              />
+            </div>
+            <Select
+              value={statusFilter}
+              onValueChange={(value) => {
+                setStatusFilter(value);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger
+                aria-label="Status financeiro"
+                className="h-11 w-full rounded-2xl border-border/60 bg-card/60"
+              >
+                <SelectValue placeholder="Status financeiro" />
+              </SelectTrigger>
+              <SelectContent>
+                {statusOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={statusAnexoFilter}
+              onValueChange={(value) => {
+                setStatusAnexoFilter(value);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger
+                aria-label="Status do anexo"
+                className="h-11 w-full rounded-2xl border-border/60 bg-card/60"
+              >
+                <SelectValue placeholder="Status do anexo" />
+              </SelectTrigger>
+              <SelectContent>
+                {statusAnexoOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={tipoFilter}
+              onValueChange={(value) => {
+                setTipoFilter(value);
+                setPage(1);
+              }}
+            >
+              <SelectTrigger
+                aria-label="Tipo"
+                className="h-11 w-full rounded-2xl border-border/60 bg-card/60"
+              >
+                <SelectValue placeholder="Tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                {tipoOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              onClick={() =>
+                void queryClient.invalidateQueries({ queryKey: ["tesouraria-despesas"] })
+              }
+            >
+              Atualizar
+            </Button>
+          </section>
+
+          <DataTable
+            data={rows}
+            columns={columns}
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            emptyMessage="Nenhuma despesa encontrada para os filtros informados."
+            loading={despesasQuery.isLoading}
+            skeletonRows={6}
           />
-        </div>
-        <Select
-          value={statusFilter}
-          onValueChange={(value) => {
-            setStatusFilter(value);
-            setPage(1);
-          }}
-        >
-          <SelectTrigger
-            aria-label="Status financeiro"
-            className="h-11 w-full rounded-2xl border-border/60 bg-card/60"
-          >
-            <SelectValue placeholder="Status financeiro" />
-          </SelectTrigger>
-          <SelectContent>
-            {statusOptions.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={statusAnexoFilter}
-          onValueChange={(value) => {
-            setStatusAnexoFilter(value);
-            setPage(1);
-          }}
-        >
-          <SelectTrigger
-            aria-label="Status do anexo"
-            className="h-11 w-full rounded-2xl border-border/60 bg-card/60"
-          >
-            <SelectValue placeholder="Status do anexo" />
-          </SelectTrigger>
-          <SelectContent>
-            {statusAnexoOptions.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={tipoFilter}
-          onValueChange={(value) => {
-            setTipoFilter(value);
-            setPage(1);
-          }}
-        >
-          <SelectTrigger aria-label="Tipo" className="h-11 w-full rounded-2xl border-border/60 bg-card/60">
-            <SelectValue placeholder="Tipo" />
-          </SelectTrigger>
-          <SelectContent>
-            {tipoOptions.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button onClick={() => void queryClient.invalidateQueries({ queryKey: ["tesouraria-despesas"] })}>
-          Atualizar
-        </Button>
-      </section>
+        </TabsContent>
 
-      <DataTable
-        data={rows}
-        columns={columns}
-        currentPage={page}
-        totalPages={totalPages}
-        onPageChange={setPage}
-        emptyMessage="Nenhuma despesa encontrada para os filtros informados."
-        loading={despesasQuery.isLoading}
-        skeletonRows={6}
-      />
+        <TabsContent value="resultado" className="mt-0 space-y-6">
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <StatsCard
+              title="Receitas"
+              value={formatCurrency(resultadoTotais?.receitas)}
+              delta="Inadimplência manual + arquivo retorno"
+              icon={HandCoinsIcon}
+              tone="positive"
+            />
+            <StatsCard
+              title="Despesas"
+              value={formatCurrency(resultadoTotais?.despesas)}
+              delta="Despesas manuais + devoluções"
+              icon={TrendingDownIcon}
+              tone="warning"
+            />
+            <StatsCard
+              title="Lucro"
+              value={formatCurrency(resultadoTotais?.lucro)}
+              delta="Receitas menos despesas"
+              icon={ClipboardListIcon}
+              tone="neutral"
+            />
+            <StatsCard
+              title="Lucro líquido"
+              value={formatCurrency(resultadoTotais?.lucro_liquido)}
+              delta="Já descontando pagamentos operacionais"
+              icon={AlertCircleIcon}
+              tone="neutral"
+            />
+          </section>
+
+          <Card className="rounded-[1.75rem] border-border/60 bg-card/70">
+            <CardContent className="space-y-4 p-6">
+              <div>
+                <h2 className="text-lg font-semibold">Resultado por mês</h2>
+                <p className="text-sm text-muted-foreground">
+                  Receitas, despesas, lucro e lucro líquido consolidados nos últimos 12 meses.
+                </p>
+              </div>
+              <DataTable
+                data={resultadoRows}
+                columns={resultadoColumns}
+                pageSize={12}
+                emptyMessage="Nenhum resultado mensal consolidado para a competência selecionada."
+                loading={resultadoMensalQuery.isLoading}
+                skeletonRows={6}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <Dialog
+        open={!!resultadoDetalheState}
+        onOpenChange={(open) => {
+          if (!open) {
+            setResultadoDetalheState(null);
+            setResultadoDetalheTab("geral");
+          }
+        }}
+      >
+        <DialogContent className="grid h-[min(92dvh,58rem)] w-[min(96vw,72rem)] max-h-[92dvh] grid-rows-[auto_minmax(0,1fr)] overflow-hidden p-0 sm:max-w-6xl">
+          <DialogHeader className="border-b border-border/60 px-6 pb-4 pt-6 pr-14">
+            <DialogTitle>
+              Detalhamento de {resultadoDetalheState ? formatResultadoMes(resultadoDetalheState.mes) : "resultado mensal"}
+            </DialogTitle>
+            <DialogDescription>
+              Clique em receitas ou despesas na tabela mensal para abrir o recorte direto, ou use a visão geral para conferir a composição completa do mês.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="min-h-0 overflow-y-auto px-6 py-5">
+            {resultadoDetalheQuery.isLoading ? (
+              <div className="space-y-4">
+                <Card className="rounded-[1.5rem] border-border/60 bg-card/60">
+                  <CardContent className="p-6 text-sm text-muted-foreground">
+                    Carregando detalhamento do mês...
+                  </CardContent>
+                </Card>
+              </div>
+            ) : resultadoDetalhe ? (
+              <div className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <StatsCard
+                    title="Receitas"
+                    value={formatCurrency(resultadoDetalhe.resumo.receitas)}
+                    delta="Manual + arquivo retorno"
+                    icon={HandCoinsIcon}
+                    tone="positive"
+                  />
+                  <StatsCard
+                    title="Despesas"
+                    value={formatCurrency(resultadoDetalhe.resumo.despesas)}
+                    delta="Manuais + devoluções"
+                    icon={TrendingDownIcon}
+                    tone="warning"
+                  />
+                  <StatsCard
+                    title="Lucro"
+                    value={formatCurrency(resultadoDetalhe.resumo.lucro)}
+                    delta="Receitas menos despesas"
+                    icon={ClipboardListIcon}
+                    tone="neutral"
+                  />
+                  <StatsCard
+                    title="Lucro líquido"
+                    value={formatCurrency(resultadoDetalhe.resumo.lucro_liquido)}
+                    delta="Já descontando pagamentos operacionais"
+                    icon={AlertCircleIcon}
+                    tone="neutral"
+                  />
+                </div>
+
+                <Tabs
+                  value={resultadoDetalheTab}
+                  onValueChange={(value) => setResultadoDetalheTab(value as ResultadoDetalheTab)}
+                  className="space-y-5"
+                >
+                  <TabsList variant="line" className="justify-start">
+                    <TabsTrigger value="geral">Geral</TabsTrigger>
+                    <TabsTrigger value="receitas">Receitas</TabsTrigger>
+                    <TabsTrigger value="despesas">Despesas</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="geral" className="mt-0 space-y-5">
+                    <ResultadoDetalheTable
+                      title="Composição do mês"
+                      description="Consolidação por grupo financeiro para explicar o resultado mensal."
+                      rows={composicaoGeralRows}
+                      columns={[
+                        {
+                          id: "grupo",
+                          header: "Grupo",
+                          cell: (item) => <span className="font-medium">{item.grupo}</span>,
+                        },
+                        {
+                          id: "quantidade",
+                          header: "Itens",
+                          cell: (item) => item.quantidade,
+                        },
+                        {
+                          id: "valor",
+                          header: "Valor",
+                          className: "px-4 py-3 font-semibold",
+                          cell: (item) => formatCurrency(item.valor),
+                        },
+                      ]}
+                      emptyMessage="Nenhuma composição disponível para este mês."
+                    />
+
+                    <ResultadoDetalheTable
+                      title="Pagamentos operacionais"
+                      description="Pagamentos considerados no cálculo do lucro líquido do mês."
+                      rows={resultadoDetalhe.pagamentos_operacionais}
+                      columns={pagamentosOperacionaisColumns}
+                      emptyMessage="Nenhum pagamento operacional registrado neste mês."
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="receitas" className="mt-0">
+                    <ResultadoDetalheTable
+                      title="Receitas do mês"
+                      description="Itens de inadimplência manual e receitas reconhecidas via arquivo retorno."
+                      rows={resultadoDetalhe.receitas}
+                      columns={receitasDetalheColumns}
+                      emptyMessage="Nenhuma receita registrada neste mês."
+                    />
+                  </TabsContent>
+
+                  <TabsContent value="despesas" className="mt-0">
+                    <ResultadoDetalheTable
+                      title="Despesas do mês"
+                      description="Despesas manuais e devoluções que compõem o total do mês."
+                      rows={resultadoDetalhe.despesas}
+                      columns={despesasDetalheColumns}
+                      emptyMessage="Nenhuma despesa registrada neste mês."
+                    />
+                  </TabsContent>
+                </Tabs>
+              </div>
+            ) : (
+              <Card className="rounded-[1.5rem] border-border/60 bg-card/60">
+                <CardContent className="p-6 text-sm text-muted-foreground">
+                  Não foi possível carregar o detalhamento deste mês.
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={formOpen}
@@ -647,7 +1257,7 @@ export default function TesourariaDespesasPage() {
           <DialogHeader className="border-b border-border/60 px-6 pb-4 pt-6 pr-14">
             <DialogTitle>{formState.id ? "Editar despesa" : "Nova despesa"}</DialogTitle>
             <DialogDescription>
-              Você pode anexar o comprovante agora ou depois. Se salvar sem arquivo, a despesa ficará pendente de anexo.
+              O anexo é opcional e pode ser enviado agora ou depois. O status financeiro será mantido conforme o valor selecionado no lançamento.
             </DialogDescription>
           </DialogHeader>
 
@@ -655,15 +1265,47 @@ export default function TesourariaDespesasPage() {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="despesa-categoria">Categoria</Label>
-                  <Input
-                    id="despesa-categoria"
-                    value={formState.categoria}
-                    onChange={(event) =>
-                      setFormState((current) => ({ ...current, categoria: event.target.value }))
-                    }
-                    placeholder="Ex.: Operacional"
-                    className="rounded-xl border-border/60 bg-card/60"
-                  />
+                  <div className="space-y-2">
+                    <Input
+                      id="despesa-categoria"
+                      list="despesa-categorias-sugeridas"
+                      value={formState.categoria}
+                      onChange={(event) =>
+                        setFormState((current) => ({ ...current, categoria: event.target.value }))
+                      }
+                      placeholder="Ex.: Operacional"
+                      className="rounded-xl border-border/60 bg-card/60"
+                    />
+                    <datalist id="despesa-categorias-sugeridas">
+                      {categoriasSugeridas.map((item) => (
+                        <option key={item.categoria} value={item.categoria} />
+                      ))}
+                    </datalist>
+                    {categoriasSugeridas.length ? (
+                      <div className="flex flex-wrap gap-2">
+                        {categoriasSugeridas.slice(0, 6).map((item) => (
+                          <Button
+                            key={item.categoria}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-full border-border/60 bg-card/40 px-3 text-xs"
+                            onClick={() =>
+                              setFormState((current) => ({
+                                ...current,
+                                categoria: item.categoria,
+                              }))
+                            }
+                          >
+                            {item.categoria}
+                            <span className="ml-1 text-muted-foreground">
+                              ({item.frequencia})
+                            </span>
+                          </Button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="despesa-descricao">Descrição</Label>
@@ -673,9 +1315,10 @@ export default function TesourariaDespesasPage() {
                     onChange={(event) =>
                       setFormState((current) => ({ ...current, descricao: event.target.value }))
                     }
-                    placeholder="Detalhe da despesa"
+                    placeholder="Detalhe rápido para a equipe"
                     className="rounded-xl border-border/60 bg-card/60"
                   />
+                  <p className="text-xs text-muted-foreground">Campo opcional.</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Valor</Label>
@@ -838,8 +1481,8 @@ export default function TesourariaDespesasPage() {
               </div>
               <div className="mt-4">
                 {!formAttachment && !existingFormAttachment ? (
-                  <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-                    Sem anexo neste passo, a despesa ficará marcada como pendente de anexo até o envio do comprovante.
+                  <div className="rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+                    Você pode salvar sem anexo e enviar o comprovante depois. O status financeiro da despesa não será alterado por isso.
                   </div>
                 ) : (
                   <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
@@ -886,7 +1529,7 @@ export default function TesourariaDespesasPage() {
           <DialogHeader>
             <DialogTitle>{uploadTarget?.anexo ? "Substituir anexo" : "Anexar comprovante"}</DialogTitle>
             <DialogDescription>
-              {uploadTarget?.descricao || "Selecione o comprovante da despesa."}
+              {uploadTarget?.descricao || uploadTarget?.categoria || "Selecione o comprovante da despesa."}
             </DialogDescription>
           </DialogHeader>
 
@@ -907,7 +1550,7 @@ export default function TesourariaDespesasPage() {
             </div>
           ) : (
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-              Esta despesa ainda está pendente de anexo.
+              Esta despesa ainda está sem anexo.
             </div>
           )}
 
@@ -963,8 +1606,9 @@ export default function TesourariaDespesasPage() {
             <AlertDialogDescription>
               {deleteTarget ? (
                 <>
-                  A despesa <strong>{deleteTarget.descricao}</strong> será removida da listagem
-                  ativa da competência atual.
+                  A despesa{" "}
+                  <strong>{deleteTarget.descricao || deleteTarget.categoria}</strong> será removida
+                  da listagem ativa da competência atual.
                 </>
               ) : (
                 "Confirme a exclusão da despesa selecionada."

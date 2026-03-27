@@ -8,6 +8,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from apps.accounts.services import ComissaoService
 from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.models import Ciclo, Contrato
 from apps.esteira.models import EsteiraItem, Transicao
@@ -108,8 +109,8 @@ class AssociadoService:
         agente_responsavel_id = dados.pop("agente_responsavel_id", None)
         if agente_responsavel_id:
             agente_responsavel = agente.__class__.objects.get(pk=agente_responsavel_id)
-        percentual_repasse = Decimal(
-            str(contrato_data.get("percentual_repasse") or Decimal("10.00"))
+        percentual_repasse = ComissaoService.resolve_percentual(
+            agente_responsavel.id if agente_responsavel else None
         )
 
         associado_data = {

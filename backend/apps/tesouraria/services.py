@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from calendar import monthrange
 
 from django.db import transaction
 from django.db.models import Count, DecimalField, Prefetch, Q, Sum, Value
@@ -15,9 +16,11 @@ from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Contrato, Parcela
 from apps.esteira.models import EsteiraItem, Transicao
 from apps.financeiro.models import Despesa
+from apps.importacao.financeiro import canonicalize_pagamentos as canonicalize_financeiro_pagamentos
+from apps.importacao.models import PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante
 
-from .models import BaixaManual, Confirmacao, Pagamento
+from .models import BaixaManual, Confirmacao, DevolucaoAssociado, Pagamento
 
 
 def parse_competencia(value: str | None) -> date:
@@ -29,6 +32,14 @@ def parse_competencia(value: str | None) -> date:
     except ValueError as exc:
         raise ValidationError("Competência inválida. Use o formato YYYY-MM.") from exc
     return parsed.replace(day=1)
+
+
+def shift_month(base_date: date, offset: int) -> date:
+    month_index = base_date.month - 1 + offset
+    year = base_date.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(base_date.day, monthrange(year, month)[1])
+    return date(year, month, day)
 
 
 class TesourariaService:
@@ -538,6 +549,38 @@ class BaixaManualService:
 
 class DespesaService:
     @staticmethod
+    def _monthly_window(month: date | None = None) -> tuple[date, date]:
+        month_start = (month or timezone.localdate()).replace(day=1)
+        return month_start, shift_month(month_start, 1)
+
+    @staticmethod
+    def _build_resultado_row(
+        *,
+        month: date,
+        receitas_inadimplencia: Decimal,
+        receitas_retorno: Decimal,
+        despesas_manuais: Decimal,
+        devolucoes: Decimal,
+        pagamentos_operacionais: Decimal,
+    ) -> dict[str, object]:
+        receitas = receitas_inadimplencia + receitas_retorno
+        despesas_total = despesas_manuais + devolucoes
+        lucro = receitas - despesas_total
+        lucro_liquido = lucro - pagamentos_operacionais
+        return {
+            "mes": month,
+            "receitas": receitas,
+            "receitas_inadimplencia": receitas_inadimplencia,
+            "receitas_retorno": receitas_retorno,
+            "despesas": despesas_total,
+            "despesas_manuais": despesas_manuais,
+            "devolucoes": devolucoes,
+            "pagamentos_operacionais": pagamentos_operacionais,
+            "lucro": lucro,
+            "lucro_liquido": lucro_liquido,
+        }
+
+    @staticmethod
     def listar_despesas(
         *,
         competencia: date | None = None,
@@ -605,3 +648,296 @@ class DespesaService:
     @staticmethod
     def excluir(despesa: Despesa) -> None:
         despesa.soft_delete()
+
+    @staticmethod
+    def sugerir_categorias(search: str | None = None) -> list[dict[str, object]]:
+        queryset = (
+            Despesa.objects.exclude(categoria="")
+            .values("categoria")
+            .annotate(total=Count("id"))
+            .order_by("-total", "categoria")
+        )
+        if search:
+            queryset = queryset.filter(categoria__icontains=search)
+        return [
+            {"categoria": row["categoria"], "frequencia": row["total"]}
+            for row in queryset[:12]
+        ]
+
+    @staticmethod
+    def resultado_mensal(*, competencia: date | None = None) -> dict[str, object]:
+        base_month = (competencia or timezone.localdate()).replace(day=1)
+        start_month = shift_month(base_month, -11)
+        months = [shift_month(start_month, index) for index in range(12)]
+        _, end_month = DespesaService._monthly_window(base_month)
+        zero = Decimal("0.00")
+
+        pagamentos = canonicalize_financeiro_pagamentos(
+            list(
+                PagamentoMensalidade.objects.filter(
+                    referencia_month__gte=start_month,
+                    referencia_month__lt=end_month,
+                ).order_by("referencia_month", "id")
+            )
+        )
+        despesas = list(
+            Despesa.objects.filter(
+                data_despesa__gte=start_month,
+                data_despesa__lt=end_month,
+            )
+        )
+        devolucoes = list(
+            DevolucaoAssociado.objects.filter(
+                revertida_em__isnull=True,
+                data_devolucao__gte=start_month,
+                data_devolucao__lt=end_month,
+            )
+        )
+        pagamentos_operacionais = list(
+            Pagamento.objects.filter(
+                status=Pagamento.Status.PAGO,
+                paid_at__date__gte=start_month,
+                paid_at__date__lt=end_month,
+            )
+        )
+
+        receitas_inadimplencia_por_mes = {month: zero for month in months}
+        receitas_retorno_por_mes = {month: zero for month in months}
+        despesas_manuais_por_mes = {month: zero for month in months}
+        devolucoes_por_mes = {month: zero for month in months}
+        pagamentos_operacionais_por_mes = {month: zero for month in months}
+
+        for pagamento in pagamentos:
+            month_key = pagamento.referencia_month.replace(day=1)
+            if month_key not in receitas_inadimplencia_por_mes:
+                continue
+            if pagamento.manual_status == PagamentoMensalidade.ManualStatus.PAGO:
+                receitas_inadimplencia_por_mes[month_key] += Decimal(
+                    str(pagamento.recebido_manual or pagamento.valor or zero)
+                )
+            elif (pagamento.status_code or "").strip() in {"1", "4"}:
+                receitas_retorno_por_mes[month_key] += Decimal(
+                    str(pagamento.valor or zero)
+                )
+
+        for despesa in despesas:
+            month_key = despesa.data_despesa.replace(day=1)
+            if month_key in despesas_manuais_por_mes:
+                despesas_manuais_por_mes[month_key] += Decimal(str(despesa.valor or zero))
+
+        for devolucao in devolucoes:
+            month_key = devolucao.data_devolucao.replace(day=1)
+            if month_key in devolucoes_por_mes:
+                devolucoes_por_mes[month_key] += Decimal(str(devolucao.valor or zero))
+
+        for pagamento in pagamentos_operacionais:
+            if pagamento.paid_at is None:
+                continue
+            month_key = pagamento.paid_at.date().replace(day=1)
+            if month_key in pagamentos_operacionais_por_mes:
+                pagamentos_operacionais_por_mes[month_key] += Decimal(
+                    str(pagamento.valor_pago or zero)
+                )
+
+        rows: list[dict[str, object]] = []
+        for month in months:
+            rows.append(
+                DespesaService._build_resultado_row(
+                    month=month,
+                    receitas_inadimplencia=receitas_inadimplencia_por_mes[month],
+                    receitas_retorno=receitas_retorno_por_mes[month],
+                    despesas_manuais=despesas_manuais_por_mes[month],
+                    devolucoes=devolucoes_por_mes[month],
+                    pagamentos_operacionais=pagamentos_operacionais_por_mes[month],
+                )
+            )
+
+        totais = {
+            "receitas": sum((row["receitas"] for row in rows), zero),
+            "despesas": sum((row["despesas"] for row in rows), zero),
+            "lucro": sum((row["lucro"] for row in rows), zero),
+            "lucro_liquido": sum((row["lucro_liquido"] for row in rows), zero),
+        }
+        return {"rows": rows, "totais": totais}
+
+    @staticmethod
+    def resultado_mensal_detalhe(*, mes: date) -> dict[str, object]:
+        month_start, next_month = DespesaService._monthly_window(mes)
+        zero = Decimal("0.00")
+
+        pagamentos = canonicalize_financeiro_pagamentos(
+            list(
+                PagamentoMensalidade.objects.filter(
+                    referencia_month__gte=month_start,
+                    referencia_month__lt=next_month,
+                )
+                .select_related("associado", "associado__agente_responsavel")
+                .order_by("referencia_month", "id")
+            )
+        )
+        despesas = list(
+            Despesa.objects.filter(
+                data_despesa__gte=month_start,
+                data_despesa__lt=next_month,
+            )
+            .select_related("user")
+            .order_by("-data_despesa", "-created_at", "-id")
+        )
+        devolucoes = list(
+            DevolucaoAssociado.objects.filter(
+                revertida_em__isnull=True,
+                data_devolucao__gte=month_start,
+                data_devolucao__lt=next_month,
+            )
+            .select_related("associado", "contrato", "realizado_por")
+            .order_by("-data_devolucao", "-created_at", "-id")
+        )
+        pagamentos_operacionais = list(
+            Pagamento.objects.filter(
+                status=Pagamento.Status.PAGO,
+                paid_at__date__gte=month_start,
+                paid_at__date__lt=next_month,
+            )
+            .select_related("cadastro")
+            .order_by("-paid_at", "-created_at", "-id")
+        )
+
+        receitas_itens: list[dict[str, object]] = []
+        receitas_inadimplencia = zero
+        receitas_retorno = zero
+
+        for pagamento in pagamentos:
+            associado = pagamento.associado
+            associado_nome = (
+                associado.nome_completo
+                if associado and associado.nome_completo
+                else pagamento.nome_relatorio or "-"
+            )
+            matricula = ""
+            agente_nome = ""
+            if associado:
+                matricula = associado.matricula_orgao or associado.matricula or pagamento.matricula
+                if associado.agente_responsavel:
+                    agente_nome = associado.agente_responsavel.full_name
+
+            if pagamento.manual_status == PagamentoMensalidade.ManualStatus.PAGO:
+                valor = Decimal(str(pagamento.recebido_manual or pagamento.valor or zero))
+                receitas_inadimplencia += valor
+                receitas_itens.append(
+                    {
+                        "id": pagamento.id,
+                        "origem": "inadimplencia_manual",
+                        "origem_label": "Inadimplência manual",
+                        "data": (
+                            pagamento.manual_paid_at.date()
+                            if pagamento.manual_paid_at
+                            else pagamento.referencia_month
+                        ),
+                        "referencia": pagamento.referencia_month,
+                        "associado_nome": associado_nome,
+                        "cpf_cnpj": pagamento.cpf_cnpj,
+                        "matricula": matricula,
+                        "agente_nome": agente_nome,
+                        "descricao": "Recebimento manual de inadimplência.",
+                        "valor": valor,
+                    }
+                )
+            elif (pagamento.status_code or "").strip() in {"1", "4"}:
+                valor = Decimal(str(pagamento.valor or zero))
+                receitas_retorno += valor
+                receitas_itens.append(
+                    {
+                        "id": pagamento.id,
+                        "origem": "arquivo_retorno",
+                        "origem_label": "Arquivo retorno",
+                        "data": pagamento.referencia_month,
+                        "referencia": pagamento.referencia_month,
+                        "associado_nome": associado_nome,
+                        "cpf_cnpj": pagamento.cpf_cnpj,
+                        "matricula": matricula,
+                        "agente_nome": agente_nome,
+                        "descricao": "Receita reconhecida via arquivo retorno.",
+                        "valor": valor,
+                    }
+                )
+
+        despesas_itens: list[dict[str, object]] = []
+        despesas_manuais = zero
+        devolucoes_total = zero
+
+        for despesa in despesas:
+            valor = Decimal(str(despesa.valor or zero))
+            despesas_manuais += valor
+            despesas_itens.append(
+                {
+                    "id": despesa.id,
+                    "origem": "despesa_manual",
+                    "origem_label": "Despesa manual",
+                    "data": despesa.data_despesa,
+                    "titulo": despesa.categoria,
+                    "subtitulo": despesa.descricao or "Sem descrição complementar.",
+                    "descricao": despesa.observacoes or "",
+                    "referencia": (
+                        f"{despesa.get_status_display()} · {despesa.get_tipo_display()}"
+                        if despesa.tipo
+                        else despesa.get_status_display()
+                    ),
+                    "valor": valor,
+                }
+            )
+
+        for devolucao in devolucoes:
+            valor = Decimal(str(devolucao.valor or zero))
+            devolucoes_total += valor
+            despesas_itens.append(
+                {
+                    "id": devolucao.id,
+                    "origem": "devolucao",
+                    "origem_label": "Devolução",
+                    "data": devolucao.data_devolucao,
+                    "titulo": devolucao.nome_snapshot,
+                    "subtitulo": devolucao.contrato_codigo_snapshot,
+                    "descricao": devolucao.motivo,
+                    "referencia": devolucao.get_tipo_display(),
+                    "valor": valor,
+                }
+            )
+
+        pagamentos_operacionais_itens: list[dict[str, object]] = []
+        pagamentos_operacionais_total = zero
+
+        for pagamento in pagamentos_operacionais:
+            if pagamento.paid_at is None:
+                continue
+            valor = Decimal(str(pagamento.valor_pago or zero))
+            pagamentos_operacionais_total += valor
+            pagamentos_operacionais_itens.append(
+                {
+                    "id": pagamento.id,
+                    "data": pagamento.paid_at.date(),
+                    "favorecido": pagamento.full_name,
+                    "cpf_cnpj": pagamento.cpf_cnpj,
+                    "agente_nome": pagamento.agente_responsavel,
+                    "contrato_codigo": pagamento.contrato_codigo,
+                    "origem": pagamento.origem,
+                    "origem_label": pagamento.get_origem_display(),
+                    "valor": valor,
+                }
+            )
+
+        resumo = DespesaService._build_resultado_row(
+            month=month_start,
+            receitas_inadimplencia=receitas_inadimplencia,
+            receitas_retorno=receitas_retorno,
+            despesas_manuais=despesas_manuais,
+            devolucoes=devolucoes_total,
+            pagamentos_operacionais=pagamentos_operacionais_total,
+        )
+
+        return {
+            "mes": month_start,
+            "resumo": {key: value for key, value in resumo.items() if key != "mes"},
+            "receitas": receitas_itens,
+            "despesas": despesas_itens,
+            "pagamentos_operacionais": pagamentos_operacionais_itens,
+        }

@@ -16,6 +16,27 @@ export type SimpleUser = {
   full_name: string;
 };
 
+export type ComissaoConfiguracaoGlobal = {
+  percentual: string;
+  vigente_desde: string | null;
+  updated_by: SimpleUser | null;
+  motivo: string;
+};
+
+export type ComissaoConfiguracaoAgente = {
+  agente_id: number;
+  agente_nome: string;
+  agente_email: string;
+  percentual_efetivo: string;
+  percentual_override: string | null;
+  possui_override: boolean;
+};
+
+export type ComissaoConfiguracaoPayload = {
+  global_config: ComissaoConfiguracaoGlobal;
+  agentes: ComissaoConfiguracaoAgente[];
+};
+
 export type AvailableRole = {
   codigo: Role;
   nome: string;
@@ -588,6 +609,7 @@ export type EsteiraItem = {
   contato_web: boolean;
   termos_web: boolean;
   agente?: SimpleUser | null;
+  analista_responsavel?: SimpleUser | null;
   orgao_publico: string;
   documentos_count: number;
   acoes_disponiveis: string[];
@@ -917,6 +939,7 @@ export type DevolucaoContratoItem = {
   status_contrato: string;
   data_contrato: string;
   mes_averbacao: string | null;
+  tipo_sugerido?: string;
 };
 
 export type DevolucaoAssociadoItem = {
@@ -991,6 +1014,114 @@ export type DespesaKpis = {
   valor_pago: string;
   valor_pendente: string;
   pendentes_anexo: number;
+};
+
+export type DespesaCategoriaSugestao = {
+  categoria: string;
+  frequencia: number;
+};
+
+export type DespesaResultadoMensalRow = {
+  mes: string;
+  receitas: string;
+  receitas_inadimplencia: string;
+  receitas_retorno: string;
+  despesas: string;
+  despesas_manuais: string;
+  devolucoes: string;
+  pagamentos_operacionais: string;
+  lucro: string;
+  lucro_liquido: string;
+};
+
+export type DespesaResultadoMensalTotais = Omit<DespesaResultadoMensalRow, "mes">;
+
+export type DespesaResultadoMensalPayload = {
+  rows: DespesaResultadoMensalRow[];
+  totais: DespesaResultadoMensalTotais;
+};
+
+export type DespesaResultadoMensalResumo = Omit<DespesaResultadoMensalRow, "mes">;
+
+export type DespesaResultadoMensalReceitaDetalhe = {
+  id: number;
+  origem: string;
+  origem_label: string;
+  data: string;
+  referencia: string;
+  associado_nome: string;
+  cpf_cnpj: string;
+  matricula: string;
+  agente_nome: string;
+  descricao: string;
+  valor: string;
+};
+
+export type DespesaResultadoMensalDespesaDetalhe = {
+  id: number;
+  origem: string;
+  origem_label: string;
+  data: string;
+  titulo: string;
+  subtitulo: string;
+  descricao: string;
+  referencia: string;
+  valor: string;
+};
+
+export type DespesaResultadoMensalPagamentoDetalhe = {
+  id: number;
+  data: string;
+  favorecido: string;
+  cpf_cnpj: string;
+  agente_nome: string;
+  contrato_codigo: string;
+  origem: string;
+  origem_label: string;
+  valor: string;
+};
+
+export type DespesaResultadoMensalDetalhePayload = {
+  mes: string;
+  resumo: DespesaResultadoMensalResumo;
+  receitas: DespesaResultadoMensalReceitaDetalhe[];
+  despesas: DespesaResultadoMensalDespesaDetalhe[];
+  pagamentos_operacionais: DespesaResultadoMensalPagamentoDetalhe[];
+};
+
+export type DuplicidadeFinanceiraItem = {
+  id: number;
+  arquivo_retorno_item_id: number;
+  arquivo_retorno_id: number;
+  arquivo_nome: string;
+  linha_numero: number;
+  associado_id: number | null;
+  nome: string;
+  cpf_cnpj: string;
+  matricula: string;
+  agente_nome: string;
+  contrato_id: number | null;
+  contrato_codigo: string;
+  motivo: string;
+  status: string;
+  competencia_retorno: string;
+  competencia_manual: string | null;
+  valor_retorno: string | null;
+  valor_manual: string | null;
+  observacao: string;
+  devolucao_id: number | null;
+  resolvido_em: string | null;
+  resolvido_por: string;
+  motivo_resolucao: string;
+  created_at: string;
+};
+
+export type DuplicidadeFinanceiraKpis = {
+  total: number;
+  abertas: number;
+  em_tratamento: number;
+  resolvidas: number;
+  descartadas: number;
 };
 
 export type RefinanciamentoItem = {

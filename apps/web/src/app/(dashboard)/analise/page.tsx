@@ -13,6 +13,7 @@ import {
   ExternalLinkIcon,
   FileTextIcon,
   SearchIcon,
+  SlidersHorizontalIcon,
   ShieldCheckIcon,
   Trash2Icon,
   WalletIcon,
@@ -24,11 +25,20 @@ import type {
   AnaliseSectionKey,
   EsteiraItem,
   PaginatedMetaResponse,
+  SimpleUser,
+  SystemUserListItem,
+  SystemUsersMeta,
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
+import {
+  dashboardOptionsQueryOptions,
+  dashboardRetainedQueryOptions,
+} from "@/lib/dashboard-query";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { usePermissions } from "@/hooks/use-permissions";
+import DatePicker from "@/components/custom/date-picker";
+import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
@@ -51,6 +61,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -58,6 +69,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 
 const FILA_SECTIONS: Array<{
@@ -179,17 +199,39 @@ function SummaryCard({
 
 export default function AnalisePage() {
   const queryClient = useQueryClient();
-  const { hasAnyRole, status } = usePermissions();
+  const { hasAnyRole, hasRole, status, user } = usePermissions();
   const isAnalistaEnabled = hasAnyRole(["ANALISTA", "ADMIN"]);
   const [search, setSearch] = React.useState("");
   const [pageSize, setPageSize] = React.useState("5");
   const [filaPages, setFilaPages] = React.useState<Record<AnaliseSectionKey, number>>(
     getInitialSectionPages,
   );
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const [agenteFilter, setAgenteFilter] = React.useState("");
+  const [analistaFilter, setAnalistaFilter] = React.useState("");
+  const [etapaFilter, setEtapaFilter] = React.useState("");
+  const [statusFilter, setStatusFilter] = React.useState("");
+  const [dataInicio, setDataInicio] = React.useState<Date | undefined>();
+  const [dataFim, setDataFim] = React.useState<Date | undefined>();
+  const [draftAgenteFilter, setDraftAgenteFilter] = React.useState("");
+  const [draftAnalistaFilter, setDraftAnalistaFilter] = React.useState("");
+  const [draftEtapaFilter, setDraftEtapaFilter] = React.useState("");
+  const [draftStatusFilter, setDraftStatusFilter] = React.useState("");
+  const [draftDataInicio, setDraftDataInicio] = React.useState<Date | undefined>();
+  const [draftDataFim, setDraftDataFim] = React.useState<Date | undefined>();
   const [dialogState, setDialogState] = React.useState<DialogState>(null);
   const [observacao, setObservacao] = React.useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
   const documentoItemId = dialogState?.mode === "documentos" ? dialogState.item.id : null;
+
+  const formatDateForQuery = React.useCallback((value?: Date) => {
+    if (!value) return undefined;
+
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }, []);
 
   const resetPages = React.useCallback(() => {
     setFilaPages(getInitialSectionPages());
@@ -209,14 +251,53 @@ export default function AnalisePage() {
   }, []);
 
   const summaryQuery = useQuery({
-    queryKey: ["analise-resumo", debouncedSearch],
+    queryKey: [
+      "analise-resumo",
+      debouncedSearch,
+      agenteFilter,
+      analistaFilter,
+      etapaFilter,
+      statusFilter,
+      formatDateForQuery(dataInicio),
+      formatDateForQuery(dataFim),
+    ],
     queryFn: () =>
       apiFetch<AnaliseResumo>("analise", {
         query: {
           search: debouncedSearch,
+          agente: agenteFilter || undefined,
+          analista: analistaFilter || undefined,
+          etapa: etapaFilter || undefined,
+          status: statusFilter || undefined,
+          data_inicio: formatDateForQuery(dataInicio),
+          data_fim: formatDateForQuery(dataFim),
         },
       }),
     enabled: isAnalistaEnabled,
+    ...dashboardRetainedQueryOptions,
+  });
+
+  const agentesQuery = useQuery({
+    queryKey: ["analise-agentes"],
+    queryFn: () => apiFetch<SimpleUser[]>("associados/agentes"),
+    enabled: isAnalistaEnabled,
+    ...dashboardOptionsQueryOptions,
+  });
+
+  const analistasQuery = useQuery({
+    queryKey: ["analise-analistas"],
+    queryFn: () =>
+      apiFetch<PaginatedMetaResponse<SystemUserListItem, SystemUsersMeta>>(
+        "configuracoes/usuarios",
+        {
+          query: {
+            role: "ANALISTA",
+            page_size: 100,
+          },
+        },
+      ),
+    enabled: hasRole("ADMIN"),
+    ...dashboardOptionsQueryOptions,
   });
 
   const filaQueries = useQueries({
@@ -227,6 +308,12 @@ export default function AnalisePage() {
         filaPages[section.key],
         pageSize,
         debouncedSearch,
+        agenteFilter,
+        analistaFilter,
+        etapaFilter,
+        statusFilter,
+        formatDateForQuery(dataInicio),
+        formatDateForQuery(dataFim),
       ],
       queryFn: () =>
         apiFetch<PaginatedMetaResponse<EsteiraItem, { secao: AnaliseSectionKey }>>(
@@ -237,10 +324,17 @@ export default function AnalisePage() {
               page: filaPages[section.key],
               page_size: Number(pageSize),
               search: debouncedSearch,
+              agente: agenteFilter || undefined,
+              analista: analistaFilter || undefined,
+              etapa: etapaFilter || undefined,
+              status: statusFilter || undefined,
+              data_inicio: formatDateForQuery(dataInicio),
+              data_fim: formatDateForQuery(dataFim),
             },
           },
         ),
       enabled: isAnalistaEnabled,
+      ...dashboardRetainedQueryOptions,
     })),
   }) as Array<
     UseQueryResult<PaginatedMetaResponse<EsteiraItem, { secao: AnaliseSectionKey }>, Error>
@@ -342,6 +436,11 @@ export default function AnalisePage() {
         cell: (row) => row.agente?.full_name ?? "-",
       },
       {
+        id: "analista",
+        header: "Analista responsável",
+        cell: (row) => row.analista_responsavel?.full_name ?? "Sem responsável",
+      },
+      {
         id: "documentos",
         header: "Docs",
         cell: (row) => (
@@ -394,6 +493,39 @@ export default function AnalisePage() {
     ],
     [actionMutation],
   );
+
+  const activeFiltersCount =
+    Number(Boolean(agenteFilter)) +
+    Number(Boolean(analistaFilter)) +
+    Number(Boolean(etapaFilter)) +
+    Number(Boolean(statusFilter)) +
+    Number(Boolean(dataInicio)) +
+    Number(Boolean(dataFim));
+
+  const agentOptions = React.useMemo(
+    () =>
+      (agentesQuery.data ?? []).map((item) => ({
+        value: String(item.id),
+        label: item.full_name,
+      })),
+    [agentesQuery.data],
+  );
+
+  const analystOptions = React.useMemo(() => {
+    const options = [
+      { value: "sem_responsavel", label: "Sem responsável" },
+      ...(hasRole("ADMIN")
+        ? (analistasQuery.data?.results ?? []).map((item) => ({
+            value: String(item.id),
+            label: item.full_name,
+          }))
+        : user
+          ? [{ value: String(user.id), label: `${user.full_name} · meus casos` }]
+          : []),
+    ];
+
+    return options;
+  }, [analistasQuery.data?.results, hasRole, user]);
 
   if (status !== "authenticated") {
     return <WorklistRouteSkeleton />;
@@ -460,11 +592,162 @@ export default function AnalisePage() {
               <SelectItem value="20">20/página</SelectItem>
             </SelectContent>
           </Select>
-          <Button onClick={resetPages}>Filtrar</Button>
+          <Sheet
+            open={filtersOpen}
+            onOpenChange={(open) => {
+              if (open) {
+                setDraftAgenteFilter(agenteFilter);
+                setDraftAnalistaFilter(analistaFilter);
+                setDraftEtapaFilter(etapaFilter);
+                setDraftStatusFilter(statusFilter);
+                setDraftDataInicio(dataInicio);
+                setDraftDataFim(dataFim);
+              }
+              setFiltersOpen(open);
+            }}
+          >
+            <SheetTrigger asChild>
+              <Button variant="outline" className="rounded-2xl">
+                <SlidersHorizontalIcon className="size-4" />
+                Filtros avançados
+                {activeFiltersCount ? (
+                  <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-primary">
+                    {activeFiltersCount}
+                  </Badge>
+                ) : null}
+              </Button>
+            </SheetTrigger>
+            <SheetContent className="w-full border-l border-border/60 sm:max-w-xl">
+              <SheetHeader>
+                <SheetTitle>Filtros avançados</SheetTitle>
+                <SheetDescription>
+                  Refine a fila por analista responsável, agente, etapa, status e janela de criação.
+                </SheetDescription>
+              </SheetHeader>
+
+              <div className="space-y-5 overflow-y-auto px-4 pb-4">
+                <div className="space-y-2">
+                  <Label>Agente</Label>
+                  <SearchableSelect
+                    options={agentOptions}
+                    value={draftAgenteFilter}
+                    onChange={setDraftAgenteFilter}
+                    placeholder="Todos os agentes"
+                    searchPlaceholder="Buscar agente"
+                    clearLabel="Limpar agente"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Analista responsável</Label>
+                  <SearchableSelect
+                    options={analystOptions}
+                    value={draftAnalistaFilter}
+                    onChange={setDraftAnalistaFilter}
+                    placeholder="Todos os analistas"
+                    searchPlaceholder="Buscar analista"
+                    clearLabel="Limpar analista"
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Etapa</Label>
+                    <Select value={draftEtapaFilter || "todos"} onValueChange={(value) => setDraftEtapaFilter(value === "todos" ? "" : value)}>
+                      <SelectTrigger className="rounded-xl border-border/60 bg-card/60">
+                        <SelectValue placeholder="Todas as etapas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todas</SelectItem>
+                        <SelectItem value="cadastro">Cadastro</SelectItem>
+                        <SelectItem value="analise">Análise</SelectItem>
+                        <SelectItem value="coordenacao">Coordenação</SelectItem>
+                        <SelectItem value="tesouraria">Tesouraria</SelectItem>
+                        <SelectItem value="concluido">Concluído</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Status</Label>
+                    <Select value={draftStatusFilter || "todos"} onValueChange={(value) => setDraftStatusFilter(value === "todos" ? "" : value)}>
+                      <SelectTrigger className="rounded-xl border-border/60 bg-card/60">
+                        <SelectValue placeholder="Todos os status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="todos">Todos</SelectItem>
+                        <SelectItem value="aguardando">Aguardando</SelectItem>
+                        <SelectItem value="em_andamento">Em andamento</SelectItem>
+                        <SelectItem value="pendenciado">Pendenciado</SelectItem>
+                        <SelectItem value="aprovado">Aprovado</SelectItem>
+                        <SelectItem value="rejeitado">Rejeitado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Data inicial</Label>
+                    <DatePicker value={draftDataInicio} onChange={setDraftDataInicio} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Data final</Label>
+                    <DatePicker value={draftDataFim} onChange={setDraftDataFim} />
+                  </div>
+                </div>
+              </div>
+
+              <SheetFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDraftAgenteFilter("");
+                    setDraftAnalistaFilter("");
+                    setDraftEtapaFilter("");
+                    setDraftStatusFilter("");
+                    setDraftDataInicio(undefined);
+                    setDraftDataFim(undefined);
+                    setAgenteFilter("");
+                    setAnalistaFilter("");
+                    setEtapaFilter("");
+                    setStatusFilter("");
+                    setDataInicio(undefined);
+                    setDataFim(undefined);
+                    resetPages();
+                    setFiltersOpen(false);
+                  }}
+                >
+                  Limpar
+                </Button>
+                <Button
+                  onClick={() => {
+                    setAgenteFilter(draftAgenteFilter);
+                    setAnalistaFilter(draftAnalistaFilter);
+                    setEtapaFilter(draftEtapaFilter);
+                    setStatusFilter(draftStatusFilter);
+                    setDataInicio(draftDataInicio);
+                    setDataFim(draftDataFim);
+                    resetPages();
+                    setFiltersOpen(false);
+                  }}
+                >
+                  Aplicar
+                </Button>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
+          <Button onClick={resetPages}>Atualizar</Button>
           <Button
             variant="outline"
             onClick={() => {
               setSearch("");
+              setAgenteFilter("");
+              setAnalistaFilter("");
+              setEtapaFilter("");
+              setStatusFilter("");
+              setDataInicio(undefined);
+              setDataFim(undefined);
               resetPages();
             }}
           >

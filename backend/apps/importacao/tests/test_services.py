@@ -15,10 +15,17 @@ from django.utils import timezone
 from apps.associados.models import Associado
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Contrato, Parcela
+from apps.tesouraria.models import DevolucaoAssociado
 
 from .base import ImportacaoBaseTestCase
 from ..legacy import LegacyPagamentoSnapshot
-from ..models import ArquivoRetorno, ArquivoRetornoItem, ImportacaoLog, PagamentoMensalidade
+from ..models import (
+    ArquivoRetorno,
+    ArquivoRetornoItem,
+    DuplicidadeFinanceira,
+    ImportacaoLog,
+    PagamentoMensalidade,
+)
 from ..services import ArquivoRetornoService
 
 
@@ -467,7 +474,7 @@ STATUS MATRICULA NOME                           CARGO                          F
             self.assertEqual(payload["resumo"]["ok"], 3)
             self.assertEqual(payload["resumo"]["recebido"], "90.00")
 
-    def test_processar_promove_pagamento_manual_para_automatico_antes_da_reconciliacao(self):
+    def test_processar_envia_conflito_manual_para_esteira_de_duplicidade(self):
         associado = Associado.objects.create(
             nome_completo="ACACIO LUSTOSA DANTAS",
             cpf_cnpj="77852621368",
@@ -540,7 +547,10 @@ STATUS MATRICULA NOME                           CARGO                          F
             source_file_path="legacy/pagamentos_mensalidades",
         )
 
-        with patch("apps.contratos.cycle_projection.timezone.localdate", return_value=date(2026, 3, 21)):
+        with patch(
+            "apps.contratos.cycle_projection.timezone.localdate",
+            return_value=date(2026, 3, 21),
+        ):
             rebuild_contract_cycle_state(contrato, execute=True)
 
         self.assertEqual(
@@ -590,8 +600,14 @@ STATUS MATRICULA NOME                           CARGO                          F
         service = ArquivoRetornoService()
         with (
             patch.object(service.parser, "parse", return_value=parsed),
-            patch("apps.contratos.cycle_projection.timezone.localdate", return_value=date(2026, 3, 21)),
-            patch("apps.importacao.reconciliacao.timezone.localdate", return_value=date(2026, 3, 21)),
+            patch(
+                "apps.contratos.cycle_projection.timezone.localdate",
+                return_value=date(2026, 3, 21),
+            ),
+            patch(
+                "apps.importacao.reconciliacao.timezone.localdate",
+                return_value=date(2026, 3, 21),
+            ),
         ):
             service.processar(arquivo.id)
 
@@ -599,19 +615,27 @@ STATUS MATRICULA NOME                           CARGO                          F
             cpf_cnpj=associado.cpf_cnpj,
             referencia_month=date(2026, 2, 1),
         )
-        item = ArquivoRetornoItem.objects.get(arquivo_retorno=arquivo, cpf_cnpj=associado.cpf_cnpj)
+        item = ArquivoRetornoItem.objects.get(
+            arquivo_retorno=arquivo,
+            cpf_cnpj=associado.cpf_cnpj,
+        )
+        duplicidade = DuplicidadeFinanceira.objects.get(arquivo_retorno_item=item)
         contrato.refresh_from_db()
 
-        self.assertEqual(pagamento.status_code, "1")
-        self.assertIsNone(pagamento.manual_status)
-        self.assertIsNone(pagamento.manual_paid_at)
-        self.assertEqual(pagamento.source_file_path, arquivo.arquivo_url)
+        self.assertEqual(pagamento.status_code, "M")
+        self.assertEqual(pagamento.manual_status, PagamentoMensalidade.ManualStatus.PAGO)
+        self.assertIsNotNone(pagamento.manual_paid_at)
+        self.assertEqual(pagamento.source_file_path, "legacy/pagamentos_mensalidades")
         self.assertEqual(
             item.resultado_processamento,
-            ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA,
+            ArquivoRetornoItem.ResultadoProcessamento.DUPLICIDADE,
         )
-        self.assertIsNotNone(item.parcela_id)
-        self.assertEqual(item.parcela.referencia_mes, date(2026, 2, 1))
+        self.assertIsNone(item.parcela_id)
+        self.assertEqual(duplicidade.status, DuplicidadeFinanceira.Status.ABERTA)
+        self.assertEqual(
+            duplicidade.motivo,
+            DuplicidadeFinanceira.Motivo.BAIXA_MANUAL_DUPLICADA,
+        )
         self.assertEqual(contrato.ciclos.count(), 1)
         self.assertEqual(
             list(
@@ -619,5 +643,88 @@ STATUS MATRICULA NOME                           CARGO                          F
                 .order_by("ciclo__numero", "numero")
                 .values_list("referencia_mes", flat=True)
             ),
-            [date(2025, 12, 1), date(2026, 1, 1), date(2026, 2, 1)],
+            [date(2025, 12, 1), date(2026, 1, 1), date(2026, 3, 1)],
+        )
+
+        response = self.coord_client.get(
+            "/api/v1/importacao/duplicidades-financeiras/",
+            {"page_size": 10},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["count"], 1)
+        self.assertEqual(response.json()["kpis"]["abertas"], 1)
+
+    def test_resolver_duplicidade_com_devolucao(self):
+        associado, contrato, _ciclo = self.create_associado_com_contrato(
+            cpf="99988877766",
+            nome="Associado Duplicidade",
+            matricula_orgao="MAT-DUP",
+        )
+        pagamento = PagamentoMensalidade.objects.create(
+            created_by=self.tesoureiro,
+            import_uuid="manual-mar",
+            referencia_month=date(2025, 5, 1),
+            status_code="M",
+            matricula="MAT-DUP",
+            orgao_pagto="918",
+            nome_relatorio=associado.nome_completo,
+            cpf_cnpj=associado.cpf_cnpj,
+            associado=associado,
+            valor=Decimal("30.00"),
+            manual_status=PagamentoMensalidade.ManualStatus.PAGO,
+            manual_paid_at=timezone.now(),
+            recebido_manual=Decimal("30.00"),
+            source_file_path="legacy/pagamentos_mensalidades",
+        )
+        arquivo = self.create_arquivo_retorno(nome="retorno_dup.txt")
+        item = ArquivoRetornoItem.objects.create(
+            arquivo_retorno=arquivo,
+            linha_numero=10,
+            cpf_cnpj=associado.cpf_cnpj,
+            matricula_servidor="MAT-DUP",
+            nome_servidor=associado.nome_completo,
+            cargo="Cargo",
+            competencia="05/2025",
+            valor_descontado=Decimal("30.00"),
+            status_codigo="1",
+            status_desconto=ArquivoRetornoItem.StatusDesconto.EFETIVADO,
+            status_descricao="Efetivado",
+        )
+        duplicidade = DuplicidadeFinanceira.objects.create(
+            arquivo_retorno_item=item,
+            pagamento_mensalidade=pagamento,
+            associado=associado,
+            contrato=contrato,
+            motivo=DuplicidadeFinanceira.Motivo.BAIXA_MANUAL_DUPLICADA,
+            competencia_retorno=date(2025, 5, 1),
+            competencia_manual=date(2025, 5, 1),
+            valor_retorno=Decimal("30.00"),
+            valor_manual=Decimal("30.00"),
+        )
+
+        response = self.coord_client.post(
+            f"/api/v1/importacao/duplicidades-financeiras/{duplicidade.id}/resolver-devolucao/",
+            {
+                "data_devolucao": "2025-05-20",
+                "valor": "30.00",
+                "motivo": "Desconto duplicado confirmado.",
+                "comprovantes": [
+                    SimpleUploadedFile(
+                        "duplicidade.pdf",
+                        b"arquivo",
+                        content_type="application/pdf",
+                    )
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        duplicidade.refresh_from_db()
+        self.assertEqual(duplicidade.status, DuplicidadeFinanceira.Status.RESOLVIDA)
+        self.assertIsNotNone(duplicidade.devolucao_id)
+        self.assertTrue(
+            DevolucaoAssociado.objects.filter(
+                pk=duplicidade.devolucao_id,
+                tipo=DevolucaoAssociado.Tipo.DESCONTO_INDEVIDO,
+            ).exists()
         )

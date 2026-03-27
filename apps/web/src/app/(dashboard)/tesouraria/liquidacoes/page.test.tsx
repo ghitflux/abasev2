@@ -29,13 +29,6 @@ jest.mock("sonner", () => ({
   },
 }));
 
-jest.mock("@/components/custom/calendar-competencia", () => ({
-  __esModule: true,
-  default: ({ value }: { value?: Date }) => (
-    <button type="button">Competência {value?.toISOString().slice(0, 7)}</button>
-  ),
-}));
-
 jest.mock("@/components/custom/date-picker", () => ({
   __esModule: true,
   default: ({
@@ -343,9 +336,9 @@ describe("LiquidacoesTesourariaPage", () => {
         valor_total: "0.00",
         referencia_inicial: null,
         referencia_final: null,
-        status_liquidacao: "sem_parcelas_elegiveis",
-        status_operacional: "sem_parcelas_elegiveis",
-        pode_liquidar_agora: false,
+        status_liquidacao: "elegivel_agora",
+        status_operacional: "elegivel_agora",
+        pode_liquidar_agora: true,
         status_associado: "apto_a_renovar",
         status_associado_label: "Apto para Renovação",
         parcelas: [
@@ -457,6 +450,32 @@ describe("LiquidacoesTesourariaPage", () => {
     mockedApiFetch.mockImplementation(async (path, options = {}) => {
       const method = options.method ?? "GET";
 
+      if (path === "associados/agentes" && method === "GET") {
+        return [
+          {
+            id: 1,
+            full_name: "Agente Norte",
+            email: "agente.norte@abase.local",
+            first_name: "Agente",
+            last_name: "Norte",
+          },
+          {
+            id: 2,
+            full_name: "Agente Sul",
+            email: "agente.sul@abase.local",
+            first_name: "Agente",
+            last_name: "Sul",
+          },
+          {
+            id: 3,
+            full_name: "Agente Centro",
+            email: "agente.centro@abase.local",
+            first_name: "Agente",
+            last_name: "Centro",
+          },
+        ] as never;
+      }
+
       if (path === "tesouraria/liquidacoes" && method === "GET") {
         const status = (options.query as { status?: string } | undefined)?.status;
         if (status === "liquidado") {
@@ -505,7 +524,8 @@ describe("LiquidacoesTesourariaPage", () => {
     });
   });
 
-  it("renderiza a fila com kpis operacionais e cards por tipo de cliente", async () => {
+  it("renderiza a fila com filtros avançados e sem os cards antigos", async () => {
+    const user = userEvent.setup();
     renderPage();
 
     expect(await screen.findByRole("tab", { name: "Fila" })).toBeInTheDocument();
@@ -514,12 +534,16 @@ describe("LiquidacoesTesourariaPage", () => {
     expect(screen.getByText("Liquidáveis Agora")).toBeInTheDocument();
     expect(screen.getByText("Sem Parcelas Elegíveis")).toBeInTheDocument();
     expect(screen.getAllByText("Valor Potencial").length).toBeGreaterThan(0);
-    expect(screen.getByText("Ativos")).toBeInTheDocument();
-    expect(screen.getByText("Aptos a renovar")).toBeInTheDocument();
-    expect(screen.queryByText("Inadimplentes")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Filtros avançados/i })).toBeInTheDocument();
+    expect(screen.queryByText("Tipos de clientes")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Todos os associados aparecem aqui/i)).not.toBeInTheDocument();
     expect(screen.getByText("João Souza")).toBeInTheDocument();
-    expect(screen.getByText(/Todos os associados aparecem aqui/i)).toBeInTheDocument();
     expect(screen.getByText("Apto para Renovação")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Filtros avançados/i }));
+    expect(await screen.findByRole("combobox", { name: "Todos os agentes" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Filtros avançados" })).toBeInTheDocument();
+    expect(screen.getByText("Etapa no fluxo")).toBeInTheDocument();
   });
 
   it("expande a linha com todas as parcelas do contrato", async () => {
@@ -536,14 +560,17 @@ describe("LiquidacoesTesourariaPage", () => {
     expect(screen.getByText("Parcela 4")).toBeInTheDocument();
   });
 
-  it("mostra contratos sem parcelas elegiveis com ação de liquidação bloqueada", async () => {
+  it("permite encerramento direto quando não há parcelas aptas", async () => {
     renderPage();
 
     const row = (await screen.findByText("João Souza")).closest("tr");
     expect(row).not.toBeNull();
-    expect(within(row as HTMLElement).getByRole("button", { name: "Liquidar" })).toBeDisabled();
+    expect(within(row as HTMLElement).getByRole("button", { name: "Liquidar" })).toBeEnabled();
     expect(
-      within(row as HTMLElement).getByText("Sem parcelas aptas para liquidação neste momento."),
+      within(row as HTMLElement).getByText("Pronto para inativação imediata, sem baixa de parcelas."),
+    ).toBeInTheDocument();
+    expect(
+      within(row as HTMLElement).getByText("Encerramento sem parcelas pendentes"),
     ).toBeInTheDocument();
   });
 
@@ -556,16 +583,17 @@ describe("LiquidacoesTesourariaPage", () => {
 
     await user.click(within(row as HTMLElement).getByRole("button", { name: "Liquidar" }));
 
-    const confirmarButton = await screen.findByRole("button", {
+    const dialog = await screen.findByRole("dialog");
+    const confirmarButton = within(dialog).getByRole("button", {
       name: "Confirmar liquidação",
     });
     expect(confirmarButton).toBeDisabled();
 
-    await user.click(screen.getByRole("combobox"));
+    await user.click(within(dialog).getByRole("combobox"));
     await user.click(await screen.findByRole("option", { name: "Agente" }));
-    await user.click(screen.getByRole("button", { name: "Selecionar comprovantes" }));
+    await user.click(within(dialog).getByRole("button", { name: "Selecionar comprovantes" }));
     await user.type(
-      screen.getByPlaceholderText("Descreva o encerramento e o contexto da liquidação..."),
+      within(dialog).getByPlaceholderText("Descreva o encerramento e o contexto da liquidação..."),
       "Liquidação validada pela tesouraria.",
     );
 
@@ -606,11 +634,55 @@ describe("LiquidacoesTesourariaPage", () => {
 
     await user.click(within(row as HTMLElement).getByRole("button", { name: "Liquidar" }));
 
-    const origemSelect = await screen.findByRole("combobox");
+    const dialog = await screen.findByRole("dialog");
+    const origemSelect = within(dialog).getByRole("combobox");
     expect(origemSelect).toBeDisabled();
     expect(origemSelect).toHaveTextContent("Renovação");
     expect(
       screen.getByText("Origem preenchida automaticamente pelo fluxo de renovação."),
     ).toBeInTheDocument();
+  });
+
+  it("envia filtros avançados por agente, status, etapa e data", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText("Maria Silva")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Filtros avançados/i }));
+    await user.click(await screen.findByRole("combobox", { name: "Todos os agentes" }));
+    await user.click(await screen.findByRole("option", { name: "Agente Norte" }));
+
+    const filterCombos = screen.getAllByRole("combobox");
+    await user.click(filterCombos[1]);
+    await user.click(await screen.findByRole("option", { name: "Apto para Renovação" }));
+
+    await user.click(screen.getAllByRole("combobox")[2]);
+    await user.click(await screen.findByRole("option", { name: "Tesouraria" }));
+
+    const dateInputs = screen.getAllByPlaceholderText("dd/mm/aaaa");
+    await user.clear(dateInputs[0]);
+    await user.type(dateInputs[0], "2026-01-01");
+    await user.clear(dateInputs[1]);
+    await user.type(dateInputs[1], "2026-01-31");
+
+    await user.click(screen.getByRole("button", { name: "Aplicar" }));
+
+    await waitFor(() => {
+      const getCalls = mockedApiFetch.mock.calls.filter(
+        ([path, options]) => path === "tesouraria/liquidacoes" && (options?.method ?? "GET") === "GET",
+      );
+      expect(getCalls.length).toBeGreaterThan(1);
+      const [, options] = getCalls.at(-1) ?? [];
+      expect(options?.query).toEqual(
+        expect.objectContaining({
+          agente: "Agente Norte",
+          status_associado: "apto_a_renovar",
+          etapa_fluxo: "tesouraria",
+          data_inicio: "2026-01-01",
+          data_fim: "2026-01-31",
+        }),
+      );
+    });
   });
 });

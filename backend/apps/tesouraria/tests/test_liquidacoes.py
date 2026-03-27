@@ -15,6 +15,7 @@ from apps.contratos.cycle_projection import (
     get_associado_visual_status_payload,
 )
 from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.esteira.models import EsteiraItem
 from apps.refinanciamento.models import Refinanciamento
 from apps.tesouraria.models import LiquidacaoContrato
 
@@ -213,11 +214,11 @@ class LiquidacaoContratoViewSetTestCase(TestCase):
         self.assertEqual(row_sem_elegiveis["quantidade_parcelas"], 0)
         self.assertEqual(row_sem_elegiveis["quantidade_parcelas_contrato"], 3)
         self.assertEqual(len(row_sem_elegiveis["parcelas"]), 3)
-        self.assertEqual(row_sem_elegiveis["status_operacional"], "sem_parcelas_elegiveis")
-        self.assertFalse(row_sem_elegiveis["pode_liquidar_agora"])
+        self.assertEqual(row_sem_elegiveis["status_operacional"], "elegivel_agora")
+        self.assertTrue(row_sem_elegiveis["pode_liquidar_agora"])
         self.assertEqual(payload["kpis"]["total_contratos"], 2)
-        self.assertEqual(payload["kpis"]["liquidaveis_agora"], 1)
-        self.assertEqual(payload["kpis"]["sem_parcelas_elegiveis"], 1)
+        self.assertEqual(payload["kpis"]["liquidaveis_agora"], 2)
+        self.assertEqual(payload["kpis"]["sem_parcelas_elegiveis"], 0)
         self.assertEqual(
             payload["kpis"]["por_status_associado"][
                 status_associado["status_visual_slug"]
@@ -274,6 +275,37 @@ class LiquidacaoContratoViewSetTestCase(TestCase):
         self.assertEqual(row["quantidade_parcelas"], 0)
         self.assertEqual(row["quantidade_parcelas_contrato"], 3)
         self.assertEqual(len(row["parcelas"]), 3)
+
+    def test_lista_filtra_por_agente_status_etapa_e_periodo(self):
+        associado, contrato = self._create_contract_fixture(cpf="77852621411")
+        EsteiraItem.objects.create(
+            associado=associado,
+            etapa_atual=EsteiraItem.Etapa.TESOURARIA,
+            status=EsteiraItem.Situacao.EM_ANDAMENTO,
+        )
+        _outro_associado, outro_contrato = self._create_contract_fixture(cpf="77852621412")
+        outro_contrato.agente = None
+        outro_contrato.data_contrato = date(2026, 1, 15)
+        outro_contrato.save(update_fields=["agente", "data_contrato", "updated_at"])
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/liquidacoes/",
+            {
+                "status": "elegivel",
+                "agente": self.agente.full_name,
+                "status_associado": get_associado_visual_status_payload(associado)[
+                    "status_visual_slug"
+                ],
+                "etapa_fluxo": EsteiraItem.Etapa.TESOURARIA,
+                "data_inicio": "2026-01-01",
+                "data_fim": "2026-01-10",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(len(payload["results"]), 1)
+        self.assertEqual(payload["results"][0]["contrato_id"], contrato.id)
 
     def test_lista_elegiveis_identifica_solicitacao_vinda_da_renovacao(self):
         associado, contrato = self._create_contract_fixture(cpf="77852621388")
@@ -392,7 +424,7 @@ class LiquidacaoContratoViewSetTestCase(TestCase):
         self.assertEqual(response.status_code, 400, response.json())
         self.assertIn("origem_solicitacao", response.json())
 
-    def test_liquidacao_bloqueia_contrato_sem_parcelas_elegiveis(self):
+    def test_liquidacao_permita_encerramento_direto_sem_parcelas_elegiveis(self):
         _associado, contrato = self._create_contract_fixture(cpf="77852621365")
         Parcela.objects.filter(ciclo__contrato=contrato).update(
             status=Parcela.Status.DESCONTADO,
@@ -404,8 +436,11 @@ class LiquidacaoContratoViewSetTestCase(TestCase):
             self._liquidar_payload(observacao="Liquidação indevida."),
         )
 
-        self.assertEqual(response.status_code, 400, response.json())
-        self.assertIn("parcelas elegíveis", str(response.json()))
+        self.assertEqual(response.status_code, 201, response.json())
+        contrato.refresh_from_db()
+        self.assertEqual(contrato.status, Contrato.Status.ENCERRADO)
+        liquidacao = LiquidacaoContrato.objects.get(contrato=contrato, revertida_em__isnull=True)
+        self.assertEqual(liquidacao.itens.count(), 0)
 
     def test_liquidacao_nao_inativa_associado_com_outro_contrato_ativo(self):
         associado, contrato = self._create_contract_fixture(

@@ -115,6 +115,7 @@ class ArquivoRetornoItem(BaseModel):
         BAIXA_EFETUADA = "baixa_efetuada", "Baixa efetuada"
         NAO_DESCONTADO = "nao_descontado", "Não descontado"
         PENDENCIA_MANUAL = "pendencia_manual", "Pendência manual"
+        DUPLICIDADE = "duplicidade", "Duplicidade"
         NAO_ENCONTRADO = "nao_encontrado", "Não encontrado"
         ERRO = "erro", "Erro"
         CICLO_ABERTO = "ciclo_aberto", "Ciclo aberto"
@@ -165,6 +166,90 @@ class ArquivoRetornoItem(BaseModel):
 
     class Meta:
         ordering = ["linha_numero"]
+
+
+class DuplicidadeFinanceira(BaseModel):
+    class Status(models.TextChoices):
+        ABERTA = "aberta", "Aberta"
+        EM_TRATAMENTO = "em_tratamento", "Em tratamento"
+        RESOLVIDA = "resolvida", "Resolvida"
+        DESCARTADA = "descartada", "Descartada"
+
+    class Motivo(models.TextChoices):
+        BAIXA_MANUAL_DUPLICADA = (
+            "baixa_manual_duplicada",
+            "Baixa manual duplicada",
+        )
+        BAIXA_MANUAL_MES_ERRADO = (
+            "baixa_manual_mes_errado",
+            "Baixa manual em mês errado",
+        )
+        DIVERGENCIA_VALOR = "divergencia_valor", "Divergência de valor"
+        CONFLITO_RETORNO = "conflito_retorno", "Conflito vindo do retorno"
+
+    arquivo_retorno_item = models.ForeignKey(
+        "importacao.ArquivoRetornoItem",
+        on_delete=models.PROTECT,
+        related_name="duplicidades_financeiras",
+    )
+    pagamento_mensalidade = models.ForeignKey(
+        "importacao.PagamentoMensalidade",
+        on_delete=models.PROTECT,
+        related_name="duplicidades_financeiras",
+        null=True,
+        blank=True,
+    )
+    associado = models.ForeignKey(
+        "associados.Associado",
+        on_delete=models.PROTECT,
+        related_name="duplicidades_financeiras",
+        null=True,
+        blank=True,
+    )
+    contrato = models.ForeignKey(
+        "contratos.Contrato",
+        on_delete=models.PROTECT,
+        related_name="duplicidades_financeiras",
+        null=True,
+        blank=True,
+    )
+    motivo = models.CharField(max_length=40, choices=Motivo.choices)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ABERTA,
+    )
+    competencia_retorno = models.DateField()
+    competencia_manual = models.DateField(null=True, blank=True)
+    valor_retorno = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    valor_manual = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    observacao = models.TextField(blank=True)
+    devolucao = models.ForeignKey(
+        "tesouraria.DevolucaoAssociado",
+        on_delete=models.PROTECT,
+        related_name="duplicidades_financeiras",
+        null=True,
+        blank=True,
+    )
+    resolvido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="duplicidades_financeiras_resolvidas",
+        null=True,
+        blank=True,
+    )
+    resolvido_em = models.DateTimeField(null=True, blank=True)
+    motivo_resolucao = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["status", "motivo"]),
+            models.Index(fields=["competencia_retorno"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"DuplicidadeFinanceira #{self.pk} - {self.motivo}"
 
 
 class ImportacaoLog(BaseModel):

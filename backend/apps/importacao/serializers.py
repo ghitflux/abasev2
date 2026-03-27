@@ -3,7 +3,7 @@ from __future__ import annotations
 from rest_framework import serializers
 
 from .financeiro import build_financeiro_payload, build_financeiro_resumo
-from .models import ArquivoRetorno, ArquivoRetornoItem
+from .models import ArquivoRetorno, ArquivoRetornoItem, DuplicidadeFinanceira
 
 
 class ArquivoRetornoResumoSerializer(serializers.Serializer):
@@ -14,6 +14,7 @@ class ArquivoRetornoResumoSerializer(serializers.Serializer):
     baixa_efetuada = serializers.IntegerField(required=False)
     nao_descontado = serializers.IntegerField(required=False)
     pendencias_manuais = serializers.IntegerField(required=False)
+    duplicidades = serializers.IntegerField(required=False)
     nao_encontrado = serializers.IntegerField(required=False)
     erro = serializers.IntegerField(required=False)
     ciclo_aberto = serializers.IntegerField(required=False)
@@ -86,6 +87,82 @@ class ArquivoRetornoFinanceiroPayloadSerializer(serializers.Serializer):
 
 class ArquivoRetornoUploadSerializer(serializers.Serializer):
     arquivo = serializers.FileField()
+
+
+class DuplicidadeFinanceiraItemSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    arquivo_retorno_item_id = serializers.IntegerField(read_only=True)
+    arquivo_retorno_id = serializers.IntegerField(read_only=True)
+    arquivo_nome = serializers.CharField(read_only=True)
+    linha_numero = serializers.IntegerField(read_only=True)
+    associado_id = serializers.IntegerField(read_only=True, allow_null=True)
+    nome = serializers.CharField(read_only=True)
+    cpf_cnpj = serializers.CharField(read_only=True)
+    matricula = serializers.CharField(read_only=True, allow_blank=True)
+    agente_nome = serializers.CharField(read_only=True, allow_blank=True)
+    contrato_id = serializers.IntegerField(read_only=True, allow_null=True)
+    contrato_codigo = serializers.CharField(read_only=True, allow_blank=True)
+    motivo = serializers.ChoiceField(
+        choices=DuplicidadeFinanceira.Motivo.choices,
+        read_only=True,
+    )
+    status = serializers.ChoiceField(
+        choices=DuplicidadeFinanceira.Status.choices,
+        read_only=True,
+    )
+    competencia_retorno = serializers.DateField(read_only=True)
+    competencia_manual = serializers.DateField(read_only=True, allow_null=True)
+    valor_retorno = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True,
+        allow_null=True,
+    )
+    valor_manual = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True,
+        allow_null=True,
+    )
+    observacao = serializers.CharField(read_only=True, allow_blank=True)
+    devolucao_id = serializers.IntegerField(read_only=True, allow_null=True)
+    resolvido_em = serializers.DateTimeField(read_only=True, allow_null=True)
+    resolvido_por = serializers.CharField(read_only=True, allow_blank=True)
+    motivo_resolucao = serializers.CharField(read_only=True, allow_blank=True)
+    created_at = serializers.DateTimeField(read_only=True)
+
+
+class DuplicidadeFinanceiraKpisSerializer(serializers.Serializer):
+    total = serializers.IntegerField(read_only=True)
+    abertas = serializers.IntegerField(read_only=True)
+    em_tratamento = serializers.IntegerField(read_only=True)
+    resolvidas = serializers.IntegerField(read_only=True)
+    descartadas = serializers.IntegerField(read_only=True)
+
+
+class DuplicidadeFinanceiraResolverSerializer(serializers.Serializer):
+    data_devolucao = serializers.DateField(required=True)
+    valor = serializers.DecimalField(max_digits=12, decimal_places=2, required=True)
+    motivo = serializers.CharField(required=True, allow_blank=False)
+
+    def validate(self, attrs):
+        request = self.context.get("request")
+        files = []
+        if request is not None:
+            files.extend(request.FILES.getlist("comprovantes"))
+            single = request.FILES.get("comprovante")
+            if single is not None and single not in files:
+                files.append(single)
+        if not files:
+            raise serializers.ValidationError(
+                {"comprovantes": "Envie pelo menos um comprovante."}
+            )
+        attrs["comprovantes"] = files
+        return attrs
+
+
+class DuplicidadeFinanceiraDescartarSerializer(serializers.Serializer):
+    motivo = serializers.CharField(required=True, allow_blank=False)
 
 
 class ArquivoRetornoItemSerializer(serializers.ModelSerializer):

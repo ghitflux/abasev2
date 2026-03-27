@@ -31,6 +31,7 @@ const ROUTE_PREFIXES: Array<{ kind: DashboardRouteKind; prefixes: string[] }> = 
       "/coordenacao/refinanciamento",
       "/coordenacao/refinanciados",
       "/configuracoes/usuarios",
+      "/configuracoes/comissoes",
       "/relatorios",
     ],
   },

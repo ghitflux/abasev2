@@ -339,6 +339,79 @@ class EsteiraOverrideWriteSerializer(serializers.Serializer):
     observacao = serializers.CharField(required=False, allow_blank=True)
 
 
+class SaveAllContratoCoreWriteSerializer(serializers.Serializer):
+    updated_at = serializers.DateTimeField(required=False, allow_null=True)
+    status = serializers.CharField(required=False, allow_blank=True)
+    contato_web = serializers.BooleanField(required=False)
+    termos_web = serializers.BooleanField(required=False)
+    agente_id = serializers.IntegerField(required=False, allow_null=True)
+    valor_bruto = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    valor_liquido = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    valor_mensalidade = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+    )
+    taxa_antecipacao = serializers.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        required=False,
+    )
+    margem_disponivel = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+    )
+    valor_total_antecipacao = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+    )
+    doacao_associado = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+    )
+    comissao_agente = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+    )
+    data_contrato = serializers.DateField(required=False, allow_null=True)
+    data_aprovacao = serializers.DateField(required=False, allow_null=True)
+    data_primeira_mensalidade = serializers.DateField(required=False, allow_null=True)
+    mes_averbacao = serializers.DateField(required=False, allow_null=True)
+    auxilio_liberado_em = serializers.DateField(required=False, allow_null=True)
+
+
+class SaveAllRefinanciamentoWriteSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    updated_at = serializers.DateTimeField(required=False, allow_null=True)
+    status = serializers.CharField(required=False, allow_blank=True)
+    competencia_solicitada = serializers.DateField(required=False, allow_null=True)
+    valor_refinanciamento = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+    )
+    repasse_agente = serializers.DecimalField(max_digits=10, decimal_places=2, required=False)
+    executado_em = serializers.DateTimeField(required=False, allow_null=True)
+    data_ativacao_ciclo = serializers.DateTimeField(required=False, allow_null=True)
+    motivo_bloqueio = serializers.CharField(required=False, allow_blank=True)
+    observacao = serializers.CharField(required=False, allow_blank=True)
+    analista_note = serializers.CharField(required=False, allow_blank=True)
+    coordenador_note = serializers.CharField(required=False, allow_blank=True)
+    reviewed_by_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class SaveAllEsteiraWriteSerializer(serializers.Serializer):
+    updated_at = serializers.DateTimeField(required=False, allow_null=True)
+    etapa_atual = serializers.CharField(required=False, allow_blank=True)
+    status = serializers.CharField(required=False, allow_blank=True)
+    prioridade = serializers.IntegerField(required=False)
+    observacao = serializers.CharField(required=False, allow_blank=True)
+
+
 class ParcelaLayoutWriteSerializer(serializers.Serializer):
     id = serializers.IntegerField(required=False, allow_null=True)
     cycle_ref = serializers.CharField(required=False, allow_blank=True)
@@ -368,6 +441,25 @@ class CycleLayoutOverrideWriteSerializer(serializers.Serializer):
     motivo = serializers.CharField()
     cycles = CicloLayoutWriteSerializer(many=True)
     parcelas = ParcelaLayoutWriteSerializer(many=True)
+
+
+class SaveAllCycleLayoutWriteSerializer(serializers.Serializer):
+    updated_at = serializers.DateTimeField(required=False, allow_null=True)
+    cycles = CicloLayoutWriteSerializer(many=True)
+    parcelas = ParcelaLayoutWriteSerializer(many=True)
+
+
+class SaveAllContratoWriteSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    core = SaveAllContratoCoreWriteSerializer(required=False)
+    cycles = SaveAllCycleLayoutWriteSerializer(required=False)
+    refinanciamento = SaveAllRefinanciamentoWriteSerializer(required=False)
+
+
+class AdminOverrideSaveAllWriteSerializer(serializers.Serializer):
+    motivo = serializers.CharField()
+    contratos = SaveAllContratoWriteSerializer(many=True, required=False)
+    esteira = SaveAllEsteiraWriteSerializer(required=False)
 
 
 class DocumentoVersionWriteSerializer(serializers.Serializer):

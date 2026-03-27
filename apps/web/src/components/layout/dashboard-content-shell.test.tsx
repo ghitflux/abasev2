@@ -42,6 +42,22 @@ describe("DashboardContentShell", () => {
     expect(screen.getByText("conteudo")).toBeInTheDocument();
   });
 
+  it("mantem o loader scoped para configuracoes de comissoes", () => {
+    mockedUseRouteTransition.mockReturnValue({
+      isRouteTransitioning: true,
+      isRouteLoadingVisible: true,
+      pendingHref: "/configuracoes/comissoes",
+      startRouteTransition: jest.fn(),
+    });
+
+    render(<DashboardContentShell>conteudo</DashboardContentShell>);
+
+    expect(screen.getByTestId("dashboard-route-loader")).toHaveTextContent(
+      "/configuracoes/comissoes",
+    );
+    expect(screen.getByText("conteudo")).toBeInTheDocument();
+  });
+
   it("não renderiza o loader scoped quando o destino não pertence ao dashboard", () => {
     mockedUseRouteTransition.mockReturnValue({
       isRouteTransitioning: true,

@@ -11,6 +11,7 @@ import {
   HandCoinsIcon,
   ReceiptTextIcon,
   RotateCcwIcon,
+  SlidersHorizontalIcon,
   Trash2Icon,
   WalletCardsIcon,
 } from "lucide-react";
@@ -20,19 +21,26 @@ import type {
   LiquidacaoContratoItem,
   LiquidacaoKpis,
   PaginatedResponse,
+  SimpleUser,
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
+import {
+  dashboardOptionsQueryOptions,
+  dashboardRetainedQueryOptions,
+} from "@/lib/dashboard-query";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { formatCurrency, formatDate, formatMonthYear } from "@/lib/formatters";
-import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import DatePicker from "@/components/custom/date-picker";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import InputCurrency from "@/components/custom/input-currency";
+import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import StatsCard from "@/components/shared/stats-card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -51,6 +59,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -68,13 +85,34 @@ type LiquidarState = {
   observacao: string;
 };
 
-type AssociadoStatusKey = keyof LiquidacaoKpis["por_status_associado"];
-
 const ORIGEM_SOLICITACAO_OPTIONS = [
   { value: "agente", label: "Agente" },
   { value: "coordenacao", label: "Coordenação" },
   { value: "administracao", label: "Administração" },
   { value: "renovacao", label: "Renovação" },
+] as const;
+
+const ASSOCIADO_STATUS_OPTIONS = [
+  { value: "todos", label: "Todos os status" },
+  { value: "ciclo_aberto", label: "Ativo" },
+  { value: "apto_a_renovar", label: "Apto para Renovação" },
+  { value: "solicitado_para_liquidacao", label: "Solicitado para Liquidação" },
+  { value: "renovacao_em_analise", label: "Renovação em Análise" },
+  { value: "aguardando_coordenacao", label: "Aguardando Coordenação" },
+  { value: "aprovado_para_renovacao", label: "Aguardando Pagamento" },
+  { value: "ciclo_renovado", label: "Concluído" },
+  { value: "em_analise", label: "Em Análise" },
+  { value: "contrato_desativado", label: "Contrato Desativado" },
+  { value: "contrato_encerrado", label: "Contrato Encerrado" },
+] as const;
+
+const ETAPA_FLUXO_OPTIONS = [
+  { value: "todas", label: "Todas as etapas" },
+  { value: "cadastro", label: "Cadastro" },
+  { value: "analise", label: "Análise" },
+  { value: "coordenacao", label: "Coordenação" },
+  { value: "tesouraria", label: "Tesouraria" },
+  { value: "concluido", label: "Concluído" },
 ] as const;
 
 const ELIGIBLE_PARCELA_STATUSES = new Set([
@@ -83,42 +121,6 @@ const ELIGIBLE_PARCELA_STATUSES = new Set([
   "em_aberto",
   "nao_descontado",
 ]);
-
-const ASSOCIADO_STATUS_CARD_CONFIG: Array<{
-  key: AssociadoStatusKey;
-  title: string;
-  description: string;
-}> = [
-  { key: "ciclo_aberto", title: "Ativos", description: "Associados com ciclo operacional aberto." },
-  {
-    key: "apto_a_renovar",
-    title: "Aptos a renovar",
-    description: "Associados prontos para seguir para renovação.",
-  },
-  {
-    key: "solicitado_para_liquidacao",
-    title: "Solicitados para liquidação",
-    description: "Associados já encaminhados para liquidação via renovação.",
-  },
-  {
-    key: "renovacao_em_analise",
-    title: "Renovação em análise",
-    description: "Associados em análise dentro do fluxo de renovação.",
-  },
-  {
-    key: "aguardando_coordenacao",
-    title: "Aguardando coordenação",
-    description: "Associados aguardando validação da coordenação.",
-  },
-  {
-    key: "aprovado_para_renovacao",
-    title: "Aguardando pagamento",
-    description: "Associados aprovados para renovação e aguardando pagamento.",
-  },
-  { key: "em_analise", title: "Em análise", description: "Cadastros ainda em análise operacional." },
-  { key: "contrato_desativado", title: "Inativos", description: "Associados com contrato desativado." },
-  { key: "contrato_encerrado", title: "Encerrados", description: "Associados com contrato encerrado." },
-] as const;
 
 function isRenewalOrigin(row: LiquidacaoContratoItem) {
   return row.origem_solicitacao === "renovacao";
@@ -148,6 +150,9 @@ function getOperationalStatusDescription(row: LiquidacaoContratoItem) {
   if (row.data_liquidacao) {
     return `Em ${formatDate(row.data_liquidacao)}`;
   }
+  if (row.pode_liquidar_agora && row.quantidade_parcelas === 0) {
+    return "Pronto para inativação imediata, sem baixa de parcelas.";
+  }
   if (row.pode_liquidar_agora) {
     return "Pronto para liquidação imediata.";
   }
@@ -159,7 +164,9 @@ function getOperationalStatusDescription(row: LiquidacaoContratoItem) {
 
 function getLiquidarButtonTitle(row: LiquidacaoContratoItem) {
   if (row.pode_liquidar_agora && row.contrato_id != null) {
-    return "Confirmar liquidação";
+    return row.quantidade_parcelas === 0
+      ? "Confirmar inativação do contrato"
+      : "Confirmar liquidação";
   }
   if (row.status_operacional === "sem_contrato") {
     return "Associado sem contrato operacional vinculado";
@@ -177,14 +184,22 @@ function useLiquidacoesQuery({
   page,
   tab,
   search,
-  competencia,
+  agente,
+  statusAssociado,
+  etapaFluxo,
+  dataInicio,
+  dataFim,
   estado,
   contractId,
 }: {
   page: number;
   tab: ListingStatus;
   search: string;
-  competencia?: Date;
+  agente: string;
+  statusAssociado: string;
+  etapaFluxo: string;
+  dataInicio?: Date;
+  dataFim?: Date;
   estado: string;
   contractId?: number;
 }) {
@@ -194,7 +209,11 @@ function useLiquidacoesQuery({
       tab,
       page,
       search,
-      competencia?.toISOString(),
+      agente,
+      statusAssociado,
+      etapaFluxo,
+      dataInicio?.toISOString(),
+      dataFim?.toISOString(),
       estado,
       contractId,
     ],
@@ -205,11 +224,17 @@ function useLiquidacoesQuery({
           page_size: 20,
           status: tab,
           search: search || undefined,
-          competencia: competencia ? format(competencia, "yyyy-MM") : undefined,
+          agente: agente || undefined,
+          status_associado:
+            statusAssociado !== "todos" ? statusAssociado : undefined,
+          etapa_fluxo: etapaFluxo !== "todas" ? etapaFluxo : undefined,
+          data_inicio: dataInicio ? format(dataInicio, "yyyy-MM-dd") : undefined,
+          data_fim: dataFim ? format(dataFim, "yyyy-MM-dd") : undefined,
           estado: tab === "liquidado" && estado !== "todos" ? estado : undefined,
           contract_id: contractId,
         },
       }),
+    ...dashboardRetainedQueryOptions,
   });
 }
 
@@ -229,23 +254,62 @@ export default function LiquidacoesTesourariaPage() {
   const [tab, setTab] = React.useState<ListingStatus>(initialTab);
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
-  const [competencia, setCompetencia] = React.useState<Date | undefined>();
+  const [agente, setAgente] = React.useState("");
+  const [statusAssociado, setStatusAssociado] = React.useState("todos");
+  const [etapaFluxo, setEtapaFluxo] = React.useState("todas");
+  const [dataInicio, setDataInicio] = React.useState<Date | undefined>();
+  const [dataFim, setDataFim] = React.useState<Date | undefined>();
   const [estado, setEstado] = React.useState("todos");
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const [draftAgente, setDraftAgente] = React.useState("");
+  const [draftStatusAssociado, setDraftStatusAssociado] = React.useState("todos");
+  const [draftEtapaFluxo, setDraftEtapaFluxo] = React.useState("todas");
+  const [draftDataInicio, setDraftDataInicio] = React.useState<Date | undefined>();
+  const [draftDataFim, setDraftDataFim] = React.useState<Date | undefined>();
+  const [draftEstado, setDraftEstado] = React.useState("todos");
   const [liquidarState, setLiquidarState] = React.useState<LiquidarState | null>(null);
   const [reverterTarget, setReverterTarget] = React.useState<LiquidacaoContratoItem | null>(null);
   const [motivoReversao, setMotivoReversao] = React.useState("");
   const [deleteTarget, setDeleteTarget] = React.useState<LiquidacaoContratoItem | null>(null);
   const [motivoExclusao, setMotivoExclusao] = React.useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
+
+  const agentesQuery = useQuery({
+    queryKey: ["liquidacoes-agentes"],
+    queryFn: () => apiFetch<SimpleUser[]>("associados/agentes"),
+    ...dashboardOptionsQueryOptions,
+  });
+
+  const agentOptions = React.useMemo(
+    () =>
+      (agentesQuery.data ?? []).map((item) => ({
+        value: String(item.id),
+        label: item.full_name,
+      })),
+    [agentesQuery.data],
+  );
+
+  const agenteFiltro = React.useMemo(() => {
+    if (!agente) {
+      return "";
+    }
+    const match = (agentesQuery.data ?? []).find((item) => String(item.id) === agente);
+    return match?.full_name ?? agente;
+  }, [agente, agentesQuery.data]);
 
   React.useEffect(() => {
     setPage(1);
-  }, [tab, search, competencia, estado]);
+  }, [tab, debouncedSearch, agenteFiltro, statusAssociado, etapaFluxo, dataInicio, dataFim, estado]);
 
   const query = useLiquidacoesQuery({
     page,
     tab,
-    search,
-    competencia,
+    search: debouncedSearch,
+    agente: agenteFiltro,
+    statusAssociado,
+    etapaFluxo,
+    dataInicio,
+    dataFim,
     estado,
     contractId,
   });
@@ -330,6 +394,13 @@ export default function LiquidacoesTesourariaPage() {
   const rows = query.data?.results ?? [];
   const kpis = query.data?.kpis;
   const totalCount = query.data?.count ?? 0;
+  const activeFiltersCount =
+    Number(Boolean(agente.trim())) +
+    Number(statusAssociado !== "todos") +
+    Number(etapaFluxo !== "todas") +
+    Number(Boolean(dataInicio)) +
+    Number(Boolean(dataFim)) +
+    Number(tab === "liquidado" && estado !== "todos");
   const liquidacaoParcelas = React.useMemo(
     () =>
       liquidarState
@@ -337,17 +408,6 @@ export default function LiquidacoesTesourariaPage() {
         : [],
     [liquidarState],
   );
-  const associadoStatusCards = React.useMemo(() => {
-    const counts = kpis?.por_status_associado;
-    if (!counts) {
-      return [];
-    }
-
-    return ASSOCIADO_STATUS_CARD_CONFIG.map((config) => ({
-      ...config,
-      value: counts[config.key] ?? 0,
-    })).filter((card) => card.value > 0);
-  }, [kpis]);
 
   const columns = React.useMemo<DataTableColumn<LiquidacaoContratoItem>[]>(
     () => [
@@ -388,13 +448,18 @@ export default function LiquidacoesTesourariaPage() {
         cell: (row) => (
           <div>
             <p className="font-medium">
-              {row.quantidade_parcelas} parcela(s)
-              {tab === "elegivel" ? " elegível(is) agora" : " registrada(s)"}
+              {tab === "elegivel" && row.pode_liquidar_agora && row.quantidade_parcelas === 0
+                ? "Encerramento sem parcelas pendentes"
+                : `${row.quantidade_parcelas} parcela(s)${
+                    tab === "elegivel" ? " elegível(is) agora" : " registrada(s)"
+                  }`}
             </p>
             <p className="text-xs text-muted-foreground">
               {row.referencia_inicial && row.referencia_final
                 ? `${formatMonthYear(row.referencia_inicial)} até ${formatMonthYear(row.referencia_final)}`
-                : "Sem referências"}
+                : row.pode_liquidar_agora && row.quantidade_parcelas === 0
+                  ? "Nenhuma parcela em aberto para quitar."
+                  : "Sem referências"}
             </p>
             <p className="text-xs text-muted-foreground">
               {row.quantidade_parcelas_contrato} parcela(s) no contrato
@@ -528,7 +593,9 @@ export default function LiquidacoesTesourariaPage() {
           <p className="text-sm text-muted-foreground">
             {tab === "elegivel"
               ? row.contrato_codigo
-                ? `${row.contrato_codigo} · ${row.quantidade_parcelas} elegível(is) agora de ${row.quantidade_parcelas_contrato} parcela(s) do contrato.`
+                ? row.pode_liquidar_agora && row.quantidade_parcelas === 0
+                  ? `${row.contrato_codigo} · contrato apto para encerramento direto sem baixa de parcelas.`
+                  : `${row.contrato_codigo} · ${row.quantidade_parcelas} elegível(is) agora de ${row.quantidade_parcelas_contrato} parcela(s) do contrato.`
                 : "Associado sem contrato operacional vinculado."
               : `${row.contrato_codigo} · ${row.quantidade_parcelas} parcela(s) registradas nesta liquidação.`}
           </p>
@@ -724,75 +791,183 @@ export default function LiquidacoesTesourariaPage() {
             )}
           </section>
 
-          {associadoStatusCards.length ? (
-            <section className="space-y-3">
-              <div className="space-y-1">
-                <h2 className="text-sm font-semibold">Tipos de clientes</h2>
-                <p className="text-sm text-muted-foreground">
-                  Distribuição pelo mesmo status visual usado no cadastro do associado.
-                </p>
+          <section className="rounded-[1.75rem] border border-border/60 bg-card/70 p-4">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+              <div className="flex-1">
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder={
+                    contractId
+                      ? "Filtro travado no contrato vindo da renovação"
+                      : "Buscar por nome, CPF, matrícula ou contrato..."
+                  }
+                  className="rounded-2xl border-border/60 bg-background/60"
+                  disabled={Boolean(contractId)}
+                />
               </div>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {associadoStatusCards.map((card) => (
-                  <div
-                    key={card.key}
-                    className="rounded-[1.5rem] border border-border/60 bg-card/70 p-5 shadow-lg shadow-black/10"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                          {card.title}
-                        </p>
-                        <p className="mt-3 text-3xl font-semibold">{card.value}</p>
-                      </div>
-                      <StatusBadge status={card.key} />
-                    </div>
-                    <p className="mt-3 text-sm text-muted-foreground">{card.description}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
+              <div className="flex flex-wrap items-center gap-2">
+                <Sheet
+                  open={filtersOpen}
+                  onOpenChange={(open) => {
+                    if (open) {
+                      setDraftAgente(agente);
+                      setDraftStatusAssociado(statusAssociado);
+                      setDraftEtapaFluxo(etapaFluxo);
+                      setDraftDataInicio(dataInicio);
+                      setDraftDataFim(dataFim);
+                      setDraftEstado(estado);
+                    }
+                    setFiltersOpen(open);
+                  }}
+                >
+                  <SheetTrigger asChild>
+                    <Button variant="outline" className="rounded-2xl">
+                      <SlidersHorizontalIcon className="size-4" />
+                      Filtros avançados
+                      {activeFiltersCount ? (
+                        <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-primary">
+                          {activeFiltersCount}
+                        </Badge>
+                      ) : null}
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent className="w-full border-l border-border/60 sm:max-w-xl">
+                    <SheetHeader>
+                      <SheetTitle>Filtros avançados</SheetTitle>
+                      <SheetDescription>
+                        Refine a fila por agente, status visual, etapa do fluxo e intervalo de datas.
+                      </SheetDescription>
+                    </SheetHeader>
 
-          <section className="rounded-[1.75rem] border border-border/60 bg-card/70 p-5">
-            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px_220px]">
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={
-                  contractId
-                    ? "Filtro travado no contrato vindo da renovação"
-                    : "Buscar por nome, CPF, matrícula ou contrato..."
-                }
-                className="rounded-2xl border-border/60 bg-background/60"
-                disabled={Boolean(contractId)}
-              />
-              <CalendarCompetencia
-                value={competencia}
-                onChange={setCompetencia}
-              />
-              {tab === "liquidado" ? (
-                <Select value={estado} onValueChange={setEstado}>
-                  <SelectTrigger className="rounded-2xl border-border/60 bg-background/60">
-                    <SelectValue placeholder="Status da liquidação" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos status</SelectItem>
-                    <SelectItem value="ativa">Ativas</SelectItem>
-                    <SelectItem value="revertida">Revertidas</SelectItem>
-                  </SelectContent>
-                </Select>
-              ) : (
-                <div className="rounded-2xl border border-border/60 bg-background/60 px-4 py-3">
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                    Situação da fila
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Todos os associados aparecem aqui. Quando houver parcelas aptas, a liquidação
-                    é executada sobre o contrato operacional do associado.
-                  </p>
-                </div>
-              )}
+                    <div className="space-y-5 overflow-y-auto px-4 pb-4">
+                      <div className="space-y-2">
+                        <Label>Agente</Label>
+                        <SearchableSelect
+                          options={agentOptions}
+                          value={draftAgente}
+                          onChange={setDraftAgente}
+                          placeholder="Todos os agentes"
+                          searchPlaceholder="Buscar agente"
+                          clearLabel="Limpar agente"
+                          className="rounded-2xl border-border/60 bg-background/60"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Status</Label>
+                        <Select value={draftStatusAssociado} onValueChange={setDraftStatusAssociado}>
+                          <SelectTrigger className="rounded-2xl border-border/60 bg-background/60">
+                            <SelectValue placeholder="Todos os status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ASSOCIADO_STATUS_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Etapa no fluxo</Label>
+                        <Select value={draftEtapaFluxo} onValueChange={setDraftEtapaFluxo}>
+                          <SelectTrigger className="rounded-2xl border-border/60 bg-background/60">
+                            <SelectValue placeholder="Todas as etapas" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ETAPA_FLUXO_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>{tab === "liquidado" ? "Liquidado de" : "Data inicial"}</Label>
+                          <DatePicker value={draftDataInicio} onChange={setDraftDataInicio} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>{tab === "liquidado" ? "Liquidado até" : "Data final"}</Label>
+                          <DatePicker value={draftDataFim} onChange={setDraftDataFim} />
+                        </div>
+                      </div>
+                      {tab === "liquidado" ? (
+                        <div className="space-y-2">
+                          <Label>Situação</Label>
+                          <Select value={draftEstado} onValueChange={setDraftEstado}>
+                            <SelectTrigger className="rounded-2xl border-border/60 bg-background/60">
+                              <SelectValue placeholder="Status da liquidação" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="todos">Todos status</SelectItem>
+                              <SelectItem value="ativa">Ativas</SelectItem>
+                              <SelectItem value="revertida">Revertidas</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <SheetFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setDraftAgente("");
+                          setDraftStatusAssociado("todos");
+                          setDraftEtapaFluxo("todas");
+                          setDraftDataInicio(undefined);
+                          setDraftDataFim(undefined);
+                          setDraftEstado("todos");
+                          setAgente("");
+                          setStatusAssociado("todos");
+                          setEtapaFluxo("todas");
+                          setDataInicio(undefined);
+                          setDataFim(undefined);
+                          setEstado("todos");
+                          setFiltersOpen(false);
+                        }}
+                      >
+                        Limpar
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setAgente(draftAgente);
+                          setStatusAssociado(draftStatusAssociado);
+                          setEtapaFluxo(draftEtapaFluxo);
+                          setDataInicio(draftDataInicio);
+                          setDataFim(draftDataFim);
+                          setEstado(draftEstado);
+                          setFiltersOpen(false);
+                        }}
+                      >
+                        Aplicar
+                      </Button>
+                    </SheetFooter>
+                  </SheetContent>
+                </Sheet>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearch("");
+                    setAgente("");
+                    setStatusAssociado("todos");
+                    setEtapaFluxo("todas");
+                    setDataInicio(undefined);
+                    setDataFim(undefined);
+                    setEstado("todos");
+                    setDraftAgente("");
+                    setDraftStatusAssociado("todos");
+                    setDraftEtapaFluxo("todas");
+                    setDraftDataInicio(undefined);
+                    setDraftDataFim(undefined);
+                    setDraftEstado("todos");
+                  }}
+                >
+                  Limpar
+                </Button>
+              </div>
             </div>
           </section>
 
@@ -908,57 +1083,69 @@ export default function LiquidacoesTesourariaPage() {
 
                   <div className="space-y-3">
                     <div className="space-y-1">
-                      <p className="text-sm font-medium">Parcelas incluídas na liquidação</p>
+                      <p className="text-sm font-medium">
+                        {liquidacaoParcelas.length
+                          ? "Parcelas incluídas na liquidação"
+                          : "Encerramento sem baixa de parcelas"}
+                      </p>
                       <p className="text-sm text-muted-foreground">
-                        Confirme os comprovantes de pagamento das parcelas abaixo antes de
-                        registrar a liquidação.
+                        {liquidacaoParcelas.length
+                          ? "Confirme os comprovantes de pagamento das parcelas abaixo antes de registrar a liquidação."
+                          : "Este registro apenas encerrará o contrato. Não há parcelas aptas para baixa neste momento."}
                       </p>
                     </div>
-                    <div className="overflow-hidden rounded-xl border border-border/60">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-border/60 bg-muted/20">
-                            <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                              Parcela
-                            </th>
-                            <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                              Referência
-                            </th>
-                            <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                              Vencimento
-                            </th>
-                            <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                              Valor
-                            </th>
-                            <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                              Status
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {liquidacaoParcelas.map((parcela) => (
-                            <tr
-                              key={`${liquidarState.row.contrato_id ?? liquidarState.row.id}-${parcela.id}-${parcela.referencia_mes}`}
-                              className="border-b border-border/40 last:border-0 hover:bg-white/3"
-                            >
-                              <td className="px-4 py-3 font-medium">Parcela {parcela.numero}</td>
-                              <td className="px-4 py-3 text-muted-foreground">
-                                {formatMonthYear(parcela.referencia_mes)}
-                              </td>
-                              <td className="px-4 py-3 text-muted-foreground">
-                                {formatDate(parcela.data_vencimento)}
-                              </td>
-                              <td className="px-4 py-3 font-semibold">
-                                {formatCurrency(parcela.valor)}
-                              </td>
-                              <td className="px-4 py-3">
-                                <StatusBadge status={parcela.status} />
-                              </td>
+                    {liquidacaoParcelas.length ? (
+                      <div className="overflow-hidden rounded-xl border border-border/60">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b border-border/60 bg-muted/20">
+                              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Parcela
+                              </th>
+                              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Referência
+                              </th>
+                              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Vencimento
+                              </th>
+                              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Valor
+                              </th>
+                              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Status
+                              </th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody>
+                            {liquidacaoParcelas.map((parcela) => (
+                              <tr
+                                key={`${liquidarState.row.contrato_id ?? liquidarState.row.id}-${parcela.id}-${parcela.referencia_mes}`}
+                                className="border-b border-border/40 last:border-0 hover:bg-white/3"
+                              >
+                                <td className="px-4 py-3 font-medium">Parcela {parcela.numero}</td>
+                                <td className="px-4 py-3 text-muted-foreground">
+                                  {formatMonthYear(parcela.referencia_mes)}
+                                </td>
+                                <td className="px-4 py-3 text-muted-foreground">
+                                  {formatDate(parcela.data_vencimento)}
+                                </td>
+                                <td className="px-4 py-3 font-semibold">
+                                  {formatCurrency(parcela.valor)}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <StatusBadge status={parcela.status} />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+                        Nenhuma parcela será baixada nesta operação. O comprovante anexado
+                        documenta apenas o encerramento e a inativação do contrato.
+                      </div>
+                    )}
                   </div>
                 </div>
 

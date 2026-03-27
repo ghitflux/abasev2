@@ -18,14 +18,19 @@ from rest_framework.exceptions import ValidationError
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Contrato
 
+from .duplicidade import DuplicidadeFinanceiraService
 from .legacy import LegacyPagamentoSnapshot, list_legacy_pagamento_snapshots
 from .manual_return_conflicts import (
-    promote_pagamento_to_return,
-    should_promote_manual_pagamento_to_return,
     should_skip_legacy_manual_snapshot,
 )
 from .matching import find_associado
-from .models import ArquivoRetorno, ArquivoRetornoItem, ImportacaoLog, PagamentoMensalidade
+from .models import (
+    ArquivoRetorno,
+    ArquivoRetornoItem,
+    DuplicidadeFinanceira,
+    ImportacaoLog,
+    PagamentoMensalidade,
+)
 from .parsers import ETIPITxtRetornoParser, normalize_lines
 from .reconciliacao import MotorReconciliacao
 from .validators import ArquivoRetornoValidator
@@ -199,6 +204,7 @@ class ArquivoRetornoService:
                 "baixa_efetuada": 0,
                 "nao_descontado": 0,
                 "pendencias_manuais": 0,
+                "duplicidades": 0,
                 "nao_encontrado": 0,
                 "erro": 0,
                 "ciclo_aberto": 0,
@@ -245,6 +251,9 @@ class ArquivoRetornoService:
 
         try:
             if arquivo_retorno.itens.exists():
+                DuplicidadeFinanceira.objects.filter(
+                    arquivo_retorno_item__arquivo_retorno=arquivo_retorno
+                ).delete()
                 arquivo_retorno.itens.all().delete()
 
             import_uuid = str(uuid4())
@@ -320,6 +329,7 @@ class ArquivoRetornoService:
                 mensagem=(
                     f"Importação concluída: {resumo_pm['pm_criados']} lançamentos, "
                     f"{resumo_pm['pm_duplicados']} duplicados ignorados, "
+                    f"{resumo_pm['pm_duplicidades_abertas']} conflitos enviados para duplicidade, "
                     f"{resumo_pm['pm_cpfs_duplicados_arquivo']} CPFs duplicados no arquivo consolidados, "
                     f"{resumo_pm['pm_vinculados']} vinculados a associados, "
                     f"{resumo_pm['pm_nao_encontrados']} não encontrados."
@@ -369,7 +379,7 @@ class ArquivoRetornoService:
         criados = 0
         duplicados = 0
         vinculados = 0
-        promovidos_automatico = 0
+        duplicidades_abertas = 0
         contract_ids_to_rebuild: set[int] = set()
         nao_encontrados_list: list[dict] = []
         erros_list: list[dict] = []
@@ -416,6 +426,7 @@ class ArquivoRetornoService:
                     cpf_cnpj=cpf,
                     referencia_month=ref_date,
                 ).first()
+                item_obj = arquivo_retorno.itens.filter(linha_numero=linha).first()
 
                 if existing:
                     # Duplicado: backfill do vínculo se não tiver
@@ -425,19 +436,21 @@ class ArquivoRetornoService:
                         existing.associado = assoc
                         update_fields.append("associado")
                         vinculados += 1
-                    if should_promote_manual_pagamento_to_return(
-                        existing,
-                        return_status_code=status,
-                        return_valor=Decimal(str(valor)) if valor is not None else None,
-                    ):
-                        update_fields.extend(
-                            promote_pagamento_to_return(
-                                existing,
-                                source_file_path=source_path,
-                                import_uuid=import_uuid,
+                    if item_obj is not None and assoc and item_obj.associado_id != assoc.id:
+                        item_obj.associado = assoc
+                        item_obj.save(update_fields=["associado", "updated_at"])
+                    duplicidade = None
+                    if item_obj is not None:
+                        duplicidade, _pagamento_conflict = (
+                            DuplicidadeFinanceiraService.detect_existing_conflict(
+                                item=item_obj,
+                                cpf_cnpj=cpf,
+                                competencia=ref_date,
+                                valor=Decimal(str(valor)) if valor is not None else None,
                             )
                         )
-                        promovidos_automatico += 1
+                    if duplicidade is not None:
+                        duplicidades_abertas += 1
                         if existing.associado_id:
                             contract_ids_to_rebuild.update(
                                 Contrato.objects.filter(associado_id=existing.associado_id).values_list(
@@ -456,6 +469,28 @@ class ArquivoRetornoService:
                     continue
 
                 # Novo lançamento
+                if item_obj is not None and assoc and item_obj.associado_id != assoc.id:
+                    item_obj.associado = assoc
+                    item_obj.save(update_fields=["associado", "updated_at"])
+                if item_obj is not None:
+                    duplicidade, conflito_pagamento = (
+                        DuplicidadeFinanceiraService.detect_existing_conflict(
+                            item=item_obj,
+                            cpf_cnpj=cpf,
+                            competencia=ref_date,
+                            valor=Decimal(str(valor)) if valor is not None else None,
+                        )
+                    )
+                    if duplicidade is not None:
+                        duplicados += 1
+                        if conflito_pagamento and conflito_pagamento.associado_id:
+                            contract_ids_to_rebuild.update(
+                                Contrato.objects.filter(
+                                    associado_id=conflito_pagamento.associado_id
+                                ).values_list("id", flat=True)
+                            )
+                        continue
+
                 pagamento = PagamentoMensalidade(
                     created_by=user,
                     import_uuid=import_uuid,
@@ -494,7 +529,7 @@ class ArquivoRetornoService:
             "pm_criados": criados,
             "pm_duplicados": duplicados,
             "pm_vinculados": vinculados,
-            "pm_promovidos_automatico": promovidos_automatico,
+            "pm_duplicidades_abertas": duplicidades_abertas,
             "pm_nao_encontrados": len(nao_encontrados_list),
             "pm_erros": len(erros_list),
             "pm_cpfs_duplicados_arquivo": 0,

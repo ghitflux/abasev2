@@ -1,26 +1,35 @@
 "use client";
 
 import * as React from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CircleHelpIcon } from "lucide-react";
-import { toast } from "sonner";
 
 import type { EsteiraResumo } from "@/lib/api/types";
-import { apiFetch } from "@/lib/api/client";
-import AdminOverrideConfirmDialog from "@/components/associados/admin-override-confirm-dialog";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import StatusBadge from "@/components/custom/status-badge";
 
 const etapaOptions = ["cadastro", "analise", "coordenacao", "tesouraria", "concluido"];
 const situacaoOptions = ["aguardando", "em_andamento", "pendenciado", "aprovado", "rejeitado"];
 
 type Props = {
-  associadoId: number;
   esteira: EsteiraResumo | null | undefined;
+  onDirtyChange?: (dirty: boolean) => void;
+};
+
+export type AdminEsteiraPendingChanges = {
+  updated_at: string | null;
+  etapa_atual: string;
+  status: string;
+  prioridade: number;
+  observacao: string;
+};
+
+export type AdminEsteiraEditorHandle = {
+  getPendingChanges: () => AdminEsteiraPendingChanges | null;
+  hasPendingChanges: () => boolean;
 };
 
 function AdminEsteiraLabel({
@@ -51,50 +60,85 @@ function AdminEsteiraLabel({
   );
 }
 
-export default function AdminEsteiraEditor({ associadoId, esteira }: Props) {
-  const queryClient = useQueryClient();
-  const [open, setOpen] = React.useState(false);
+function buildEsteiraPayload(
+  draft: {
+    etapa_atual: string;
+    status: string;
+    prioridade: string;
+    observacao: string;
+  },
+  updatedAt?: string | null,
+): AdminEsteiraPendingChanges {
+  return {
+    updated_at: updatedAt ?? null,
+    etapa_atual: draft.etapa_atual,
+    status: draft.status,
+    prioridade: Number(draft.prioridade || 3),
+    observacao: draft.observacao,
+  };
+}
+
+const AdminEsteiraEditor = React.forwardRef<AdminEsteiraEditorHandle, Props>(function AdminEsteiraEditor({
+  esteira,
+  onDirtyChange,
+}: Props, ref) {
+  const resolvedEtapa = esteira?.etapa_atual || "analise";
+  const resolvedStatus = esteira?.status || "aguardando";
+  const resolvedPrioridade = String(esteira?.prioridade ?? 3);
   const [draft, setDraft] = React.useState({
-    etapa_atual: esteira?.etapa_atual || "analise",
-    status: esteira?.status || "aguardando",
-    prioridade: String(esteira?.prioridade ?? 3),
-    observacao: "",
+    etapa_atual: resolvedEtapa,
+    status: resolvedStatus,
+    prioridade: resolvedPrioridade,
+    observacao: esteira?.observacao || "",
   });
 
   React.useEffect(() => {
     setDraft({
-      etapa_atual: esteira?.etapa_atual || "analise",
-      status: esteira?.status || "aguardando",
-      prioridade: String(esteira?.prioridade ?? 3),
-      observacao: "",
+      etapa_atual: resolvedEtapa,
+      status: resolvedStatus,
+      prioridade: resolvedPrioridade,
+      observacao: esteira?.observacao || "",
     });
-  }, [esteira]);
+  }, [esteira?.observacao, resolvedEtapa, resolvedPrioridade, resolvedStatus]);
 
-  const mutation = useMutation({
-    mutationFn: async (motivo: string) =>
-      apiFetch(`admin-overrides/associados/${associadoId}/esteira/status/`, {
-        method: "POST",
-        body: {
-          updated_at: esteira?.updated_at ?? null,
-          motivo,
-          etapa_atual: draft.etapa_atual,
-          status: draft.status,
-          prioridade: Number(draft.prioridade || 3),
-          observacao: draft.observacao,
+  const initialPayload = React.useMemo(
+    () =>
+      buildEsteiraPayload(
+        {
+          etapa_atual: resolvedEtapa,
+          status: resolvedStatus,
+          prioridade: resolvedPrioridade,
+          observacao: esteira?.observacao || "",
         },
-      }),
-    onSuccess: async () => {
-      toast.success("Esteira atualizada.");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["associado", associadoId] }),
-        queryClient.invalidateQueries({ queryKey: ["admin-associado-editor", associadoId] }),
-        queryClient.invalidateQueries({ queryKey: ["admin-associado-history", associadoId] }),
-      ]);
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao atualizar a esteira.");
-    },
-  });
+        esteira?.updated_at,
+      ),
+    [esteira?.observacao, esteira?.updated_at, resolvedEtapa, resolvedPrioridade, resolvedStatus],
+  );
+  const currentPayload = React.useMemo(
+    () => buildEsteiraPayload(draft, esteira?.updated_at),
+    [draft, esteira?.updated_at],
+  );
+  const isDirty = React.useMemo(
+    () => JSON.stringify(initialPayload) !== JSON.stringify(currentPayload),
+    [currentPayload, initialPayload],
+  );
+
+  React.useEffect(() => {
+    onDirtyChange?.(isDirty);
+  }, [isDirty, onDirtyChange]);
+
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      getPendingChanges() {
+        return isDirty ? currentPayload : null;
+      },
+      hasPendingChanges() {
+        return isDirty;
+      },
+    }),
+    [currentPayload, isDirty],
+  );
 
   if (!esteira) {
     return null;
@@ -105,9 +149,7 @@ export default function AdminEsteiraEditor({ associadoId, esteira }: Props) {
       <Card className="mb-4 rounded-[1.5rem] border-primary/20 bg-primary/5">
       <CardHeader className="flex flex-row items-center justify-between gap-3">
         <CardTitle className="text-base">Override da Esteira</CardTitle>
-        <Button type="button" variant="outline" onClick={() => setOpen(true)}>
-          Salvar etapa
-        </Button>
+        {isDirty ? <StatusBadge status="pendente" label="Esteira pendente" /> : <StatusBadge status="ativo" label="Sem alterações" />}
       </CardHeader>
       <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="space-y-2">
@@ -162,26 +204,11 @@ export default function AdminEsteiraEditor({ associadoId, esteira }: Props) {
           />
         </div>
       </CardContent>
-
-      <AdminOverrideConfirmDialog
-        open={open}
-        onOpenChange={setOpen}
-        title="Salvar override da esteira"
-        description="A etapa e a situação do associado serão ajustadas manualmente."
-        summary={
-          <div className="grid gap-2 text-sm">
-            <p>Etapa: <span className="font-medium text-foreground">{draft.etapa_atual}</span></p>
-            <p>Situação: <span className="font-medium text-foreground">{draft.status}</span></p>
-            <p>Prioridade: <span className="font-medium text-foreground">{draft.prioridade}</span></p>
-          </div>
-        }
-        submitLabel="Salvar esteira"
-        isSubmitting={mutation.isPending}
-        onConfirm={async (motivo) => {
-          await mutation.mutateAsync(motivo);
-        }}
-      />
       </Card>
     </TooltipProvider>
   );
-}
+});
+
+AdminEsteiraEditor.displayName = "AdminEsteiraEditor";
+
+export default AdminEsteiraEditor;

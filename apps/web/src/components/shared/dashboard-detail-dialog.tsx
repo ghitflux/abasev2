@@ -25,6 +25,13 @@ type DashboardDetailDialogProps<T extends { id: number | string }> = {
   isLoading?: boolean;
   searchPlaceholder?: string;
   matchesSearch?: (row: T, search: string) => boolean;
+  searchValue?: string;
+  onSearchValueChange?: (value: string) => void;
+  currentPage?: number;
+  totalPages?: number;
+  onPageChange?: (page: number) => void;
+  pageSize?: number;
+  onExport?: (format: "csv" | "pdf" | "excel") => void | Promise<void>;
 };
 
 export default function DashboardDetailDialog<T extends { id: number | string }>({
@@ -41,14 +48,25 @@ export default function DashboardDetailDialog<T extends { id: number | string }>
   isLoading = false,
   searchPlaceholder = "Buscar por nome, CPF, matricula ou contrato",
   matchesSearch,
+  searchValue,
+  onSearchValueChange,
+  currentPage,
+  totalPages,
+  onPageChange,
+  pageSize = 10,
+  onExport,
 }: DashboardDetailDialogProps<T>) {
-  const [search, setSearch] = React.useState("");
+  const [internalSearch, setInternalSearch] = React.useState("");
+  const isControlledSearch =
+    searchValue !== undefined && onSearchValueChange !== undefined;
+  const search = isControlledSearch ? searchValue : internalSearch;
+  const setSearch = isControlledSearch ? onSearchValueChange : setInternalSearch;
 
   React.useEffect(() => {
     if (!open) {
       setSearch("");
     }
-  }, [open]);
+  }, [open, setSearch]);
 
   const filteredRows = React.useMemo(() => {
     const normalized = search.trim().toLowerCase();
@@ -87,7 +105,9 @@ export default function DashboardDetailDialog<T extends { id: number | string }>
           </div>
           <ExportButton
             onExport={(format) =>
-              exportRows(format, exportTitle, exportFilename, exportColumns, filteredRows)
+              onExport
+                ? onExport(format)
+                : exportRows(format, exportTitle, exportFilename, exportColumns, filteredRows)
             }
           />
         </div>
@@ -97,8 +117,11 @@ export default function DashboardDetailDialog<T extends { id: number | string }>
             columns={columns}
             data={filteredRows}
             emptyMessage={emptyMessage}
-            pageSize={10}
+            pageSize={pageSize}
             pageSizeOptions={[10, 20, 50]}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            onPageChange={onPageChange}
             loading={isLoading}
             skeletonRows={8}
           />

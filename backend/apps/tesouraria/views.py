@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from django.db.models import Prefetch, Q
 from django.utils import timezone
@@ -46,8 +46,11 @@ from .serializers import (
     DevolucaoContratoListSerializer,
     DevolucaoKpisSerializer,
     DespesaAnexarSerializer,
+    DespesaCategoriaSugestaoSerializer,
     DespesaKpisSerializer,
     DespesaListSerializer,
+    DespesaResultadoMensalDetalheSerializer,
+    DespesaResultadoMensalSerializer,
     DespesaWriteSerializer,
     DarBaixaManualSerializer,
     EfetivarContratoSerializer,
@@ -76,6 +79,15 @@ def parse_month_filter(value: str | None):
         return None
     try:
         return datetime.strptime(value, "%Y-%m").date().replace(day=1)
+    except ValueError:
+        return None
+
+
+def parse_date_filter(value: str | None):
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
     except ValueError:
         return None
 
@@ -452,6 +464,20 @@ class LiquidacaoContratoViewSet(mixins.ListModelMixin, GenericViewSet):
     pagination_class = StandardResultsSetPagination
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="status", type=OpenApiTypes.STR),
+            OpenApiParameter(name="search", type=OpenApiTypes.STR),
+            OpenApiParameter(name="competencia", type=OpenApiTypes.DATE),
+            OpenApiParameter(name="estado", type=OpenApiTypes.STR),
+            OpenApiParameter(name="contract_id", type=OpenApiTypes.INT),
+            OpenApiParameter(name="agente", type=OpenApiTypes.STR),
+            OpenApiParameter(name="status_associado", type=OpenApiTypes.STR),
+            OpenApiParameter(name="etapa_fluxo", type=OpenApiTypes.STR),
+            OpenApiParameter(name="data_inicio", type=OpenApiTypes.DATE),
+            OpenApiParameter(name="data_fim", type=OpenApiTypes.DATE),
+        ]
+    )
     def list(self, request, *args, **kwargs):  # noqa: A003
         competencia = parse_month_filter(request.query_params.get("competencia"))
         payload = LiquidacaoContratoService.listar(
@@ -464,6 +490,13 @@ class LiquidacaoContratoViewSet(mixins.ListModelMixin, GenericViewSet):
                 if (request.query_params.get("contract_id") or "").isdigit()
                 else None
             ),
+            agente=(request.query_params.get("agente") or "").strip() or None,
+            status_associado=(
+                (request.query_params.get("status_associado") or "").strip() or None
+            ),
+            etapa_fluxo=(request.query_params.get("etapa_fluxo") or "").strip() or None,
+            data_inicio=parse_date_filter(request.query_params.get("data_inicio")),
+            data_fim=parse_date_filter(request.query_params.get("data_fim")),
         )
         page = self.paginate_queryset(payload.rows)
         serializer = self.get_serializer(page if page is not None else payload.rows, many=True)
@@ -577,6 +610,7 @@ class DevolucaoContratoViewSet(mixins.ListModelMixin, GenericViewSet):
                 if (request.query_params.get("contract_id") or "").isdigit()
                 else None
             ),
+            fluxo=(request.query_params.get("fluxo") or "").strip() or None,
         )
         page = self.paginate_queryset(payload.rows)
         serializer = self.get_serializer(page if page is not None else payload.rows, many=True)
@@ -645,6 +679,7 @@ class DevolucaoAssociadoViewSet(mixins.ListModelMixin, GenericViewSet):
                 if (request.query_params.get("contract_id") or "").isdigit()
                 else None
             ),
+            fluxo=(request.query_params.get("fluxo") or "").strip() or None,
         )
         page = self.paginate_queryset(payload.rows)
         serializer = self.get_serializer(page if page is not None else payload.rows, many=True)
@@ -777,6 +812,30 @@ class DespesaViewSet(ModelViewSet):
         payload.is_valid(raise_exception=True)
         despesa = DespesaService.anexar(self.get_object(), payload.validated_data["anexo"])
         serializer = DespesaListSerializer(despesa, context=self.get_serializer_context())
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="categorias")
+    def categorias(self, request):
+        payload = DespesaService.sugerir_categorias(
+            (request.query_params.get("search") or "").strip() or None
+        )
+        serializer = DespesaCategoriaSugestaoSerializer(payload, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="resultado-mensal")
+    def resultado_mensal(self, request):
+        competencia_param = request.query_params.get("competencia")
+        competencia = parse_competencia(competencia_param) if competencia_param else None
+        payload = DespesaService.resultado_mensal(competencia=competencia)
+        serializer = DespesaResultadoMensalSerializer(payload)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"], url_path="resultado-mensal/detalhe")
+    def resultado_mensal_detalhe(self, request):
+        mes_param = request.query_params.get("mes")
+        mes = parse_competencia(mes_param) if mes_param else timezone.localdate().replace(day=1)
+        payload = DespesaService.resultado_mensal_detalhe(mes=mes)
+        serializer = DespesaResultadoMensalDetalheSerializer(payload)
         return Response(serializer.data)
 
     def destroy(self, request, *args, **kwargs):

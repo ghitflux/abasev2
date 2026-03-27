@@ -291,6 +291,145 @@ class AdminOverrideApiTestCase(TestCase):
             ).exists()
         )
 
+    def test_admin_can_save_all_pending_blocks_in_single_request(self):
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",
+            {
+                "motivo": "Ajuste administrativo consolidado",
+                "contratos": [
+                    {
+                        "id": self.contrato.id,
+                        "core": {
+                            "updated_at": self.contrato.updated_at.isoformat(),
+                            "status": Contrato.Status.ENCERRADO,
+                            "valor_liquido": "1400.00",
+                        },
+                        "cycles": {
+                            "updated_at": self.contrato.updated_at.isoformat(),
+                            "cycles": [
+                                {
+                                    "id": self.ciclo.id,
+                                    "numero": 1,
+                                    "data_inicio": "2026-01-01",
+                                    "data_fim": "2026-03-01",
+                                    "status": "aberto",
+                                    "valor_total": "900.00",
+                                }
+                            ],
+                            "parcelas": [
+                                {
+                                    "id": self.parcela_jan.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 1,
+                                    "referencia_mes": "2026-01-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-01-05",
+                                    "status": "descontado",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_fev.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 2,
+                                    "referencia_mes": "2026-02-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-02-10",
+                                    "status": "em_previsao",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_mar.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 3,
+                                    "referencia_mes": "2026-03-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-03-05",
+                                    "status": "em_previsao",
+                                    "layout_bucket": "cycle",
+                                },
+                            ],
+                        },
+                    }
+                ],
+                "esteira": {
+                    "updated_at": self.esteira.updated_at.isoformat(),
+                    "etapa_atual": EsteiraItem.Etapa.COORDENACAO,
+                    "status": EsteiraItem.Situacao.EM_ANDAMENTO,
+                    "prioridade": 2,
+                    "observacao": "Reclassificado no mesmo salvamento",
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.contrato.refresh_from_db()
+        self.parcela_fev.refresh_from_db()
+        self.esteira.refresh_from_db()
+        self.assertEqual(self.contrato.status, Contrato.Status.ENCERRADO)
+        self.assertEqual(self.contrato.valor_liquido, Decimal("1400.00"))
+        self.assertEqual(self.parcela_fev.data_vencimento, date(2026, 2, 10))
+        self.assertEqual(self.esteira.etapa_atual, EsteiraItem.Etapa.COORDENACAO)
+        self.assertEqual(self.esteira.status, EsteiraItem.Situacao.EM_ANDAMENTO)
+        self.assertEqual(
+            AdminOverrideEvent.objects.filter(
+                associado=self.associado,
+                escopo=AdminOverrideEvent.Scope.CONTRATO,
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            AdminOverrideEvent.objects.filter(
+                associado=self.associado,
+                escopo=AdminOverrideEvent.Scope.CICLOS,
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            AdminOverrideEvent.objects.filter(
+                associado=self.associado,
+                escopo=AdminOverrideEvent.Scope.ESTEIRA,
+            ).count(),
+            1,
+        )
+
+    def test_admin_save_all_aborts_everything_on_conflict(self):
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",
+            {
+                "motivo": "Tentativa com versao desatualizada",
+                "contratos": [
+                    {
+                        "id": self.contrato.id,
+                        "core": {
+                            "updated_at": "2020-01-01T00:00:00Z",
+                            "status": Contrato.Status.ENCERRADO,
+                        },
+                    }
+                ],
+                "esteira": {
+                    "updated_at": self.esteira.updated_at.isoformat(),
+                    "etapa_atual": EsteiraItem.Etapa.COORDENACAO,
+                    "status": EsteiraItem.Situacao.EM_ANDAMENTO,
+                    "prioridade": 1,
+                    "observacao": "Nao deve persistir",
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 409, response.json())
+        self.contrato.refresh_from_db()
+        self.esteira.refresh_from_db()
+        self.assertEqual(self.contrato.status, Contrato.Status.ATIVO)
+        self.assertEqual(self.esteira.etapa_atual, EsteiraItem.Etapa.ANALISE)
+        self.assertFalse(
+            AdminOverrideEvent.objects.filter(
+                associado=self.associado,
+                motivo="Tentativa com versao desatualizada",
+            ).exists()
+        )
+
     def test_admin_can_version_document_and_keep_history(self):
         response = self.admin_client.post(
             f"/api/v1/admin-overrides/documentos/{self.documento.id}/versionar/",

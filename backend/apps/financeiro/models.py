@@ -33,7 +33,7 @@ class Despesa(BaseModel):
         related_name="despesas",
     )
     categoria = models.CharField(max_length=100)
-    descricao = models.CharField(max_length=255)
+    descricao = models.CharField(max_length=255, blank=True)
     valor = models.DecimalField(max_digits=15, decimal_places=2)
     data_despesa = models.DateField()
     data_pagamento = models.DateField(null=True, blank=True)

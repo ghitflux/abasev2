@@ -1,5 +1,6 @@
 import * as React from "react";
 import { render, screen } from "@testing-library/react";
+import { useQuery } from "@tanstack/react-query";
 
 import AppSidebar from "@/components/layout/app-sidebar";
 
@@ -39,6 +40,11 @@ jest.mock("@/lib/navigation", () => ({
               href: "/tesouraria/refinanciamentos",
               icon: () => <svg data-testid="icon-renovacoes" />,
             },
+            {
+              title: "Devoluções",
+              href: "/tesouraria/devolucoes",
+              icon: () => <svg data-testid="icon-devolucoes" />,
+            },
           ],
         },
       ],
@@ -53,6 +59,8 @@ jest.mock("@/hooks/use-permissions", () => ({
     user: { full_name: "Maria Souza" },
   }),
 }));
+
+const mockedUseQuery = jest.mocked(useQuery);
 
 jest.mock("@/providers/route-transition-provider", () => ({
   useRouteTransition: () => ({
@@ -141,6 +149,30 @@ jest.mock("@/components/ui/sidebar", () => {
 });
 
 describe("AppSidebar", () => {
+  beforeEach(() => {
+    mockedUseQuery.mockImplementation(({ queryKey }) => {
+      if (Array.isArray(queryKey) && queryKey[0] === "tesouraria-duplicidades-sidebar") {
+        return {
+          data: {
+            count: 3,
+            next: null,
+            previous: null,
+            results: [],
+            kpis: {
+              total: 3,
+              abertas: 3,
+              em_tratamento: 0,
+              resolvidas: 0,
+              descartadas: 0,
+            },
+          },
+        } as never;
+      }
+
+      return { data: undefined } as never;
+    });
+  });
+
   it("mantém o logo sem compressão e marca o item ativo com animação de slide", () => {
     render(<AppSidebar />);
 
@@ -154,5 +186,12 @@ describe("AppSidebar", () => {
     expect(activeParent).toHaveClass("translate-x-1");
     expect(activeChild).toHaveAttribute("data-route-subtitle", "active");
     expect(activeChild).toHaveClass("translate-x-1");
+  });
+
+  it("exibe badge de duplicidades abertas na rota de devolucoes", () => {
+    render(<AppSidebar />);
+
+    expect(screen.getByText("Devoluções")).toBeInTheDocument();
+    expect(screen.getByText("3")).toBeInTheDocument();
   });
 });

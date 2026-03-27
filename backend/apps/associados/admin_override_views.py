@@ -13,6 +13,7 @@ from apps.contratos.models import Ciclo, Contrato
 from apps.refinanciamento.models import Comprovante, Refinanciamento
 
 from .admin_override_serializers import (
+    AdminOverrideSaveAllWriteSerializer,
     AdminOverrideEditorPayloadSerializer,
     AdminOverrideEventReadSerializer,
     AdminOverrideReverterWriteSerializer,
@@ -114,6 +115,26 @@ class AdminOverrideAssociadoViewSet(GenericViewSet):
         except AdminOverrideConflict as exc:
             return _conflict_response(exc)
         payload = AdminOverrideService.build_associado_editor_payload(associado)
+        return Response(AdminOverrideEditorPayloadSerializer(payload).data)
+
+    @extend_schema(
+        request=AdminOverrideSaveAllWriteSerializer,
+        responses=AdminOverrideEditorPayloadSerializer,
+        operation_id="admin_override_associado_save_all",
+    )
+    @action(detail=True, methods=["post"], url_path="save-all")
+    def save_all(self, request, pk=None):
+        associado = self.get_object()
+        serializer = AdminOverrideSaveAllWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            payload = AdminOverrideService.apply_save_all(
+                associado=associado,
+                payload=serializer.validated_data,
+                user=request.user,
+            )
+        except AdminOverrideConflict as exc:
+            return _conflict_response(exc)
         return Response(AdminOverrideEditorPayloadSerializer(payload).data)
 
 

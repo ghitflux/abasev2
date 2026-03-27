@@ -4,6 +4,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter
 from rest_framework import mixins, permissions, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
@@ -17,6 +19,7 @@ from core.pagination import StandardResultsSetPagination
 from .mobile_legacy_auth import build_password_reset_request, consume_password_reset_token
 from .models import PasswordResetRequest, Role, User
 from .permissions import IsCoordenadorOrAdmin
+from .services import ComissaoService
 from .serializers import (
     AdminUserCreateSerializer,
     AdminUserAccessUpdateSerializer,
@@ -26,6 +29,10 @@ from .serializers import (
     LogoutSerializer,
     PasswordResetRequestSerializer,
     PasswordResetResultSerializer,
+    ConfiguracaoComissaoAgenteResetSerializer,
+    ConfiguracaoComissaoAgentesWriteSerializer,
+    ConfiguracaoComissaoGlobalWriteSerializer,
+    ConfiguracaoComissaoPayloadSerializer,
     RefreshSerializer,
     SelfServiceForgotPasswordSerializer,
     SelfServiceRegisterSerializer,
@@ -372,3 +379,89 @@ class AdminUserViewSet(
             "available_roles": available_roles,
         }
         return AdminUsersMetaSerializer(data).data
+
+
+class ConfiguracaoComissaoViewSet(viewsets.ViewSet):
+    permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrAdmin]
+    serializer_class = ConfiguracaoComissaoPayloadSerializer
+
+    @extend_schema(responses={200: ConfiguracaoComissaoPayloadSerializer})
+    def list(self, request):
+        payload = ComissaoService.build_settings_payload()
+        return Response(
+            ConfiguracaoComissaoPayloadSerializer(
+                payload,
+                context={"request": request},
+            ).data
+        )
+
+    @extend_schema(
+        request=ConfiguracaoComissaoGlobalWriteSerializer,
+        responses={200: ConfiguracaoComissaoPayloadSerializer},
+    )
+    @action(detail=False, methods=["post"], url_path="global")
+    @transaction.atomic
+    def aplicar_global(self, request):
+        serializer = ConfiguracaoComissaoGlobalWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = ComissaoService.aplicar_percentual_global(
+            percentual=serializer.validated_data["percentual"],
+            motivo=serializer.validated_data.get("motivo", ""),
+            user=request.user,
+        )
+        return Response(
+            ConfiguracaoComissaoPayloadSerializer(
+                payload,
+                context={"request": request},
+            ).data
+        )
+
+    @extend_schema(
+        request=ConfiguracaoComissaoAgentesWriteSerializer,
+        responses={200: ConfiguracaoComissaoPayloadSerializer},
+    )
+    @action(detail=False, methods=["post"], url_path="agentes")
+    @transaction.atomic
+    def aplicar_agentes(self, request):
+        serializer = ConfiguracaoComissaoAgentesWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = ComissaoService.aplicar_percentual_agentes(
+            agente_ids=serializer.validated_data["agentes"],
+            percentual=serializer.validated_data["percentual"],
+            motivo=serializer.validated_data.get("motivo", ""),
+            user=request.user,
+        )
+        return Response(
+            ConfiguracaoComissaoPayloadSerializer(
+                payload,
+                context={"request": request},
+            ).data
+        )
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.PATH,
+            )
+        ],
+        request=ConfiguracaoComissaoAgenteResetSerializer,
+        responses={200: ConfiguracaoComissaoPayloadSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="remover-override")
+    @transaction.atomic
+    def remover_override(self, request, pk=None):
+        serializer = ConfiguracaoComissaoAgenteResetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        payload = ComissaoService.remover_override_agente(
+            agente_id=int(pk),
+            motivo=serializer.validated_data.get("motivo", ""),
+            user=request.user,
+        )
+        return Response(
+            ConfiguracaoComissaoPayloadSerializer(
+                payload,
+                context={"request": request},
+            ).data
+        )

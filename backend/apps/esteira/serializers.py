@@ -111,7 +111,11 @@ class PendenciaSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_contrato_codigo(self, obj: Pendencia):
-        contrato = obj.esteira_item.associado.contratos.order_by("-created_at").first()
+        cached = getattr(obj.esteira_item.associado, "_prefetched_objects_cache", {}).get("contratos")
+        if cached is not None:
+            contrato = max(cached, key=lambda item: (item.created_at, item.id), default=None)
+        else:
+            contrato = obj.esteira_item.associado.contratos.order_by("-created_at").first()
         return contrato.codigo if contrato else None
 
     def get_matricula(self, obj: Pendencia) -> str:
@@ -156,6 +160,7 @@ class EsteiraListSerializer(serializers.ModelSerializer):
         source="associado.agente_responsavel",
         read_only=True,
     )
+    analista_responsavel = EsteiraSimpleUserSerializer(read_only=True)
     orgao_publico = serializers.SerializerMethodField()
     documentos_count = serializers.SerializerMethodField()
     acoes_disponiveis = serializers.SerializerMethodField()
@@ -177,6 +182,7 @@ class EsteiraListSerializer(serializers.ModelSerializer):
             "contato_web",
             "termos_web",
             "agente",
+            "analista_responsavel",
             "orgao_publico",
             "documentos_count",
             "acoes_disponiveis",
@@ -186,6 +192,9 @@ class EsteiraListSerializer(serializers.ModelSerializer):
         ]
 
     def _get_contrato(self, obj: EsteiraItem):
+        cached = getattr(obj.associado, "_prefetched_objects_cache", {}).get("contratos")
+        if cached is not None:
+            return max(cached, key=lambda item: (item.created_at, item.id), default=None)
         return obj.associado.contratos.order_by("-created_at").first()
 
     @extend_schema_field(ContratoEsteiraSerializer(allow_null=True))

@@ -117,6 +117,9 @@ const ROUTE_SEARCH_ALIASES: Partial<Record<string, string[]>> = {
     "devoluções",
     "devolucoes ao associado",
     "devolucao",
+    "duplicidade",
+    "duplicidades",
+    "duplicidade financeira",
     "desconto indevido",
     "pagamento indevido",
   ],
@@ -131,6 +134,13 @@ const ROUTE_SEARCH_ALIASES: Partial<Record<string, string[]>> = {
   ],
   "/relatorios": ["relatorios", "exportacoes"],
   "/configuracoes/usuarios": ["usuarios", "configuracoes usuarios", "gestao de usuarios"],
+  "/configuracoes/comissoes": [
+    "comissoes",
+    "comissões",
+    "configuracoes comissoes",
+    "configurações comissões",
+    "repasse de agentes",
+  ],
 };
 
 function isAgentAssociadoDetailPath(pathname: string) {
@@ -142,7 +152,10 @@ function isCoordenadorAssociadosPath(pathname: string) {
 }
 
 function isCoordenadorUserManagementPath(pathname: string) {
-  return matchesPathPrefix(pathname, "/configuracoes/usuarios");
+  return matchesAnyPathPrefix(pathname, [
+    "/configuracoes/usuarios",
+    "/configuracoes/comissoes",
+  ]);
 }
 
 function isTesoureiroPagamentosPath(pathname: string) {
@@ -349,6 +362,12 @@ export const navigationSections: NavigationSection[] = [
             title: "Usuários",
             href: "/configuracoes/usuarios",
             icon: Users,
+            roles: ["ADMIN", "COORDENADOR"],
+          },
+          {
+            title: "Comissões",
+            href: "/configuracoes/comissoes",
+            icon: HandCoins,
             roles: ["ADMIN", "COORDENADOR"],
           },
         ],

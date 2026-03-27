@@ -24,6 +24,10 @@ import type {
   SimpleUser,
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
+import {
+  dashboardOptionsQueryOptions,
+  dashboardRetainedQueryOptions,
+} from "@/lib/dashboard-query";
 import { formatDateValue, parseDateValue } from "@/lib/date-value";
 import { formatCurrency, formatMetricDelta, formatMonthYear } from "@/lib/formatters";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
@@ -274,6 +278,7 @@ function AssociadosPageContent() {
   const agentesQuery = useQuery({
     queryKey: ["associados-agentes"],
     queryFn: () => apiFetch<SimpleUser[]>("associados/agentes"),
+    ...dashboardOptionsQueryOptions,
   });
 
   const baseQueryFilters = React.useMemo(
@@ -295,6 +300,7 @@ function AssociadosPageContent() {
       apiFetch<AssociadoMetricas>("associados/metricas", {
         query: baseQueryFilters,
       }),
+    ...dashboardRetainedQueryOptions,
   });
 
   const associadosQuery = useQuery({
@@ -308,6 +314,7 @@ function AssociadosPageContent() {
           status: filters.status || undefined,
         },
       }),
+    ...dashboardRetainedQueryOptions,
   });
 
   const detailRowsQuery = useQuery({
@@ -322,6 +329,7 @@ function AssociadosPageContent() {
           status: detailMetric ? METRIC_STATUS_QUERY[detailMetric] : undefined,
         },
       }),
+    ...dashboardRetainedQueryOptions,
   });
 
   const metricas = metricasQuery.data;

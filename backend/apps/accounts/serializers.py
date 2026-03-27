@@ -173,6 +173,49 @@ class AdminUsersMetaSerializer(serializers.Serializer):
     available_roles = AvailableRoleSerializer(many=True)
 
 
+class ConfiguracaoComissaoGlobalSerializer(serializers.Serializer):
+    percentual = serializers.DecimalField(max_digits=6, decimal_places=2)
+    vigente_desde = serializers.DateTimeField(allow_null=True)
+    updated_by = UserSerializer(allow_null=True)
+    motivo = serializers.CharField(allow_blank=True)
+
+
+class ConfiguracaoComissaoAgenteSerializer(serializers.Serializer):
+    agente_id = serializers.IntegerField()
+    agente_nome = serializers.CharField()
+    agente_email = serializers.EmailField()
+    percentual_efetivo = serializers.DecimalField(max_digits=6, decimal_places=2)
+    percentual_override = serializers.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        allow_null=True,
+    )
+    possui_override = serializers.BooleanField()
+
+
+class ConfiguracaoComissaoPayloadSerializer(serializers.Serializer):
+    global_config = ConfiguracaoComissaoGlobalSerializer(source="global")
+    agentes = ConfiguracaoComissaoAgenteSerializer(many=True)
+
+
+class ConfiguracaoComissaoGlobalWriteSerializer(serializers.Serializer):
+    percentual = serializers.DecimalField(max_digits=6, decimal_places=2)
+    motivo = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class ConfiguracaoComissaoAgentesWriteSerializer(serializers.Serializer):
+    agentes = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+    )
+    percentual = serializers.DecimalField(max_digits=6, decimal_places=2)
+    motivo = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class ConfiguracaoComissaoAgenteResetSerializer(serializers.Serializer):
+    motivo = serializers.CharField(required=False, allow_blank=True, default="")
+
+
 class AdminUserCreateSerializer(serializers.Serializer):
     email = serializers.EmailField()
     first_name = serializers.CharField(max_length=150)

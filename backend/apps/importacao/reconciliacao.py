@@ -41,6 +41,7 @@ class MotorReconciliacao:
             "baixa_efetuada": 0,
             "nao_descontado": 0,
             "pendencias_manuais": 0,
+            "duplicidades": 0,
             "nao_encontrado": 0,
             "erro": 0,
             "ciclo_aberto": 0,
@@ -62,6 +63,8 @@ class MotorReconciliacao:
             resultado = outcome["resultado"]
             if resultado == ArquivoRetornoItem.ResultadoProcessamento.PENDENCIA_MANUAL:
                 resumo["pendencias_manuais"] += 1
+            elif resultado == ArquivoRetornoItem.ResultadoProcessamento.DUPLICIDADE:
+                resumo["duplicidades"] += 1
             else:
                 resumo[resultado] += 1
             if outcome["resultado"] == ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA:

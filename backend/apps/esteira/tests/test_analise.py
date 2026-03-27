@@ -242,6 +242,67 @@ class AnaliseViewSetTestCase(TestCase):
         self.assertNotIn(item_outro.id, ids)
         self.assertEqual(len(ids), 1)
 
+    def test_resumo_e_filas_respeitam_filtros_avancados_e_analista_responsavel(self):
+        sem_responsavel = self._create_item(
+            suffix="210",
+            documentos=1,
+            analista=None,
+            agente=self.agente,
+        )
+        meu_item = self._create_item(
+            suffix="211",
+            documentos=1,
+            status=EsteiraItem.Situacao.EM_ANDAMENTO,
+            analista=self.analista,
+            agente=self.agente,
+        )
+        self._create_item(
+            suffix="212",
+            documentos=1,
+            status=EsteiraItem.Situacao.EM_ANDAMENTO,
+            analista=self.outro_analista,
+            agente=self.outro_agente,
+        )
+
+        response = self.analyst_client.get("/api/v1/analise/")
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["filas"]["ver_todos"], 2)
+
+        today = timezone.localdate().isoformat()
+        response = self.admin_client.get(
+            "/api/v1/analise/filas/",
+            {
+                "secao": "ver_todos",
+                "analista": "sem_responsavel",
+                "agente": self.agente.first_name,
+                "etapa": EsteiraItem.Etapa.ANALISE,
+                "data_inicio": today,
+                "data_fim": today,
+                "page_size": 10,
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        rows = response.json()["results"]
+        self.assertEqual([row["id"] for row in rows], [sem_responsavel.id])
+        self.assertIsNone(rows[0]["analista_responsavel"])
+
+        response = self.admin_client.get(
+            "/api/v1/analise/filas/",
+            {
+                "secao": "ver_todos",
+                "analista": str(self.analista.id),
+                "status": EsteiraItem.Situacao.EM_ANDAMENTO,
+                "page_size": 10,
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        rows = response.json()["results"]
+        self.assertEqual([row["id"] for row in rows], [meu_item.id])
+        self.assertEqual(
+            rows[0]["analista_responsavel"]["id"],
+            self.analista.id,
+        )
+
     def test_status_documentacao_fica_completa_quando_ha_anexos_sem_pendencia(self):
         item = self._create_item(suffix="250", documentos=2)
 

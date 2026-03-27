@@ -737,6 +737,88 @@ class AdminOverrideService:
         }
 
     @staticmethod
+    def apply_save_all(
+        *,
+        associado: Associado,
+        payload: dict[str, Any],
+        user,
+    ) -> dict[str, Any]:
+        motivo = str(payload.get("motivo") or "").strip()
+        if not motivo:
+            raise ValidationError("O motivo da alteração é obrigatório.")
+
+        contratos_payload = payload.get("contratos") or []
+        esteira_payload = payload.get("esteira")
+        if not contratos_payload and not esteira_payload:
+            raise ValidationError("Nenhuma alteração pendente foi enviada para salvar.")
+
+        contratos_by_id = {
+            contrato.id: contrato
+            for contrato in associado.contratos.exclude(status=Contrato.Status.CANCELADO)
+            .select_related("agente")
+            .prefetch_related("ciclos__parcelas")
+        }
+        refinanciamentos_by_id = {
+            refinanciamento.id: refinanciamento
+            for refinanciamento in Refinanciamento.objects.filter(
+                associado=associado,
+                deleted_at__isnull=True,
+            ).select_related("contrato_origem")
+        }
+
+        with transaction.atomic():
+            for contract_payload in contratos_payload:
+                contrato = contratos_by_id.get(contract_payload["id"])
+                if contrato is None:
+                    raise ValidationError("Contrato inválido para o associado informado.")
+
+                core_payload = contract_payload.get("core")
+                if core_payload:
+                    contrato = AdminOverrideService.apply_contract_core_override(
+                        contrato=contrato,
+                        payload={**core_payload, "motivo": motivo},
+                        user=user,
+                    )
+                    contratos_by_id[contrato.id] = contrato
+
+                cycles_payload = contract_payload.get("cycles")
+                if cycles_payload:
+                    cycles_updated_at = (
+                        contrato.updated_at.isoformat() if getattr(contrato, "updated_at", None) else None
+                    )
+                    contrato = AdminOverrideService.apply_cycle_layout_override(
+                        contrato=contrato,
+                        payload={
+                            **cycles_payload,
+                            "updated_at": cycles_updated_at or cycles_payload.get("updated_at"),
+                            "motivo": motivo,
+                        },
+                        user=user,
+                    )
+                    contratos_by_id[contrato.id] = contrato
+
+                refinanciamento_payload = contract_payload.get("refinanciamento")
+                if refinanciamento_payload:
+                    refinanciamento = refinanciamentos_by_id.get(refinanciamento_payload["id"])
+                    if refinanciamento is None or refinanciamento.contrato_origem_id != contrato.id:
+                        raise ValidationError("Renovação inválida para o contrato informado.")
+                    AdminOverrideService.apply_refinanciamento_override(
+                        refinanciamento=refinanciamento,
+                        payload={**refinanciamento_payload, "motivo": motivo},
+                        user=user,
+                    )
+
+            if esteira_payload:
+                AdminOverrideService.apply_esteira_override(
+                    associado=associado,
+                    payload={**esteira_payload, "motivo": motivo},
+                    user=user,
+                )
+
+        associado.refresh_from_db()
+        return AdminOverrideService.build_associado_editor_payload(associado)
+
+    @staticmethod
     def build_contract_projection_for_response(contrato: Contrato, *, include_documents: bool = True) -> dict[str, Any]:
         if contrato.admin_manual_layout_enabled:
             return _build_manual_contract_projection(contrato, include_documents=include_documents)

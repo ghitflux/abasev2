@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Role, User
 from apps.associados.models import Associado
 from apps.contratos.models import Ciclo, Contrato, Parcela
-from apps.tesouraria.models import DevolucaoAssociado
+from apps.tesouraria.models import DevolucaoAssociado, LiquidacaoContrato, Pagamento
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
@@ -335,3 +335,80 @@ class DevolucaoAssociadoViewSetTestCase(TestCase):
         self.assertFalse(DevolucaoAssociado.objects.filter(pk=devolucao.pk).exists())
         self.assertIsNotNone(devolucao.revertida_em)
         self.assertIsNotNone(devolucao.deleted_at)
+
+    def test_fluxo_pos_liquidacao_filtra_contratos_e_registra_desistencia(self):
+        associado, contrato, _parcela = self._create_contract_fixture(cpf="77852621374")
+        LiquidacaoContrato.objects.create(
+            contrato=contrato,
+            realizado_por=self.tesoureiro,
+            data_liquidacao=date(2026, 3, 15),
+            valor_total=Decimal("300.00"),
+            comprovante=SimpleUploadedFile(
+                "liquidacao.pdf",
+                b"arquivo",
+                content_type="application/pdf",
+            ),
+            nome_comprovante="liquidacao.pdf",
+            origem_solicitacao=LiquidacaoContrato.OrigemSolicitacao.ADMINISTRACAO,
+            observacao="Encerramento operacional",
+        )
+        Pagamento.objects.create(
+            cadastro=associado,
+            created_by=self.tesoureiro,
+            cpf_cnpj=associado.cpf_cnpj,
+            full_name=associado.nome_completo,
+            agente_responsavel=self.agente.full_name,
+            contrato_codigo=contrato.codigo,
+            valor_pago=Decimal("300.00"),
+            status=Pagamento.Status.PAGO,
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/devolucoes/contratos/",
+            {"fluxo": DevolucaoAssociado.Tipo.DESISTENCIA_POS_LIQUIDACAO},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["count"], 1)
+        row = response.json()["results"][0]
+        self.assertEqual(row["contrato_id"], contrato.id)
+        self.assertEqual(
+            row["tipo_sugerido"],
+            DevolucaoAssociado.Tipo.DESISTENCIA_POS_LIQUIDACAO,
+        )
+
+        response = self.coord_client.post(
+            f"/api/v1/tesouraria/devolucoes/contratos/{contrato.id}/registrar/",
+            {
+                "tipo": DevolucaoAssociado.Tipo.DESISTENCIA_POS_LIQUIDACAO,
+                "data_devolucao": "2026-03-22",
+                "quantidade_parcelas": 1,
+                "valor": "300.00",
+                "motivo": "Cliente desistiu após liquidação e pagamento.",
+                "comprovantes": [
+                    SimpleUploadedFile(
+                        "desistencia.pdf",
+                        b"arquivo",
+                        content_type="application/pdf",
+                    )
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+
+        devolucao = DevolucaoAssociado.objects.get(contrato=contrato)
+        self.assertEqual(
+            devolucao.tipo,
+            DevolucaoAssociado.Tipo.DESISTENCIA_POS_LIQUIDACAO,
+        )
+        self.assertIsNone(devolucao.competencia_referencia)
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/devolucoes/",
+            {"fluxo": DevolucaoAssociado.Tipo.DESISTENCIA_POS_LIQUIDACAO},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["count"], 1)
+        self.assertEqual(
+            response.json()["results"][0]["tipo"],
+            DevolucaoAssociado.Tipo.DESISTENCIA_POS_LIQUIDACAO,
+        )

@@ -259,6 +259,18 @@ class AssociadoListSerializer(serializers.ModelSerializer):
             "ciclos_fechados",
         ]
 
+    def _get_active_contracts(self, obj: Associado):
+        cached = getattr(obj, "_prefetched_objects_cache", {}).get("contratos")
+        if cached is not None:
+            return sorted(
+                [contrato for contrato in cached if contrato.status != "cancelado"],
+                key=lambda contrato: (contrato.created_at, contrato.id),
+                reverse=True,
+            )
+        return list(
+            obj.contratos.exclude(status="cancelado").order_by("-created_at")
+        )
+
     def _contagens_ciclos(self, obj: Associado) -> dict[str, int]:
         cache = self.context.setdefault("_ciclos_cache", {})
         if obj.id not in cache:
@@ -272,10 +284,7 @@ class AssociadoListSerializer(serializers.ModelSerializer):
         return self._contagens_ciclos(obj)["ciclos_fechados"]
 
     def get_status_renovacao(self, obj: Associado) -> str:
-        contratos = list(
-            obj.contratos.exclude(status="cancelado").order_by("-created_at")
-        )
-        for contrato in contratos:
+        for contrato in self._get_active_contracts(obj):
             status = str(build_contract_cycle_projection(contrato)["status_renovacao"])
             if status:
                 return status
@@ -290,13 +299,13 @@ class AssociadoListSerializer(serializers.ModelSerializer):
     def get_possui_meses_nao_descontados(self, obj: Associado) -> bool:
         return any(
             bool(build_contract_cycle_projection(contrato)["possui_meses_nao_descontados"])
-            for contrato in obj.contratos.exclude(status="cancelado")
+            for contrato in self._get_active_contracts(obj)
         )
 
     def get_meses_nao_descontados_count(self, obj: Associado) -> int:
         return sum(
             int(build_contract_cycle_projection(contrato)["meses_nao_descontados_count"])
-            for contrato in obj.contratos.exclude(status="cancelado")
+            for contrato in self._get_active_contracts(obj)
         )
 
     def get_matricula_display(self, obj: Associado) -> str:
@@ -386,9 +395,18 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
             ]:
                 self.fields.pop(field_name, None)
 
+    def _get_active_contracts(self, obj: Associado):
+        cached = getattr(obj, "_prefetched_objects_cache", {}).get("contratos")
+        if cached is not None:
+            return sorted(
+                [contrato for contrato in cached if contrato.status != "cancelado"],
+                key=lambda contrato: (contrato.created_at, contrato.id),
+                reverse=True,
+            )
+        return list(obj.contratos.exclude(status="cancelado").order_by("-created_at"))
+
     def get_status_renovacao(self, obj: Associado) -> str:
-        contratos = list(obj.contratos.exclude(status="cancelado").order_by("-created_at"))
-        for contrato in contratos:
+        for contrato in self._get_active_contracts(obj):
             status = str(build_contract_cycle_projection(contrato)["status_renovacao"])
             if status:
                 return status
@@ -403,13 +421,13 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
     def get_possui_meses_nao_descontados(self, obj: Associado) -> bool:
         return any(
             bool(build_contract_cycle_projection(contrato)["possui_meses_nao_descontados"])
-            for contrato in obj.contratos.exclude(status="cancelado")
+            for contrato in self._get_active_contracts(obj)
         )
 
     def get_meses_nao_descontados_count(self, obj: Associado) -> int:
         return sum(
             int(build_contract_cycle_projection(contrato)["meses_nao_descontados_count"])
-            for contrato in obj.contratos.exclude(status="cancelado")
+            for contrato in self._get_active_contracts(obj)
         )
 
     def get_matricula_display(self, obj: Associado) -> str:
@@ -545,15 +563,10 @@ class AssociadoCreateSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         agente_responsavel_id = attrs.get("agente_responsavel_id")
-        percentual_repasse = attrs.get("percentual_repasse")
         sent_agente_responsavel = "agente_responsavel_id" in self.initial_data
-        sent_percentual_repasse = "percentual_repasse" in self.initial_data
-        if (
-            (sent_agente_responsavel or sent_percentual_repasse)
-            and not _can_manage_agent_assignment(self.context)
-        ):
+        if sent_agente_responsavel and not _can_manage_agent_assignment(self.context):
             raise serializers.ValidationError(
-                "Seu perfil não pode definir agente responsável ou percentual de repasse."
+                "Seu perfil não pode definir agente responsável."
             )
         if _can_manage_agent_assignment(self.context) and agente_responsavel_id is None:
             raise serializers.ValidationError(
@@ -581,7 +594,7 @@ class AssociadoCreateSerializer(serializers.ModelSerializer):
             ),
             "mes_averbacao": attrs.pop("mes_averbacao", None),
             "doacao_associado": attrs.pop("doacao_associado", 0),
-            "percentual_repasse": attrs.pop("percentual_repasse", 10),
+            "percentual_repasse": attrs.pop("percentual_repasse", None),
         }
         attrs["contrato"] = contrato
         return CadastroValidationStrategy().validate(attrs)
@@ -673,11 +686,9 @@ class AssociadoUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "matricula", "cpf_cnpj"]
 
     def validate(self, attrs):
-        if (
-            "agente_responsavel_id" in attrs or "percentual_repasse" in attrs
-        ) and not _can_manage_agent_assignment(self.context):
+        if "agente_responsavel_id" in attrs and not _can_manage_agent_assignment(self.context):
             raise serializers.ValidationError(
-                "Seu perfil não pode definir agente responsável ou percentual de repasse."
+                "Seu perfil não pode definir agente responsável."
             )
         agente_responsavel_id = attrs.get("agente_responsavel_id")
         if agente_responsavel_id is not None and not User.objects.filter(
@@ -697,14 +708,12 @@ class AssociadoUpdateSerializer(serializers.ModelSerializer):
         contato_data = validated_data.pop("contato", None)
         contrato_data = validated_data.pop("contrato", None)
         agente_responsavel_id = validated_data.pop("agente_responsavel_id", None)
-        percentual_repasse = validated_data.pop("percentual_repasse", None)
+        validated_data.pop("percentual_repasse", None)
 
         for field, value in validated_data.items():
             setattr(instance, field, value)
         if agente_responsavel_id is not None:
             instance.agente_responsavel_id = agente_responsavel_id
-        if percentual_repasse is not None:
-            instance.auxilio_taxa = percentual_repasse
         if endereco_data:
             instance.cep = endereco_data.get("cep", instance.cep)
             instance.logradouro = endereco_data.get("logradouro", instance.logradouro)
@@ -750,7 +759,7 @@ class AssociadoUpdateSerializer(serializers.ModelSerializer):
                 if agente_responsavel_id is not None:
                     contrato.agente_id = agente_responsavel_id
                 contrato.save()
-        elif agente_responsavel_id is not None or percentual_repasse is not None:
+        elif agente_responsavel_id is not None:
             contrato = instance.contratos.order_by("-created_at").first()
             if contrato:
                 if agente_responsavel_id is not None:

@@ -9,7 +9,11 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
+from apps.associados.models import Associado
+from apps.contratos.models import Contrato
 from apps.financeiro.models import Despesa
+from apps.importacao.models import PagamentoMensalidade
+from apps.tesouraria.models import DevolucaoAssociado, Pagamento
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
@@ -65,16 +69,19 @@ class DespesaViewSetTestCase(TestCase):
         payload.update(overrides)
         return payload
 
-    def test_cria_despesa_sem_anexo_com_status_anexo_pendente(self):
+    def test_cria_despesa_sem_anexo_sem_alterar_status_financeiro(self):
         response = self.tes_client.post(
             "/api/v1/tesouraria/despesas/",
-            self._payload(),
+            self._payload(
+                status=Despesa.Status.PAGO,
+                data_pagamento="2026-03-11",
+            ),
             format="multipart",
         )
         self.assertEqual(response.status_code, 201, response.json())
         payload = response.json()
 
-        self.assertEqual(payload["status"], Despesa.Status.PENDENTE)
+        self.assertEqual(payload["status"], Despesa.Status.PAGO)
         self.assertEqual(payload["status_anexo"], Despesa.StatusAnexo.PENDENTE)
         self.assertIsNone(payload["anexo"])
         self.assertEqual(payload["lancado_por"]["id"], self.tesoureiro.id)
@@ -120,6 +127,21 @@ class DespesaViewSetTestCase(TestCase):
 
         despesa = Despesa.objects.get()
         self.assertIsNone(despesa.data_pagamento)
+
+    def test_cria_despesa_sem_descricao_quando_campos_apoio_sao_opcionais(self):
+        response = self.tes_client.post(
+            "/api/v1/tesouraria/despesas/",
+            self._payload(
+                descricao="",
+                observacoes="",
+                tipo="",
+                recorrencia="",
+                recorrencia_ativa="false",
+            ),
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertEqual(response.json()["descricao"], "")
 
     def test_anexa_arquivo_depois_do_cadastro(self):
         despesa = Despesa.objects.create(
@@ -218,6 +240,168 @@ class DespesaViewSetTestCase(TestCase):
 
         self.assertFalse(Despesa.objects.filter(pk=despesa.pk).exists())
         self.assertIsNotNone(Despesa.all_objects.get(pk=despesa.pk).deleted_at)
+
+    def test_lista_categorias_sugeridas_por_frequencia(self):
+        Despesa.objects.create(
+            user=self.tesoureiro,
+            categoria="Operacional",
+            descricao="Taxi",
+            valor=Decimal("80.00"),
+            data_despesa=date(2026, 3, 10),
+            status=Despesa.Status.PENDENTE,
+            status_anexo=Despesa.StatusAnexo.PENDENTE,
+        )
+        Despesa.objects.create(
+            user=self.tesoureiro,
+            categoria="Operacional",
+            descricao="Entrega",
+            valor=Decimal("20.00"),
+            data_despesa=date(2026, 3, 11),
+            status=Despesa.Status.PENDENTE,
+            status_anexo=Despesa.StatusAnexo.PENDENTE,
+        )
+        Despesa.objects.create(
+            user=self.tesoureiro,
+            categoria="Infra",
+            descricao="Hospedagem",
+            valor=Decimal("150.00"),
+            data_despesa=date(2026, 3, 12),
+            status=Despesa.Status.PENDENTE,
+            status_anexo=Despesa.StatusAnexo.PENDENTE,
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/despesas/categorias/",
+            {"search": "op"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()[0]["categoria"], "Operacional")
+        self.assertEqual(response.json()[0]["frequencia"], 2)
+
+    def test_resultado_mensal_agrega_receitas_despesas_e_lucro_liquido(self):
+        associado = Associado.objects.create(
+            nome_completo="Associado Despesas",
+            cpf_cnpj="12312312312",
+            email="despesas@teste.local",
+            telefone="86999999999",
+            orgao_publico="SEFAZ",
+            matricula_orgao="MAT-123",
+            agente_responsavel=self.tesoureiro,
+        )
+        contrato = Contrato.objects.create(
+            associado=associado,
+            agente=self.tesoureiro,
+            codigo="CTR-DESPESA",
+            valor_bruto=Decimal("1500.00"),
+            valor_liquido=Decimal("1200.00"),
+            valor_mensalidade=Decimal("500.00"),
+            prazo_meses=3,
+            margem_disponivel=Decimal("900.00"),
+            valor_total_antecipacao=Decimal("1500.00"),
+            status=Contrato.Status.ATIVO,
+            data_contrato=date(2026, 3, 1),
+            data_aprovacao=date(2026, 3, 1),
+            data_primeira_mensalidade=date(2026, 3, 1),
+            mes_averbacao=date(2026, 3, 1),
+        )
+        PagamentoMensalidade.objects.create(
+            created_by=self.tesoureiro,
+            import_uuid="manual-mar",
+            referencia_month=date(2026, 3, 1),
+            status_code="M",
+            matricula="MAT-123",
+            orgao_pagto="918",
+            nome_relatorio=associado.nome_completo,
+            cpf_cnpj=associado.cpf_cnpj,
+            associado=associado,
+            valor=Decimal("50.00"),
+            recebido_manual=Decimal("50.00"),
+            manual_status=PagamentoMensalidade.ManualStatus.PAGO,
+        )
+        PagamentoMensalidade.objects.create(
+            created_by=self.tesoureiro,
+            import_uuid="retorno-mar",
+            referencia_month=date(2026, 3, 1),
+            status_code="1",
+            matricula="MAT-123",
+            orgao_pagto="918",
+            nome_relatorio=associado.nome_completo,
+            cpf_cnpj=associado.cpf_cnpj,
+            associado=associado,
+            valor=Decimal("150.00"),
+            source_file_path="retornos/marco.txt",
+        )
+        Despesa.objects.create(
+            user=self.tesoureiro,
+            categoria="Operacional",
+            descricao="Internet",
+            valor=Decimal("100.00"),
+            data_despesa=date(2026, 3, 4),
+            status=Despesa.Status.PAGO,
+            data_pagamento=date(2026, 3, 4),
+            status_anexo=Despesa.StatusAnexo.PENDENTE,
+        )
+        DevolucaoAssociado.objects.create(
+            contrato=contrato,
+            associado=associado,
+            tipo=DevolucaoAssociado.Tipo.PAGAMENTO_INDEVIDO,
+            data_devolucao=date(2026, 3, 5),
+            quantidade_parcelas=1,
+            valor=Decimal("20.00"),
+            motivo="Ajuste financeiro",
+            comprovante=SimpleUploadedFile(
+                "devolucao.pdf",
+                b"arquivo",
+                content_type="application/pdf",
+            ),
+            nome_comprovante="devolucao.pdf",
+            nome_snapshot=associado.nome_completo,
+            cpf_cnpj_snapshot=associado.cpf_cnpj,
+            matricula_snapshot=associado.matricula_orgao,
+            agente_snapshot=self.tesoureiro.full_name,
+            contrato_codigo_snapshot=contrato.codigo,
+            realizado_por=self.tesoureiro,
+        )
+        Pagamento.objects.create(
+            cadastro=associado,
+            created_by=self.tesoureiro,
+            cpf_cnpj=associado.cpf_cnpj,
+            full_name=associado.nome_completo,
+            agente_responsavel=self.tesoureiro.full_name,
+            contrato_codigo=contrato.codigo,
+            valor_pago=Decimal("30.00"),
+            status=Pagamento.Status.PAGO,
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/despesas/resultado-mensal/",
+            {"competencia": "2026-03"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        row = next(item for item in response.json()["rows"] if item["mes"] == "2026-03-01")
+        self.assertEqual(row["receitas"], "150.00")
+        self.assertEqual(row["despesas"], "120.00")
+        self.assertEqual(row["lucro"], "30.00")
+        self.assertEqual(row["lucro_liquido"], "30.00")
+
+        detalhe_response = self.tes_client.get(
+            "/api/v1/tesouraria/despesas/resultado-mensal/detalhe/",
+            {"mes": "2026-03"},
+        )
+        self.assertEqual(detalhe_response.status_code, 200, detalhe_response.json())
+        detalhe = detalhe_response.json()
+        self.assertEqual(detalhe["mes"], "2026-03-01")
+        self.assertEqual(detalhe["resumo"]["receitas"], "150.00")
+        self.assertEqual(detalhe["resumo"]["despesas"], "120.00")
+        self.assertEqual(detalhe["resumo"]["lucro_liquido"], "30.00")
+        self.assertEqual(len(detalhe["receitas"]), 1)
+        self.assertEqual(detalhe["receitas"][0]["origem"], "arquivo_retorno")
+        self.assertEqual(len(detalhe["despesas"]), 2)
+        self.assertEqual(
+            {item["origem"] for item in detalhe["despesas"]},
+            {"despesa_manual", "devolucao"},
+        )
+        self.assertEqual(len(detalhe["pagamentos_operacionais"]), 1)
 
     def test_restringe_a_tesoureiro_ou_admin(self):
         response_agente = self.agente_client.get("/api/v1/tesouraria/despesas/")

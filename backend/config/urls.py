@@ -18,7 +18,7 @@ from apps.associados.admin_override_views import (
     AdminOverrideEventViewSet,
     AdminOverrideRefinanciamentoViewSet,
 )
-from apps.accounts.views import AdminUserViewSet
+from apps.accounts.views import AdminUserViewSet, ConfiguracaoComissaoViewSet
 from apps.accounts.mobile_legacy_views import (
     LegacyCheckEmailView,
     LegacyForgotPasswordView,
@@ -33,7 +33,7 @@ from apps.contratos.views import ContratoViewSet
 from apps.contratos.views import RenovacaoCicloViewSet
 from apps.esteira.analise_views import AnaliseViewSet
 from apps.esteira.views import EsteiraViewSet
-from apps.importacao.views import ArquivoRetornoViewSet
+from apps.importacao.views import ArquivoRetornoViewSet, DuplicidadeFinanceiraViewSet
 from apps.refinanciamento.views import (
     AnalistaRefinanciamentoViewSet,
     CoordenadorRefinanciadosViewSet,
@@ -129,6 +129,11 @@ router.register(
     ArquivoRetornoViewSet,
     basename="arquivo-retorno",
 )
+router.register(
+    r"importacao/duplicidades-financeiras",
+    DuplicidadeFinanceiraViewSet,
+    basename="duplicidade-financeira",
+)
 router.register(r"refinanciamentos", RefinanciamentoViewSet, basename="refinanciamento")
 router.register(
     r"coordenacao/refinanciados",
@@ -192,6 +197,11 @@ router.register(
     r"configuracoes/usuarios",
     AdminUserViewSet,
     basename="configuracoes-usuarios",
+)
+router.register(
+    r"configuracoes/comissoes",
+    ConfiguracaoComissaoViewSet,
+    basename="configuracoes-comissoes",
 )
 
 urlpatterns = [

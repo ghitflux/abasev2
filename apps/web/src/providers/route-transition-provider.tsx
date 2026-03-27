@@ -13,8 +13,8 @@ type RouteTransitionContextValue = {
   startRouteTransition: (href?: string | null) => void;
 };
 
-const SHOW_OVERLAY_DELAY_MS = 140;
-const MAX_TRANSITION_DURATION_MS = 10000;
+const SHOW_OVERLAY_DELAY_MS = 260;
+const MAX_TRANSITION_DURATION_MS = 8000;
 
 const RouteTransitionContext =
   React.createContext<RouteTransitionContextValue | null>(null);

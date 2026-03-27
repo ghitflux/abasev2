@@ -154,7 +154,6 @@ class AnaliseService:
             queryset = queryset.filter(
                 Q(analista_responsavel=user)
                 | Q(analista_responsavel__isnull=True)
-                | ~Q(status=EsteiraItem.Situacao.EM_ANDAMENTO)
             )
 
         if search:
@@ -168,11 +167,85 @@ class AnaliseService:
         return queryset
 
     @staticmethod
-    def fila_queryset(secao: str, user, search: str | None = None):
+    def _apply_dashboard_filters(
+        queryset,
+        *,
+        agente: str | None = None,
+        analista: str | None = None,
+        etapa: str | None = None,
+        status: str | None = None,
+        data_inicio: str | None = None,
+        data_fim: str | None = None,
+    ):
+        if agente:
+            agente_term = agente.strip()
+            if agente_term:
+                if agente_term.isdigit():
+                    queryset = queryset.filter(associado__agente_responsavel_id=int(agente_term))
+                else:
+                    queryset = queryset.filter(
+                        Q(associado__agente_responsavel__first_name__icontains=agente_term)
+                        | Q(associado__agente_responsavel__last_name__icontains=agente_term)
+                        | Q(associado__agente_responsavel__email__icontains=agente_term)
+                    )
+
+        if analista:
+            analista_term = analista.strip()
+            if analista_term == "sem_responsavel":
+                queryset = queryset.filter(analista_responsavel__isnull=True)
+            elif analista_term.isdigit():
+                queryset = queryset.filter(analista_responsavel_id=int(analista_term))
+            else:
+                queryset = queryset.filter(
+                    Q(analista_responsavel__first_name__icontains=analista_term)
+                    | Q(analista_responsavel__last_name__icontains=analista_term)
+                    | Q(analista_responsavel__email__icontains=analista_term)
+                )
+
+        if etapa in {choice[0] for choice in EsteiraItem.Etapa.choices}:
+            queryset = queryset.filter(etapa_atual=etapa)
+        if status in {choice[0] for choice in EsteiraItem.Situacao.choices}:
+            queryset = queryset.filter(status=status)
+
+        if data_inicio:
+            try:
+                queryset = queryset.filter(created_at__date__gte=date.fromisoformat(data_inicio))
+            except ValueError:
+                raise ValidationError("Data inicial inválida. Use o formato YYYY-MM-DD.")
+        if data_fim:
+            try:
+                queryset = queryset.filter(created_at__date__lte=date.fromisoformat(data_fim))
+            except ValueError:
+                raise ValidationError("Data final inválida. Use o formato YYYY-MM-DD.")
+
+        return queryset
+
+    @staticmethod
+    def fila_queryset(
+        secao: str,
+        user,
+        search: str | None = None,
+        *,
+        agente: str | None = None,
+        analista: str | None = None,
+        etapa: str | None = None,
+        status: str | None = None,
+        data_inicio: str | None = None,
+        data_fim: str | None = None,
+    ):
         if secao not in AnaliseService.FILA_SECOES:
             raise ValidationError("Seção inválida para o módulo de análise.")
 
         queryset = AnaliseService._esteira_base_queryset(user, search)
+        queryset = AnaliseService._apply_dashboard_filters(
+            queryset,
+            agente=agente,
+            analista=analista,
+            etapa=etapa,
+            status=status,
+            data_inicio=data_inicio,
+            data_fim=data_fim,
+        )
 
         if secao == "ver_todos":
             return queryset.order_by("-updated_at", "-created_at")
@@ -215,9 +288,30 @@ class AnaliseService:
         ).order_by("-created_at")
 
     @staticmethod
-    def resumo(user, search: str | None = None, competencia: str | None = None) -> dict[str, object]:
+    def resumo(
+        user,
+        search: str | None = None,
+        competencia: str | None = None,
+        *,
+        agente: str | None = None,
+        analista: str | None = None,
+        etapa: str | None = None,
+        status: str | None = None,
+        data_inicio: str | None = None,
+        data_fim: str | None = None,
+    ) -> dict[str, object]:
         filas = {
-            secao: AnaliseService.fila_queryset(secao, user, search).count()
+            secao: AnaliseService.fila_queryset(
+                secao,
+                user,
+                search,
+                agente=agente,
+                analista=analista,
+                etapa=etapa,
+                status=status,
+                data_inicio=data_inicio,
+                data_fim=data_fim,
+            ).count()
             for secao in AnaliseService.FILA_SECOES
         }
         ajustes_qs = AnaliseService.ajustes_queryset(competencia, search)

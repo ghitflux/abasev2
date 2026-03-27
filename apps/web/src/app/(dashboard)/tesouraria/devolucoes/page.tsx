@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -30,6 +31,7 @@ import DatePicker from "@/components/custom/date-picker";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import InputCurrency from "@/components/custom/input-currency";
 import StatusBadge from "@/components/custom/status-badge";
+import DuplicidadesFinanceirasPanel from "@/components/tesouraria/duplicidades-financeiras-panel";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
@@ -63,7 +65,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 
-type ListingTab = "registrar" | "historico";
+type ListingTab = "registrar" | "pos_liquidacao" | "duplicidades" | "historico";
 type RegisterResponse = PaginatedResponse<DevolucaoContratoItem> & {
   kpis: DevolucaoKpis;
 };
@@ -73,7 +75,7 @@ type HistoryResponse = PaginatedResponse<DevolucaoAssociadoItem> & {
 
 type RegisterState = {
   row: DevolucaoContratoItem;
-  tipo: "pagamento_indevido" | "desconto_indevido";
+  tipo: "pagamento_indevido" | "desconto_indevido" | "desistencia_pos_liquidacao";
   dataDevolucao?: Date;
   quantidadeParcelas: number;
   valor: number | null;
@@ -93,11 +95,13 @@ function useDevolucaoContratosQuery({
   search,
   competencia,
   estado,
+  fluxo,
 }: {
   page: number;
   search: string;
   competencia?: Date;
   estado: string;
+  fluxo?: string;
 }) {
   return useQuery({
     queryKey: [
@@ -107,6 +111,7 @@ function useDevolucaoContratosQuery({
       search,
       competencia?.toISOString(),
       estado,
+      fluxo,
     ],
     queryFn: () =>
       apiFetch<RegisterResponse>("tesouraria/devolucoes/contratos", {
@@ -116,6 +121,7 @@ function useDevolucaoContratosQuery({
           search: search || undefined,
           competencia: competencia ? format(competencia, "yyyy-MM") : undefined,
           estado: estado !== "todos" ? estado : undefined,
+          fluxo,
         },
       }),
   });
@@ -127,12 +133,14 @@ function useDevolucaoHistoricoQuery({
   competencia,
   tipo,
   status,
+  fluxo,
 }: {
   page: number;
   search: string;
   competencia?: Date;
   tipo: string;
   status: string;
+  fluxo?: string;
 }) {
   return useQuery({
     queryKey: [
@@ -143,6 +151,7 @@ function useDevolucaoHistoricoQuery({
       competencia?.toISOString(),
       tipo,
       status,
+      fluxo,
     ],
     queryFn: () =>
       apiFetch<HistoryResponse>("tesouraria/devolucoes", {
@@ -153,17 +162,26 @@ function useDevolucaoHistoricoQuery({
           competencia: competencia ? format(competencia, "yyyy-MM") : undefined,
           tipo: tipo !== "todos" ? tipo : undefined,
           status: status !== "todos" ? status : undefined,
+          fluxo,
         },
       }),
   });
 }
 
 export default function DevolucoesAssociadoPage() {
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { hasRole } = usePermissions();
   const isAdmin = hasRole("ADMIN");
+  const initialTab = React.useMemo<ListingTab>(() => {
+    const requestedTab = searchParams.get("tab");
+    if (requestedTab === "pos_liquidacao") return "pos_liquidacao";
+    if (requestedTab === "duplicidades") return "duplicidades";
+    if (requestedTab === "historico") return "historico";
+    return "registrar";
+  }, [searchParams]);
 
-  const [tab, setTab] = React.useState<ListingTab>("registrar");
+  const [tab, setTab] = React.useState<ListingTab>(initialTab);
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
   const [competencia, setCompetencia] = React.useState<Date | undefined>();
@@ -184,6 +202,10 @@ export default function DevolucoesAssociadoPage() {
   const [motivoExclusao, setMotivoExclusao] = React.useState("");
 
   React.useEffect(() => {
+    setTab(initialTab);
+  }, [initialTab]);
+
+  React.useEffect(() => {
     setPage(1);
   }, [tab, search, competencia, estado, tipo, status]);
 
@@ -192,6 +214,14 @@ export default function DevolucoesAssociadoPage() {
     search,
     competencia,
     estado,
+    fluxo: undefined,
+  });
+  const posLiquidacaoQuery = useDevolucaoContratosQuery({
+    page,
+    search,
+    competencia,
+    estado,
+    fluxo: "desistencia_pos_liquidacao",
   });
   const historicoQuery = useDevolucaoHistoricoQuery({
     page,
@@ -199,9 +229,15 @@ export default function DevolucoesAssociadoPage() {
     competencia,
     tipo,
     status,
+    fluxo: undefined,
   });
 
-  const query = tab === "registrar" ? contratosQuery : historicoQuery;
+  const query =
+    tab === "historico"
+      ? historicoQuery
+      : tab === "pos_liquidacao"
+        ? posLiquidacaoQuery
+        : contratosQuery;
   const totalCount = query.data?.count ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / 20));
 
@@ -342,7 +378,10 @@ export default function DevolucoesAssociadoPage() {
               onClick={() =>
                 setRegisterState({
                   row,
-                  tipo: "pagamento_indevido",
+                  tipo:
+                    row.tipo_sugerido === "desistencia_pos_liquidacao"
+                      ? "desistencia_pos_liquidacao"
+                      : "pagamento_indevido",
                   dataDevolucao: new Date(),
                   quantidadeParcelas: 1,
                   valor: null,
@@ -468,10 +507,13 @@ export default function DevolucoesAssociadoPage() {
 
   const registerRows = (contratosQuery.data?.results ?? []) as DevolucaoContratoItem[];
   const historyRows = (historicoQuery.data?.results ?? []) as DevolucaoAssociadoItem[];
+  const posLiquidacaoRows = (posLiquidacaoQuery.data?.results ?? []) as DevolucaoContratoItem[];
   const kpis = query.data?.kpis;
+  const isFlowRegisterTab = tab === "registrar" || tab === "pos_liquidacao";
+  const isDuplicidadeTab = tab === "duplicidades";
   const activeFiltersCount =
     Number(Boolean(competencia)) +
-    Number(tab === "registrar" ? estado !== "todos" : tipo !== "todos") +
+    Number(isFlowRegisterTab ? estado !== "todos" : tipo !== "todos") +
     Number(tab === "historico" && status !== "todos");
 
   return (
@@ -480,54 +522,65 @@ export default function DevolucoesAssociadoPage() {
         <div className="space-y-1">
           <h1 className="text-3xl font-semibold">Devoluções</h1>
           <p className="text-sm text-muted-foreground">
-            Registre devoluções por pagamento ou desconto indevido sem alterar parcelas,
-            ciclos ou baixa financeira do contrato.
+            Registre devoluções por pagamento ou desconto indevido e trate duplicidades
+            financeiras vindas do arquivo retorno sem alterar parcelas, ciclos ou baixa
+            financeira do contrato.
           </p>
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatsCard
-          title={tab === "registrar" ? "Contratos disponíveis" : "Registros"}
-          value={String(tab === "registrar" ? kpis?.total_contratos ?? 0 : kpis?.total_registros ?? 0)}
-          delta={tab === "registrar" ? "Base para registrar devoluções" : "Histórico total"}
-          icon={ReceiptTextIcon}
-          tone="neutral"
-        />
-        <StatsCard
-          title="Associados impactados"
-          value={String(kpis?.associados_impactados ?? 0)}
-          delta="Associados distintos no recorte"
-          icon={WalletCardsIcon}
-          tone="neutral"
-        />
-        <StatsCard
-          title={tab === "registrar" ? "Contratos ativos" : "Valor total"}
-          value={
-            tab === "registrar"
-              ? String(kpis?.ativos ?? 0)
-              : formatCurrency(kpis?.valor_total ?? "0")
-          }
-          delta={
-            tab === "registrar"
-              ? `${kpis?.encerrados ?? 0} encerrado(s) no recorte`
-              : `${kpis?.registradas ?? 0} devolução(ões) ativa(s)`
-          }
-          icon={HandCoinsIcon}
-          tone={tab === "registrar" ? "neutral" : "positive"}
-        />
-        <StatsCard
-          title={tab === "registrar" ? "Cancelados" : "Revertidas"}
-          value={String(tab === "registrar" ? kpis?.cancelados ?? 0 : kpis?.revertidas ?? 0)}
-          delta={
-            tab === "registrar"
-              ? "Contratos cancelados disponíveis para consulta"
-              : "Registros revertidos por administração"
-          }
-          icon={CalendarCheck2Icon}
-          tone={tab === "registrar" ? "warning" : "warning"}
-        />
-      </div>
+      {!isDuplicidadeTab ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <StatsCard
+            title={isFlowRegisterTab ? "Contratos disponíveis" : "Registros"}
+            value={String(
+              isFlowRegisterTab ? kpis?.total_contratos ?? 0 : kpis?.total_registros ?? 0,
+            )}
+            delta={
+              tab === "pos_liquidacao"
+                ? "Renovações liquidadas prontas para desistência"
+                : isFlowRegisterTab
+                  ? "Base para registrar devoluções"
+                  : "Histórico total"
+            }
+            icon={ReceiptTextIcon}
+            tone="neutral"
+          />
+          <StatsCard
+            title="Associados impactados"
+            value={String(kpis?.associados_impactados ?? 0)}
+            delta="Associados distintos no recorte"
+            icon={WalletCardsIcon}
+            tone="neutral"
+          />
+          <StatsCard
+            title={isFlowRegisterTab ? "Contratos ativos" : "Valor total"}
+            value={
+              isFlowRegisterTab
+                ? String(kpis?.ativos ?? 0)
+                : formatCurrency(kpis?.valor_total ?? "0")
+            }
+            delta={
+              isFlowRegisterTab
+                ? `${kpis?.encerrados ?? 0} encerrado(s) no recorte`
+                : `${kpis?.registradas ?? 0} devolução(ões) ativa(s)`
+            }
+            icon={HandCoinsIcon}
+            tone={isFlowRegisterTab ? "neutral" : "positive"}
+          />
+          <StatsCard
+            title={isFlowRegisterTab ? "Cancelados" : "Revertidas"}
+            value={String(isFlowRegisterTab ? kpis?.cancelados ?? 0 : kpis?.revertidas ?? 0)}
+            delta={
+              isFlowRegisterTab
+                ? "Contratos cancelados disponíveis para consulta"
+                : "Registros revertidos por administração"
+            }
+            icon={CalendarCheck2Icon}
+            tone="warning"
+          />
+        </div>
+      ) : null}
 
       <Tabs
         value={tab}
@@ -536,140 +589,150 @@ export default function DevolucoesAssociadoPage() {
       >
         <TabsList variant="line" className="justify-start">
           <TabsTrigger value="registrar">Registrar</TabsTrigger>
+          <TabsTrigger value="pos_liquidacao">Pós-liquidação</TabsTrigger>
+          <TabsTrigger value="duplicidades">Duplicidades</TabsTrigger>
           <TabsTrigger value="historico">Histórico</TabsTrigger>
         </TabsList>
 
-        <div className="grid gap-4 rounded-[1.75rem] border border-border/60 bg-card/70 p-6 lg:grid-cols-[minmax(0,1fr)_auto]">
-          <div className="space-y-2">
-            <Label htmlFor="devolucao-search">Buscar</Label>
-            <Input
-              id="devolucao-search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Nome, CPF, matrícula, contrato ou agente"
-              className="h-11 rounded-xl border-border/60 bg-background/50"
-            />
-          </div>
-          <div className="flex items-end justify-end">
-            <Sheet
-              open={filtersOpen}
-              onOpenChange={(open) => {
-                if (open) {
-                  setDraftCompetencia(competencia);
-                  setDraftEstado(estado);
-                  setDraftTipo(tipo);
-                  setDraftStatus(status);
-                }
-                setFiltersOpen(open);
-              }}
-            >
-              <SheetTrigger asChild>
-                <Button variant="outline" className="h-11 rounded-xl">
-                  <SlidersHorizontalIcon className="size-4" />
-                  Filtros avançados
-                  {activeFiltersCount ? (
-                    <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-primary">
-                      {activeFiltersCount}
-                    </Badge>
-                  ) : null}
-                </Button>
-              </SheetTrigger>
-              <SheetContent className="w-full border-l border-border/60 sm:max-w-xl">
-                <SheetHeader>
-                  <SheetTitle>Filtros avançados</SheetTitle>
-                  <SheetDescription>
-                    Ajuste competência e filtros específicos para registrar ou revisar devoluções.
-                  </SheetDescription>
-                </SheetHeader>
+        {!isDuplicidadeTab ? (
+          <div className="grid gap-4 rounded-[1.75rem] border border-border/60 bg-card/70 p-6 lg:grid-cols-[minmax(0,1fr)_auto]">
+            <div className="space-y-2">
+              <Label htmlFor="devolucao-search">Buscar</Label>
+              <Input
+                id="devolucao-search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Nome, CPF, matrícula, contrato ou agente"
+                className="h-11 rounded-xl border-border/60 bg-background/50"
+              />
+            </div>
+            <div className="flex items-end justify-end">
+              <Sheet
+                open={filtersOpen}
+                onOpenChange={(open) => {
+                  if (open) {
+                    setDraftCompetencia(competencia);
+                    setDraftEstado(estado);
+                    setDraftTipo(tipo);
+                    setDraftStatus(status);
+                  }
+                  setFiltersOpen(open);
+                }}
+              >
+                <SheetTrigger asChild>
+                  <Button variant="outline" className="h-11 rounded-xl">
+                    <SlidersHorizontalIcon className="size-4" />
+                    Filtros avançados
+                    {activeFiltersCount ? (
+                      <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-primary">
+                        {activeFiltersCount}
+                      </Badge>
+                    ) : null}
+                  </Button>
+                </SheetTrigger>
+                <SheetContent className="w-full border-l border-border/60 sm:max-w-xl">
+                  <SheetHeader>
+                    <SheetTitle>Filtros avançados</SheetTitle>
+                    <SheetDescription>
+                      Ajuste competência e filtros específicos para registrar ou revisar devoluções.
+                    </SheetDescription>
+                  </SheetHeader>
 
-                <div className="space-y-5 overflow-y-auto px-4 pb-4">
-                  <div className="space-y-2">
-                    <Label>Competência</Label>
-                    <CalendarCompetencia value={draftCompetencia} onChange={setDraftCompetencia} />
+                  <div className="space-y-5 overflow-y-auto px-4 pb-4">
+                    <div className="space-y-2">
+                      <Label>Competência</Label>
+                      <CalendarCompetencia
+                        value={draftCompetencia}
+                        onChange={setDraftCompetencia}
+                      />
+                    </div>
+
+                    {isFlowRegisterTab ? (
+                      <div className="space-y-2">
+                        <Label>Status do contrato</Label>
+                        <Select value={draftEstado} onValueChange={setDraftEstado}>
+                          <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/50">
+                            <SelectValue placeholder="Todos" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="todos">Todos</SelectItem>
+                            <SelectItem value="ativo">Ativo</SelectItem>
+                            <SelectItem value="encerrado">Encerrado</SelectItem>
+                            <SelectItem value="cancelado">Cancelado</SelectItem>
+                            <SelectItem value="em_analise">Em análise</SelectItem>
+                            <SelectItem value="rascunho">Rascunho</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="space-y-2">
+                          <Label>Tipo</Label>
+                          <Select value={draftTipo} onValueChange={setDraftTipo}>
+                            <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/50">
+                              <SelectValue placeholder="Todos" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="todos">Todos</SelectItem>
+                              <SelectItem value="pagamento_indevido">Pagamento indevido</SelectItem>
+                              <SelectItem value="desconto_indevido">Desconto indevido</SelectItem>
+                              <SelectItem value="desistencia_pos_liquidacao">
+                                Desistência pós-liquidação
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Status</Label>
+                          <Select value={draftStatus} onValueChange={setDraftStatus}>
+                            <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/50">
+                              <SelectValue placeholder="Todos" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="todos">Todos</SelectItem>
+                              <SelectItem value="registrada">Registrada</SelectItem>
+                              <SelectItem value="revertida">Revertida</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </>
+                    )}
                   </div>
 
-                  {tab === "registrar" ? (
-                    <div className="space-y-2">
-                      <Label>Status do contrato</Label>
-                      <Select value={draftEstado} onValueChange={setDraftEstado}>
-                        <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/50">
-                          <SelectValue placeholder="Todos" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="todos">Todos</SelectItem>
-                          <SelectItem value="ativo">Ativo</SelectItem>
-                          <SelectItem value="encerrado">Encerrado</SelectItem>
-                          <SelectItem value="cancelado">Cancelado</SelectItem>
-                          <SelectItem value="em_analise">Em análise</SelectItem>
-                          <SelectItem value="rascunho">Rascunho</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="space-y-2">
-                        <Label>Tipo</Label>
-                        <Select value={draftTipo} onValueChange={setDraftTipo}>
-                          <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/50">
-                            <SelectValue placeholder="Todos" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="todos">Todos</SelectItem>
-                            <SelectItem value="pagamento_indevido">Pagamento indevido</SelectItem>
-                            <SelectItem value="desconto_indevido">Desconto indevido</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Status</Label>
-                        <Select value={draftStatus} onValueChange={setDraftStatus}>
-                          <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/50">
-                            <SelectValue placeholder="Todos" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="todos">Todos</SelectItem>
-                            <SelectItem value="registrada">Registrada</SelectItem>
-                            <SelectItem value="revertida">Revertida</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </>
-                  )}
-                </div>
-
-                <SheetFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setDraftCompetencia(undefined);
-                      setDraftEstado("todos");
-                      setDraftTipo("todos");
-                      setDraftStatus("todos");
-                      setCompetencia(undefined);
-                      setEstado("todos");
-                      setTipo("todos");
-                      setStatus("todos");
-                      setFiltersOpen(false);
-                    }}
-                  >
-                    Limpar
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setCompetencia(draftCompetencia);
-                      setEstado(draftEstado);
-                      setTipo(draftTipo);
-                      setStatus(draftStatus);
-                      setFiltersOpen(false);
-                    }}
-                  >
-                    Aplicar
-                  </Button>
-                </SheetFooter>
-              </SheetContent>
-            </Sheet>
+                  <SheetFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setDraftCompetencia(undefined);
+                        setDraftEstado("todos");
+                        setDraftTipo("todos");
+                        setDraftStatus("todos");
+                        setCompetencia(undefined);
+                        setEstado("todos");
+                        setTipo("todos");
+                        setStatus("todos");
+                        setFiltersOpen(false);
+                      }}
+                    >
+                      Limpar
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setCompetencia(draftCompetencia);
+                        setEstado(draftEstado);
+                        setTipo(draftTipo);
+                        setStatus(draftStatus);
+                        setFiltersOpen(false);
+                      }}
+                    >
+                      Aplicar
+                    </Button>
+                  </SheetFooter>
+                </SheetContent>
+              </Sheet>
+            </div>
           </div>
-        </div>
+        ) : null}
 
         <TabsContent value="registrar" className="mt-0">
           <DataTable
@@ -681,6 +744,25 @@ export default function DevolucoesAssociadoPage() {
             onPageChange={setPage}
             pageSize={20}
             emptyMessage="Nenhum contrato encontrado para registrar devolução."
+          />
+        </TabsContent>
+
+        <TabsContent value="pos_liquidacao" className="mt-0">
+          <DataTable
+            columns={registerColumns}
+            data={posLiquidacaoRows}
+            loading={posLiquidacaoQuery.isLoading}
+            currentPage={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+            pageSize={20}
+            emptyMessage="Nenhuma renovação liquidada disponível para devolução pós-liquidação."
+          />
+        </TabsContent>
+
+        <TabsContent value="duplicidades" className="mt-0">
+          <DuplicidadesFinanceirasPanel
+            emptyMessage="Nenhuma duplicidade financeira pendente ou histórica encontrada para a tesouraria."
           />
         </TabsContent>
 
@@ -703,8 +785,9 @@ export default function DevolucoesAssociadoPage() {
           <DialogHeader>
             <DialogTitle>Registrar devolução</DialogTitle>
             <DialogDescription>
-              O registro é manual e não altera parcelas, ciclos ou pagamentos mensais do
-              contrato.
+              {registerState?.tipo === "desistencia_pos_liquidacao"
+                ? "Use este fluxo quando a renovação já foi liquidada, houve pagamento e o associado desistiu depois."
+                : "O registro é manual e não altera parcelas, ciclos ou pagamentos mensais do contrato."}
             </DialogDescription>
           </DialogHeader>
           {registerState ? (
@@ -745,6 +828,7 @@ export default function DevolucoesAssociadoPage() {
                           : current,
                       )
                     }
+                    disabled={registerState.row.tipo_sugerido === "desistencia_pos_liquidacao"}
                   >
                     <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/50">
                       <SelectValue />
@@ -752,6 +836,9 @@ export default function DevolucoesAssociadoPage() {
                     <SelectContent>
                       <SelectItem value="pagamento_indevido">Pagamento indevido</SelectItem>
                       <SelectItem value="desconto_indevido">Desconto indevido</SelectItem>
+                      <SelectItem value="desistencia_pos_liquidacao">
+                        Desistência pós-liquidação
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -779,34 +866,43 @@ export default function DevolucoesAssociadoPage() {
                     placeholder="R$ 0,00"
                   />
                 </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <Label htmlFor="competencia-referencia">Competência de referência</Label>
-                    {registerState.competenciaReferencia ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-auto px-0 text-xs"
-                        onClick={() =>
-                          setRegisterState((current) =>
-                            current ? { ...current, competenciaReferencia: undefined } : current,
-                          )
-                        }
-                      >
-                        Limpar
-                      </Button>
-                    ) : null}
+                {registerState.tipo === "desconto_indevido" ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label htmlFor="competencia-referencia">Competência de referência</Label>
+                      {registerState.competenciaReferencia ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-auto px-0 text-xs"
+                          onClick={() =>
+                            setRegisterState((current) =>
+                              current ? { ...current, competenciaReferencia: undefined } : current,
+                            )
+                          }
+                        >
+                          Limpar
+                        </Button>
+                      ) : null}
+                    </div>
+                    <CalendarCompetencia
+                      value={registerState.competenciaReferencia}
+                      onChange={(value) =>
+                        setRegisterState((current) =>
+                          current ? { ...current, competenciaReferencia: value } : current,
+                        )
+                      }
+                    />
                   </div>
-                  <CalendarCompetencia
-                    value={registerState.competenciaReferencia}
-                    onChange={(value) =>
-                      setRegisterState((current) =>
-                        current ? { ...current, competenciaReferencia: value } : current,
-                      )
-                    }
-                  />
-                </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label>Competência de referência</Label>
+                    <div className="rounded-xl border border-border/60 bg-background/40 px-4 py-3 text-sm text-muted-foreground">
+                      Não se aplica ao fluxo selecionado.
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="quantidade-parcelas">Quantidade de parcelas</Label>
                   <Input

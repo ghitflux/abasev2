@@ -188,10 +188,6 @@ const schema = z
       data_aprovacao: z.date().optional(),
     }),
     agente_responsavel_id: z.number().nullable().optional(),
-    percentual_repasse: z
-      .number()
-      .min(0, "Percentual inválido.")
-      .max(100, "Percentual inválido."),
   })
   .superRefine((values, context) => {
     const digits = onlyDigits(values.cpf_cnpj);
@@ -340,8 +336,6 @@ function defaultValues(
         (mode === "create" ? today : undefined),
     },
     agente_responsavel_id: initialData?.agente?.id ?? null,
-    percentual_repasse:
-      Number.parseFloat(initialData?.percentual_repasse ?? "10") || 10,
   };
 }
 
@@ -431,16 +425,12 @@ export default function AssociadoForm({
   const dataAprovacao = watch("contrato.data_aprovacao");
   const tipoDocumento = watch("tipo_documento") ?? "CPF";
   const agenteResponsavelId = watch("agente_responsavel_id");
-  const percentualRepasse = watch("percentual_repasse") ?? 10;
 
   const bruto30 = Math.round(valorBruto * 0.3);
   const valorTotalAntecipacao = mensalidade * prazoMeses;
   const margemLiquido = Math.max(0, valorLiquido - bruto30);
   const margemDisponivel = Math.round(valorTotalAntecipacao * 0.7);
   const doacaoAssociado = valorTotalAntecipacao - margemDisponivel;
-  const comissaoAgente = Math.round(
-    (mensalidade * (Number(percentualRepasse) || 0)) / 100,
-  );
   const contratoAtual = initialData?.contratos?.[0];
   const currentDocumentsByType = React.useMemo(
     () =>
@@ -612,7 +602,6 @@ export default function AssociadoForm({
         ...(canManageAgentAssignment
           ? {
               agente_responsavel_id: values.agente_responsavel_id,
-              percentual_repasse: values.percentual_repasse.toFixed(2),
             }
           : {}),
         ...(isAdminEditMode
@@ -1597,10 +1586,10 @@ export default function AssociadoForm({
 
                 <Card className="rounded-[1.5rem] border-border/60 bg-card/50">
                   <CardHeader className="space-y-2">
-                    <CardTitle className="text-base">Agente e Repasse</CardTitle>
+                    <CardTitle className="text-base">Agente Responsável</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <FieldGroup className="grid gap-5 md:grid-cols-2">
+                    <FieldGroup className="grid gap-5">
                       <Field>
                         <FieldLabel>Agente responsável</FieldLabel>
                         <FieldContent>
@@ -1646,50 +1635,10 @@ export default function AssociadoForm({
                           )}
                         </FieldContent>
                       </Field>
-                      <Field>
-                        <FieldLabel>% de repasse</FieldLabel>
-                        <FieldContent>
-                          {canManageAgentAssignment ? (
-                            <Controller
-                              control={control}
-                              name="percentual_repasse"
-                              render={({ field }) => (
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  max="100"
-                                  step="0.01"
-                                  value={String(field.value ?? 10)}
-                                  onChange={(event) =>
-                                    field.onChange(
-                                      Number.parseFloat(event.target.value || "0"),
-                                    )
-                                  }
-                                  className="rounded-xl bg-card/60"
-                                />
-                              )}
-                            />
-                          ) : (
-                            <Input
-                              readOnly
-                              aria-readonly="true"
-                              value={`${Number(percentualRepasse).toFixed(2)}%`}
-                              className="rounded-xl bg-card/60"
-                            />
-                          )}
-                        </FieldContent>
-                      </Field>
-                      <Field className="md:col-span-2">
-                        <FieldLabel>Comissão recalculada do agente</FieldLabel>
-                        <FieldContent>
-                          <Input
-                            readOnly
-                            aria-readonly="true"
-                            value={formatCurrency(comissaoAgente / 100)}
-                            className="rounded-xl bg-card/60"
-                          />
-                        </FieldContent>
-                      </Field>
+                      <div className="rounded-2xl border border-border/60 bg-background/40 px-4 py-3 text-sm text-muted-foreground">
+                        A comissão do agente é definida automaticamente nas configurações da
+                        tesouraria, com regra global ou override individual por agente.
+                      </div>
                     </FieldGroup>
                   </CardContent>
                 </Card>

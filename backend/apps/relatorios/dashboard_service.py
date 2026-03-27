@@ -1415,16 +1415,37 @@ class AdminDashboardService:
         }
 
     @staticmethod
-    def detalhes(filters: DashboardFilters, *, section: str, metric: str) -> list[dict[str, object]]:
+    def detalhes(
+        filters: DashboardFilters,
+        *,
+        section: str,
+        metric: str,
+        search: str | None = None,
+    ) -> list[dict[str, object]]:
         if section == "summary":
-            return AdminDashboardService._summary_details(filters, metric)
-        if section == "treasury":
-            return AdminDashboardService._treasury_details(filters, metric)
-        if section == "new-associados":
-            return AdminDashboardService._new_associados_details(filters, metric)
-        if section == "agentes":
-            return AdminDashboardService._agents_details(filters, metric)
-        raise ValidationError("section invalido.")
+            rows = AdminDashboardService._summary_details(filters, metric)
+        elif section == "treasury":
+            rows = AdminDashboardService._treasury_details(filters, metric)
+        elif section == "new-associados":
+            rows = AdminDashboardService._new_associados_details(filters, metric)
+        elif section == "agentes":
+            rows = AdminDashboardService._agents_details(filters, metric)
+        else:
+            raise ValidationError("section invalido.")
+
+        normalized_search = (search or "").strip().lower()
+        if not normalized_search:
+            return rows
+
+        return [
+            row
+            for row in rows
+            if normalized_search in str(row.get("associado_nome", "")).lower()
+            or normalized_search in str(row.get("cpf_cnpj", "")).lower()
+            or normalized_search in str(row.get("matricula", "")).lower()
+            or normalized_search in str(row.get("contrato_codigo", "")).lower()
+            or normalized_search in str(row.get("origem", "")).lower()
+        ]
 
     @staticmethod
     def _summary_details(filters: DashboardFilters, metric: str) -> list[dict[str, object]]:

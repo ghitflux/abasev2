@@ -47,8 +47,13 @@ import {
   formatDate,
   formatLongMonthYear,
 } from "@/lib/formatters";
+import {
+  dashboardOptionsQueryOptions,
+  dashboardRetainedQueryOptions,
+} from "@/lib/dashboard-query";
 import { maskCPFCNPJ } from "@/lib/masks";
 import { cn } from "@/lib/utils";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import RoleGuard from "@/components/auth/role-guard";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import DatePicker from "@/components/custom/date-picker";
@@ -489,25 +494,6 @@ const SECTION_EXPORT_COLUMNS: TableExportColumn<SectionExportRow>[] = [
   { header: "Observacao", value: (row) => row.observacao },
 ];
 
-function matchesDetailRowSearch(row: DashboardDetailRow, search: string) {
-  const haystack = normalizeText(
-    [
-      row.associado_nome,
-      row.cpf_cnpj,
-      row.matricula,
-      row.status,
-      row.agente_nome,
-      row.contrato_codigo,
-      row.origem,
-      row.observacao,
-    ]
-      .filter(Boolean)
-      .join(" "),
-  );
-
-  return haystack.includes(normalizeText(search));
-}
-
 function FilterField({
   label,
   children,
@@ -729,8 +715,11 @@ function DashboardPageContent() {
   const [detailState, setDetailState] = React.useState<DetailState | null>(
     null,
   );
+  const [detailPage, setDetailPage] = React.useState(1);
+  const [detailSearch, setDetailSearch] = React.useState("");
   const [exportingSection, setExportingSection] =
     React.useState<DashboardSection | null>(null);
+  const debouncedDetailSearch = useDebouncedValue(detailSearch, 250);
 
   const agentOptionsQuery = useQuery({
     queryKey: ["dashboard-agent-options"],
@@ -746,6 +735,7 @@ function DashboardPageContent() {
           },
         },
       ),
+    ...dashboardOptionsQueryOptions,
   });
 
   const agentOptions = React.useMemo<SelectOption[]>(
@@ -826,6 +816,7 @@ function DashboardPageContent() {
       apiFetch<DashboardResumoGeral>("dashboard/admin/resumo-geral", {
         query: summaryQueryParams,
       }),
+    ...dashboardRetainedQueryOptions,
   });
 
   const treasuryQuery = useQuery({
@@ -840,6 +831,7 @@ function DashboardPageContent() {
       apiFetch<DashboardTesouraria>("dashboard/admin/tesouraria", {
         query: treasuryQueryParams,
       }),
+    ...dashboardRetainedQueryOptions,
   });
 
   const newAssociadosQuery = useQuery({
@@ -855,6 +847,7 @@ function DashboardPageContent() {
       apiFetch<DashboardNovosAssociados>("dashboard/admin/novos-associados", {
         query: newAssociadosQueryParams,
       }),
+    ...dashboardRetainedQueryOptions,
   });
 
   const agentsQuery = useQuery({
@@ -871,20 +864,24 @@ function DashboardPageContent() {
       apiFetch<DashboardAgentes>("dashboard/admin/agentes", {
         query: agentQueryParams,
       }),
+    ...dashboardRetainedQueryOptions,
   });
 
   const detailQuery = useQuery({
-    queryKey: ["dashboard-admin-detail", detailState],
+    queryKey: ["dashboard-admin-detail", detailState, detailPage, debouncedDetailSearch],
     queryFn: () =>
       apiFetch<PaginatedDashboardDetailRowList>("dashboard/admin/detalhes", {
         query: {
           section: detailState?.section,
           metric: detailState?.metric,
-          page_size: "all",
+          page: detailPage,
+          page_size: 20,
+          search: debouncedDetailSearch || undefined,
           ...detailState?.query,
         },
       }),
     enabled: Boolean(detailState),
+    ...dashboardRetainedQueryOptions,
   });
 
   const openDetail = React.useCallback(
@@ -895,6 +892,8 @@ function DashboardPageContent() {
       description: string,
       query: Record<string, string | undefined>,
     ) => {
+      setDetailPage(1);
+      setDetailSearch("");
       setDetailState({ section, metric, title, description, query });
     },
     [],
@@ -1104,6 +1103,10 @@ function DashboardPageContent() {
   }, [agentDraft]);
 
   const detailRows = detailQuery.data?.results ?? [];
+  const detailTotalPages = React.useMemo(
+    () => Math.max(1, Math.ceil((detailQuery.data?.count ?? 0) / 20)),
+    [detailQuery.data?.count],
+  );
 
   return (
     <>
@@ -2541,7 +2544,11 @@ function DashboardPageContent() {
       <DashboardDetailDialog
         open={Boolean(detailState)}
         onOpenChange={(open) => {
-          if (!open) setDetailState(null);
+          if (!open) {
+            setDetailState(null);
+            setDetailPage(1);
+            setDetailSearch("");
+          }
         }}
         title={detailState?.title ?? "Detalhamento"}
         description={
@@ -2557,7 +2564,25 @@ function DashboardPageContent() {
           .replace(/[^\w]+/g, "-")}
         emptyMessage="Nenhum registro encontrado para o recorte selecionado."
         isLoading={detailQuery.isLoading}
-        matchesSearch={matchesDetailRowSearch}
+        searchValue={detailSearch}
+        onSearchValueChange={setDetailSearch}
+        currentPage={detailPage}
+        totalPages={detailTotalPages}
+        onPageChange={setDetailPage}
+        onExport={(format) =>
+          void handleSectionExport({
+            format,
+            section: detailState?.section ?? "summary",
+            title: detailState?.title ?? "Detalhamento dashboard",
+            filenameBase: (detailState?.title ?? "detalhamento-dashboard")
+              .toLowerCase()
+              .replace(/[^\w]+/g, "-"),
+            metrics: detailState
+              ? [{ label: detailState.title, metric: detailState.metric }]
+              : [],
+            query: detailState?.query ?? {},
+          })
+        }
       />
     </>
   );

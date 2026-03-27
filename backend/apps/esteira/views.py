@@ -36,19 +36,31 @@ class EsteiraViewSet(
             return EsteiraDetailSerializer
         return EsteiraListSerializer
 
-    def get_queryset(self):
-        if getattr(self, "swagger_fake_view", False):
-            return EsteiraItem.objects.none()
+    def _base_queryset(self):
+        return EsteiraItem.objects.select_related(
+            "associado",
+            "associado__agente_responsavel",
+            "associado__contato_historico",
+            "analista_responsavel",
+            "coordenador_responsavel",
+            "tesoureiro_responsavel",
+        )
 
-        queryset = (
-            EsteiraItem.objects.select_related(
-                "associado",
-                "associado__agente_responsavel",
-                "associado__contato_historico",
-                "analista_responsavel",
-                "coordenador_responsavel",
-                "tesoureiro_responsavel",
+    def _list_queryset(self):
+        return (
+            self._base_queryset()
+            .prefetch_related(
+                Prefetch("associado__documentos"),
+                Prefetch("associado__doc_issues"),
+                Prefetch("associado__contratos"),
+                Prefetch("pendencias"),
             )
+            .order_by("prioridade", "created_at")
+        )
+
+    def _detail_queryset(self):
+        return (
+            self._base_queryset()
             .prefetch_related(
                 Prefetch("associado__documentos"),
                 Prefetch("associado__doc_issues"),
@@ -58,6 +70,12 @@ class EsteiraViewSet(
             )
             .order_by("prioridade", "created_at")
         )
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return EsteiraItem.objects.none()
+
+        queryset = self._detail_queryset() if self.action == "retrieve" else self._list_queryset()
 
         user = self.request.user
         if user.has_role("ANALISTA") and not user.has_role("ADMIN"):

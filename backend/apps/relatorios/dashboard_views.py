@@ -114,6 +114,7 @@ class AdminDashboardViewSet(GenericViewSet):
             OpenApiParameter("day", str, OpenApiParameter.QUERY),
             OpenApiParameter("agent_id", int, OpenApiParameter.QUERY),
             OpenApiParameter("status", str, OpenApiParameter.QUERY),
+            OpenApiParameter("search", str, OpenApiParameter.QUERY),
             OpenApiParameter("page", int, OpenApiParameter.QUERY),
             OpenApiParameter("page_size", str, OpenApiParameter.QUERY),
         ],
@@ -125,6 +126,7 @@ class AdminDashboardViewSet(GenericViewSet):
             self._filters(request),
             section=request.query_params.get("section", ""),
             metric=request.query_params.get("metric", ""),
+            search=request.query_params.get("search"),
         )
         page = self.paginate_queryset(rows)
         serializer = DashboardDetailRowSerializer(page if page is not None else rows, many=True)

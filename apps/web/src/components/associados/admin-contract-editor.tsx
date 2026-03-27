@@ -4,10 +4,10 @@ import * as React from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeftRightIcon,
+  CircleAlertIcon,
   CircleHelpIcon,
   PaperclipIcon,
   PlusIcon,
-  SaveIcon,
   Trash2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -21,7 +21,7 @@ import type {
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
-import { centsToDecimal, decimalToCents, formatCurrency, formatMonthYear } from "@/lib/formatters";
+import { centsToDecimal, decimalToCents, formatMonthYear } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { parseIsoDate } from "@/components/associados/contrato-dates";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
@@ -29,7 +29,6 @@ import DatePicker from "@/components/custom/date-picker";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import InputCurrency from "@/components/custom/input-currency";
 import StatusBadge from "@/components/custom/status-badge";
-import AdminOverrideConfirmDialog from "@/components/associados/admin-override-confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -81,6 +80,80 @@ type Props = {
   associadoId: number;
   contract: AdminEditorContrato;
   onPayloadRefresh: (payload?: AdminAssociadoEditorPayload) => Promise<void> | void;
+  onDirtyChange?: (state: ContractEditorDirtyState) => void;
+};
+
+export type SaveAllContratoCorePayload = {
+  updated_at: string | null;
+  status: string;
+  valor_bruto: string;
+  valor_liquido: string;
+  valor_mensalidade: string;
+  taxa_antecipacao: string;
+  margem_disponivel: string;
+  valor_total_antecipacao: string;
+  doacao_associado: string;
+  comissao_agente: string;
+  data_contrato: string | null;
+  data_aprovacao: string | null;
+  data_primeira_mensalidade: string | null;
+  mes_averbacao: string | null;
+  auxilio_liberado_em: string | null;
+};
+
+export type SaveAllCyclesPayload = {
+  updated_at: string | null;
+  cycles: Array<{
+    id: number | null;
+    client_key?: string;
+    numero: number;
+    data_inicio: string;
+    data_fim: string;
+    status: string;
+    valor_total: string;
+  }>;
+  parcelas: Array<{
+    id: number | null;
+    cycle_ref: string;
+    numero: number;
+    referencia_mes: string;
+    valor: string;
+    data_vencimento: string;
+    status: string;
+    data_pagamento: string | null;
+    observacao: string;
+    layout_bucket: string;
+  }>;
+};
+
+export type SaveAllRefinanciamentoPayload = {
+  id: number;
+  updated_at: string | null;
+  status: string;
+  valor_refinanciamento: string;
+  repasse_agente: string;
+  competencia_solicitada: string;
+  observacao: string;
+  analista_note: string;
+  coordenador_note: string;
+};
+
+export type ContractEditorDirtyState = {
+  core: boolean;
+  cycles: boolean;
+  refinanciamento: boolean;
+};
+
+export type AdminContractEditorPendingChanges = {
+  id: number;
+  core?: SaveAllContratoCorePayload;
+  cycles?: SaveAllCyclesPayload;
+  refinanciamento?: SaveAllRefinanciamentoPayload;
+};
+
+export type AdminContractEditorHandle = {
+  getPendingChanges: () => AdminContractEditorPendingChanges | null;
+  hasPendingChanges: () => boolean;
 };
 
 function monthToReference(value: string) {
@@ -181,24 +254,129 @@ function AdminField({
   );
 }
 
-export default function AdminContractEditor({
+function buildContractCorePayload(contract: ContractDraft): SaveAllContratoCorePayload {
+  return {
+    updated_at: contract.updated_at,
+    status: contract.status,
+    valor_bruto: contract.valor_bruto,
+    valor_liquido: contract.valor_liquido,
+    valor_mensalidade: contract.valor_mensalidade,
+    taxa_antecipacao: contract.taxa_antecipacao,
+    margem_disponivel: contract.margem_disponivel,
+    valor_total_antecipacao: contract.valor_total_antecipacao,
+    doacao_associado: contract.doacao_associado,
+    comissao_agente: contract.comissao_agente,
+    data_contrato: contract.data_contrato,
+    data_aprovacao: contract.data_aprovacao,
+    data_primeira_mensalidade: contract.data_primeira_mensalidade,
+    mes_averbacao: contract.mes_averbacao,
+    auxilio_liberado_em: contract.auxilio_liberado_em,
+  };
+}
+
+function buildCyclesPayload(contract: ContractDraft): SaveAllCyclesPayload {
+  const primaryCycleRef =
+    contract.ciclos[0]?.id != null
+      ? String(contract.ciclos[0].id)
+      : contract.ciclos[0]?.client_key || "";
+
+  return {
+    updated_at: contract.updated_at,
+    cycles: contract.ciclos.map((cycle) => ({
+      id: cycle.id,
+      client_key: cycle.client_key,
+      numero: cycle.numero,
+      data_inicio: cycle.data_inicio,
+      data_fim: cycle.data_fim,
+      status: cycle.status,
+      valor_total: cycle.valor_total,
+    })),
+    parcelas: [
+      ...contract.ciclos.flatMap((cycle) =>
+        cycle.parcelas.map((parcela) => ({
+          id: parcela.id,
+          cycle_ref: cycle.id != null ? String(cycle.id) : cycle.client_key || "",
+          numero: parcela.numero,
+          referencia_mes: parcela.referencia_mes,
+          valor: parcela.valor,
+          data_vencimento: parcela.data_vencimento,
+          status: parcela.status,
+          data_pagamento: parcela.data_pagamento,
+          observacao: parcela.observacao,
+          layout_bucket: "cycle",
+        })),
+      ),
+      ...contract.meses_nao_pagos.map((parcela) => ({
+        id: parcela.id,
+        cycle_ref: primaryCycleRef,
+        numero: parcela.numero,
+        referencia_mes: parcela.referencia_mes,
+        valor: parcela.valor,
+        data_vencimento: parcela.data_vencimento,
+        status: parcela.status,
+        data_pagamento: parcela.data_pagamento,
+        observacao: parcela.observacao,
+        layout_bucket: "unpaid",
+      })),
+      ...contract.movimentos_financeiros_avulsos.map((parcela) => ({
+        id: parcela.id,
+        cycle_ref: primaryCycleRef,
+        numero: parcela.numero,
+        referencia_mes: parcela.referencia_mes,
+        valor: parcela.valor,
+        data_vencimento: parcela.data_vencimento,
+        status: parcela.status,
+        data_pagamento: parcela.data_pagamento,
+        observacao: parcela.observacao,
+        layout_bucket: "movement",
+      })),
+    ],
+  };
+}
+
+function buildRefinanciamentoPayload(
+  refinanciamento: ContractDraft["refinanciamento_ativo"],
+): SaveAllRefinanciamentoPayload | null {
+  if (!refinanciamento) {
+    return null;
+  }
+
+  return {
+    id: refinanciamento.id,
+    updated_at: refinanciamento.updated_at,
+    status: refinanciamento.status,
+    valor_refinanciamento: refinanciamento.valor_refinanciamento,
+    repasse_agente: refinanciamento.repasse_agente,
+    competencia_solicitada: refinanciamento.competencia_solicitada,
+    observacao: refinanciamento.observacao,
+    analista_note: refinanciamento.analista_note,
+    coordenador_note: refinanciamento.coordenador_note,
+  };
+}
+
+function isPayloadDirty<T>(left: T, right: T) {
+  return JSON.stringify(left) !== JSON.stringify(right);
+}
+
+function createContractDraft(contract: AdminEditorContrato): ContractDraft {
+  return {
+    ...contract,
+    ciclos: contract.ciclos.map((cycle) => ({ ...cycle })),
+  };
+}
+
+const AdminContractEditor = React.forwardRef<AdminContractEditorHandle, Props>(function AdminContractEditor({
   associadoId,
   contract,
   onPayloadRefresh,
-}: Props) {
-  const [draft, setDraft] = React.useState<ContractDraft>({
-    ...contract,
-    ciclos: contract.ciclos.map((cycle) => ({ ...cycle })),
-  });
-  const [confirmState, setConfirmState] = React.useState<null | "contract" | "layout" | "refi">(null);
+  onDirtyChange,
+}: Props, ref) {
+  const [draft, setDraft] = React.useState<ContractDraft>(createContractDraft(contract));
   const [pendingCycleUploads, setPendingCycleUploads] = React.useState<Record<string, File[]>>({});
   const queryClient = useQueryClient();
 
   React.useEffect(() => {
-    setDraft({
-      ...contract,
-      ciclos: contract.ciclos.map((cycle) => ({ ...cycle })),
-    });
+    setDraft(createContractDraft(contract));
     setPendingCycleUploads({});
   }, [contract]);
 
@@ -214,144 +392,68 @@ export default function AdminContractEditor({
     [associadoId, onPayloadRefresh, queryClient],
   );
 
-  const contractMutation = useMutation({
-    mutationFn: async (motivo: string) =>
-      apiFetch<AdminAssociadoEditorPayload>(`admin-overrides/contratos/${contract.id}/core/`, {
-        method: "POST",
-        body: {
-          updated_at: draft.updated_at,
-          motivo,
-          status: draft.status,
-          valor_bruto: draft.valor_bruto,
-          valor_liquido: draft.valor_liquido,
-          valor_mensalidade: draft.valor_mensalidade,
-          taxa_antecipacao: draft.taxa_antecipacao,
-          margem_disponivel: draft.margem_disponivel,
-          valor_total_antecipacao: draft.valor_total_antecipacao,
-          doacao_associado: draft.doacao_associado,
-          comissao_agente: draft.comissao_agente,
-          data_contrato: draft.data_contrato,
-          data_aprovacao: draft.data_aprovacao,
-          data_primeira_mensalidade: draft.data_primeira_mensalidade,
-          mes_averbacao: draft.mes_averbacao,
-          auxilio_liberado_em: draft.auxilio_liberado_em,
-        },
-      }),
-    onSuccess: async (payload) => {
-      toast.success("Contrato atualizado.");
-      await refresh(payload);
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao atualizar contrato.");
-    },
-  });
+  const initialCorePayload = React.useMemo(
+    () => buildContractCorePayload(createContractDraft(contract)),
+    [contract],
+  );
+  const currentCorePayload = React.useMemo(() => buildContractCorePayload(draft), [draft]);
+  const initialCyclesPayload = React.useMemo(
+    () => buildCyclesPayload(createContractDraft(contract)),
+    [contract],
+  );
+  const currentCyclesPayload = React.useMemo(() => buildCyclesPayload(draft), [draft]);
+  const initialRefiPayload = React.useMemo(
+    () => buildRefinanciamentoPayload(createContractDraft(contract).refinanciamento_ativo),
+    [contract],
+  );
+  const currentRefiPayload = React.useMemo(
+    () => buildRefinanciamentoPayload(draft.refinanciamento_ativo),
+    [draft.refinanciamento_ativo],
+  );
+  const dirtyState = React.useMemo<ContractEditorDirtyState>(
+    () => ({
+      core: isPayloadDirty(initialCorePayload, currentCorePayload),
+      cycles: isPayloadDirty(initialCyclesPayload, currentCyclesPayload),
+      refinanciamento: isPayloadDirty(initialRefiPayload, currentRefiPayload),
+    }),
+    [
+      currentCorePayload,
+      currentCyclesPayload,
+      currentRefiPayload,
+      initialCorePayload,
+      initialCyclesPayload,
+      initialRefiPayload,
+    ],
+  );
 
-  const layoutMutation = useMutation({
-    mutationFn: async (motivo: string) => {
-      const primaryCycleRef =
-        draft.ciclos[0]?.id != null
-          ? String(draft.ciclos[0].id)
-          : draft.ciclos[0]?.client_key || "";
+  React.useEffect(() => {
+    onDirtyChange?.(dirtyState);
+  }, [dirtyState, onDirtyChange]);
 
-      return apiFetch<AdminAssociadoEditorPayload>(
-        `admin-overrides/contratos/${contract.id}/cycles/layout/`,
-        {
-          method: "POST",
-          body: {
-            updated_at: draft.updated_at,
-            motivo,
-            cycles: draft.ciclos.map((cycle) => ({
-              id: cycle.id,
-              client_key: cycle.client_key,
-              numero: cycle.numero,
-              data_inicio: cycle.data_inicio,
-              data_fim: cycle.data_fim,
-              status: cycle.status,
-              valor_total: cycle.valor_total,
-            })),
-            parcelas: [
-              ...draft.ciclos.flatMap((cycle) =>
-                cycle.parcelas.map((parcela) => ({
-                  id: parcela.id,
-                  cycle_ref: cycle.id != null ? String(cycle.id) : cycle.client_key,
-                  numero: parcela.numero,
-                  referencia_mes: parcela.referencia_mes,
-                  valor: parcela.valor,
-                  data_vencimento: parcela.data_vencimento,
-                  status: parcela.status,
-                  data_pagamento: parcela.data_pagamento,
-                  observacao: parcela.observacao,
-                  layout_bucket: "cycle",
-                })),
-              ),
-              ...draft.meses_nao_pagos.map((parcela) => ({
-                id: parcela.id,
-                cycle_ref: primaryCycleRef,
-                numero: parcela.numero,
-                referencia_mes: parcela.referencia_mes,
-                valor: parcela.valor,
-                data_vencimento: parcela.data_vencimento,
-                status: parcela.status,
-                data_pagamento: parcela.data_pagamento,
-                observacao: parcela.observacao,
-                layout_bucket: "unpaid",
-              })),
-              ...draft.movimentos_financeiros_avulsos.map((parcela) => ({
-                id: parcela.id,
-                cycle_ref: primaryCycleRef,
-                numero: parcela.numero,
-                referencia_mes: parcela.referencia_mes,
-                valor: parcela.valor,
-                data_vencimento: parcela.data_vencimento,
-                status: parcela.status,
-                data_pagamento: parcela.data_pagamento,
-                observacao: parcela.observacao,
-                layout_bucket: "movement",
-              })),
-            ],
-          },
-        },
-      );
-    },
-    onSuccess: async (payload) => {
-      toast.success("Layout dos ciclos atualizado.");
-      await refresh(payload);
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao salvar o layout dos ciclos.");
-    },
-  });
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      getPendingChanges() {
+        const pending: AdminContractEditorPendingChanges = { id: contract.id };
 
-  const refiMutation = useMutation({
-    mutationFn: async (motivo: string) => {
-      if (!draft.refinanciamento_ativo) {
-        return null;
-      }
-      return apiFetch<AdminAssociadoEditorPayload>(
-        `admin-overrides/refinanciamentos/${draft.refinanciamento_ativo.id}/core/`,
-        {
-          method: "POST",
-          body: {
-            updated_at: draft.refinanciamento_ativo.updated_at,
-            motivo,
-            status: draft.refinanciamento_ativo.status,
-            valor_refinanciamento: draft.refinanciamento_ativo.valor_refinanciamento,
-            repasse_agente: draft.refinanciamento_ativo.repasse_agente,
-            observacao: draft.refinanciamento_ativo.observacao,
-            analista_note: draft.refinanciamento_ativo.analista_note,
-            coordenador_note: draft.refinanciamento_ativo.coordenador_note,
-          },
-        },
-      );
-    },
-    onSuccess: async (payload) => {
-      toast.success("Renovação atualizada.");
-      await refresh(payload || undefined);
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao atualizar a renovação.");
-    },
-  });
+        if (dirtyState.core) {
+          pending.core = currentCorePayload;
+        }
+        if (dirtyState.cycles) {
+          pending.cycles = currentCyclesPayload;
+        }
+        if (dirtyState.refinanciamento && currentRefiPayload) {
+          pending.refinanciamento = currentRefiPayload;
+        }
+
+        return pending.core || pending.cycles || pending.refinanciamento ? pending : null;
+      },
+      hasPendingChanges() {
+        return dirtyState.core || dirtyState.cycles || dirtyState.refinanciamento;
+      },
+    }),
+    [contract.id, currentCorePayload, currentCyclesPayload, currentRefiPayload, dirtyState],
+  );
 
   const cycleUploadMutation = useMutation({
     mutationFn: async ({
@@ -824,23 +926,25 @@ export default function AdminContractEditor({
           <div>
             <CardTitle className="text-base">Modo edição admin</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              Ajustes manuais do contrato, renovação e layout dos ciclos são gravados
-              imediatamente no banco após confirmação.
+              Ajustes do contrato, renovação e layout dos ciclos ficam em rascunho local até o
+              salvamento global do modo admin.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={() => setConfirmState("contract")}>
-              <SaveIcon className="mr-2 size-4" />
-              Salvar contrato
-            </Button>
-            <Button type="button" variant="outline" onClick={() => setConfirmState("layout")}>
-              <ArrowLeftRightIcon className="mr-2 size-4" />
-              Salvar ciclos
-            </Button>
-            {draft.refinanciamento_ativo ? (
-              <Button type="button" variant="outline" onClick={() => setConfirmState("refi")}>
-                Salvar renovação
-              </Button>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {dirtyState.core ? (
+              <StatusBadge status="pendente" label="Contrato pendente" />
+            ) : null}
+            {dirtyState.cycles ? (
+              <StatusBadge status="pendente" label="Ciclos pendentes" />
+            ) : null}
+            {dirtyState.refinanciamento ? (
+              <StatusBadge status="pendente" label="Renovação pendente" />
+            ) : null}
+            {!dirtyState.core && !dirtyState.cycles && !dirtyState.refinanciamento ? (
+              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-emerald-200">
+                <CircleAlertIcon className="size-3.5" />
+                Sem alterações pendentes
+              </div>
             ) : null}
           </div>
         </CardHeader>
@@ -1385,87 +1489,11 @@ export default function AdminContractEditor({
 
       {renderExtraParcelSection("Parcelas não descontadas", "meses_nao_pagos")}
       {renderExtraParcelSection("Movimentos financeiros fora do ciclo", "movimentos_financeiros_avulsos")}
-
-      <AdminOverrideConfirmDialog
-        open={confirmState === "contract"}
-        onOpenChange={(open) => {
-          if (!open) {
-            setConfirmState(null);
-          }
-        }}
-        title="Salvar alterações do contrato"
-        description="Os dados principais do contrato serão atualizados com override administrativo."
-        summary={
-          <div className="grid gap-2 text-sm">
-            <p>Status: <span className="font-medium text-foreground">{draft.status}</span></p>
-            <p>Valor bruto: <span className="font-medium text-foreground">{formatCurrency(draft.valor_bruto)}</span></p>
-            <p>Valor líquido: <span className="font-medium text-foreground">{formatCurrency(draft.valor_liquido)}</span></p>
-          </div>
-        }
-        submitLabel="Salvar contrato"
-        isSubmitting={contractMutation.isPending}
-        onConfirm={async (motivo) => {
-          await contractMutation.mutateAsync(motivo);
-        }}
-      />
-
-      <AdminOverrideConfirmDialog
-        open={confirmState === "layout"}
-        onOpenChange={(open) => {
-          if (!open) {
-            setConfirmState(null);
-          }
-        }}
-        title="Salvar layout manual dos ciclos"
-        description="O layout salvo passa a ser a fonte de verdade do contrato até nova intervenção administrativa."
-        summary={
-          <div className="grid gap-2 text-sm">
-            <p>{draft.ciclos.length} ciclo(s) no board.</p>
-            <p>
-              {draft.ciclos.reduce((total, cycle) => total + cycle.parcelas.length, 0)} competência(s) dentro
-              de ciclos.
-            </p>
-            <p>{draft.meses_nao_pagos.length} competência(s) fora do ciclo em parcelas não descontadas.</p>
-          </div>
-        }
-        submitLabel="Salvar ciclos"
-        isSubmitting={layoutMutation.isPending}
-        onConfirm={async (motivo) => {
-          await layoutMutation.mutateAsync(motivo);
-        }}
-      />
-
-      <AdminOverrideConfirmDialog
-        open={confirmState === "refi"}
-        onOpenChange={(open) => {
-          if (!open) {
-            setConfirmState(null);
-          }
-        }}
-        title="Salvar renovação"
-        description="A renovação operacional será atualizada com override administrativo."
-        summary={
-          draft.refinanciamento_ativo ? (
-            <div className="grid gap-2 text-sm">
-              <p>
-                Status: <span className="font-medium text-foreground">{draft.refinanciamento_ativo.status}</span>
-              </p>
-              <p>
-                Valor:{" "}
-                <span className="font-medium text-foreground">
-                  {formatCurrency(draft.refinanciamento_ativo.valor_refinanciamento)}
-                </span>
-              </p>
-            </div>
-          ) : null
-        }
-        submitLabel="Salvar renovação"
-        isSubmitting={refiMutation.isPending}
-        onConfirm={async (motivo) => {
-          await refiMutation.mutateAsync(motivo);
-        }}
-      />
       </div>
     </TooltipProvider>
   );
-}
+});
+
+AdminContractEditor.displayName = "AdminContractEditor";
+
+export default AdminContractEditor;

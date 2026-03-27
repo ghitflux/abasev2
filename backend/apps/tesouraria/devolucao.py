@@ -11,7 +11,7 @@ from rest_framework.exceptions import ValidationError
 
 from apps.contratos.models import Contrato
 
-from .models import DevolucaoAssociado, DevolucaoAssociadoAnexo
+from .models import DevolucaoAssociado, DevolucaoAssociadoAnexo, Pagamento
 
 
 def _append_note(base: str, note: str) -> str:
@@ -29,6 +29,8 @@ class DevolucaoListPayload:
 
 
 class DevolucaoAssociadoService:
+    FLUXO_DESISTENCIA_POS_LIQUIDACAO = DevolucaoAssociado.Tipo.DESISTENCIA_POS_LIQUIDACAO
+
     @staticmethod
     def _contract_queryset():
         return Contrato.objects.select_related("associado", "agente").order_by(
@@ -61,7 +63,17 @@ class DevolucaoAssociadoService:
             "status_contrato": contrato.status,
             "data_contrato": contrato.data_contrato,
             "mes_averbacao": contrato.mes_averbacao,
+            "tipo_sugerido": "",
         }
+
+    @classmethod
+    def _apply_fluxo_contratos(cls, queryset, fluxo: str | None):
+        if fluxo != cls.FLUXO_DESISTENCIA_POS_LIQUIDACAO:
+            return queryset
+        return queryset.filter(
+            liquidacoes__revertida_em__isnull=True,
+            associado__tesouraria_pagamentos__status=Pagamento.Status.PAGO,
+        )
 
     @staticmethod
     def _serialize_history(item: DevolucaoAssociado) -> dict[str, object]:
@@ -134,8 +146,9 @@ class DevolucaoAssociadoService:
         estado: str | None = None,
         competencia: date | None = None,
         contract_id: int | None = None,
+        fluxo: str | None = None,
     ) -> DevolucaoListPayload:
-        queryset = cls._contract_queryset()
+        queryset = cls._apply_fluxo_contratos(cls._contract_queryset(), fluxo)
         if search:
             queryset = queryset.filter(
                 Q(codigo__icontains=search)
@@ -158,6 +171,9 @@ class DevolucaoAssociadoService:
             )
         queryset = queryset.distinct()
         rows = [cls._serialize_contract(contrato) for contrato in queryset]
+        if fluxo == cls.FLUXO_DESISTENCIA_POS_LIQUIDACAO:
+            for row in rows:
+                row["tipo_sugerido"] = DevolucaoAssociado.Tipo.DESISTENCIA_POS_LIQUIDACAO
         return DevolucaoListPayload(rows=rows, kpis=cls._build_contract_kpis(rows))
 
     @classmethod
@@ -169,6 +185,7 @@ class DevolucaoAssociadoService:
         status: str | None = None,
         competencia: date | None = None,
         contract_id: int | None = None,
+        fluxo: str | None = None,
     ) -> DevolucaoListPayload:
         queryset = cls._history_queryset()
         if search:
@@ -181,6 +198,8 @@ class DevolucaoAssociadoService:
             )
         if tipo in {choice[0] for choice in DevolucaoAssociado.Tipo.choices}:
             queryset = queryset.filter(tipo=tipo)
+        elif fluxo == cls.FLUXO_DESISTENCIA_POS_LIQUIDACAO:
+            queryset = queryset.filter(tipo=DevolucaoAssociado.Tipo.DESISTENCIA_POS_LIQUIDACAO)
         if status == "registrada":
             queryset = queryset.filter(revertida_em__isnull=True)
         elif status == "revertida":
@@ -226,6 +245,16 @@ class DevolucaoAssociadoService:
             raise ValidationError(
                 {"competencia_referencia": "Informe a competência de referência para desconto indevido."}
             )
+        if tipo == DevolucaoAssociado.Tipo.DESISTENCIA_POS_LIQUIDACAO:
+            if not contrato.liquidacoes.filter(revertida_em__isnull=True).exists():
+                raise ValidationError(
+                    "O contrato precisa ter liquidação ativa para registrar desistência pós-liquidação."
+                )
+            if not associado.tesouraria_pagamentos.filter(status=Pagamento.Status.PAGO).exists():
+                raise ValidationError(
+                    "O associado precisa ter pagamento efetivado para registrar desistência pós-liquidação."
+                )
+            competencia_referencia = None
 
         if quantidade_parcelas < 1:
             raise ValidationError(

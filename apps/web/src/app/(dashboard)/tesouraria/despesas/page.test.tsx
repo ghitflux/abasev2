@@ -204,6 +204,107 @@ function renderPage() {
 
 describe("TesourariaDespesasPage", () => {
   let expenses: ExpenseRecord[];
+  const resultadoMensalPayload = {
+    rows: [
+      {
+        mes: "2026-03-01",
+        receitas: "450.00",
+        receitas_inadimplencia: "120.00",
+        receitas_retorno: "330.00",
+        despesas: "200.00",
+        despesas_manuais: "150.00",
+        devolucoes: "50.00",
+        pagamentos_operacionais: "30.00",
+        lucro: "250.00",
+        lucro_liquido: "220.00",
+      },
+    ],
+    totais: {
+      receitas: "450.00",
+      despesas: "200.00",
+      lucro: "250.00",
+      lucro_liquido: "220.00",
+    },
+  };
+  const resultadoMensalDetalhePayload = {
+    mes: "2026-03-01",
+    resumo: {
+      receitas: "450.00",
+      receitas_inadimplencia: "120.00",
+      receitas_retorno: "330.00",
+      despesas: "200.00",
+      despesas_manuais: "150.00",
+      devolucoes: "50.00",
+      pagamentos_operacionais: "30.00",
+      lucro: "250.00",
+      lucro_liquido: "220.00",
+    },
+    receitas: [
+      {
+        id: 1,
+        origem: "arquivo_retorno",
+        origem_label: "Arquivo retorno",
+        data: "2026-03-01",
+        referencia: "2026-03-01",
+        associado_nome: "Maria Receita",
+        cpf_cnpj: "12312312312",
+        matricula: "MAT-001",
+        agente_nome: "Agente Norte",
+        descricao: "Receita reconhecida via arquivo retorno.",
+        valor: "330.00",
+      },
+      {
+        id: 2,
+        origem: "inadimplencia_manual",
+        origem_label: "Inadimplência manual",
+        data: "2026-03-12",
+        referencia: "2026-03-01",
+        associado_nome: "Carlos Manual",
+        cpf_cnpj: "32132132132",
+        matricula: "MAT-002",
+        agente_nome: "Agente Sul",
+        descricao: "Recebimento manual de inadimplência.",
+        valor: "120.00",
+      },
+    ],
+    despesas: [
+      {
+        id: 11,
+        origem: "despesa_manual",
+        origem_label: "Despesa manual",
+        data: "2026-03-05",
+        titulo: "Operacional",
+        subtitulo: "Internet corporativa",
+        descricao: "Link principal da associação",
+        referencia: "Pendente · Fixa",
+        valor: "150.00",
+      },
+      {
+        id: 12,
+        origem: "devolucao",
+        origem_label: "Devolução",
+        data: "2026-03-09",
+        titulo: "João Devolução",
+        subtitulo: "CTR-2026-001",
+        descricao: "Estorno financeiro",
+        referencia: "Pagamento indevido",
+        valor: "50.00",
+      },
+    ],
+    pagamentos_operacionais: [
+      {
+        id: 21,
+        data: "2026-03-10",
+        favorecido: "Associado Operacional",
+        cpf_cnpj: "99988877766",
+        agente_nome: "Agente Centro",
+        contrato_codigo: "CTR-2026-010",
+        origem: "operacional",
+        origem_label: "Operacional",
+        valor: "30.00",
+      },
+    ],
+  };
 
   beforeEach(() => {
     expenses = [
@@ -241,6 +342,14 @@ describe("TesourariaDespesasPage", () => {
           results: expenses,
           kpis: buildKpis(expenses),
         } as never;
+      }
+
+      if (path === "tesouraria/despesas/resultado-mensal" && method === "GET") {
+        return resultadoMensalPayload as never;
+      }
+
+      if (path === "tesouraria/despesas/resultado-mensal/detalhe" && method === "GET") {
+        return resultadoMensalDetalhePayload as never;
       }
 
       if (path === "tesouraria/despesas" && method === "POST") {
@@ -359,12 +468,12 @@ describe("TesourariaDespesasPage", () => {
     expect(await screen.findByText("Despesas da associação")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Buscar por categoria ou descrição")).toBeInTheDocument();
     expect(screen.getByText("Total de despesas")).toBeInTheDocument();
-    expect(screen.getByText("Pendentes de anexo")).toBeInTheDocument();
+    expect(screen.getByText("Sem anexo")).toBeInTheDocument();
     expect(await screen.findByText("Internet corporativa")).toBeInTheDocument();
-    expect(screen.getAllByText("Pendente de anexo").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Sem anexo").length).toBeGreaterThan(0);
   });
 
-  it("cria despesa sem anexo e mantém o status pendente de anexo", async () => {
+  it("cria despesa sem anexo e mantém o status financeiro escolhido", async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -375,12 +484,16 @@ describe("TesourariaDespesasPage", () => {
     await user.type(screen.getByLabelText("Descrição"), "Hospedagem cloud");
     await user.type(screen.getByPlaceholderText("R$ 0,00"), "299.90");
     await user.type(screen.getAllByPlaceholderText("dd/mm/aaaa")[0], "2026-03-15");
+    await user.click(screen.getByLabelText("Status financeiro"));
+    await user.click(await screen.findByRole("option", { name: "Pago" }));
+    await user.type(screen.getAllByPlaceholderText("dd/mm/aaaa")[1], "2026-03-16");
     await user.type(screen.getByLabelText("Observações"), "Servidor principal");
 
     await user.click(screen.getByRole("button", { name: /Lançar despesa/i }));
 
     expect(await screen.findByText("Hospedagem cloud")).toBeInTheDocument();
-    expect(screen.getAllByText("Pendente de anexo").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Sem anexo").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Pago").length).toBeGreaterThan(0);
   });
 
   it("permite anexar o comprovante já no modal de lançamento", async () => {
@@ -413,5 +526,28 @@ describe("TesourariaDespesasPage", () => {
 
     await waitFor(() => expect(screen.getAllByText("Anexado").length).toBeGreaterThan(0));
     expect(screen.getByRole("link", { name: /Ver anexo/i })).toBeInTheDocument();
+  });
+
+  it("abre o detalhamento geral, de receitas e de despesas no resultado mensal", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("tab", { name: "Resultado mensal" }));
+
+    await user.click(await screen.findByRole("button", { name: "março de 2026" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByText("Composição do mês")).toBeInTheDocument();
+    expect(screen.getByText("Pagamentos operacionais")).toBeInTheDocument();
+    expect(screen.getByText("Receitas de arquivo retorno")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /R\$ 450,00/i }));
+    expect(await screen.findByText("Receitas do mês")).toBeInTheDocument();
+    expect(screen.getByText("Maria Receita")).toBeInTheDocument();
+    expect(screen.getByText("Carlos Manual")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /R\$ 200,00/i }));
+    expect(await screen.findByText("Despesas do mês")).toBeInTheDocument();
+    expect(screen.getByText("Internet corporativa")).toBeInTheDocument();
+    expect(screen.getByText("João Devolução")).toBeInTheDocument();
   });
 });

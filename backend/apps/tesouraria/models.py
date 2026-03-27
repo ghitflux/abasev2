@@ -130,6 +130,10 @@ class DevolucaoAssociado(BaseModel):
     class Tipo(models.TextChoices):
         PAGAMENTO_INDEVIDO = "pagamento_indevido", "Pagamento indevido"
         DESCONTO_INDEVIDO = "desconto_indevido", "Desconto indevido"
+        DESISTENCIA_POS_LIQUIDACAO = (
+            "desistencia_pos_liquidacao",
+            "Desistência pós-liquidação",
+        )
 
     contrato = models.ForeignKey(
         "contratos.Contrato",

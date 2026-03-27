@@ -5,12 +5,14 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { RefreshCcwIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import type { PaginatedResponse } from "@/lib/api/types";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import StatusBadge from "@/components/custom/status-badge";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -25,7 +27,7 @@ import {
 } from "@/gen";
 import type { ArquivoRetornoDetail, ArquivoRetornoItem, ArquivoRetornoList } from "@/gen/models";
 import { apiFetch } from "@/lib/api/client";
-import { formatCurrency, formatDateTime } from "@/lib/formatters";
+import { formatCurrency, formatDate, formatDateTime } from "@/lib/formatters";
 import {
   getArquivoFinanceiroResumo,
   type ArquivoRetornoWithFinanceiro,
@@ -177,13 +179,18 @@ export default function ImportacaoPage() {
 
   React.useEffect(() => {
     setIsPolling(statusIsPending(latestImport?.status));
-  }, [latestImport?.status]);
+    if (!statusIsPending(latestImport?.status)) {
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-duplicidades-sidebar"] });
+    }
+  }, [latestImport?.status, queryClient]);
 
   function invalidateImportacao() {
     void queryClient.invalidateQueries({
       predicate: (query) =>
         JSON.stringify(query.queryKey).includes("/api/v1/importacao/arquivo-retorno/"),
     });
+    void queryClient.invalidateQueries({ queryKey: ["importacao-duplicidades-financeiras"] });
+    void queryClient.invalidateQueries({ queryKey: ["tesouraria-duplicidades-sidebar"] });
   }
 
   const uploadMutation = useMutation<ArquivoRetornoDetail, Error, File>({
@@ -304,7 +311,6 @@ export default function ImportacaoPage() {
   const isInitialLatestLoading = latestQuery.isLoading && !latestImport;
   const isInitialHistoryLoading = historyQuery.isLoading && !historyQuery.data;
   const isInitialItemsLoading = activeItemsQuery.isLoading && !activeItemsQuery.data;
-
   const historyColumns: DataTableColumn<ArquivoRetornoList>[] = [
     {
       id: "created_at",
@@ -619,6 +625,7 @@ export default function ImportacaoPage() {
           )}
         </CardContent>
       </Card>
+
     </div>
   );
 }

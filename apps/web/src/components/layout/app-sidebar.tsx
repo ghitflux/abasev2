@@ -10,7 +10,10 @@ import { ChevronRightIcon, LogOutIcon, PanelLeftCloseIcon, PanelLeftOpenIcon } f
 import { toast } from "sonner";
 
 import type {
+  DuplicidadeFinanceiraItem,
+  DuplicidadeFinanceiraKpis,
   PagamentoAgenteNotificacoes,
+  PaginatedResponse,
   PendenciaResumo,
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
@@ -58,6 +61,31 @@ function getAnimatedLabelClass(isActive: boolean) {
   );
 }
 
+function collectNavigationHrefs(
+  sections: ReturnType<typeof getNavigationForRole>,
+) {
+  const hrefs = new Set<string>();
+
+  sections.forEach((section) => {
+    section.items.forEach((item) => {
+      if (item.href) {
+        hrefs.add(item.href);
+      }
+      item.children?.forEach((child) => {
+        if (child.href) {
+          hrefs.add(child.href);
+        }
+      });
+    });
+  });
+
+  return [...hrefs];
+}
+
+type DuplicidadeSidebarResponse = PaginatedResponse<DuplicidadeFinanceiraItem> & {
+  kpis: DuplicidadeFinanceiraKpis;
+};
+
 export default function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -68,6 +96,10 @@ export default function AppSidebar() {
   const isCollapsed = state === "collapsed";
 
   const sections = React.useMemo(() => getNavigationForRole(role), [role]);
+  const navigationHrefs = React.useMemo(
+    () => collectNavigationHrefs(sections),
+    [sections],
+  );
   const pagamentoNotificacoesQuery = useQuery({
     queryKey: ["agente-pagamentos-notificacoes"],
     enabled: role === "AGENTE",
@@ -81,6 +113,20 @@ export default function AppSidebar() {
     refetchInterval: 30000,
     queryFn: () => apiFetch<PendenciaResumo>("esteira/pendencias-resumo"),
   });
+  const duplicidadesResumoQuery = useQuery({
+    queryKey: ["tesouraria-duplicidades-sidebar"],
+    enabled: ["ADMIN", "COORDENADOR", "TESOUREIRO"].includes(role ?? ""),
+    refetchInterval: 30000,
+    staleTime: 30 * 1000,
+    queryFn: () =>
+      apiFetch<DuplicidadeSidebarResponse>("importacao/duplicidades-financeiras", {
+        query: {
+          status: "aberta",
+          page: 1,
+          page_size: 1,
+        },
+      }),
+  });
   const routeBadges = React.useMemo<Record<string, number>>(
     () => {
       const badges: Record<string, number> = {};
@@ -92,9 +138,18 @@ export default function AppSidebar() {
           pendenciasResumoQuery.data?.retornadas_agente ?? 0;
       }
 
+      if (["ADMIN", "COORDENADOR", "TESOUREIRO"].includes(role ?? "")) {
+        badges["/tesouraria/devolucoes"] =
+          duplicidadesResumoQuery.data?.count ??
+          duplicidadesResumoQuery.data?.kpis.abertas ??
+          0;
+      }
+
       return badges;
     },
     [
+      duplicidadesResumoQuery.data?.count,
+      duplicidadesResumoQuery.data?.kpis.abertas,
       pagamentoNotificacoesQuery.data?.unread_count,
       pendenciasResumoQuery.data?.retornadas_agente,
       role,
@@ -129,6 +184,22 @@ export default function AppSidebar() {
     }
   }, [pathname, sections]);
 
+  const prefetchHref = React.useCallback(
+    (href?: string | null) => {
+      if (!href) {
+        return;
+      }
+      router.prefetch?.(href);
+    },
+    [router],
+  );
+
+  React.useEffect(() => {
+    navigationHrefs.forEach((href) => {
+      router.prefetch?.(href);
+    });
+  }, [navigationHrefs, router]);
+
   const handleLogout = () => {
     startTransition(async () => {
       startRouteTransition("/login");
@@ -143,7 +214,7 @@ export default function AppSidebar() {
   return (
     <Sidebar collapsible="icon" variant="sidebar">
       {/* ─── Header ─────────────────────────────────────────────── */}
-      <SidebarHeader className="border-b border-sidebar-border py-[18px] px-4 group-data-[collapsible=icon]:px-2">
+      <SidebarHeader className="py-[18px] px-4 group-data-[collapsible=icon]:px-2">
         <div className="flex items-center gap-3 group-data-[collapsible=icon]:justify-center">
           {/* Logo mark — acts as expand toggle when collapsed */}
           <button
@@ -249,7 +320,11 @@ export default function AppSidebar() {
                                       isActive={isChildActive}
                                       className="transition-all duration-150 hover:translate-x-0.5 active:scale-[0.98]"
                                     >
-                                      <Link href={child.href ?? "#"}>
+                                      <Link
+                                        href={child.href ?? "#"}
+                                        onMouseEnter={() => prefetchHref(child.href)}
+                                        onFocus={() => prefetchHref(child.href)}
+                                      >
                                         <span
                                           data-route-subtitle={isChildActive ? "active" : "inactive"}
                                           className={getAnimatedLabelClass(isChildActive)}
@@ -287,7 +362,11 @@ export default function AppSidebar() {
                         isActive={isItemActive}
                         className="transition-all duration-150 hover:translate-x-0.5 active:scale-[0.98]"
                       >
-                        <Link href={item.href ?? "#"}>
+                        <Link
+                          href={item.href ?? "#"}
+                          onMouseEnter={() => prefetchHref(item.href)}
+                          onFocus={() => prefetchHref(item.href)}
+                        >
                           <item.icon className="shrink-0" />
                           {!isCollapsed ? (
                             <span
