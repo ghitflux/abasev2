@@ -8,6 +8,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarCheck2Icon,
   HandCoinsIcon,
+  PencilLineIcon,
+  PlusIcon,
   ReceiptTextIcon,
   RotateCcwIcon,
   SlidersHorizontalIcon,
@@ -27,10 +29,10 @@ import { buildBackendFileUrl } from "@/lib/backend-files";
 import { usePermissions } from "@/hooks/use-permissions";
 import { formatCurrency, formatDate, formatMonthYear } from "@/lib/formatters";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
-import DatePicker from "@/components/custom/date-picker";
-import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
-import InputCurrency from "@/components/custom/input-currency";
 import StatusBadge from "@/components/custom/status-badge";
+import DevolucaoFormDialog, {
+  type DevolucaoFormState,
+} from "@/components/tesouraria/devolucao-form-dialog";
 import DuplicidadesFinanceirasPanel from "@/components/tesouraria/duplicidades-financeiras-panel";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import StatsCard from "@/components/shared/stats-card";
@@ -73,35 +75,20 @@ type HistoryResponse = PaginatedResponse<DevolucaoAssociadoItem> & {
   kpis: DevolucaoKpis;
 };
 
-type RegisterState = {
-  row: DevolucaoContratoItem;
-  tipo: "pagamento_indevido" | "desconto_indevido" | "desistencia_pos_liquidacao";
-  dataDevolucao?: Date;
-  quantidadeParcelas: number;
-  valor: number | null;
-  motivo: string;
-  competenciaReferencia?: Date;
-  comprovantes: File[];
-};
-
-const comprovanteAccept = {
-  "application/pdf": [".pdf"],
-  "image/png": [".png"],
-  "image/jpeg": [".jpg", ".jpeg"],
-};
-
 function useDevolucaoContratosQuery({
   page,
   search,
   competencia,
   estado,
   fluxo,
+  enabled = true,
 }: {
   page: number;
   search: string;
   competencia?: Date;
   estado: string;
   fluxo?: string;
+  enabled?: boolean;
 }) {
   return useQuery({
     queryKey: [
@@ -113,6 +100,7 @@ function useDevolucaoContratosQuery({
       estado,
       fluxo,
     ],
+    enabled,
     queryFn: () =>
       apiFetch<RegisterResponse>("tesouraria/devolucoes/contratos", {
         query: {
@@ -125,6 +113,68 @@ function useDevolucaoContratosQuery({
         },
       }),
   });
+}
+
+function buildCreateState(
+  row: DevolucaoContratoItem | null,
+  defaultTipo?: DevolucaoFormState["tipo"],
+): DevolucaoFormState {
+  return {
+    mode: "create",
+    devolucaoId: null,
+    row,
+    tipo:
+      row?.tipo_sugerido === "desistencia_pos_liquidacao"
+        ? "desistencia_pos_liquidacao"
+        : defaultTipo ?? "pagamento_indevido",
+    dataDevolucao: new Date(),
+    quantidadeParcelas: 1,
+    valor: null,
+    motivo: "",
+    competenciaReferencia: undefined,
+    comprovantePrincipal: null,
+    comprovantesExtras: [],
+    existingComprovantePrincipal: null,
+    existingAnexosExtras: [],
+    removerAnexosIds: [],
+  };
+}
+
+function buildEditState(row: DevolucaoAssociadoItem): DevolucaoFormState {
+  const primaryAttachment = row.anexos[0] ?? row.comprovante ?? null;
+  const extraAttachments = row.anexos.slice(1);
+
+  return {
+    mode: "edit",
+    devolucaoId: row.devolucao_id,
+    row: {
+      id: row.contrato_id,
+      contrato_id: row.contrato_id,
+      associado_id: row.associado_id,
+      nome: row.nome,
+      cpf_cnpj: row.cpf_cnpj,
+      matricula: row.matricula,
+      agente_nome: row.agente_nome,
+      contrato_codigo: row.contrato_codigo,
+      status_contrato: row.status_contrato,
+      data_contrato: row.data_devolucao,
+      mes_averbacao: row.competencia_referencia,
+      tipo_sugerido: row.tipo === "desistencia_pos_liquidacao" ? row.tipo : undefined,
+    },
+    tipo: row.tipo as DevolucaoFormState["tipo"],
+    dataDevolucao: row.data_devolucao ? new Date(`${row.data_devolucao}T12:00:00`) : undefined,
+    quantidadeParcelas: row.quantidade_parcelas,
+    valor: Math.round(Number.parseFloat(row.valor) * 100),
+    motivo: row.motivo,
+    competenciaReferencia: row.competencia_referencia
+      ? new Date(`${row.competencia_referencia}T12:00:00`)
+      : undefined,
+    comprovantePrincipal: null,
+    comprovantesExtras: [],
+    existingComprovantePrincipal: primaryAttachment,
+    existingAnexosExtras: extraAttachments,
+    removerAnexosIds: [],
+  };
 }
 
 function useDevolucaoHistoricoQuery({
@@ -171,8 +221,9 @@ function useDevolucaoHistoricoQuery({
 export default function DevolucoesAssociadoPage() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const { hasRole } = usePermissions();
+  const { hasRole, hasAnyRole } = usePermissions();
   const isAdmin = hasRole("ADMIN");
+  const canEdit = hasAnyRole(["ADMIN", "COORDENADOR", "TESOUREIRO"]);
   const initialTab = React.useMemo<ListingTab>(() => {
     const requestedTab = searchParams.get("tab");
     if (requestedTab === "pos_liquidacao") return "pos_liquidacao";
@@ -193,7 +244,9 @@ export default function DevolucoesAssociadoPage() {
   const [draftEstado, setDraftEstado] = React.useState("todos");
   const [draftTipo, setDraftTipo] = React.useState("todos");
   const [draftStatus, setDraftStatus] = React.useState("todos");
-  const [registerState, setRegisterState] = React.useState<RegisterState | null>(null);
+  const [registerState, setRegisterState] = React.useState<DevolucaoFormState | null>(null);
+  const [registerAllowsContractSelection, setRegisterAllowsContractSelection] = React.useState(false);
+  const [registerContractSearch, setRegisterContractSearch] = React.useState("");
   const [reverterTarget, setReverterTarget] = React.useState<DevolucaoAssociadoItem | null>(
     null,
   );
@@ -231,6 +284,15 @@ export default function DevolucoesAssociadoPage() {
     status,
     fluxo: undefined,
   });
+  const registerFlow = tab === "pos_liquidacao" ? "desistencia_pos_liquidacao" : undefined;
+  const manualContractsQuery = useDevolucaoContratosQuery({
+    page: 1,
+    search: registerContractSearch,
+    competencia,
+    estado,
+    fluxo: registerFlow,
+    enabled: Boolean(registerState && registerAllowsContractSelection),
+  });
 
   const query =
     tab === "historico"
@@ -242,14 +304,20 @@ export default function DevolucoesAssociadoPage() {
   const totalPages = Math.max(1, Math.ceil(totalCount / 20));
 
   const registrarMutation = useMutation({
-    mutationFn: async (payload: RegisterState) => {
+    mutationFn: async (payload: DevolucaoFormState) => {
+      if (!payload.row) {
+        throw new Error("Selecione um contrato elegível antes de registrar a devolução.");
+      }
       const formData = new FormData();
       formData.append("tipo", payload.tipo);
       formData.append("data_devolucao", format(payload.dataDevolucao as Date, "yyyy-MM-dd"));
       formData.append("quantidade_parcelas", String(payload.quantidadeParcelas));
       formData.append("valor", ((payload.valor ?? 0) / 100).toFixed(2));
       formData.append("motivo", payload.motivo);
-      payload.comprovantes.forEach((arquivo) => {
+      if (payload.comprovantePrincipal) {
+        formData.append("comprovantes", payload.comprovantePrincipal);
+      }
+      payload.comprovantesExtras.forEach((arquivo) => {
         formData.append("comprovantes", arquivo);
       });
       if (payload.competenciaReferencia) {
@@ -269,6 +337,8 @@ export default function DevolucoesAssociadoPage() {
     onSuccess: () => {
       toast.success("Devolução registrada com sucesso.");
       setRegisterState(null);
+      setRegisterAllowsContractSelection(false);
+      setRegisterContractSearch("");
       setTab("historico");
       void queryClient.invalidateQueries({ queryKey: ["tesouraria-devolucoes"] });
       void queryClient.invalidateQueries({ queryKey: ["associados"] });
@@ -277,6 +347,57 @@ export default function DevolucoesAssociadoPage() {
     onError: (error) => {
       toast.error(
         error instanceof Error ? error.message : "Não foi possível registrar a devolução.",
+      );
+    },
+  });
+
+  const editarMutation = useMutation({
+    mutationFn: async (payload: DevolucaoFormState) => {
+      if (!payload.row || !payload.devolucaoId) {
+        throw new Error("A devolução precisa permanecer vinculada a um contrato.");
+      }
+      const formData = new FormData();
+      formData.append("tipo", payload.tipo);
+      formData.append("data_devolucao", format(payload.dataDevolucao as Date, "yyyy-MM-dd"));
+      formData.append("quantidade_parcelas", String(payload.quantidadeParcelas));
+      formData.append("valor", ((payload.valor ?? 0) / 100).toFixed(2));
+      formData.append("motivo", payload.motivo);
+      if (payload.competenciaReferencia) {
+        formData.append(
+          "competencia_referencia",
+          format(payload.competenciaReferencia, "yyyy-MM-01"),
+        );
+      }
+      if (payload.comprovantePrincipal) {
+        formData.append("comprovante", payload.comprovantePrincipal);
+      }
+      payload.comprovantesExtras.forEach((arquivo) => {
+        formData.append("novos_comprovantes", arquivo);
+      });
+      payload.removerAnexosIds.forEach((anexoId) => {
+        formData.append("remover_anexos_ids", String(anexoId));
+      });
+
+      return apiFetch<DevolucaoAssociadoItem>(
+        `tesouraria/devolucoes/${payload.devolucaoId}/`,
+        {
+          method: "PATCH",
+          formData,
+        },
+      );
+    },
+    onSuccess: () => {
+      toast.success("Devolução atualizada com sucesso.");
+      setRegisterState(null);
+      setRegisterAllowsContractSelection(false);
+      setRegisterContractSearch("");
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-devolucoes"] });
+      void queryClient.invalidateQueries({ queryKey: ["associados"] });
+      void queryClient.invalidateQueries({ queryKey: ["contratos"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Não foi possível atualizar a devolução.",
       );
     },
   });
@@ -375,21 +496,18 @@ export default function DevolucoesAssociadoPage() {
             <Button
               size="sm"
               variant="success"
-              onClick={() =>
-                setRegisterState({
-                  row,
-                  tipo:
-                    row.tipo_sugerido === "desistencia_pos_liquidacao"
+              onClick={() => {
+                setRegisterAllowsContractSelection(false);
+                setRegisterContractSearch("");
+                setRegisterState(
+                  buildCreateState(
+                    row,
+                    tab === "pos_liquidacao"
                       ? "desistencia_pos_liquidacao"
                       : "pagamento_indevido",
-                  dataDevolucao: new Date(),
-                  quantidadeParcelas: 1,
-                  valor: null,
-                  motivo: "",
-                  competenciaReferencia: undefined,
-                  comprovantes: [],
-                })
-              }
+                  ),
+                );
+              }}
             >
               Registrar devolução
             </Button>
@@ -397,7 +515,7 @@ export default function DevolucoesAssociadoPage() {
         ),
       },
     ],
-    [],
+    [tab],
   );
 
   const historyColumns = React.useMemo<DataTableColumn<DevolucaoAssociadoItem>[]>(
@@ -479,6 +597,20 @@ export default function DevolucoesAssociadoPage() {
             <Button asChild size="sm" variant="outline">
               <Link href={`/associados/${row.associado_id}`}>Ver cadastro</Link>
             </Button>
+            {canEdit && row.status_devolucao === "registrada" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setRegisterAllowsContractSelection(false);
+                  setRegisterContractSearch("");
+                  setRegisterState(buildEditState(row));
+                }}
+              >
+                <PencilLineIcon className="mr-1.5 size-3.5" />
+                Editar
+              </Button>
+            ) : null}
             {isAdmin && row.pode_reverter ? (
               <Button size="sm" variant="outline" onClick={() => setReverterTarget(row)}>
                 <RotateCcwIcon className="mr-1.5 size-3.5" />
@@ -502,7 +634,7 @@ export default function DevolucoesAssociadoPage() {
         ),
       },
     ],
-    [isAdmin],
+    [canEdit, isAdmin],
   );
 
   const registerRows = (contratosQuery.data?.results ?? []) as DevolucaoContratoItem[];
@@ -607,30 +739,51 @@ export default function DevolucoesAssociadoPage() {
               />
             </div>
             <div className="flex items-end justify-end">
-              <Sheet
-                open={filtersOpen}
-                onOpenChange={(open) => {
-                  if (open) {
-                    setDraftCompetencia(competencia);
-                    setDraftEstado(estado);
-                    setDraftTipo(tipo);
-                    setDraftStatus(status);
-                  }
-                  setFiltersOpen(open);
-                }}
-              >
-                <SheetTrigger asChild>
-                  <Button variant="outline" className="h-11 rounded-xl">
-                    <SlidersHorizontalIcon className="size-4" />
-                    Filtros avançados
-                    {activeFiltersCount ? (
-                      <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-primary">
-                        {activeFiltersCount}
-                      </Badge>
-                    ) : null}
+              <div className="flex flex-wrap items-end justify-end gap-3">
+                {isFlowRegisterTab ? (
+                  <Button
+                    className="h-11 rounded-xl"
+                    onClick={() => {
+                      setRegisterAllowsContractSelection(true);
+                      setRegisterContractSearch("");
+                      setRegisterState(
+                        buildCreateState(
+                          null,
+                          tab === "pos_liquidacao"
+                            ? "desistencia_pos_liquidacao"
+                            : "pagamento_indevido",
+                        ),
+                      );
+                    }}
+                  >
+                    <PlusIcon className="size-4" />
+                    Lançar devolução manual
                   </Button>
-                </SheetTrigger>
-                <SheetContent className="w-full border-l border-border/60 sm:max-w-xl">
+                ) : null}
+                <Sheet
+                  open={filtersOpen}
+                  onOpenChange={(open) => {
+                    if (open) {
+                      setDraftCompetencia(competencia);
+                      setDraftEstado(estado);
+                      setDraftTipo(tipo);
+                      setDraftStatus(status);
+                    }
+                    setFiltersOpen(open);
+                  }}
+                >
+                  <SheetTrigger asChild>
+                    <Button variant="outline" className="h-11 rounded-xl">
+                      <SlidersHorizontalIcon className="size-4" />
+                      Filtros avançados
+                      {activeFiltersCount ? (
+                        <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-primary">
+                          {activeFiltersCount}
+                        </Badge>
+                      ) : null}
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent className="w-full border-l border-border/60 sm:max-w-xl">
                   <SheetHeader>
                     <SheetTitle>Filtros avançados</SheetTitle>
                     <SheetDescription>
@@ -728,8 +881,9 @@ export default function DevolucoesAssociadoPage() {
                       Aplicar
                     </Button>
                   </SheetFooter>
-                </SheetContent>
-              </Sheet>
+                  </SheetContent>
+                </Sheet>
+              </div>
             </div>
           </div>
         ) : null}
@@ -780,210 +934,32 @@ export default function DevolucoesAssociadoPage() {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={!!registerState} onOpenChange={(open) => !open && setRegisterState(null)}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Registrar devolução</DialogTitle>
-            <DialogDescription>
-              {registerState?.tipo === "desistencia_pos_liquidacao"
-                ? "Use este fluxo quando a renovação já foi liquidada, houve pagamento e o associado desistiu depois."
-                : "O registro é manual e não altera parcelas, ciclos ou pagamentos mensais do contrato."}
-            </DialogDescription>
-          </DialogHeader>
-          {registerState ? (
-            <div className="space-y-5">
-              <div className="grid gap-4 rounded-2xl border border-border/60 bg-background/40 p-4 md:grid-cols-2">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    Associado
-                  </p>
-                  <p className="mt-2 text-sm font-medium">{registerState.row.nome}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {registerState.row.cpf_cnpj} · {registerState.row.matricula || "Sem matrícula"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    Contrato / Agente
-                  </p>
-                  <p className="mt-2 text-sm font-medium">{registerState.row.contrato_codigo}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {registerState.row.agente_nome || "Sem agente responsável"}
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Tipo</Label>
-                  <Select
-                    value={registerState.tipo}
-                    onValueChange={(value) =>
-                      setRegisterState((current) =>
-                        current
-                          ? {
-                              ...current,
-                              tipo: value as RegisterState["tipo"],
-                            }
-                          : current,
-                      )
-                    }
-                    disabled={registerState.row.tipo_sugerido === "desistencia_pos_liquidacao"}
-                  >
-                    <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/50">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pagamento_indevido">Pagamento indevido</SelectItem>
-                      <SelectItem value="desconto_indevido">Desconto indevido</SelectItem>
-                      <SelectItem value="desistencia_pos_liquidacao">
-                        Desistência pós-liquidação
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="data-devolucao">Data da devolução</Label>
-                  <DatePicker
-                    value={registerState.dataDevolucao}
-                    onChange={(date) =>
-                      setRegisterState((current) =>
-                        current ? { ...current, dataDevolucao: date } : current,
-                      )
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="valor-devolucao">Valor</Label>
-                  <InputCurrency
-                    value={registerState.valor}
-                    onChange={(value) =>
-                      setRegisterState((current) =>
-                        current ? { ...current, valor: value } : current,
-                      )
-                    }
-                    className="h-11 rounded-xl border-border/60 bg-background/50"
-                    placeholder="R$ 0,00"
-                  />
-                </div>
-                {registerState.tipo === "desconto_indevido" ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <Label htmlFor="competencia-referencia">Competência de referência</Label>
-                      {registerState.competenciaReferencia ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-auto px-0 text-xs"
-                          onClick={() =>
-                            setRegisterState((current) =>
-                              current ? { ...current, competenciaReferencia: undefined } : current,
-                            )
-                          }
-                        >
-                          Limpar
-                        </Button>
-                      ) : null}
-                    </div>
-                    <CalendarCompetencia
-                      value={registerState.competenciaReferencia}
-                      onChange={(value) =>
-                        setRegisterState((current) =>
-                          current ? { ...current, competenciaReferencia: value } : current,
-                        )
-                      }
-                    />
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Label>Competência de referência</Label>
-                    <div className="rounded-xl border border-border/60 bg-background/40 px-4 py-3 text-sm text-muted-foreground">
-                      Não se aplica ao fluxo selecionado.
-                    </div>
-                  </div>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="quantidade-parcelas">Quantidade de parcelas</Label>
-                  <Input
-                    id="quantidade-parcelas"
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={String(registerState.quantidadeParcelas)}
-                    onChange={(event) =>
-                      setRegisterState((current) =>
-                        current
-                          ? {
-                              ...current,
-                              quantidadeParcelas: Math.max(
-                                1,
-                                Number.parseInt(event.target.value || "1", 10) || 1,
-                              ),
-                            }
-                          : current,
-                      )
-                    }
-                    className="h-11 rounded-xl border-border/60 bg-background/50"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="motivo-devolucao">Motivo</Label>
-                <Textarea
-                  id="motivo-devolucao"
-                  value={registerState.motivo}
-                  onChange={(event) =>
-                    setRegisterState((current) =>
-                      current ? { ...current, motivo: event.target.value } : current,
-                    )
-                  }
-                  placeholder="Descreva o motivo da devolução ao associado."
-                  className="min-h-[120px] rounded-2xl border-border/60 bg-background/50"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Anexos</Label>
-                <FileUploadDropzone
-                  accept={comprovanteAccept}
-                  files={registerState.comprovantes}
-                  multiple
-                  onUploadMany={(files) =>
-                    setRegisterState((current) =>
-                      current ? { ...current, comprovantes: files } : current,
-                    )
-                  }
-                  className="rounded-2xl"
-                  emptyTitle="Envie os anexos da devolução"
-                  emptyDescription="PDF, JPG ou PNG com limite de 10 MB por arquivo"
-                />
-              </div>
-            </div>
-          ) : null}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setRegisterState(null)}>
-              Cancelar
-            </Button>
-            <Button
-              variant="success"
-              disabled={
-                !registerState?.comprovantes.length ||
-                !registerState.dataDevolucao ||
-                !registerState.valor ||
-                !registerState.motivo.trim() ||
-                (registerState.tipo === "desconto_indevido" &&
-                  !registerState.competenciaReferencia) ||
-                registrarMutation.isPending
-              }
-              onClick={() => registerState && registrarMutation.mutate(registerState)}
-            >
-              Registrar devolução
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DevolucaoFormDialog
+        open={!!registerState}
+        value={registerState}
+        setValue={setRegisterState}
+        onClose={() => {
+          setRegisterState(null);
+          setRegisterAllowsContractSelection(false);
+          setRegisterContractSearch("");
+        }}
+        onSubmit={() => {
+          if (!registerState) {
+            return;
+          }
+          if (registerState.mode === "edit") {
+            editarMutation.mutate(registerState);
+            return;
+          }
+          registrarMutation.mutate(registerState);
+        }}
+        isSubmitting={registrarMutation.isPending || editarMutation.isPending}
+        allowContractSelection={registerAllowsContractSelection}
+        contractSearch={registerContractSearch}
+        onContractSearchChange={setRegisterContractSearch}
+        contractOptions={manualContractsQuery.data?.results ?? []}
+        contractSearchLoading={manualContractsQuery.isFetching}
+      />
 
       <Dialog open={!!reverterTarget} onOpenChange={(open) => !open && setReverterTarget(null)}>
         <DialogContent className="sm:max-w-lg">

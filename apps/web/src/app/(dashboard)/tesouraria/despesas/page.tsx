@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { format } from "date-fns";
+import { format, subMonths } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircleIcon,
@@ -12,6 +12,7 @@ import {
   PencilLineIcon,
   PlusIcon,
   SearchIcon,
+  SlidersHorizontalIcon,
   Trash2Icon,
   TrendingDownIcon,
   UploadIcon,
@@ -23,8 +24,10 @@ import type {
   DespesaItem,
   DespesaKpis,
   DespesaResultadoMensalDetalhePayload,
+  DespesaResultadoMensalRow,
   DespesaResultadoMensalPayload,
   PaginatedResponse,
+  SimpleUser,
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
@@ -41,9 +44,11 @@ import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import DatePicker from "@/components/custom/date-picker";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import InputCurrency from "@/components/custom/input-currency";
+import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import StatsCard from "@/components/shared/stats-card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -75,6 +80,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import {
   Table,
   TableBody,
@@ -109,6 +123,7 @@ type DespesaFormState = {
   categoria: string;
   descricao: string;
   valor: number | null;
+  natureza: string;
   data_despesa?: Date;
   data_pagamento?: Date;
   status: string;
@@ -122,6 +137,7 @@ const initialFormState: DespesaFormState = {
   categoria: "",
   descricao: "",
   valor: null,
+  natureza: "despesa_operacional",
   data_despesa: undefined,
   data_pagamento: undefined,
   status: "pendente",
@@ -149,6 +165,12 @@ const tipoOptions = [
   { value: "variavel", label: "Variável" },
 ];
 
+const naturezaOptions = [
+  { value: "todos", label: "Natureza" },
+  { value: "despesa_operacional", label: "Despesa operacional" },
+  { value: "complemento_receita", label: "Complemento de receita" },
+];
+
 const recorrenciaOptions = [
   { value: "nenhuma", label: "Sem recorrência" },
   { value: "mensal", label: "Mensal" },
@@ -158,6 +180,10 @@ const recorrenciaOptions = [
 
 const statusFinanceiroOptions = statusOptions.filter((option) => option.value !== "todos");
 const tipoLancamentoOptions = tipoOptions.filter((option) => option.value !== "todos");
+const naturezaLancamentoOptions = [
+  { value: "despesa_operacional", label: "Despesa operacional" },
+  { value: "complemento_receita", label: "Complemento de receita" },
+];
 
 function parseIsoDate(value?: string | null) {
   if (!value) return undefined;
@@ -177,6 +203,7 @@ function buildFormData(state: DespesaFormState, attachment?: File | null) {
   formData.set("categoria", state.categoria);
   formData.set("descricao", state.descricao);
   formData.set("valor", centsToDecimal(state.valor));
+  formData.set("natureza", state.natureza);
   formData.set("data_despesa", formatDateForApi(state.data_despesa));
   formData.set("status", state.status);
   formData.set("tipo", state.tipo);
@@ -201,6 +228,7 @@ function mapItemToFormState(item: DespesaItem): DespesaFormState {
     categoria: item.categoria,
     descricao: item.descricao,
     valor: decimalToCents(item.valor),
+    natureza: item.natureza,
     data_despesa: parseIsoDate(item.data_despesa),
     data_pagamento: parseIsoDate(item.data_pagamento),
     status: item.status,
@@ -229,9 +257,59 @@ function formatTipoLabel(value: string) {
   return labels[value] ?? "Não informado";
 }
 
+function formatNaturezaLabel(value: string) {
+  const labels: Record<string, string> = {
+    despesa_operacional: "Despesa operacional",
+    complemento_receita: "Complemento de receita",
+  };
+  return labels[value] ?? value;
+}
+
 function formatResultadoMes(value: string) {
   const parsed = parseIsoDate(value);
   return parsed ? formatLongMonthYear(parsed) : value;
+}
+
+function buildRollingMonthKeys(baseMonth: Date) {
+  return Array.from({ length: 12 }, (_, index) =>
+    format(subMonths(baseMonth, 11 - index), "yyyy-MM-01"),
+  );
+}
+
+function buildEmptyResultadoRow(mes: string): DespesaResultadoMensalRow {
+  return {
+    mes,
+    receitas: "0.00",
+    receitas_inadimplencia: "0.00",
+    receitas_retorno: "0.00",
+    complementos_receita: "0.00",
+    despesas: "0.00",
+    despesas_manuais: "0.00",
+    devolucoes: "0.00",
+    pagamentos_operacionais: "0.00",
+    lucro: "0.00",
+    lucro_liquido: "0.00",
+  };
+}
+
+function sumResultRows(
+  rows: DespesaResultadoMensalRow[],
+  field: keyof Pick<
+    DespesaResultadoMensalRow,
+    "receitas" | "despesas" | "lucro" | "lucro_liquido"
+  >,
+) {
+  const total = rows.reduce((accumulator, row) => accumulator + Number.parseFloat(row[field] || "0"), 0);
+  return total.toFixed(2);
+}
+
+function buildResultadoTotais(rows: DespesaResultadoMensalRow[]) {
+  return {
+    receitas: sumResultRows(rows, "receitas"),
+    despesas: sumResultRows(rows, "despesas"),
+    lucro: sumResultRows(rows, "lucro"),
+    lucro_liquido: sumResultRows(rows, "lucro_liquido"),
+  };
 }
 
 type ResultadoDetalheColumn<T> = {
@@ -305,11 +383,25 @@ export default function TesourariaDespesasPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = React.useState<DespesaTab>("lancamentos");
   const [competencia, setCompetencia] = React.useState(() => new Date());
+  const [resultadoBaseMonth] = React.useState(() => {
+    const today = new Date();
+    return new Date(today.getFullYear(), today.getMonth(), 1, 12, 0, 0, 0);
+  });
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [statusFilter, setStatusFilter] = React.useState("todos");
   const [statusAnexoFilter, setStatusAnexoFilter] = React.useState("todos");
   const [tipoFilter, setTipoFilter] = React.useState("todos");
+  const [naturezaFilter, setNaturezaFilter] = React.useState("todos");
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const [draftStatusFilter, setDraftStatusFilter] = React.useState("todos");
+  const [draftStatusAnexoFilter, setDraftStatusAnexoFilter] = React.useState("todos");
+  const [draftTipoFilter, setDraftTipoFilter] = React.useState("todos");
+  const [draftNaturezaFilter, setDraftNaturezaFilter] = React.useState("todos");
+  const [resultadoFiltersOpen, setResultadoFiltersOpen] = React.useState(false);
+  const [agenteFilter, setAgenteFilter] = React.useState("");
+  const [draftAgenteFilter, setDraftAgenteFilter] = React.useState("");
   const [formState, setFormState] = React.useState<DespesaFormState>(initialFormState);
   const [formAttachment, setFormAttachment] = React.useState<File | null>(null);
   const [existingFormAttachment, setExistingFormAttachment] = React.useState<DespesaItem["anexo"] | null>(
@@ -324,15 +416,53 @@ export default function TesourariaDespesasPage() {
   const [resultadoDetalheTab, setResultadoDetalheTab] = React.useState<ResultadoDetalheTab>("geral");
   const debouncedCategoriaSearch = useDebouncedValue(formState.categoria, 200);
 
+  const agentesQuery = useQuery({
+    queryKey: ["tesouraria-despesas-agentes"],
+    queryFn: () => apiFetch<SimpleUser[]>("associados/agentes"),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const agentOptions = React.useMemo(
+    () =>
+      (agentesQuery.data ?? []).map((item) => ({
+        value: String(item.id),
+        label: item.full_name,
+      })),
+    [agentesQuery.data],
+  );
+
+  const agenteResultadoFiltro = React.useMemo(() => {
+    if (!agenteFilter) {
+      return "";
+    }
+    const match = (agentesQuery.data ?? []).find((item) => String(item.id) === agenteFilter);
+    return match?.full_name ?? agenteFilter;
+  }, [agenteFilter, agentesQuery.data]);
+
+  const rollingMonthKeys = React.useMemo(
+    () => buildRollingMonthKeys(resultadoBaseMonth),
+    [resultadoBaseMonth],
+  );
+  const rollingWindowStart = parseIsoDate(rollingMonthKeys[0]);
+  const rollingWindowEnd = parseIsoDate(rollingMonthKeys[rollingMonthKeys.length - 1]);
+  const activeLaunchFiltersCount = [
+    statusFilter,
+    statusAnexoFilter,
+    tipoFilter,
+    naturezaFilter,
+  ].filter((value) => value !== "todos").length;
+  const activeResultadoFiltersCount = agenteFilter ? 1 : 0;
+
   const despesasQuery = useQuery({
     queryKey: [
       "tesouraria-despesas",
       page,
       competencia.toISOString(),
-      search,
+      debouncedSearch,
       statusFilter,
       statusAnexoFilter,
       tipoFilter,
+      naturezaFilter,
     ],
     queryFn: () =>
       apiFetch<DespesaListResponse>("tesouraria/despesas", {
@@ -340,10 +470,11 @@ export default function TesourariaDespesasPage() {
           page,
           page_size: PAGE_SIZE,
           competencia: format(competencia, "yyyy-MM"),
-          search: search || undefined,
+          search: debouncedSearch || undefined,
           status: statusFilter !== "todos" ? statusFilter : undefined,
           status_anexo: statusAnexoFilter !== "todos" ? statusAnexoFilter : undefined,
           tipo: tipoFilter !== "todos" ? tipoFilter : undefined,
+          natureza: naturezaFilter !== "todos" ? naturezaFilter : undefined,
         },
       }),
   });
@@ -360,22 +491,32 @@ export default function TesourariaDespesasPage() {
   });
 
   const resultadoMensalQuery = useQuery({
-    queryKey: ["tesouraria-despesas-resultado", competencia.toISOString()],
+    queryKey: [
+      "tesouraria-despesas-resultado",
+      format(resultadoBaseMonth, "yyyy-MM"),
+      agenteResultadoFiltro,
+    ],
     queryFn: () =>
       apiFetch<DespesaResultadoMensalPayload>("tesouraria/despesas/resultado-mensal", {
         query: {
-          competencia: format(competencia, "yyyy-MM"),
+          competencia: format(resultadoBaseMonth, "yyyy-MM"),
+          agente: agenteResultadoFiltro || undefined,
         },
       }),
     staleTime: 60 * 1000,
   });
 
   const resultadoDetalheQuery = useQuery({
-    queryKey: ["tesouraria-despesas-resultado-detalhe", resultadoDetalheState?.mes],
+    queryKey: [
+      "tesouraria-despesas-resultado-detalhe",
+      resultadoDetalheState?.mes,
+      agenteResultadoFiltro,
+    ],
     queryFn: () =>
       apiFetch<DespesaResultadoMensalDetalhePayload>("tesouraria/despesas/resultado-mensal/detalhe", {
         query: {
           mes: resultadoDetalheState?.mes.slice(0, 7),
+          agente: agenteResultadoFiltro || undefined,
         },
       }),
     enabled: Boolean(resultadoDetalheState?.mes),
@@ -462,11 +603,17 @@ export default function TesourariaDespesasPage() {
   const totalPages = Math.max(1, Math.ceil((despesasQuery.data?.count ?? 0) / PAGE_SIZE));
   const kpis = despesasQuery.data?.kpis;
   const categoriasSugeridas = categoriasQuery.data ?? [];
-  const resultadoRows = (resultadoMensalQuery.data?.rows ?? []).map((row, index) => ({
-    id: `${row.mes}-${index}`,
-    ...row,
-  }));
-  const resultadoTotais = resultadoMensalQuery.data?.totais;
+  const resultadoRows = React.useMemo(() => {
+    const rowsByMonth = new Map((resultadoMensalQuery.data?.rows ?? []).map((row) => [row.mes, row]));
+    return rollingMonthKeys.map((mes) => ({
+      id: mes,
+      ...(rowsByMonth.get(mes) ?? buildEmptyResultadoRow(mes)),
+    }));
+  }, [resultadoMensalQuery.data?.rows, rollingMonthKeys]);
+  const resultadoTotais = React.useMemo(
+    () => resultadoMensalQuery.data?.totais ?? buildResultadoTotais(resultadoRows),
+    [resultadoMensalQuery.data?.totais, resultadoRows],
+  );
   const resultadoDetalhe = resultadoDetalheQuery.data;
 
   const openResultadoDetalhe = React.useCallback(
@@ -487,6 +634,9 @@ export default function TesourariaDespesasPage() {
     const receitasRetorno = resultadoDetalhe.receitas.filter(
       (item) => item.origem === "arquivo_retorno",
     ).length;
+    const complementosReceita = resultadoDetalhe.receitas.filter(
+      (item) => item.origem === "complemento_receita",
+    ).length;
     const despesasManuais = resultadoDetalhe.despesas.filter(
       (item) => item.origem === "despesa_manual",
     ).length;
@@ -504,6 +654,12 @@ export default function TesourariaDespesasPage() {
         grupo: "Receitas de arquivo retorno",
         quantidade: receitasRetorno,
         valor: resultadoDetalhe.resumo.receitas_retorno,
+      },
+      {
+        id: "complementos-receita",
+        grupo: "Complementos de receita",
+        quantidade: complementosReceita,
+        valor: resultadoDetalhe.resumo.complementos_receita,
       },
       {
         id: "despesas-manuais",
@@ -639,10 +795,22 @@ export default function TesourariaDespesasPage() {
         ),
       },
       {
-        id: "valor",
-        header: "Valor",
+        id: "valor_associado",
+        header: "Valor associado",
         className: "px-4 py-3 font-semibold",
-        cell: (item) => formatCurrency(item.valor),
+        cell: (item) => formatCurrency(item.valor_associado),
+      },
+      {
+        id: "valor_agente",
+        header: "Valor agente",
+        className: "px-4 py-3 font-semibold",
+        cell: (item) => formatCurrency(item.valor_agente),
+      },
+      {
+        id: "valor_total",
+        header: "Valor total",
+        className: "px-4 py-3 font-semibold",
+        cell: (item) => formatCurrency(item.valor_total),
       },
     ],
     [],
@@ -703,7 +871,8 @@ export default function TesourariaDespesasPage() {
         header: "Classificação",
         cell: (row) => (
           <div className="space-y-1 text-sm">
-            <p>{formatTipoLabel(row.tipo)}</p>
+            <p>{formatNaturezaLabel(row.natureza)}</p>
+            <p className="text-muted-foreground">{formatTipoLabel(row.tipo)}</p>
             <p className="text-muted-foreground">{formatRecorrenciaLabel(row.recorrencia)}</p>
           </div>
         ),
@@ -809,7 +978,8 @@ export default function TesourariaDespesasPage() {
             <p className="font-semibold">{formatCurrency(row.receitas)}</p>
             <p className="text-xs text-muted-foreground">
               Inadimplência {formatCurrency(row.receitas_inadimplencia)} + retorno{" "}
-              {formatCurrency(row.receitas_retorno)}
+              {formatCurrency(row.receitas_retorno)} + complementos{" "}
+              {formatCurrency(row.complementos_receita)}
             </p>
           </div>
           </button>
@@ -843,12 +1013,18 @@ export default function TesourariaDespesasPage() {
         id: "lucro_liquido",
         header: "Lucro líquido",
         cell: (row) => (
-          <div className="space-y-1">
-            <p className="font-semibold">{formatCurrency(row.lucro_liquido)}</p>
-            <p className="text-xs text-muted-foreground">
-              Pagamentos operacionais {formatCurrency(row.pagamentos_operacionais)}
-            </p>
-          </div>
+          <button
+            type="button"
+            className="w-full text-left transition-colors hover:text-primary"
+            onClick={() => openResultadoDetalhe(row.mes, "geral")}
+          >
+            <div className="space-y-1">
+              <p className="font-semibold">{formatCurrency(row.lucro_liquido)}</p>
+              <p className="text-xs text-muted-foreground">
+                Pagamentos operacionais {formatCurrency(row.pagamentos_operacionais)}
+              </p>
+            </div>
+          </button>
         ),
       },
     ],
@@ -880,9 +1056,13 @@ export default function TesourariaDespesasPage() {
                 Tesouraria
               </p>
               <h1 className="text-3xl font-semibold">Despesas da associação</h1>
-              <p className="text-sm text-muted-foreground">
-                Competência ativa: {formatLongMonthYear(competencia)}
-              </p>
+              <div className="space-y-1 text-sm text-muted-foreground">
+                <p>Competência dos lançamentos: {formatLongMonthYear(competencia)}</p>
+                <p>
+                  Resultado mensal: últimos 12 meses até{" "}
+                  {rollingWindowEnd ? formatLongMonthYear(rollingWindowEnd) : "o mês atual"}
+                </p>
+              </div>
             </div>
             <div className="flex flex-wrap gap-3">
               <CalendarCompetencia
@@ -902,7 +1082,7 @@ export default function TesourariaDespesasPage() {
                 }}
               >
                 <PlusIcon className="size-4" />
-                Nova despesa
+                Novo lançamento
               </Button>
             </div>
           </CardContent>
@@ -918,29 +1098,29 @@ export default function TesourariaDespesasPage() {
         <TabsContent value="lancamentos" className="mt-0 space-y-6">
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             <StatsCard
-              title="Total de despesas"
+              title="Total de lançamentos"
               value={String(kpis?.total_despesas ?? 0)}
-              delta="Despesas no filtro atual"
+              delta="Despesas operacionais e complementos no filtro atual"
               icon={ClipboardListIcon}
             />
             <StatsCard
-              title="Valor total"
+              title="Valor total lançado"
               value={formatCurrency(kpis?.valor_total)}
-              delta="Soma das despesas filtradas"
+              delta="Soma de todos os lançamentos exibidos"
               icon={HandCoinsIcon}
               tone="neutral"
             />
             <StatsCard
               title="Valor pago"
               value={formatCurrency(kpis?.valor_pago)}
-              delta="Total liquidado"
+              delta="Lançamentos com status pago"
               icon={TrendingDownIcon}
               tone="positive"
             />
             <StatsCard
               title="Valor pendente"
               value={formatCurrency(kpis?.valor_pendente)}
-              delta="Ainda sem pagamento"
+              delta="Lançamentos ainda pendentes"
               icon={AlertCircleIcon}
               tone="warning"
             />
@@ -953,89 +1133,185 @@ export default function TesourariaDespesasPage() {
             />
           </section>
 
-          <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 lg:grid-cols-[minmax(0,1fr)_180px_200px_180px_auto]">
-            <div className="relative">
-              <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(event) => {
-                  setSearch(event.target.value);
-                  setPage(1);
-                }}
-                placeholder="Buscar por categoria ou descrição"
-                className="rounded-2xl border-border/60 bg-card/60 pl-11"
-              />
+          <section className="rounded-[1.75rem] border border-border/60 bg-card/50 p-4">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+              <div className="relative flex-1">
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-4 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(event) => {
+                    setSearch(event.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Buscar por categoria ou descrição"
+                  className="rounded-2xl border-border/60 bg-card/60 pl-11"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Sheet
+                  open={filtersOpen}
+                  onOpenChange={(open) => {
+                    if (open) {
+                      setDraftStatusFilter(statusFilter);
+                      setDraftStatusAnexoFilter(statusAnexoFilter);
+                      setDraftTipoFilter(tipoFilter);
+                      setDraftNaturezaFilter(naturezaFilter);
+                    }
+                    setFiltersOpen(open);
+                  }}
+                >
+                  <SheetTrigger asChild>
+                    <Button variant="outline" className="rounded-2xl">
+                      <SlidersHorizontalIcon className="size-4" />
+                      Filtros avançados
+                      {activeLaunchFiltersCount ? (
+                        <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-primary">
+                          {activeLaunchFiltersCount}
+                        </Badge>
+                      ) : null}
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent className="w-full border-l border-border/60 sm:max-w-xl">
+                    <SheetHeader>
+                      <SheetTitle>Filtros avançados</SheetTitle>
+                      <SheetDescription>
+                        Refine os lançamentos por status financeiro, anexo, tipo e natureza.
+                      </SheetDescription>
+                    </SheetHeader>
+
+                    <div className="space-y-5 overflow-y-auto px-4 pb-4">
+                      <div className="space-y-2">
+                        <Label>Status financeiro</Label>
+                        <Select value={draftStatusFilter} onValueChange={setDraftStatusFilter}>
+                          <SelectTrigger className="h-11 rounded-2xl border-border/60 bg-card/60">
+                            <SelectValue placeholder="Todos os status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {statusOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Status do anexo</Label>
+                        <Select
+                          value={draftStatusAnexoFilter}
+                          onValueChange={setDraftStatusAnexoFilter}
+                        >
+                          <SelectTrigger className="h-11 rounded-2xl border-border/60 bg-card/60">
+                            <SelectValue placeholder="Todos os anexos" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {statusAnexoOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Tipo</Label>
+                        <Select value={draftTipoFilter} onValueChange={setDraftTipoFilter}>
+                          <SelectTrigger className="h-11 rounded-2xl border-border/60 bg-card/60">
+                            <SelectValue placeholder="Todos os tipos" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {tipoOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Natureza</Label>
+                        <Select value={draftNaturezaFilter} onValueChange={setDraftNaturezaFilter}>
+                          <SelectTrigger className="h-11 rounded-2xl border-border/60 bg-card/60">
+                            <SelectValue placeholder="Todas as naturezas" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {naturezaOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <SheetFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setDraftStatusFilter("todos");
+                          setDraftStatusAnexoFilter("todos");
+                          setDraftTipoFilter("todos");
+                          setDraftNaturezaFilter("todos");
+                          setStatusFilter("todos");
+                          setStatusAnexoFilter("todos");
+                          setTipoFilter("todos");
+                          setNaturezaFilter("todos");
+                          setPage(1);
+                          setFiltersOpen(false);
+                        }}
+                      >
+                        Limpar
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setStatusFilter(draftStatusFilter);
+                          setStatusAnexoFilter(draftStatusAnexoFilter);
+                          setTipoFilter(draftTipoFilter);
+                          setNaturezaFilter(draftNaturezaFilter);
+                          setPage(1);
+                          setFiltersOpen(false);
+                        }}
+                      >
+                        Aplicar
+                      </Button>
+                    </SheetFooter>
+                  </SheetContent>
+                </Sheet>
+
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearch("");
+                    setStatusFilter("todos");
+                    setStatusAnexoFilter("todos");
+                    setTipoFilter("todos");
+                    setNaturezaFilter("todos");
+                    setDraftStatusFilter("todos");
+                    setDraftStatusAnexoFilter("todos");
+                    setDraftTipoFilter("todos");
+                    setDraftNaturezaFilter("todos");
+                    setPage(1);
+                  }}
+                >
+                  Limpar
+                </Button>
+                <Button
+                  onClick={() =>
+                    void queryClient.invalidateQueries({ queryKey: ["tesouraria-despesas"] })
+                  }
+                >
+                  Atualizar
+                </Button>
+              </div>
             </div>
-            <Select
-              value={statusFilter}
-              onValueChange={(value) => {
-                setStatusFilter(value);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger
-                aria-label="Status financeiro"
-                className="h-11 w-full rounded-2xl border-border/60 bg-card/60"
-              >
-                <SelectValue placeholder="Status financeiro" />
-              </SelectTrigger>
-              <SelectContent>
-                {statusOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={statusAnexoFilter}
-              onValueChange={(value) => {
-                setStatusAnexoFilter(value);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger
-                aria-label="Status do anexo"
-                className="h-11 w-full rounded-2xl border-border/60 bg-card/60"
-              >
-                <SelectValue placeholder="Status do anexo" />
-              </SelectTrigger>
-              <SelectContent>
-                {statusAnexoOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={tipoFilter}
-              onValueChange={(value) => {
-                setTipoFilter(value);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger
-                aria-label="Tipo"
-                className="h-11 w-full rounded-2xl border-border/60 bg-card/60"
-              >
-                <SelectValue placeholder="Tipo" />
-              </SelectTrigger>
-              <SelectContent>
-                {tipoOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              onClick={() =>
-                void queryClient.invalidateQueries({ queryKey: ["tesouraria-despesas"] })
-              }
-            >
-              Atualizar
-            </Button>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Busca rápida por categoria e descrição. Nos filtros avançados você pode refinar por
+              status financeiro, status do anexo, tipo e natureza do lançamento.
+            </p>
           </section>
 
           <DataTable
@@ -1051,11 +1327,112 @@ export default function TesourariaDespesasPage() {
         </TabsContent>
 
         <TabsContent value="resultado" className="mt-0 space-y-6">
+          <section className="rounded-[1.75rem] border border-border/60 bg-card/50 p-4">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+              <div className="flex-1 space-y-1">
+                <p className="text-sm font-medium">Janela consolidada</p>
+                <p className="text-sm text-muted-foreground">
+                  A tabela abaixo sempre mostra os últimos 12 meses, de{" "}
+                  {rollingWindowStart ? formatLongMonthYear(rollingWindowStart) : "12 meses atrás"}{" "}
+                  até {rollingWindowEnd ? formatLongMonthYear(rollingWindowEnd) : "o mês atual"}.
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  O recorte por agente afeta receitas operacionais, devoluções e pagamentos
+                  operacionais. Lançamentos manuais globais da associação ficam fora desse filtro.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Sheet
+                  open={resultadoFiltersOpen}
+                  onOpenChange={(open) => {
+                    if (open) {
+                      setDraftAgenteFilter(agenteFilter);
+                    }
+                    setResultadoFiltersOpen(open);
+                  }}
+                >
+                  <SheetTrigger asChild>
+                    <Button variant="outline" className="rounded-2xl">
+                      <SlidersHorizontalIcon className="size-4" />
+                      Filtros avançados
+                      {activeResultadoFiltersCount ? (
+                        <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-primary">
+                          {activeResultadoFiltersCount}
+                        </Badge>
+                      ) : null}
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent className="w-full border-l border-border/60 sm:max-w-xl">
+                    <SheetHeader>
+                      <SheetTitle>Filtros avançados do resultado</SheetTitle>
+                      <SheetDescription>
+                        Aplique recorte por agente sem alterar a janela fixa dos últimos 12 meses.
+                      </SheetDescription>
+                    </SheetHeader>
+
+                    <div className="space-y-5 overflow-y-auto px-4 pb-4">
+                      <div className="space-y-2">
+                        <Label>Agente</Label>
+                        <SearchableSelect
+                          options={agentOptions}
+                          value={draftAgenteFilter}
+                          onChange={setDraftAgenteFilter}
+                          placeholder="Todos os agentes"
+                          searchPlaceholder="Buscar agente"
+                          clearLabel="Limpar agente"
+                          className="rounded-2xl border-border/60 bg-card/60"
+                        />
+                      </div>
+                    </div>
+
+                    <SheetFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setDraftAgenteFilter("");
+                          setAgenteFilter("");
+                          setResultadoFiltersOpen(false);
+                        }}
+                      >
+                        Limpar
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setAgenteFilter(draftAgenteFilter);
+                          setResultadoFiltersOpen(false);
+                        }}
+                      >
+                        Aplicar
+                      </Button>
+                    </SheetFooter>
+                  </SheetContent>
+                </Sheet>
+
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setAgenteFilter("");
+                    setDraftAgenteFilter("");
+                  }}
+                >
+                  Limpar
+                </Button>
+              </div>
+            </div>
+            {agenteResultadoFiltro ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Badge className="rounded-full bg-primary/15 px-3 py-1 text-primary">
+                  Agente: {agenteResultadoFiltro}
+                </Badge>
+              </div>
+            ) : null}
+          </section>
+
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <StatsCard
               title="Receitas"
               value={formatCurrency(resultadoTotais?.receitas)}
-              delta="Inadimplência manual + arquivo retorno"
+              delta="Inadimplência manual + arquivo retorno + complementos"
               icon={HandCoinsIcon}
               tone="positive"
             />
@@ -1087,14 +1464,15 @@ export default function TesourariaDespesasPage() {
               <div>
                 <h2 className="text-lg font-semibold">Resultado por mês</h2>
                 <p className="text-sm text-muted-foreground">
-                  Receitas, despesas, lucro e lucro líquido consolidados nos últimos 12 meses.
+                  Receitas = inadimplência manual + arquivo retorno + complementos de receita.
+                  Lucro líquido = lucro menos pagamentos operacionais de associado e agente.
                 </p>
               </div>
               <DataTable
                 data={resultadoRows}
                 columns={resultadoColumns}
                 pageSize={12}
-                emptyMessage="Nenhum resultado mensal consolidado para a competência selecionada."
+                emptyMessage="Nenhum resultado mensal consolidado disponível para a janela atual."
                 loading={resultadoMensalQuery.isLoading}
                 skeletonRows={6}
               />
@@ -1137,7 +1515,7 @@ export default function TesourariaDespesasPage() {
                   <StatsCard
                     title="Receitas"
                     value={formatCurrency(resultadoDetalhe.resumo.receitas)}
-                    delta="Manual + arquivo retorno"
+                    delta="Inadimplência manual + arquivo retorno + complementos"
                     icon={HandCoinsIcon}
                     tone="positive"
                   />
@@ -1158,7 +1536,7 @@ export default function TesourariaDespesasPage() {
                   <StatsCard
                     title="Lucro líquido"
                     value={formatCurrency(resultadoDetalhe.resumo.lucro_liquido)}
-                    delta="Já descontando pagamentos operacionais"
+                    delta="Lucro menos pagamentos operacionais de associado e agente"
                     icon={AlertCircleIcon}
                     tone="neutral"
                   />
@@ -1178,7 +1556,7 @@ export default function TesourariaDespesasPage() {
                   <TabsContent value="geral" className="mt-0 space-y-5">
                     <ResultadoDetalheTable
                       title="Composição do mês"
-                      description="Consolidação por grupo financeiro para explicar o resultado mensal."
+                      description="Resumo dos grupos que entram no cálculo do mês: receitas consolidadas, despesas operacionais, devoluções e pagamentos operacionais."
                       rows={composicaoGeralRows}
                       columns={[
                         {
@@ -1203,7 +1581,7 @@ export default function TesourariaDespesasPage() {
 
                     <ResultadoDetalheTable
                       title="Pagamentos operacionais"
-                      description="Pagamentos considerados no cálculo do lucro líquido do mês."
+                      description="Saídas pagas pela tesouraria para o associado e para o agente. O lucro líquido subtrai a soma dessas duas colunas."
                       rows={resultadoDetalhe.pagamentos_operacionais}
                       columns={pagamentosOperacionaisColumns}
                       emptyMessage="Nenhum pagamento operacional registrado neste mês."
@@ -1213,7 +1591,7 @@ export default function TesourariaDespesasPage() {
                   <TabsContent value="receitas" className="mt-0">
                     <ResultadoDetalheTable
                       title="Receitas do mês"
-                      description="Itens de inadimplência manual e receitas reconhecidas via arquivo retorno."
+                      description="Entradas reconhecidas no mês: inadimplência manual paga, arquivo retorno conciliado e complementos de receita pagos."
                       rows={resultadoDetalhe.receitas}
                       columns={receitasDetalheColumns}
                       emptyMessage="Nenhuma receita registrada neste mês."
@@ -1223,7 +1601,7 @@ export default function TesourariaDespesasPage() {
                   <TabsContent value="despesas" className="mt-0">
                     <ResultadoDetalheTable
                       title="Despesas do mês"
-                      description="Despesas manuais e devoluções que compõem o total do mês."
+                      description="Saídas que compõem as despesas do mês: despesas operacionais lançadas manualmente e devoluções registradas."
                       rows={resultadoDetalhe.despesas}
                       columns={despesasDetalheColumns}
                       emptyMessage="Nenhuma despesa registrada neste mês."
@@ -1253,11 +1631,11 @@ export default function TesourariaDespesasPage() {
           }
         }}
       >
-        <DialogContent className="grid h-[min(92dvh,56rem)] w-[min(96vw,48rem)] max-h-[92dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-0 sm:max-w-3xl">
+          <DialogContent className="grid h-[min(92dvh,56rem)] w-[min(96vw,48rem)] max-h-[92dvh] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-0 sm:max-w-3xl">
           <DialogHeader className="border-b border-border/60 px-6 pb-4 pt-6 pr-14">
-            <DialogTitle>{formState.id ? "Editar despesa" : "Nova despesa"}</DialogTitle>
+            <DialogTitle>{formState.id ? "Editar lançamento" : "Novo lançamento"}</DialogTitle>
             <DialogDescription>
-              O anexo é opcional e pode ser enviado agora ou depois. O status financeiro será mantido conforme o valor selecionado no lançamento.
+              Escolha se o lançamento entra como despesa operacional ou complemento de receita. Complementos contam como receita externa quando estiverem pagos.
             </DialogDescription>
           </DialogHeader>
 
@@ -1308,6 +1686,34 @@ export default function TesourariaDespesasPage() {
                   </div>
                 </div>
                 <div className="space-y-2">
+                  <Label>Natureza do lançamento</Label>
+                  <Select
+                    value={formState.natureza}
+                    onValueChange={(value) =>
+                      setFormState((current) => ({ ...current, natureza: value }))
+                    }
+                  >
+                    <SelectTrigger
+                      aria-label="Natureza do lançamento"
+                      className="h-11 w-full rounded-xl border-border/60 bg-card/60"
+                    >
+                      <SelectValue placeholder="Selecione a natureza" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {naturezaLancamentoOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    {formState.natureza === "complemento_receita"
+                      ? "Complemento de receita entra no resultado mensal como receita externa quando o lançamento estiver pago."
+                      : "Despesa operacional entra no resultado mensal como saída manual da associação."}
+                  </p>
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="despesa-descricao">Descrição</Label>
                   <Input
                     id="despesa-descricao"
@@ -1318,7 +1724,9 @@ export default function TesourariaDespesasPage() {
                     placeholder="Detalhe rápido para a equipe"
                     className="rounded-xl border-border/60 bg-card/60"
                   />
-                  <p className="text-xs text-muted-foreground">Campo opcional.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Descreva claramente de onde vem o lançamento ou o que foi pago.
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label>Valor</Label>
@@ -1510,7 +1918,7 @@ export default function TesourariaDespesasPage() {
               onClick={() => saveMutation.mutate({ values: formState, attachment: formAttachment })}
               disabled={!canSubmitForm || saveMutation.isPending}
             >
-              {saveMutation.isPending ? "Salvando..." : formState.id ? "Salvar alterações" : "Lançar despesa"}
+              {saveMutation.isPending ? "Salvando..." : formState.id ? "Salvar alterações" : "Lançar"}
             </Button>
           </DialogFooter>
         </DialogContent>

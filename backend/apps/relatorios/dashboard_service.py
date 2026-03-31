@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 
-from django.db.models import Prefetch, Q, QuerySet
+from django.db.models import Count, DecimalField, IntegerField, OuterRef, Prefetch, Q, QuerySet, Subquery, Sum, Value
+from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -16,8 +18,12 @@ from apps.contratos.renovacao import RenovacaoCicloService
 from apps.esteira.models import EsteiraItem
 from apps.financeiro.models import Despesa
 from apps.importacao.financeiro import canonicalize_pagamentos
-from apps.importacao.models import PagamentoMensalidade
-from apps.tesouraria.models import DevolucaoAssociado, Pagamento as TesourariaPagamento
+from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, PagamentoMensalidade
+from apps.tesouraria.models import (
+    DevolucaoAssociado,
+    LiquidacaoContrato,
+    Pagamento as TesourariaPagamento,
+)
 
 
 PROCESSING_ASSOCIADO_STATUSES = (
@@ -557,6 +563,179 @@ class AdminDashboardService:
         return [add_months(start_month, index) for index in range(count)]
 
     @staticmethod
+    def _renewal_snapshot(
+        months: list[date],
+        *,
+        agent_id: int | None = None,
+        status: str | None = None,
+    ) -> dict[str, dict[date | tuple[date, int], set[int]]]:
+        if not months:
+            return {
+                "renewed_contracts": {},
+                "renewed_associados": {},
+                "renewed_contracts_by_agent": {},
+                "apt_contracts": {},
+                "apt_associados": {},
+                "apt_contracts_by_agent": {},
+            }
+
+        start_month = min(months)
+        end_month = add_months(max(months), 1)
+        months_set = set(months)
+        renewed_contracts: defaultdict[date, set[int]] = defaultdict(set)
+        renewed_associados: defaultdict[date, set[int]] = defaultdict(set)
+        renewed_contracts_by_agent: defaultdict[tuple[date, int], set[int]] = defaultdict(set)
+        apt_contracts: defaultdict[date, set[int]] = defaultdict(set)
+        apt_associados: defaultdict[date, set[int]] = defaultdict(set)
+        apt_contracts_by_agent: defaultdict[tuple[date, int], set[int]] = defaultdict(set)
+
+        relevant_cycle_ids = Parcela.objects.filter(
+            referencia_mes__gte=start_month,
+            referencia_mes__lt=end_month,
+        ).values("ciclo_id")
+        total_parcelas_subquery = (
+            Parcela.objects.filter(ciclo_id=OuterRef("pk"))
+            .values("ciclo_id")
+            .annotate(total=Count("id"))
+            .values("total")[:1]
+        )
+        parcelas_pagas_subquery = (
+            Parcela.objects.filter(
+                ciclo_id=OuterRef("pk"),
+                status=Parcela.Status.DESCONTADO,
+            )
+            .values("ciclo_id")
+            .annotate(total=Count("id"))
+            .values("total")[:1]
+        )
+        cycle_rows = (
+            Ciclo.objects.filter(
+                id__in=relevant_cycle_ids,
+                contrato__status__in=[Contrato.Status.ATIVO, Contrato.Status.ENCERRADO],
+            )
+            .annotate(
+                competencia_mes=TruncMonth("parcelas__referencia_mes"),
+                resolved_agent_id=Coalesce(
+                    "contrato__associado__agente_responsavel_id",
+                    "contrato__agente_id",
+                ),
+                total_parcelas=Coalesce(
+                    Subquery(total_parcelas_subquery, output_field=IntegerField()),
+                    Value(0),
+                ),
+                parcelas_pagas=Coalesce(
+                    Subquery(parcelas_pagas_subquery, output_field=IntegerField()),
+                    Value(0),
+                ),
+            )
+            .values(
+                "competencia_mes",
+                "resolved_agent_id",
+                "contrato_id",
+                "contrato__associado_id",
+                "status",
+                "total_parcelas",
+                "parcelas_pagas",
+            )
+            .distinct()
+        )
+        if agent_id:
+            cycle_rows = cycle_rows.filter(
+                Q(contrato__agente_id=agent_id)
+                | Q(contrato__associado__agente_responsavel_id=agent_id)
+            )
+        if status:
+            cycle_rows = cycle_rows.filter(contrato__associado__status=status)
+
+        for row in cycle_rows:
+            month = row["competencia_mes"]
+            if not isinstance(month, date) or month not in months_set:
+                continue
+            resolved_agent_id = row["resolved_agent_id"]
+            contract_id = int(row["contrato_id"])
+            associado_id = int(row["contrato__associado_id"])
+            total_parcelas = int(row["total_parcelas"] or 0)
+            parcelas_pagas = int(row["parcelas_pagas"] or 0)
+
+            if row["status"] == Ciclo.Status.CICLO_RENOVADO:
+                renewed_contracts[month].add(contract_id)
+                renewed_associados[month].add(associado_id)
+                if resolved_agent_id:
+                    renewed_contracts_by_agent[(month, int(resolved_agent_id))].add(
+                        contract_id
+                    )
+                continue
+
+            parcelas_minimas = total_parcelas if total_parcelas <= 1 else total_parcelas - 1
+            if (
+                row["status"] in [Ciclo.Status.ABERTO, Ciclo.Status.APTO_A_RENOVAR]
+                and total_parcelas > 0
+                and parcelas_pagas >= parcelas_minimas
+            ):
+                apt_contracts[month].add(contract_id)
+                apt_associados[month].add(associado_id)
+                if resolved_agent_id:
+                    apt_contracts_by_agent[(month, int(resolved_agent_id))].add(
+                        contract_id
+                    )
+
+        encerramento_rows = (
+            ArquivoRetornoItem.objects.filter(
+                arquivo_retorno__competencia__gte=start_month,
+                arquivo_retorno__competencia__lt=end_month,
+                arquivo_retorno__status=ArquivoRetorno.Status.CONCLUIDO,
+                gerou_encerramento=True,
+                parcela__isnull=False,
+            )
+            .annotate(
+                competencia_mes=TruncMonth("arquivo_retorno__competencia"),
+                resolved_agent_id=Coalesce(
+                    "parcela__ciclo__contrato__associado__agente_responsavel_id",
+                    "parcela__ciclo__contrato__agente_id",
+                ),
+            )
+            .values(
+                "competencia_mes",
+                "resolved_agent_id",
+                "parcela__ciclo__contrato_id",
+                "parcela__ciclo__contrato__associado_id",
+            )
+            .distinct()
+        )
+        if agent_id:
+            encerramento_rows = encerramento_rows.filter(
+                Q(parcela__ciclo__contrato__agente_id=agent_id)
+                | Q(parcela__ciclo__contrato__associado__agente_responsavel_id=agent_id)
+            )
+        if status:
+            encerramento_rows = encerramento_rows.filter(
+                parcela__ciclo__contrato__associado__status=status
+            )
+
+        for row in encerramento_rows:
+            month = row["competencia_mes"]
+            if not isinstance(month, date) or month not in months_set:
+                continue
+            resolved_agent_id = row["resolved_agent_id"]
+            contract_id = int(row["parcela__ciclo__contrato_id"])
+            associado_id = int(row["parcela__ciclo__contrato__associado_id"])
+            renewed_contracts[month].add(contract_id)
+            renewed_associados[month].add(associado_id)
+            if resolved_agent_id:
+                renewed_contracts_by_agent[(month, int(resolved_agent_id))].add(
+                    contract_id
+                )
+
+        return {
+            "renewed_contracts": dict(renewed_contracts),
+            "renewed_associados": dict(renewed_associados),
+            "renewed_contracts_by_agent": dict(renewed_contracts_by_agent),
+            "apt_contracts": dict(apt_contracts),
+            "apt_associados": dict(apt_associados),
+            "apt_contracts_by_agent": dict(apt_contracts_by_agent),
+        }
+
+    @staticmethod
     def _payments_saida_base(
         filters: DashboardFilters,
     ) -> QuerySet[TesourariaPagamento]:
@@ -639,27 +818,45 @@ class AdminDashboardService:
             .count()
         )
 
-        renewal_rows = AdminDashboardService._filter_renewal_rows_by_agent(
-            RenovacaoCicloService.listar_detalhes(competencia=filters.competencia),
-            filters.agent_id,
+        trend_months = AdminDashboardService._trend_months(filters.competencia)
+        renewal_snapshot = (
+            AdminDashboardService._renewal_snapshot(
+                list({filters.competencia, *trend_months}),
+                agent_id=filters.agent_id,
+                status=filters.status,
+            )
+            if not filters.day
+            else None
         )
-        renewal_rows = AdminDashboardService._filter_renewal_rows_by_status(
-            renewal_rows,
-            filters.status,
-            filters.agent_id,
-        )
-        renewal_rows = AdminDashboardService._filter_renewal_rows_by_day(
-            renewal_rows,
-            filters.day,
-        )
-        renovacoes = sum(
-            1
-            for row in renewal_rows
-            if row["status_visual"] == "ciclo_renovado" or row["gerou_encerramento"]
-        )
-        aptos_renovacao = sum(
-            1 for row in renewal_rows if row["status_visual"] == "apto_a_renovar"
-        )
+        if renewal_snapshot is None:
+            renewal_rows = AdminDashboardService._filter_renewal_rows_by_agent(
+                RenovacaoCicloService.listar_detalhes(competencia=filters.competencia),
+                filters.agent_id,
+            )
+            renewal_rows = AdminDashboardService._filter_renewal_rows_by_status(
+                renewal_rows,
+                filters.status,
+                filters.agent_id,
+            )
+            renewal_rows = AdminDashboardService._filter_renewal_rows_by_day(
+                renewal_rows,
+                filters.day,
+            )
+            renovacoes = sum(
+                1
+                for row in renewal_rows
+                if row["status_visual"] == "ciclo_renovado" or row["gerou_encerramento"]
+            )
+            aptos_renovacao = sum(
+                1 for row in renewal_rows if row["status_visual"] == "apto_a_renovar"
+            )
+        else:
+            renovacoes = len(
+                renewal_snapshot["renewed_contracts"].get(filters.competencia, set())
+            )
+            aptos_renovacao = len(
+                renewal_snapshot["apt_contracts"].get(filters.competencia, set())
+            )
 
         effective_contracts = AdminDashboardService._contracts_base(filters.agent_id).filter(
             auxilio_liberado_em__isnull=False
@@ -684,7 +881,7 @@ class AdminDashboardService:
             for status_key, _ in Associado.Status.choices
         }
         trend_points: list[dict[str, object]] = []
-        for month in AdminDashboardService._trend_months(filters.competencia):
+        for month in trend_months:
             month_associados = Associado.objects.filter(
                 created_at__date__gte=month,
                 created_at__date__lt=add_months(month, 1),
@@ -720,24 +917,30 @@ class AdminDashboardService:
                 if filters.date_end:
                     month_associados = month_associados.filter(created_at__date__lte=filters.date_end)
                     month_effectivados = month_effectivados.filter(auxilio_liberado_em__lte=filters.date_end)
-            month_renewal_rows = AdminDashboardService._filter_renewal_rows_by_agent(
-                RenovacaoCicloService.listar_detalhes(competencia=month),
-                filters.agent_id,
-            )
-            month_renewal_rows = AdminDashboardService._filter_renewal_rows_by_status(
-                month_renewal_rows,
-                filters.status,
-                filters.agent_id,
-            )
-            month_renewal_rows = AdminDashboardService._filter_renewal_rows_by_day(
-                month_renewal_rows,
-                filters.day,
-            )
-            renewed_count = sum(
-                1
-                for row in month_renewal_rows
-                if row["status_visual"] == "ciclo_renovado" or row["gerou_encerramento"]
-            )
+            if renewal_snapshot is None:
+                month_renewal_rows = AdminDashboardService._filter_renewal_rows_by_agent(
+                    RenovacaoCicloService.listar_detalhes(competencia=month),
+                    filters.agent_id,
+                )
+                month_renewal_rows = AdminDashboardService._filter_renewal_rows_by_status(
+                    month_renewal_rows,
+                    filters.status,
+                    filters.agent_id,
+                )
+                month_renewal_rows = AdminDashboardService._filter_renewal_rows_by_day(
+                    month_renewal_rows,
+                    filters.day,
+                )
+                renewed_count = sum(
+                    1
+                    for row in month_renewal_rows
+                    if row["status_visual"] == "ciclo_renovado"
+                    or row["gerou_encerramento"]
+                )
+            else:
+                renewed_count = len(
+                    renewal_snapshot["renewed_contracts"].get(month, set())
+                )
             trend_points.append(
                 {
                     "bucket": month_key(month),
@@ -1089,6 +1292,117 @@ class AdminDashboardService:
         }
 
     @staticmethod
+    def resumo_mensal_associacao(filters: DashboardFilters) -> dict[str, object]:
+        months = AdminDashboardService._trend_months(filters.competencia, count=12)
+        start_month = months[0]
+        end_month = add_months(filters.competencia, 1)
+        zero = Decimal("0.00")
+
+        complementos_por_mes = {month: zero for month in months}
+        despesas_pagas_por_mes = {month: zero for month in months}
+        novos_associados_por_mes = {month: set() for month in months}
+        liquidacoes_por_mes: dict[date, dict[str, set[int]]] = {
+            month: {"associados": set(), "contratos": set()}
+            for month in months
+        }
+        encerrados_por_mes: dict[date, set[int]] = {month: set() for month in months}
+        complementos = (
+            Despesa.objects.filter(
+                natureza=Despesa.Natureza.COMPLEMENTO_RECEITA,
+                status=Despesa.Status.PAGO,
+                data_pagamento__gte=start_month,
+                data_pagamento__lt=end_month,
+            )
+            .annotate(bucket_month=TruncMonth("data_pagamento"))
+            .values("bucket_month")
+            .annotate(total=Coalesce(Sum("valor"), Value(zero), output_field=DecimalField()))
+        )
+        for row in complementos:
+            bucket_month = row["bucket_month"]
+            if isinstance(bucket_month, date) and bucket_month in complementos_por_mes:
+                complementos_por_mes[bucket_month] = Decimal(str(row["total"] or zero))
+
+        despesas_pagas = (
+            Despesa.objects.filter(
+                natureza=Despesa.Natureza.DESPESA_OPERACIONAL,
+                status=Despesa.Status.PAGO,
+                data_pagamento__gte=start_month,
+                data_pagamento__lt=end_month,
+            )
+            .annotate(bucket_month=TruncMonth("data_pagamento"))
+            .values("bucket_month")
+            .annotate(total=Coalesce(Sum("valor"), Value(zero), output_field=DecimalField()))
+        )
+        for row in despesas_pagas:
+            bucket_month = row["bucket_month"]
+            if isinstance(bucket_month, date) and bucket_month in despesas_pagas_por_mes:
+                despesas_pagas_por_mes[bucket_month] = Decimal(str(row["total"] or zero))
+
+        contratos_efetivados = Contrato.objects.filter(
+            auxilio_liberado_em__gte=start_month,
+            auxilio_liberado_em__lt=end_month,
+        ).values_list("associado_id", "auxilio_liberado_em")
+        for associado_id, auxilio_liberado_em in contratos_efetivados:
+            if auxilio_liberado_em is None:
+                continue
+            bucket_month = auxilio_liberado_em.replace(day=1)
+            if bucket_month in novos_associados_por_mes:
+                novos_associados_por_mes[bucket_month].add(int(associado_id))
+
+        liquidacoes = LiquidacaoContrato.objects.filter(
+            revertida_em__isnull=True,
+            data_liquidacao__gte=start_month,
+            data_liquidacao__lt=end_month,
+        ).values_list("contrato__associado_id", "contrato_id", "data_liquidacao")
+        for associado_id, contrato_id, data_liquidacao in liquidacoes:
+            bucket_month = data_liquidacao.replace(day=1)
+            if bucket_month in liquidacoes_por_mes:
+                liquidacoes_por_mes[bucket_month]["associados"].add(int(associado_id))
+                liquidacoes_por_mes[bucket_month]["contratos"].add(int(contrato_id))
+
+        contratos_encerrados = Contrato.objects.filter(
+            status=Contrato.Status.ENCERRADO,
+            updated_at__date__gte=start_month,
+            updated_at__date__lt=end_month,
+        ).values_list("id", "associado_id", "updated_at")
+        for contrato_id, associado_id, updated_at in contratos_encerrados:
+            bucket_month = updated_at.date().replace(day=1)
+            if bucket_month not in encerrados_por_mes:
+                continue
+            liquidated_contract_ids = liquidacoes_por_mes[bucket_month]["contratos"]
+            if int(contrato_id) not in liquidated_contract_ids:
+                encerrados_por_mes[bucket_month].add(int(associado_id))
+
+        renewal_snapshot = AdminDashboardService._renewal_snapshot(months)
+        renovacoes_por_mes = {
+            month: renewal_snapshot["renewed_associados"].get(month, set())
+            for month in months
+        }
+
+        rows: list[dict[str, object]] = []
+        for month in months:
+            complementos_receita = complementos_por_mes[month]
+            despesas_pagas_mes = despesas_pagas_por_mes[month]
+            desvinculados = (
+                liquidacoes_por_mes[month]["associados"] | encerrados_por_mes[month]
+            )
+            rows.append(
+                {
+                    "mes": month,
+                    "complementos_receita": complementos_receita,
+                    "saldo_positivo": max(complementos_receita - despesas_pagas_mes, zero),
+                    "novos_associados": len(novos_associados_por_mes[month]),
+                    "desvinculados": len(desvinculados),
+                    "renovacoes_associado": len(renovacoes_por_mes[month]),
+                }
+            )
+
+        return {
+            "competencia": month_key(filters.competencia),
+            "rows": rows,
+        }
+
+    @staticmethod
     def _resolved_date_window(
         date_start: date | None,
         date_end: date | None,
@@ -1207,117 +1521,217 @@ class AdminDashboardService:
             filters.date_end,
             filters.day,
         )
-        agents = (
+        zero = Decimal("0.00")
+        agents = list(
             User.objects.filter(
                 Q(roles__codigo="AGENTE")
                 | Q(associados_cadastrados__isnull=False)
                 | Q(contratos_agenciados__isnull=False)
             )
             .distinct()
+            .prefetch_related("roles")
             .order_by("first_name", "last_name", "email")
         )
         if filters.agent_id:
-            agents = agents.filter(id=filters.agent_id)
+            agents = [agent for agent in agents if agent.id == filters.agent_id]
 
-        renewal_rows = AdminDashboardService._filter_renewal_rows_by_agent(
-            RenovacaoCicloService.listar_detalhes(competencia=filters.competencia),
-            filters.agent_id,
-        )
-        renewal_rows = AdminDashboardService._filter_renewal_rows_by_status(
-            renewal_rows,
-            filters.status,
-            filters.agent_id,
-        )
-        renewal_rows = AdminDashboardService._filter_renewal_rows_by_day(
-            renewal_rows,
-            filters.day,
-        )
+        agent_ids = [agent.id for agent in agents]
+        agent_role_map = {
+            agent.id: {role.codigo for role in agent.roles.all()} for agent in agents
+        }
+        cadastros_map: dict[int, dict[str, int]] = {}
+        base_status_map: dict[int, dict[str, int]] = {}
+        efetivados_map: dict[int, dict[str, Decimal]] = {}
+        devolvidos_map: defaultdict[int, set[int]] = defaultdict(set)
 
-        ranking: list[dict[str, object]] = []
-        for agent in agents:
-            cadastros = Associado.objects.filter(
-                agente_responsavel=agent,
+        if agent_ids:
+            cadastros_queryset = Associado.objects.filter(
+                agente_responsavel_id__in=agent_ids,
                 created_at__date__gte=date_start,
                 created_at__date__lte=date_end,
             )
             if filters.status:
-                cadastros = cadastros.filter(status=filters.status)
-            em_processo = cadastros.filter(status__in=PROCESSING_ASSOCIADO_STATUSES)
-            base_associados = Associado.objects.filter(agente_responsavel=agent)
-            if filters.status:
-                base_associados = base_associados.filter(status=filters.status)
-            inadimplentes = base_associados.filter(status=Associado.Status.INADIMPLENTE)
-            inativos = base_associados.filter(status=Associado.Status.INATIVO)
-            efetivados = AdminDashboardService._contracts_base(agent.id).filter(
-                auxilio_liberado_em__gte=date_start,
-                auxilio_liberado_em__lte=date_end,
-                auxilio_liberado_em__isnull=False,
-            ).distinct()
-            efetivados = AdminDashboardService._filter_contracts_by_associado_status(
-                efetivados,
-                filters.status,
-            )
-            volume_financeiro = sum(
-                (contrato.valor_liquido for contrato in efetivados),
-                Decimal("0.00"),
-            )
-            agent_renewals = [
-                row
-                for row in renewal_rows
-                if row["agente_responsavel"] == (agent.full_name or agent.email)
-            ]
-            renovados = sum(
-                1
-                for row in agent_renewals
-                if row["status_visual"] == "ciclo_renovado" or row["gerou_encerramento"]
-            )
-            aptos_renovar = sum(
-                1 for row in agent_renewals if row["status_visual"] == "apto_a_renovar"
-            )
-            devolvidos = AdminDashboardService._devolucoes_base(
-                DashboardFilters(
-                    competencia=filters.competencia,
-                    date_start=filters.date_start,
-                    date_end=filters.date_end,
-                    day=filters.day,
-                    agent_id=agent.id,
-                    status=filters.status,
+                cadastros_queryset = cadastros_queryset.filter(status=filters.status)
+            cadastros_map = {
+                int(row["agente_responsavel_id"]): {
+                    "cadastros": int(row["cadastros"] or 0),
+                    "em_processo": int(row["em_processo"] or 0),
+                }
+                for row in cadastros_queryset.values("agente_responsavel_id").annotate(
+                    cadastros=Count("id"),
+                    em_processo=Count(
+                        "id",
+                        filter=Q(status__in=PROCESSING_ASSOCIADO_STATUSES),
+                    ),
                 )
-            ).count()
-            status_counts = {
-                status_key: base_associados.filter(status=status_key).count()
-                for status_key, _ in Associado.Status.choices
             }
+
+            base_status_queryset = Associado.objects.filter(
+                agente_responsavel_id__in=agent_ids,
+            )
+            if filters.status:
+                base_status_queryset = base_status_queryset.filter(status=filters.status)
+            base_status_map = {
+                int(row["agente_responsavel_id"]): {
+                    "cadastrado": int(row["cadastrado"] or 0),
+                    "em_analise": int(row["em_analise"] or 0),
+                    "pendente": int(row["pendente"] or 0),
+                    "ativo": int(row["ativo"] or 0),
+                    "inadimplente": int(row["inadimplente"] or 0),
+                    "inativo": int(row["inativo"] or 0),
+                }
+                for row in base_status_queryset.values("agente_responsavel_id").annotate(
+                    cadastrado=Count("id", filter=Q(status=Associado.Status.CADASTRADO)),
+                    em_analise=Count("id", filter=Q(status=Associado.Status.EM_ANALISE)),
+                    pendente=Count("id", filter=Q(status=Associado.Status.PENDENTE)),
+                    ativo=Count("id", filter=Q(status=Associado.Status.ATIVO)),
+                    inadimplente=Count("id", filter=Q(status=Associado.Status.INADIMPLENTE)),
+                    inativo=Count("id", filter=Q(status=Associado.Status.INATIVO)),
+                )
+            }
+
+            efetivados_queryset = (
+                Contrato.objects.exclude(status=Contrato.Status.CANCELADO)
+                .filter(
+                    auxilio_liberado_em__gte=date_start,
+                    auxilio_liberado_em__lte=date_end,
+                    auxilio_liberado_em__isnull=False,
+                )
+                .annotate(
+                    resolved_agent_id=Coalesce("agente_id", "associado__agente_responsavel_id")
+                )
+                .filter(resolved_agent_id__in=agent_ids)
+            )
+            if filters.status:
+                efetivados_queryset = efetivados_queryset.filter(associado__status=filters.status)
+            efetivados_map = {
+                int(row["resolved_agent_id"]): {
+                    "efetivados": int(row["efetivados"] or 0),
+                    "volume_financeiro": Decimal(str(row["volume_financeiro"] or zero)),
+                }
+                for row in efetivados_queryset.values("resolved_agent_id").annotate(
+                    efetivados=Count("id", distinct=True),
+                    volume_financeiro=Coalesce(
+                        Sum("valor_liquido"),
+                        Value(zero),
+                        output_field=DecimalField(),
+                    ),
+                )
+            }
+
+            devolucoes_queryset = DevolucaoAssociado.objects.filter(
+                revertida_em__isnull=True,
+                data_devolucao__year=filters.competencia.year,
+                data_devolucao__month=filters.competencia.month,
+            )
+            if filters.status:
+                devolucoes_queryset = devolucoes_queryset.filter(associado__status=filters.status)
+            if filters.day:
+                devolucoes_queryset = devolucoes_queryset.filter(data_devolucao=filters.day)
+            for devolucao_id, associado_agent_id, contrato_agent_id in devolucoes_queryset.values_list(
+                "id",
+                "associado__agente_responsavel_id",
+                "contrato__agente_id",
+            ):
+                for candidate_agent_id in {associado_agent_id, contrato_agent_id}:
+                    if candidate_agent_id in agent_ids:
+                        devolvidos_map[int(candidate_agent_id)].add(int(devolucao_id))
+
+        if filters.day:
+            renewal_rows = AdminDashboardService._filter_renewal_rows_by_agent(
+                RenovacaoCicloService.listar_detalhes(competencia=filters.competencia),
+                filters.agent_id,
+            )
+            renewal_rows = AdminDashboardService._filter_renewal_rows_by_status(
+                renewal_rows,
+                filters.status,
+                filters.agent_id,
+            )
+            renewal_rows = AdminDashboardService._filter_renewal_rows_by_day(
+                renewal_rows,
+                filters.day,
+            )
+            renewal_snapshot = None
+        else:
+            renewal_rows = []
+            renewal_snapshot = AdminDashboardService._renewal_snapshot(
+                [filters.competencia],
+                agent_id=filters.agent_id,
+                status=filters.status,
+            )
+
+        ranking: list[dict[str, object]] = []
+        for agent in agents:
+            cadastros_stats = cadastros_map.get(agent.id, {})
+            status_counts = base_status_map.get(agent.id, {})
+            efetivados_stats = efetivados_map.get(agent.id, {})
+            cadastros_total = int(cadastros_stats.get("cadastros", 0))
+            em_processo = int(cadastros_stats.get("em_processo", 0))
+            inadimplentes = int(status_counts.get("inadimplente", 0))
+            inativos = int(status_counts.get("inativo", 0))
+            efetivados_total = int(efetivados_stats.get("efetivados", 0))
+            volume_financeiro = Decimal(
+                str(efetivados_stats.get("volume_financeiro", zero))
+            )
+            if renewal_snapshot is None:
+                agent_renewals = [
+                    row
+                    for row in renewal_rows
+                    if row["agente_responsavel"] == (agent.full_name or agent.email)
+                ]
+                renovados = sum(
+                    1
+                    for row in agent_renewals
+                    if row["status_visual"] == "ciclo_renovado"
+                    or row["gerou_encerramento"]
+                )
+                aptos_renovar = sum(
+                    1 for row in agent_renewals if row["status_visual"] == "apto_a_renovar"
+                )
+            else:
+                renovados = len(
+                    renewal_snapshot["renewed_contracts_by_agent"].get(
+                        (filters.competencia, agent.id),
+                        set(),
+                    )
+                )
+                aptos_renovar = len(
+                    renewal_snapshot["apt_contracts_by_agent"].get(
+                        (filters.competencia, agent.id),
+                        set(),
+                    )
+                )
+            devolvidos = len(devolvidos_map.get(agent.id, set()))
             metrics_total = (
-                cadastros.count()
-                + em_processo.count()
-                + inadimplentes.count()
-                + efetivados.count()
+                cadastros_total
+                + em_processo
+                + inadimplentes
+                + efetivados_total
                 + renovados
                 + aptos_renovar
                 + devolvidos
                 + int(volume_financeiro > 0)
             )
-            if metrics_total == 0 and not agent.has_role("AGENTE"):
+            if metrics_total == 0 and "AGENTE" not in agent_role_map.get(agent.id, set()):
                 continue
             ranking.append(
                 {
                     "agent_id": agent.id,
                     "agent_name": agent.full_name or agent.email,
-                    "efetivados": efetivados.count(),
-                    "cadastros": cadastros.count(),
-                    "em_processo": em_processo.count(),
+                    "efetivados": efetivados_total,
+                    "cadastros": cadastros_total,
+                    "em_processo": em_processo,
                     "renovados": renovados,
                     "aptos_renovar": aptos_renovar,
-                    "inadimplentes": inadimplentes.count(),
+                    "inadimplentes": inadimplentes,
                     "devolvidos": devolvidos,
                     "volume_financeiro": float(volume_financeiro),
-                    "cadastrado": status_counts[Associado.Status.CADASTRADO],
-                    "em_analise": status_counts[Associado.Status.EM_ANALISE],
-                    "pendente": status_counts[Associado.Status.PENDENTE],
-                    "ativo": status_counts[Associado.Status.ATIVO],
-                    "inadimplente": status_counts[Associado.Status.INADIMPLENTE],
-                    "inativo": status_counts[Associado.Status.INATIVO],
+                    "cadastrado": int(status_counts.get("cadastrado", 0)),
+                    "em_analise": int(status_counts.get("em_analise", 0)),
+                    "pendente": int(status_counts.get("pendente", 0)),
+                    "ativo": int(status_counts.get("ativo", 0)),
+                    "inadimplente": int(status_counts.get("inadimplente", 0)),
+                    "inativo": int(status_counts.get("inativo", 0)),
                 }
             )
 

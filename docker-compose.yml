@@ -155,6 +155,7 @@ services:
       TZ: ${TZ:-America/Fortaleza}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000/api/v1}
       INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:8000/api/v1}
+      NEXT_DIST_DIR: ${NEXT_DIST_DIR:-.next-docker}
       CI: "true"
     command: >
       sh -c "pnpm install --frozen-lockfile --config.confirmModulesPurge=false --config.package-import-method=copy &&

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import date, datetime
 from decimal import Decimal
 from calendar import monthrange
@@ -10,6 +11,7 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from apps.accounts.models import User
 from apps.associados.models import Associado
 from apps.contratos.competencia import propagate_competencia_status
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
@@ -18,7 +20,7 @@ from apps.esteira.models import EsteiraItem, Transicao
 from apps.financeiro.models import Despesa
 from apps.importacao.financeiro import canonicalize_pagamentos as canonicalize_financeiro_pagamentos
 from apps.importacao.models import PagamentoMensalidade
-from apps.refinanciamento.models import Comprovante
+from apps.refinanciamento.models import Comprovante, Refinanciamento
 
 from .models import BaixaManual, Confirmacao, DevolucaoAssociado, Pagamento
 
@@ -204,6 +206,10 @@ class TesourariaService:
             valor_pago=contrato.valor_liquido or contrato.valor_total_antecipacao,
             paid_at=timezone.now(),
             forma_pagamento="pix",
+            referencias_externas={
+                "payment_kind": "contrato_inicial",
+                "contrato_id": contrato.id,
+            },
             comprovante_associado_path=getattr(comprovante_associado, "name", ""),
             comprovante_agente_path=getattr(comprovante_agente, "name", ""),
             notes="Efetivação inicial do contrato pela tesouraria.",
@@ -548,10 +554,204 @@ class BaixaManualService:
 
 
 class DespesaService:
+    _RENEWAL_ID_PATTERN = re.compile(r"refi\s*#(\d+)", re.IGNORECASE)
+
     @staticmethod
     def _monthly_window(month: date | None = None) -> tuple[date, date]:
         month_start = (month or timezone.localdate()).replace(day=1)
         return month_start, shift_month(month_start, 1)
+
+    @staticmethod
+    def _manual_launch_reference_date(despesa: Despesa) -> date:
+        return despesa.data_pagamento or despesa.data_despesa
+
+    @staticmethod
+    def _build_agent_filter(agente: str | None) -> dict[str, object] | None:
+        term = (agente or "").strip()
+        if not term:
+            return None
+
+        agent_id = int(term) if term.isdigit() else None
+        resolved_term = term
+        if agent_id is not None:
+            agent = User.objects.filter(pk=agent_id).only("first_name", "last_name", "email").first()
+            if agent is not None:
+                resolved_term = agent.full_name or agent.email or term
+
+        return {
+            "id": agent_id,
+            "term": resolved_term.casefold(),
+        }
+
+    @staticmethod
+    def _matches_agent_filter(
+        agent_filter: dict[str, object] | None,
+        *,
+        user: User | None = None,
+        fallback_text: str | None = None,
+    ) -> bool:
+        if agent_filter is None:
+            return True
+
+        agent_id = agent_filter.get("id")
+        if user is not None:
+            if agent_id is not None and user.id == agent_id:
+                return True
+
+            full_name = (user.full_name or "").casefold()
+            email = (user.email or "").casefold()
+            term = str(agent_filter["term"])
+            if term and (term in full_name or term in email):
+                return True
+
+        if fallback_text:
+            return str(agent_filter["term"]) in fallback_text.casefold()
+
+        return False
+
+    @classmethod
+    def _matches_pagamento_mensalidade_agent(
+        cls,
+        pagamento: PagamentoMensalidade,
+        agent_filter: dict[str, object] | None,
+    ) -> bool:
+        associado = getattr(pagamento, "associado", None)
+        agente = getattr(associado, "agente_responsavel", None)
+        return cls._matches_agent_filter(agent_filter, user=agente)
+
+    @classmethod
+    def _matches_devolucao_agent(
+        cls,
+        devolucao: DevolucaoAssociado,
+        agent_filter: dict[str, object] | None,
+    ) -> bool:
+        contrato = getattr(devolucao, "contrato", None)
+        agente = getattr(contrato, "agente", None)
+        return cls._matches_agent_filter(
+            agent_filter,
+            user=agente,
+            fallback_text=devolucao.agente_snapshot,
+        )
+
+    @classmethod
+    def _matches_pagamento_operacional_agent(
+        cls,
+        pagamento: Pagamento,
+        pagamento_context: dict[str, object],
+        agent_filter: dict[str, object] | None,
+    ) -> bool:
+        contrato = pagamento_context.get("contrato")
+        agente = getattr(contrato, "agente", None) if contrato is not None else None
+        return cls._matches_agent_filter(
+            agent_filter,
+            user=agente,
+            fallback_text=pagamento.agente_responsavel,
+        )
+
+    @classmethod
+    def _resolve_pagamento_operacional_context(
+        cls,
+        pagamentos: list[Pagamento],
+    ) -> dict[int, dict[str, object]]:
+        zero = Decimal("0.00")
+        contract_ids: set[int] = set()
+        contract_codes: set[str] = set()
+        refinancing_ids: set[int] = set()
+        parsed_refs: dict[int, dict[str, int | str | None]] = {}
+
+        for pagamento in pagamentos:
+            refs = (
+                pagamento.referencias_externas
+                if isinstance(pagamento.referencias_externas, dict)
+                else {}
+            )
+            payment_kind = str(refs.get("payment_kind") or "").strip()
+            contract_id_raw = refs.get("contrato_id")
+            refinancing_id_raw = refs.get("refinanciamento_id")
+
+            contract_id = (
+                int(contract_id_raw)
+                if str(contract_id_raw).isdigit()
+                else None
+            )
+            refinancing_id = (
+                int(refinancing_id_raw)
+                if str(refinancing_id_raw).isdigit()
+                else None
+            )
+
+            if refinancing_id is None:
+                match = cls._RENEWAL_ID_PATTERN.search(pagamento.notes or "")
+                if match:
+                    refinancing_id = int(match.group(1))
+                    if not payment_kind:
+                        payment_kind = "renovacao"
+
+            if contract_id is not None:
+                contract_ids.add(contract_id)
+            elif pagamento.contrato_codigo:
+                contract_codes.add(pagamento.contrato_codigo)
+
+            if refinancing_id is not None:
+                refinancing_ids.add(refinancing_id)
+
+            parsed_refs[pagamento.id] = {
+                "payment_kind": payment_kind or None,
+                "contract_id": contract_id,
+                "refinancing_id": refinancing_id,
+            }
+
+        contracts = Contrato.objects.select_related("agente").filter(
+            Q(id__in=contract_ids) | Q(codigo__in=contract_codes)
+        )
+        contracts_by_id = {contrato.id: contrato for contrato in contracts}
+        contracts_by_code = {contrato.codigo: contrato for contrato in contracts}
+
+        refinancings = Refinanciamento.objects.select_related("contrato_origem").filter(
+            id__in=refinancing_ids
+        )
+        refinancings_by_id = {refinanciamento.id: refinanciamento for refinanciamento in refinancings}
+
+        payload: dict[int, dict[str, object]] = {}
+        for pagamento in pagamentos:
+            refs = parsed_refs.get(pagamento.id, {})
+            refinancing = refinancings_by_id.get(int(refs["refinancing_id"])) if refs.get("refinancing_id") else None
+            contract = None
+            if refinancing and refinancing.contrato_origem_id:
+                contract = refinancing.contrato_origem
+            elif refs.get("contract_id"):
+                contract = contracts_by_id.get(int(refs["contract_id"]))
+            elif pagamento.contrato_codigo:
+                contract = contracts_by_code.get(pagamento.contrato_codigo)
+
+            payment_kind = str(refs.get("payment_kind") or "").strip()
+            notes_lower = (pagamento.notes or "").lower()
+            is_renewal = bool(
+                payment_kind == "renovacao"
+                or refinancing is not None
+                or ("renova" in notes_lower and "tesouraria" in notes_lower)
+            )
+
+            valor_associado = Decimal(str(pagamento.valor_pago or zero))
+            if is_renewal:
+                valor_agente = Decimal(
+                    str(refinancing.repasse_agente if refinancing is not None else zero)
+                )
+            else:
+                valor_agente = Decimal(
+                    str(contract.comissao_agente if contract is not None else zero)
+                )
+
+            payload[pagamento.id] = {
+                "payment_kind": "renovacao" if is_renewal else "contrato_inicial",
+                "contrato": contract,
+                "refinanciamento": refinancing,
+                "valor_associado": valor_associado,
+                "valor_agente": valor_agente,
+                "valor_total": valor_associado + valor_agente,
+            }
+
+        return payload
 
     @staticmethod
     def _build_resultado_row(
@@ -559,11 +759,12 @@ class DespesaService:
         month: date,
         receitas_inadimplencia: Decimal,
         receitas_retorno: Decimal,
+        complementos_receita: Decimal,
         despesas_manuais: Decimal,
         devolucoes: Decimal,
         pagamentos_operacionais: Decimal,
     ) -> dict[str, object]:
-        receitas = receitas_inadimplencia + receitas_retorno
+        receitas = receitas_inadimplencia + receitas_retorno + complementos_receita
         despesas_total = despesas_manuais + devolucoes
         lucro = receitas - despesas_total
         lucro_liquido = lucro - pagamentos_operacionais
@@ -572,6 +773,7 @@ class DespesaService:
             "receitas": receitas,
             "receitas_inadimplencia": receitas_inadimplencia,
             "receitas_retorno": receitas_retorno,
+            "complementos_receita": complementos_receita,
             "despesas": despesas_total,
             "despesas_manuais": despesas_manuais,
             "devolucoes": devolucoes,
@@ -588,6 +790,7 @@ class DespesaService:
         status: str | None = None,
         status_anexo: str | None = None,
         tipo: str | None = None,
+        natureza: str | None = None,
     ):
         queryset = Despesa.objects.select_related("user").order_by(
             "-data_despesa",
@@ -614,6 +817,9 @@ class DespesaService:
 
         if tipo in {choice[0] for choice in Despesa.Tipo.choices}:
             queryset = queryset.filter(tipo=tipo)
+
+        if natureza in {choice[0] for choice in Despesa.Natureza.choices}:
+            queryset = queryset.filter(natureza=natureza)
 
         return queryset
 
@@ -665,34 +871,59 @@ class DespesaService:
         ]
 
     @staticmethod
-    def resultado_mensal(*, competencia: date | None = None) -> dict[str, object]:
+    def resultado_mensal(
+        *,
+        competencia: date | None = None,
+        agente: str | None = None,
+    ) -> dict[str, object]:
         base_month = (competencia or timezone.localdate()).replace(day=1)
         start_month = shift_month(base_month, -11)
         months = [shift_month(start_month, index) for index in range(12)]
         _, end_month = DespesaService._monthly_window(base_month)
         zero = Decimal("0.00")
+        agent_filter = DespesaService._build_agent_filter(agente)
 
         pagamentos = canonicalize_financeiro_pagamentos(
             list(
                 PagamentoMensalidade.objects.filter(
                     referencia_month__gte=start_month,
                     referencia_month__lt=end_month,
-                ).order_by("referencia_month", "id")
+                )
+                .select_related("associado", "associado__agente_responsavel")
+                .order_by("referencia_month", "id")
             )
         )
+        if agent_filter is not None:
+            pagamentos = [
+                pagamento
+                for pagamento in pagamentos
+                if DespesaService._matches_pagamento_mensalidade_agent(
+                    pagamento,
+                    agent_filter,
+                )
+            ]
         despesas = list(
             Despesa.objects.filter(
-                data_despesa__gte=start_month,
-                data_despesa__lt=end_month,
+                Q(data_despesa__gte=start_month, data_despesa__lt=end_month)
+                | Q(data_pagamento__gte=start_month, data_pagamento__lt=end_month)
             )
         )
+        if agent_filter is not None:
+            despesas = []
         devolucoes = list(
             DevolucaoAssociado.objects.filter(
                 revertida_em__isnull=True,
                 data_devolucao__gte=start_month,
                 data_devolucao__lt=end_month,
             )
+            .select_related("contrato", "contrato__agente")
         )
+        if agent_filter is not None:
+            devolucoes = [
+                devolucao
+                for devolucao in devolucoes
+                if DespesaService._matches_devolucao_agent(devolucao, agent_filter)
+            ]
         pagamentos_operacionais = list(
             Pagamento.objects.filter(
                 status=Pagamento.Status.PAGO,
@@ -704,6 +935,7 @@ class DespesaService:
         receitas_inadimplencia_por_mes = {month: zero for month in months}
         receitas_retorno_por_mes = {month: zero for month in months}
         despesas_manuais_por_mes = {month: zero for month in months}
+        complementos_receita_por_mes = {month: zero for month in months}
         devolucoes_por_mes = {month: zero for month in months}
         pagamentos_operacionais_por_mes = {month: zero for month in months}
 
@@ -721,6 +953,14 @@ class DespesaService:
                 )
 
         for despesa in despesas:
+            if despesa.natureza == Despesa.Natureza.COMPLEMENTO_RECEITA:
+                if despesa.status != Despesa.Status.PAGO:
+                    continue
+                month_key = DespesaService._manual_launch_reference_date(despesa).replace(day=1)
+                if month_key in complementos_receita_por_mes:
+                    complementos_receita_por_mes[month_key] += Decimal(str(despesa.valor or zero))
+                continue
+
             month_key = despesa.data_despesa.replace(day=1)
             if month_key in despesas_manuais_por_mes:
                 despesas_manuais_por_mes[month_key] += Decimal(str(despesa.valor or zero))
@@ -730,13 +970,27 @@ class DespesaService:
             if month_key in devolucoes_por_mes:
                 devolucoes_por_mes[month_key] += Decimal(str(devolucao.valor or zero))
 
+        pagamentos_operacionais_context = DespesaService._resolve_pagamento_operacional_context(
+            pagamentos_operacionais
+        )
+        if agent_filter is not None:
+            pagamentos_operacionais = [
+                pagamento
+                for pagamento in pagamentos_operacionais
+                if DespesaService._matches_pagamento_operacional_agent(
+                    pagamento,
+                    pagamentos_operacionais_context.get(pagamento.id, {}),
+                    agent_filter,
+                )
+            ]
         for pagamento in pagamentos_operacionais:
             if pagamento.paid_at is None:
                 continue
             month_key = pagamento.paid_at.date().replace(day=1)
             if month_key in pagamentos_operacionais_por_mes:
+                pagamento_context = pagamentos_operacionais_context.get(pagamento.id, {})
                 pagamentos_operacionais_por_mes[month_key] += Decimal(
-                    str(pagamento.valor_pago or zero)
+                    str(pagamento_context.get("valor_total") or zero)
                 )
 
         rows: list[dict[str, object]] = []
@@ -746,6 +1000,7 @@ class DespesaService:
                     month=month,
                     receitas_inadimplencia=receitas_inadimplencia_por_mes[month],
                     receitas_retorno=receitas_retorno_por_mes[month],
+                    complementos_receita=complementos_receita_por_mes[month],
                     despesas_manuais=despesas_manuais_por_mes[month],
                     devolucoes=devolucoes_por_mes[month],
                     pagamentos_operacionais=pagamentos_operacionais_por_mes[month],
@@ -761,9 +1016,14 @@ class DespesaService:
         return {"rows": rows, "totais": totais}
 
     @staticmethod
-    def resultado_mensal_detalhe(*, mes: date) -> dict[str, object]:
+    def resultado_mensal_detalhe(
+        *,
+        mes: date,
+        agente: str | None = None,
+    ) -> dict[str, object]:
         month_start, next_month = DespesaService._monthly_window(mes)
         zero = Decimal("0.00")
+        agent_filter = DespesaService._build_agent_filter(agente)
 
         pagamentos = canonicalize_financeiro_pagamentos(
             list(
@@ -775,23 +1035,40 @@ class DespesaService:
                 .order_by("referencia_month", "id")
             )
         )
+        if agent_filter is not None:
+            pagamentos = [
+                pagamento
+                for pagamento in pagamentos
+                if DespesaService._matches_pagamento_mensalidade_agent(
+                    pagamento,
+                    agent_filter,
+                )
+            ]
         despesas = list(
             Despesa.objects.filter(
-                data_despesa__gte=month_start,
-                data_despesa__lt=next_month,
+                Q(data_despesa__gte=month_start, data_despesa__lt=next_month)
+                | Q(data_pagamento__gte=month_start, data_pagamento__lt=next_month)
             )
             .select_related("user")
             .order_by("-data_despesa", "-created_at", "-id")
         )
+        if agent_filter is not None:
+            despesas = []
         devolucoes = list(
             DevolucaoAssociado.objects.filter(
                 revertida_em__isnull=True,
                 data_devolucao__gte=month_start,
                 data_devolucao__lt=next_month,
             )
-            .select_related("associado", "contrato", "realizado_por")
+            .select_related("associado", "contrato", "contrato__agente", "realizado_por")
             .order_by("-data_devolucao", "-created_at", "-id")
         )
+        if agent_filter is not None:
+            devolucoes = [
+                devolucao
+                for devolucao in devolucoes
+                if DespesaService._matches_devolucao_agent(devolucao, agent_filter)
+            ]
         pagamentos_operacionais = list(
             Pagamento.objects.filter(
                 status=Pagamento.Status.PAGO,
@@ -805,6 +1082,7 @@ class DespesaService:
         receitas_itens: list[dict[str, object]] = []
         receitas_inadimplencia = zero
         receitas_retorno = zero
+        complementos_receita = zero
 
         for pagamento in pagamentos:
             associado = pagamento.associado
@@ -867,6 +1145,30 @@ class DespesaService:
 
         for despesa in despesas:
             valor = Decimal(str(despesa.valor or zero))
+            if despesa.natureza == Despesa.Natureza.COMPLEMENTO_RECEITA:
+                if despesa.status != Despesa.Status.PAGO:
+                    continue
+                reference_date = DespesaService._manual_launch_reference_date(despesa)
+                if reference_date < month_start or reference_date >= next_month:
+                    continue
+                complementos_receita += valor
+                receitas_itens.append(
+                    {
+                        "id": despesa.id,
+                        "origem": "complemento_receita",
+                        "origem_label": "Complemento de receita",
+                        "data": reference_date,
+                        "referencia": reference_date.replace(day=1),
+                        "associado_nome": despesa.categoria,
+                        "cpf_cnpj": "",
+                        "matricula": "",
+                        "agente_nome": "",
+                        "descricao": despesa.descricao or "Complemento de receita lançado manualmente.",
+                        "valor": valor,
+                    }
+                )
+                continue
+
             despesas_manuais += valor
             despesas_itens.append(
                 {
@@ -905,12 +1207,28 @@ class DespesaService:
 
         pagamentos_operacionais_itens: list[dict[str, object]] = []
         pagamentos_operacionais_total = zero
+        pagamentos_operacionais_context = DespesaService._resolve_pagamento_operacional_context(
+            pagamentos_operacionais
+        )
+        if agent_filter is not None:
+            pagamentos_operacionais = [
+                pagamento
+                for pagamento in pagamentos_operacionais
+                if DespesaService._matches_pagamento_operacional_agent(
+                    pagamento,
+                    pagamentos_operacionais_context.get(pagamento.id, {}),
+                    agent_filter,
+                )
+            ]
 
         for pagamento in pagamentos_operacionais:
             if pagamento.paid_at is None:
                 continue
-            valor = Decimal(str(pagamento.valor_pago or zero))
-            pagamentos_operacionais_total += valor
+            pagamento_context = pagamentos_operacionais_context.get(pagamento.id, {})
+            valor_associado = Decimal(str(pagamento_context.get("valor_associado") or zero))
+            valor_agente = Decimal(str(pagamento_context.get("valor_agente") or zero))
+            valor_total = Decimal(str(pagamento_context.get("valor_total") or zero))
+            pagamentos_operacionais_total += valor_total
             pagamentos_operacionais_itens.append(
                 {
                     "id": pagamento.id,
@@ -921,7 +1239,9 @@ class DespesaService:
                     "contrato_codigo": pagamento.contrato_codigo,
                     "origem": pagamento.origem,
                     "origem_label": pagamento.get_origem_display(),
-                    "valor": valor,
+                    "valor_associado": valor_associado,
+                    "valor_agente": valor_agente,
+                    "valor_total": valor_total,
                 }
             )
 
@@ -929,6 +1249,7 @@ class DespesaService:
             month=month_start,
             receitas_inadimplencia=receitas_inadimplencia,
             receitas_retorno=receitas_retorno,
+            complementos_receita=complementos_receita,
             despesas_manuais=despesas_manuais,
             devolucoes=devolucoes_total,
             pagamentos_operacionais=pagamentos_operacionais_total,

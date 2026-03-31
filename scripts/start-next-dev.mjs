@@ -6,8 +6,12 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
 const webDir = path.join(repoRoot, "apps", "web");
-const nextDevDir = path.join(webDir, ".next", "dev");
-const lockPath = path.join(webDir, ".next", "dev", "lock");
+const configuredDistDir = process.env.NEXT_DIST_DIR?.trim() || ".next";
+const nextDistDir = path.isAbsolute(configuredDistDir)
+  ? configuredDistDir
+  : path.join(webDir, configuredDistDir);
+const nextDevDir = path.join(nextDistDir, "dev");
+const lockPath = path.join(nextDevDir, "lock");
 const nextCliCandidates = [
   path.join(webDir, "node_modules", "next", "dist", "bin", "next"),
   path.join(webDir, "node_modules", "next", "dist", "bin", "next.js"),
@@ -65,7 +69,8 @@ function resetDevArtifacts() {
   try {
     rmSync(nextDevDir, { recursive: true, force: true });
   } catch (error) {
-    console.error("Falha ao limpar apps/web/.next/dev antes de iniciar o Next.");
+    const relativeDir = path.relative(repoRoot, nextDevDir) || nextDevDir;
+    console.error(`Falha ao limpar ${relativeDir} antes de iniciar o Next.`);
     throw error;
   }
 }

@@ -997,7 +997,7 @@ export default function LiquidacoesTesourariaPage() {
           }
         }}
       >
-        <DialogContent className="w-[min(1100px,calc(100vw-2rem))] max-w-[1100px] gap-0 overflow-visible rounded-[2rem] border border-border/60 bg-card/95 p-0 shadow-2xl shadow-black/40">
+        <DialogContent className="grid h-[min(94dvh,66rem)] w-[96vw] max-h-[94dvh] !max-w-[1440px] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden rounded-[2rem] border border-border/60 bg-card/95 p-0 shadow-2xl shadow-black/40">
           <DialogHeader className="border-b border-border/60 px-6 pb-4 pt-6 pr-14">
             <DialogTitle>Registrar liquidação</DialogTitle>
             <DialogDescription>
@@ -1010,219 +1010,232 @@ export default function LiquidacoesTesourariaPage() {
             </DialogDescription>
           </DialogHeader>
           {liquidarState ? (
-            <div className="space-y-6 px-6 py-6">
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                    Parcelas
-                  </p>
-                  <p className="mt-2 text-lg font-semibold">
-                    {liquidarState.row.quantidade_parcelas}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                    Recorte
-                  </p>
-                  <p className="mt-2 text-sm font-medium">
-                    {liquidarState.row.referencia_inicial && liquidarState.row.referencia_final
-                      ? `${formatMonthYear(liquidarState.row.referencia_inicial)} até ${formatMonthYear(
-                          liquidarState.row.referencia_final,
-                        )}`
-                      : "Sem referências"}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                    Valor sugerido
-                  </p>
-                  <p className="mt-2 text-sm font-medium">
-                    {formatCurrency(liquidarState.row.valor_total)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
-                  <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                    Agente
-                  </p>
-                  <p className="mt-2 text-sm font-medium">
-                    {liquidarState.row.agente_nome || "Sem agente"}
-                  </p>
+            <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden">
+              <div className="border-b border-border/60 px-6 py-6">
+                <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
+                  <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                      Parcelas
+                    </p>
+                    <p className="mt-2 text-lg font-semibold">
+                      {liquidarState.row.quantidade_parcelas}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                      Recorte
+                    </p>
+                    <p className="mt-2 break-words text-sm font-medium">
+                      {liquidarState.row.referencia_inicial && liquidarState.row.referencia_final
+                        ? `${formatMonthYear(liquidarState.row.referencia_inicial)} até ${formatMonthYear(
+                            liquidarState.row.referencia_final,
+                          )}`
+                        : "Sem referências"}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                      Valor sugerido
+                    </p>
+                    <p className="mt-2 text-sm font-medium">
+                      {formatCurrency(liquidarState.row.valor_total)}
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
+                    <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">
+                      Agente
+                    </p>
+                    <p className="mt-2 break-words text-sm font-medium">
+                      {liquidarState.row.agente_nome || "Sem agente"}
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <Label>Origem da solicitação *</Label>
-                    <Select
-                      disabled={isRenewalOrigin(liquidarState.row)}
-                      value={liquidarState.origemSolicitacao}
-                      onValueChange={(value) =>
-                        setLiquidarState((current) =>
-                          current ? { ...current, origemSolicitacao: value } : current,
-                        )
-                      }
-                    >
-                      <SelectTrigger className="w-full rounded-2xl border-border/60 bg-background/60">
-                        <SelectValue placeholder="Selecione a origem da solicitação" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ORIGEM_SOLICITACAO_OPTIONS.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {isRenewalOrigin(liquidarState.row) ? (
-                      <p className="text-sm text-muted-foreground">
-                        Origem preenchida automaticamente pelo fluxo de renovação.
-                      </p>
-                    ) : null}
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium">
-                        {liquidacaoParcelas.length
-                          ? "Parcelas incluídas na liquidação"
-                          : "Encerramento sem baixa de parcelas"}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {liquidacaoParcelas.length
-                          ? "Confirme os comprovantes de pagamento das parcelas abaixo antes de registrar a liquidação."
-                          : "Este registro apenas encerrará o contrato. Não há parcelas aptas para baixa neste momento."}
-                      </p>
-                    </div>
-                    {liquidacaoParcelas.length ? (
-                      <div className="overflow-hidden rounded-xl border border-border/60">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b border-border/60 bg-muted/20">
-                              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                Parcela
-                              </th>
-                              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                Referência
-                              </th>
-                              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                Vencimento
-                              </th>
-                              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                Valor
-                              </th>
-                              <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                                Status
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {liquidacaoParcelas.map((parcela) => (
-                              <tr
-                                key={`${liquidarState.row.contrato_id ?? liquidarState.row.id}-${parcela.id}-${parcela.referencia_mes}`}
-                                className="border-b border-border/40 last:border-0 hover:bg-white/3"
-                              >
-                                <td className="px-4 py-3 font-medium">Parcela {parcela.numero}</td>
-                                <td className="px-4 py-3 text-muted-foreground">
-                                  {formatMonthYear(parcela.referencia_mes)}
-                                </td>
-                                <td className="px-4 py-3 text-muted-foreground">
-                                  {formatDate(parcela.data_vencimento)}
-                                </td>
-                                <td className="px-4 py-3 font-semibold">
-                                  {formatCurrency(parcela.valor)}
-                                </td>
-                                <td className="px-4 py-3">
-                                  <StatusBadge status={parcela.status} />
-                                </td>
-                              </tr>
+              <div className="grid min-h-0 grid-cols-1 overflow-hidden xl:grid-cols-[minmax(0,1fr)_460px]">
+                <div className="min-w-0 overflow-hidden xl:border-r xl:border-border/60">
+                  <div className="flex h-full min-h-0 flex-col px-6 py-6">
+                    <div className="space-y-6">
+                      <div className="space-y-2">
+                        <Label>Origem da solicitação *</Label>
+                        <Select
+                          disabled={isRenewalOrigin(liquidarState.row)}
+                          value={liquidarState.origemSolicitacao}
+                          onValueChange={(value) =>
+                            setLiquidarState((current) =>
+                              current ? { ...current, origemSolicitacao: value } : current,
+                            )
+                          }
+                        >
+                          <SelectTrigger className="w-full rounded-2xl border-border/60 bg-background/60">
+                            <SelectValue placeholder="Selecione a origem da solicitação" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ORIGEM_SOLICITACAO_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
                             ))}
-                          </tbody>
-                        </table>
+                          </SelectContent>
+                        </Select>
+                        {isRenewalOrigin(liquidarState.row) ? (
+                          <p className="text-sm text-muted-foreground">
+                            Origem preenchida automaticamente pelo fluxo de renovação.
+                          </p>
+                        ) : null}
                       </div>
-                    ) : (
-                      <div className="rounded-2xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
-                        Nenhuma parcela será baixada nesta operação. O comprovante anexado
-                        documenta apenas o encerramento e a inativação do contrato.
+
+                      <div className="space-y-3">
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">
+                            {liquidacaoParcelas.length
+                              ? "Parcelas incluídas na liquidação"
+                              : "Encerramento sem baixa de parcelas"}
+                          </p>
+                          <p className="max-w-3xl text-sm text-muted-foreground">
+                            {liquidacaoParcelas.length
+                              ? "Confirme os comprovantes de pagamento das parcelas abaixo antes de registrar a liquidação."
+                              : "Este registro apenas encerrará o contrato. Não há parcelas aptas para baixa neste momento."}
+                          </p>
+                        </div>
                       </div>
-                    )}
+                    </div>
+
+                    <div className="mt-6 min-h-0 flex-1">
+                      {liquidacaoParcelas.length ? (
+                        <div className="h-full overflow-auto rounded-xl border border-border/60">
+                          <table className="min-w-[720px] w-full text-sm">
+                            <thead>
+                              <tr className="sticky top-0 border-b border-border/60 bg-muted/90 backdrop-blur">
+                                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                  Parcela
+                                </th>
+                                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                  Referência
+                                </th>
+                                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                  Vencimento
+                                </th>
+                                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                  Valor
+                                </th>
+                                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                  Status
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {liquidacaoParcelas.map((parcela) => (
+                                <tr
+                                  key={`${liquidarState.row.contrato_id ?? liquidarState.row.id}-${parcela.id}-${parcela.referencia_mes}`}
+                                  className="border-b border-border/40 last:border-0 hover:bg-white/3"
+                                >
+                                  <td className="px-4 py-3 font-medium">Parcela {parcela.numero}</td>
+                                  <td className="px-4 py-3 text-muted-foreground">
+                                    {formatMonthYear(parcela.referencia_mes)}
+                                  </td>
+                                  <td className="px-4 py-3 text-muted-foreground">
+                                    {formatDate(parcela.data_vencimento)}
+                                  </td>
+                                  <td className="px-4 py-3 font-semibold">
+                                    {formatCurrency(parcela.valor)}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <StatusBadge status={parcela.status} />
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="rounded-2xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+                          Nenhuma parcela será baixada nesta operação. O comprovante anexado
+                          documenta apenas o encerramento e a inativação do contrato.
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                <div className="space-y-6">
-                  <div className="space-y-2">
-                    <Label>Comprovantes de pagamento das parcelas da liquidação *</Label>
-                    <FileUploadDropzone
-                      accept={comprovanteAccept}
-                      maxSize={10 * 1024 * 1024}
-                      files={liquidarState.comprovantes}
-                      multiple
-                      onUploadMany={(files) =>
-                        setLiquidarState((current) =>
-                          current ? { ...current, comprovantes: files } : current,
-                        )
-                      }
-                      isProcessing={false}
-                    />
-                    {liquidarState.comprovantes.length ? (
-                      <div className="space-y-1 text-sm text-emerald-300">
-                        <p>{liquidarState.comprovantes.length} anexo(s) pronto(s) para envio.</p>
-                        {liquidarState.comprovantes.slice(0, 3).map((arquivo) => (
-                          <p key={`${arquivo.name}-${arquivo.size}`}>{arquivo.name}</p>
-                        ))}
+                <div className="min-w-0 overflow-y-auto">
+                  <div className="space-y-6 px-6 py-6">
+                    <div className="space-y-2">
+                      <Label>Comprovantes de pagamento das parcelas da liquidação *</Label>
+                      <FileUploadDropzone
+                        accept={comprovanteAccept}
+                        maxSize={10 * 1024 * 1024}
+                        files={liquidarState.comprovantes}
+                        multiple
+                        onUploadMany={(files) =>
+                          setLiquidarState((current) =>
+                            current ? { ...current, comprovantes: files } : current,
+                          )
+                        }
+                        isProcessing={false}
+                      />
+                      {liquidarState.comprovantes.length ? (
+                        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+                          <p>{liquidarState.comprovantes.length} anexo(s) pronto(s) para envio.</p>
+                          {liquidarState.comprovantes.slice(0, 3).map((arquivo) => (
+                            <p key={`${arquivo.name}-${arquivo.size}`} className="break-words">
+                              {arquivo.name}
+                            </p>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label>Data da liquidação *</Label>
+                        <DatePicker
+                          value={parseApiDateValue(liquidarState.dataLiquidacao)}
+                          onChange={(date) =>
+                            setLiquidarState((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    dataLiquidacao: date ? format(date, "yyyy-MM-dd") : "",
+                                  }
+                                : current,
+                            )
+                          }
+                        />
                       </div>
-                    ) : null}
-                  </div>
+                      <div className="space-y-2">
+                        <Label>Valor total *</Label>
+                        <InputCurrency
+                          value={parseDecimalToCents(liquidarState.valorTotal)}
+                          onChange={(value) =>
+                            setLiquidarState((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    valorTotal:
+                                      value != null ? (value / 100).toFixed(2) : "",
+                                  }
+                                : current,
+                            )
+                          }
+                          className="h-11 rounded-xl border-border/60 bg-background/60 font-medium"
+                        />
+                      </div>
+                    </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label>Data da liquidação *</Label>
-                      <DatePicker
-                        value={parseApiDateValue(liquidarState.dataLiquidacao)}
-                        onChange={(date) =>
+                      <Label>Observação *</Label>
+                      <Textarea
+                        value={liquidarState.observacao}
+                        onChange={(event) =>
                           setLiquidarState((current) =>
-                            current
-                              ? {
-                                  ...current,
-                                  dataLiquidacao: date ? format(date, "yyyy-MM-dd") : "",
-                                }
-                              : current,
+                            current ? { ...current, observacao: event.target.value } : current,
                           )
                         }
+                        className="min-h-36 rounded-2xl border-border/60 bg-background/60"
+                        placeholder="Descreva o encerramento e o contexto da liquidação..."
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label>Valor total *</Label>
-                      <InputCurrency
-                        value={parseDecimalToCents(liquidarState.valorTotal)}
-                        onChange={(value) =>
-                          setLiquidarState((current) =>
-                            current
-                              ? {
-                                  ...current,
-                                  valorTotal:
-                                    value != null ? (value / 100).toFixed(2) : "",
-                                }
-                              : current,
-                          )
-                        }
-                        className="h-11 rounded-xl border-border/60 bg-background/60 font-medium"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Observação *</Label>
-                    <Textarea
-                      value={liquidarState.observacao}
-                      onChange={(event) =>
-                        setLiquidarState((current) =>
-                          current ? { ...current, observacao: event.target.value } : current,
-                        )
-                      }
-                      className="min-h-36 rounded-2xl border-border/60 bg-background/60"
-                      placeholder="Descreva o encerramento e o contexto da liquidação..."
-                    />
                   </div>
                 </div>
               </div>

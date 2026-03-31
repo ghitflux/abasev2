@@ -38,6 +38,7 @@ import type { DashboardValuePoint } from "@/gen/models/DashboardValuePoint";
 import type { PaginatedDashboardDetailRowList } from "@/gen/models/PaginatedDashboardDetailRowList";
 import { apiFetch } from "@/lib/api/client";
 import type {
+  DashboardResumoMensalAssociacaoPayload,
   PaginatedMetaResponse,
   SystemUserListItem,
   SystemUsersMeta,
@@ -98,6 +99,14 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { exportRows, type TableExportColumn } from "@/lib/table-export";
 
 const STATUS_OPTIONS = [
@@ -313,6 +322,10 @@ function toMonthId(value: Date) {
 
 function toIsoDate(value?: Date) {
   return value ? format(value, "yyyy-MM-dd") : undefined;
+}
+
+function formatMonthCell(value: string) {
+  return formatLongMonthYear(new Date(`${value}T12:00:00`));
 }
 
 function normalizeText(value: string) {
@@ -831,6 +844,23 @@ function DashboardPageContent() {
       apiFetch<DashboardTesouraria>("dashboard/admin/tesouraria", {
         query: treasuryQueryParams,
       }),
+    ...dashboardRetainedQueryOptions,
+  });
+
+  const treasurySummaryQuery = useQuery({
+    queryKey: [
+      "dashboard-admin-treasury-summary-table",
+      toMonthId(treasuryFilters.competencia),
+    ],
+    queryFn: () =>
+      apiFetch<DashboardResumoMensalAssociacaoPayload>(
+        "dashboard/admin/resumo-mensal-associacao",
+        {
+          query: {
+            competencia: toMonthId(treasuryFilters.competencia),
+          },
+        },
+      ),
     ...dashboardRetainedQueryOptions,
   });
 
@@ -1450,6 +1480,73 @@ function DashboardPageContent() {
                     </Bar>
                   </BarChart>
                 </ChartContainer>
+              </SectionCard>
+
+              <SectionCard
+                title="Resumo mensal da associação"
+                description="Complementos de receita pagos no mês, saldo positivo calculado como complemento menos despesas operacionais pagas, além de efetivações, desvinculações e renovações."
+              >
+                {treasurySummaryQuery.isLoading || !treasurySummaryQuery.data ? (
+                  <div className="rounded-[1.4rem] border border-border/60 bg-background/40 px-4 py-6 text-sm text-muted-foreground">
+                    Carregando resumo mensal da associação...
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      A tabela usa 12 meses até a competência selecionada em tesouraria. O saldo positivo considera apenas complemento de receita menos despesas operacionais pagas do mês.
+                    </p>
+                    <div className="overflow-hidden rounded-xl border border-border/60">
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="border-border/60 hover:bg-transparent">
+                            <TableHead className="h-11 px-4 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                              Mês/Ano
+                            </TableHead>
+                            <TableHead className="h-11 px-4 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                              Complementos de receita
+                            </TableHead>
+                            <TableHead className="h-11 px-4 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                              Saldo positivo
+                            </TableHead>
+                            <TableHead className="h-11 px-4 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                              Novos associados
+                            </TableHead>
+                            <TableHead className="h-11 px-4 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                              Desvinculados
+                            </TableHead>
+                            <TableHead className="h-11 px-4 text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
+                              Renovações
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {treasurySummaryQuery.data.rows.map((row) => (
+                            <TableRow key={row.mes} className="border-border/60">
+                              <TableCell className="px-4 py-3 font-medium">
+                                {formatMonthCell(row.mes)}
+                              </TableCell>
+                              <TableCell className="px-4 py-3 font-semibold">
+                                {formatCurrency(row.complementos_receita)}
+                              </TableCell>
+                              <TableCell className="px-4 py-3 font-semibold">
+                                {formatCurrency(row.saldo_positivo)}
+                              </TableCell>
+                              <TableCell className="px-4 py-3">
+                                {row.novos_associados}
+                              </TableCell>
+                              <TableCell className="px-4 py-3">
+                                {row.desvinculados}
+                              </TableCell>
+                              <TableCell className="px-4 py-3">
+                                {row.renovacoes_associado}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                )}
               </SectionCard>
             </div>
           )}

@@ -447,10 +447,14 @@ export default function AnalisePage() {
           <Button
             variant="outline"
             size="sm"
+            className="gap-2 rounded-xl"
             onClick={() => setDialogState({ mode: "documentos", item: row })}
           >
             <FileTextIcon className="size-4" />
-            Ver ({row.documentos_count})
+            Ver docs
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+              {row.documentos_count}
+            </span>
           </Button>
         ),
       },
@@ -826,14 +830,20 @@ export default function AnalisePage() {
           setObservacao("");
         }}
       >
-      <DialogContent
+        <DialogContent
           className={
             dialogState?.mode === "documentos"
-              ? "w-[min(96vw,1120px)] max-w-none overflow-hidden"
+              ? "grid h-[min(94vh,58rem)] w-[calc(100vw-2rem)] !max-w-[1680px] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-0 xl:w-[calc(100vw-5rem)]"
               : "max-w-2xl"
           }
         >
-          <DialogHeader>
+          <DialogHeader
+            className={
+              dialogState?.mode === "documentos"
+                ? "border-b border-border/60 px-6 pb-4 pt-6 pr-14"
+                : undefined
+            }
+          >
             <DialogTitle>
               {dialogState?.mode === "assumir"
                 ? "Assumir análise"
@@ -856,87 +866,91 @@ export default function AnalisePage() {
 
           {dialogState?.mode === "documentos" ? (
             detalheQuery.isLoading ? (
-              <InlinePanelSkeleton rows={3} />
+              <div className="px-6 py-6">
+                <InlinePanelSkeleton rows={3} />
+              </div>
             ) : (
-              <div className="max-h-[calc(90vh-12rem)] overflow-y-auto pr-1">
-                <div className="space-y-5">
-                  <div className="grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)]">
-                    <div className="space-y-4">
-                      <SummaryCard label="Associado">
-                        <p>{detalheItem?.contrato?.associado_nome ?? "-"}</p>
-                        <p className="text-muted-foreground">
-                          Órgão: {detalheItem?.orgao_publico || "-"}
-                        </p>
-                      </SummaryCard>
-                      <SummaryCard label="Contrato">
-                        <p>{detalheItem?.contrato?.codigo ?? "-"}</p>
-                        <p className="text-muted-foreground">
-                          Assumido em{" "}
-                          {detalheItem?.assumido_em
-                            ? new Intl.DateTimeFormat("pt-BR", {
-                                day: "2-digit",
-                                month: "2-digit",
-                                year: "numeric",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                                hour12: false,
-                              }).format(new Date(detalheItem.assumido_em))
-                            : "N/I"}
-                        </p>
-                      </SummaryCard>
-                      <SummaryCard label="CPF / Matrícula">
-                        <p>{detalheItem?.contrato?.cpf_cnpj ?? "-"}</p>
-                        <p className="text-muted-foreground">
-                          {detalheItem?.contrato?.matricula_display ??
-                            detalheItem?.contrato?.matricula ??
-                            "-"}
-                        </p>
-                      </SummaryCard>
-                      <SummaryCard label="Status do fluxo">
-                        <div className="flex flex-wrap gap-2">
-                          <StatusBadge status={detalheItem?.status_documentacao ?? "incompleta"} />
-                          <StatusBadge status={detalheItem?.status ?? "aguardando"} />
-                        </div>
-                      </SummaryCard>
-                      <SummaryCard label="Pendências">
-                        <div className="flex flex-wrap gap-2">
-                          <Badge variant="outline">{pendenciasAbertas} abertas</Badge>
-                          <Badge variant="outline">{pendenciasResolvidas} resolvidas</Badge>
-                        </div>
-                        <p className="text-muted-foreground">
-                          {detalheQuery.data?.pendencias?.length
-                            ? "Resumo rápido das ocorrências registradas na esteira."
-                            : "Nenhuma pendência registrada neste item."}
-                        </p>
-                      </SummaryCard>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">
-                            Documentos anexados
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            Revise os arquivos do cadastro e siga para o detalhe completo quando
-                            precisar analisar o histórico inteiro do associado.
-                          </p>
-                        </div>
-                        {detalheItem?.associado_id ? (
-                          <Button asChild variant="outline" size="sm">
-                            <Link href={`/associados/${detalheItem.associado_id}`}>
-                              Ver detalhes completos
-                            </Link>
-                          </Button>
-                        ) : null}
+              <div className="grid min-h-0 grid-cols-1 overflow-hidden xl:grid-cols-[320px_minmax(0,1fr)] 2xl:grid-cols-[360px_minmax(0,1fr)]">
+                <div className="min-h-0 overflow-y-auto border-b border-border/60 xl:border-b-0 xl:border-r">
+                  <div className="space-y-4 p-6">
+                    <SummaryCard label="Associado">
+                      <p>{detalheItem?.contrato?.associado_nome ?? "-"}</p>
+                      <p className="text-muted-foreground">
+                        Órgão: {detalheItem?.orgao_publico || "-"}
+                      </p>
+                    </SummaryCard>
+                    <SummaryCard label="Contrato">
+                      <p className="break-all">{detalheItem?.contrato?.codigo ?? "-"}</p>
+                      <p className="text-muted-foreground">
+                        Assumido em{" "}
+                        {detalheItem?.assumido_em
+                          ? new Intl.DateTimeFormat("pt-BR", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                            }).format(new Date(detalheItem.assumido_em))
+                          : "N/I"}
+                      </p>
+                    </SummaryCard>
+                    <SummaryCard label="CPF / Matrícula">
+                      <p>{detalheItem?.contrato?.cpf_cnpj ?? "-"}</p>
+                      <p className="text-muted-foreground">
+                        {detalheItem?.contrato?.matricula_display ??
+                          detalheItem?.contrato?.matricula ??
+                          "-"}
+                      </p>
+                    </SummaryCard>
+                    <SummaryCard label="Status do fluxo">
+                      <div className="flex flex-wrap gap-2">
+                        <StatusBadge status={detalheItem?.status_documentacao ?? "incompleta"} />
+                        <StatusBadge status={detalheItem?.status ?? "aguardando"} />
                       </div>
+                    </SummaryCard>
+                    <SummaryCard label="Pendências">
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="outline">{pendenciasAbertas} abertas</Badge>
+                        <Badge variant="outline">{pendenciasResolvidas} resolvidas</Badge>
+                      </div>
+                      <p className="text-muted-foreground">
+                        {detalheQuery.data?.pendencias?.length
+                          ? "Resumo rápido das ocorrências registradas na esteira."
+                          : "Nenhuma pendência registrada neste item."}
+                      </p>
+                    </SummaryCard>
+                  </div>
+                </div>
 
-                      <div className="grid gap-3 md:grid-cols-2">
+                <div className="flex min-h-0 min-w-0 flex-col overflow-hidden">
+                  <div className="border-b border-border/60 px-6 py-5">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground">Documentos anexados</p>
+                        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+                          Revise os arquivos do cadastro e siga para o detalhe completo quando
+                          precisar analisar o histórico inteiro do associado.
+                        </p>
+                      </div>
+                      {detalheItem?.associado_id ? (
+                        <Button asChild variant="outline" size="sm" className="shrink-0">
+                          <Link href={`/associados/${detalheItem.associado_id}`}>
+                            Ver detalhes completos
+                          </Link>
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="min-h-0 overflow-y-auto overflow-x-hidden p-6">
+                    <div className="min-w-0">
+                      <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
                         {detalheQuery.data?.documentos?.length ? (
                           detalheQuery.data.documentos.map((documento) => (
                             <div
                               key={documento.id}
-                              className="rounded-2xl border border-border/60 bg-card/60 p-4"
+                              className="min-w-0 rounded-2xl border border-border/60 bg-card/60 p-4"
                             >
                               <div className="space-y-3">
                                 <div className="space-y-2">
@@ -944,19 +958,19 @@ export default function AnalisePage() {
                                     {documento.tipo.replaceAll("_", " ")}
                                   </p>
                                   <StatusBadge status={documento.status} />
-                                  <p className="text-sm text-muted-foreground">
+                                  <p className="break-words text-sm text-muted-foreground">
                                     {documento.nome_original ||
                                       documento.arquivo_referencia ||
                                       "Sem nome disponível"}
                                   </p>
                                   {documento.observacao ? (
-                                    <p className="text-sm text-muted-foreground">
+                                    <p className="break-words text-sm text-muted-foreground">
                                       {documento.observacao}
                                     </p>
                                   ) : null}
                                 </div>
                                 {documento.arquivo_disponivel_localmente && documento.arquivo ? (
-                                  <Button asChild size="sm" variant="outline">
+                                  <Button asChild size="sm" variant="outline" className="w-full">
                                     <a
                                       href={buildBackendFileUrl(documento.arquivo)}
                                       target="_blank"
@@ -969,7 +983,7 @@ export default function AnalisePage() {
                                 ) : (
                                   <div className="text-sm text-muted-foreground">
                                     <p>Arquivo indisponível localmente.</p>
-                                    <p className="text-xs text-amber-200">
+                                    <p className="break-words text-xs text-amber-200">
                                       {documento.arquivo_referencia ||
                                         "Referência de arquivo legado"}
                                     </p>
@@ -1000,7 +1014,13 @@ export default function AnalisePage() {
             />
           ) : null}
 
-          <DialogFooter>
+          <DialogFooter
+            className={
+              dialogState?.mode === "documentos"
+                ? "border-t border-border/60 px-6 py-4"
+                : undefined
+            }
+          >
             <Button variant="outline" onClick={() => setDialogState(null)}>
               Cancelar
             </Button>
