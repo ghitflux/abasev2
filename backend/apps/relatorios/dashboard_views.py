@@ -14,6 +14,7 @@ from .dashboard_serializers import (
     DashboardAgentesSerializer,
     DashboardDetailRowSerializer,
     DashboardNovosAssociadosSerializer,
+    DashboardResumoMensalAssociacaoSerializer,
     DashboardResumoGeralSerializer,
     DashboardTesourariaSerializer,
 )
@@ -72,6 +73,17 @@ class AdminDashboardViewSet(GenericViewSet):
     def tesouraria(self, request):
         payload = AdminDashboardService.tesouraria(self._filters(request))
         return Response(DashboardTesourariaSerializer(payload).data)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("competencia", str, OpenApiParameter.QUERY),
+        ],
+        responses=DashboardResumoMensalAssociacaoSerializer,
+    )
+    @action(detail=False, methods=["get"], url_path="resumo-mensal-associacao")
+    def resumo_mensal_associacao(self, request):
+        payload = AdminDashboardService.resumo_mensal_associacao(self._filters(request))
+        return Response(DashboardResumoMensalAssociacaoSerializer(payload).data)
 
     @extend_schema(
         parameters=[

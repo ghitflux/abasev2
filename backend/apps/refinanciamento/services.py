@@ -627,6 +627,11 @@ class RefinanciamentoService:
             valor_pago=refinanciamento.valor_refinanciamento,
             paid_at=executado_em,
             forma_pagamento="pix",
+            referencias_externas={
+                "payment_kind": "renovacao",
+                "contrato_id": contrato.id,
+                "refinanciamento_id": refinanciamento.id,
+            },
             comprovante_associado_path=getattr(comprovante_associado, "name", ""),
             comprovante_agente_path=getattr(comprovante_agente, "name", ""),
             notes=f"Renovação efetivada via tesouraria para refi #{refinanciamento.id}.",

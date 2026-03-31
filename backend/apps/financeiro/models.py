@@ -15,6 +15,10 @@ class Despesa(BaseModel):
         FIXA = "fixa", "Fixa"
         VARIAVEL = "variavel", "Variável"
 
+    class Natureza(models.TextChoices):
+        DESPESA_OPERACIONAL = "despesa_operacional", "Despesa operacional"
+        COMPLEMENTO_RECEITA = "complemento_receita", "Complemento de receita"
+
     class StatusAnexo(models.TextChoices):
         PENDENTE = "pendente", "Pendente"
         ANEXADO = "anexado", "Anexado"
@@ -35,6 +39,11 @@ class Despesa(BaseModel):
     categoria = models.CharField(max_length=100)
     descricao = models.CharField(max_length=255, blank=True)
     valor = models.DecimalField(max_digits=15, decimal_places=2)
+    natureza = models.CharField(
+        max_length=30,
+        choices=Natureza.choices,
+        default=Natureza.DESPESA_OPERACIONAL,
+    )
     data_despesa = models.DateField()
     data_pagamento = models.DateField(null=True, blank=True)
     status = models.CharField(

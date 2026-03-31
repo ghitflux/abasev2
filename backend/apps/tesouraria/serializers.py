@@ -678,6 +678,7 @@ class DevolucaoContratoListSerializer(serializers.Serializer):
 
 
 class DevolucaoComprovanteSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True, allow_null=True)
     nome = serializers.CharField(read_only=True)
     url = serializers.CharField(read_only=True)
     arquivo_referencia = serializers.CharField(read_only=True)
@@ -726,6 +727,7 @@ class DevolucaoAssociadoListSerializer(serializers.Serializer):
             missing_type="legado_sem_arquivo",
         )
         return {
+            "id": None,
             "nome": obj.get("nome_comprovante") or comprovante.name.rsplit("/", 1)[-1],
             "url": reference.url,
             "arquivo_referencia": reference.arquivo_referencia,
@@ -749,6 +751,7 @@ class DevolucaoAssociadoListSerializer(serializers.Serializer):
             )
             anexos.append(
                 {
+                    "id": anexo.id,
                     "nome": anexo.nome_arquivo or anexo.arquivo.name.rsplit("/", 1)[-1],
                     "url": reference.url,
                     "arquivo_referencia": reference.arquivo_referencia,
@@ -799,6 +802,59 @@ class RegistrarDevolucaoSerializer(serializers.Serializer):
         return attrs
 
 
+class EditarDevolucaoSerializer(serializers.Serializer):
+    tipo = serializers.ChoiceField(
+        choices=DevolucaoAssociado.Tipo.choices,
+        required=False,
+    )
+    data_devolucao = serializers.DateField(required=False)
+    quantidade_parcelas = serializers.IntegerField(required=False, min_value=1)
+    valor = serializers.DecimalField(max_digits=12, decimal_places=2, required=False)
+    motivo = serializers.CharField(required=False, allow_blank=False)
+    competencia_referencia = serializers.DateField(required=False, allow_null=True)
+
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        devolucao: DevolucaoAssociado = self.context["devolucao"]
+        request = self.context.get("request")
+
+        attrs["tipo"] = attrs.get("tipo", devolucao.tipo)
+        attrs["data_devolucao"] = attrs.get("data_devolucao", devolucao.data_devolucao)
+        attrs["quantidade_parcelas"] = attrs.get(
+            "quantidade_parcelas",
+            devolucao.quantidade_parcelas,
+        )
+        attrs["valor"] = attrs.get("valor", devolucao.valor)
+        attrs["motivo"] = attrs.get("motivo", devolucao.motivo)
+        attrs["competencia_referencia"] = attrs.get(
+            "competencia_referencia",
+            devolucao.competencia_referencia,
+        )
+
+        comprovante = None
+        novos_comprovantes: list[Any] = []
+        remover_anexos_ids: list[int] = []
+        if request is not None:
+            comprovante = request.FILES.get("comprovante")
+            novos_comprovantes.extend(request.FILES.getlist("novos_comprovantes"))
+            if not novos_comprovantes:
+                novos_comprovantes.extend(request.FILES.getlist("comprovantes"))
+            raw_remove_ids = list(request.data.getlist("remover_anexos_ids"))
+        else:
+            raw_remove_ids = []
+
+        remover_anexos_ids = [
+            int(value)
+            for value in raw_remove_ids
+            if str(value).isdigit()
+        ]
+
+        attrs["comprovante"] = comprovante
+        attrs["novos_comprovantes"] = novos_comprovantes
+        attrs["remover_anexos_ids"] = remover_anexos_ids
+        return attrs
+
+
 class ReverterDevolucaoSerializer(serializers.Serializer):
     motivo_reversao = serializers.CharField(required=True, allow_blank=False)
 
@@ -826,6 +882,7 @@ class DespesaListSerializer(serializers.ModelSerializer):
             "categoria",
             "descricao",
             "valor",
+            "natureza",
             "data_despesa",
             "data_pagamento",
             "status",
@@ -885,6 +942,11 @@ class DespesaResultadoMensalRowSerializer(serializers.Serializer):
         decimal_places=2,
         read_only=True,
     )
+    complementos_receita = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        read_only=True,
+    )
     despesas = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
     despesas_manuais = serializers.DecimalField(
         max_digits=15,
@@ -921,6 +983,11 @@ class DespesaResultadoMensalResumoSerializer(serializers.Serializer):
         read_only=True,
     )
     receitas_retorno = serializers.DecimalField(
+        max_digits=15,
+        decimal_places=2,
+        read_only=True,
+    )
+    complementos_receita = serializers.DecimalField(
         max_digits=15,
         decimal_places=2,
         read_only=True,
@@ -976,7 +1043,9 @@ class DespesaResultadoMensalPagamentoDetalheSerializer(serializers.Serializer):
     contrato_codigo = serializers.CharField(read_only=True)
     origem = serializers.CharField(read_only=True)
     origem_label = serializers.CharField(read_only=True)
-    valor = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    valor_associado = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    valor_agente = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
+    valor_total = serializers.DecimalField(max_digits=15, decimal_places=2, read_only=True)
 
 
 class DespesaResultadoMensalDetalheSerializer(serializers.Serializer):
@@ -991,6 +1060,10 @@ class DespesaWriteSerializer(serializers.ModelSerializer):
     anexo = serializers.FileField(required=False, allow_null=True)
     descricao = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     data_pagamento = serializers.DateField(required=False, allow_null=True)
+    natureza = serializers.ChoiceField(
+        choices=Despesa.Natureza.choices,
+        required=False,
+    )
     tipo = serializers.ChoiceField(
         choices=Despesa.Tipo.choices,
         required=False,
@@ -1007,6 +1080,7 @@ class DespesaWriteSerializer(serializers.ModelSerializer):
             "categoria",
             "descricao",
             "valor",
+            "natureza",
             "data_despesa",
             "data_pagamento",
             "status",
@@ -1047,6 +1121,7 @@ class DespesaWriteSerializer(serializers.ModelSerializer):
         request = self.context["request"]
         validated_data.setdefault("status", Despesa.Status.PENDENTE)
         validated_data.setdefault("descricao", "")
+        validated_data.setdefault("natureza", Despesa.Natureza.DESPESA_OPERACIONAL)
         validated_data.setdefault("recorrencia", Despesa.Recorrencia.NENHUMA)
         validated_data.setdefault("recorrencia_ativa", True)
         despesa = Despesa(user=request.user, **validated_data)

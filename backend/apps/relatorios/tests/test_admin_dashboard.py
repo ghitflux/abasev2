@@ -14,7 +14,7 @@ from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.models import EsteiraItem
 from apps.financeiro.models import Despesa
 from apps.importacao.models import PagamentoMensalidade
-from apps.tesouraria.models import DevolucaoAssociado, Pagamento
+from apps.tesouraria.models import DevolucaoAssociado, LiquidacaoContrato, Pagamento
 
 
 class AdminDashboardViewSetTestCase(TestCase):
@@ -346,6 +346,7 @@ class AdminDashboardViewSetTestCase(TestCase):
         urls = [
             "/api/v1/dashboard/admin/resumo-geral/",
             "/api/v1/dashboard/admin/tesouraria/",
+            "/api/v1/dashboard/admin/resumo-mensal-associacao/",
             "/api/v1/dashboard/admin/novos-associados/",
             "/api/v1/dashboard/admin/agentes/",
             "/api/v1/dashboard/admin/detalhes/?section=summary&metric=associados_ativos",
@@ -446,6 +447,53 @@ class AdminDashboardViewSetTestCase(TestCase):
             {"competencia": "2026-03", "day": "2026-04-12"},
         )
         self.assertEqual(invalid.status_code, 400)
+
+    def test_resumo_mensal_associacao_retorna_12_meses_e_metricas_consolidadas(self):
+        Despesa.objects.create(
+            categoria="Complementos",
+            descricao="Compensação no caixa",
+            valor=Decimal("80.00"),
+            data_despesa=date(2026, 3, 15),
+            data_pagamento=date(2026, 3, 15),
+            status=Despesa.Status.PAGO,
+            natureza=Despesa.Natureza.COMPLEMENTO_RECEITA,
+            user=self.admin,
+        )
+        LiquidacaoContrato.objects.create(
+            contrato=self.active_effective_contract,
+            realizado_por=self.admin,
+            data_liquidacao=date(2026, 3, 20),
+            valor_total=Decimal("30.00"),
+            comprovante=SimpleUploadedFile(
+                "liquidacao.pdf",
+                b"pdf",
+                content_type="application/pdf",
+            ),
+            nome_comprovante="liquidacao.pdf",
+            origem_solicitacao=LiquidacaoContrato.OrigemSolicitacao.ADMINISTRACAO,
+            observacao="Liquidação administrativa",
+        )
+        analysis_contract = Contrato.objects.get(codigo="CTR-A2")
+        Contrato.objects.filter(pk=analysis_contract.pk).update(
+            status=Contrato.Status.ENCERRADO,
+            updated_at=self._aware_datetime(2026, 3, 25),
+        )
+
+        response = self.client.get(
+            "/api/v1/dashboard/admin/resumo-mensal-associacao/",
+            {"competencia": "2026-03"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+
+        self.assertEqual(payload["competencia"], "2026-03")
+        self.assertEqual(len(payload["rows"]), 12)
+        march = next(row for row in payload["rows"] if row["mes"] == "2026-03-01")
+        self.assertEqual(march["complementos_receita"], "80.00")
+        self.assertEqual(march["saldo_positivo"], "67.50")
+        self.assertEqual(march["novos_associados"], 3)
+        self.assertEqual(march["desvinculados"], 2)
+        self.assertEqual(march["renovacoes_associado"], 1)
 
     def test_novos_associados_retorna_cards_e_distribuicao(self):
         response = self.client.get(

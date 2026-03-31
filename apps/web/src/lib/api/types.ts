@@ -183,6 +183,7 @@ export type LiquidacaoContratoResumo = {
 };
 
 export type DevolucaoArquivo = {
+  id: number | null;
   nome: string;
   url: string;
   arquivo_referencia: string;
@@ -969,6 +970,15 @@ export type DevolucaoAssociadoItem = {
   pode_reverter: boolean;
 };
 
+export type DevolucaoUpdatePayload = {
+  tipo: string;
+  data_devolucao: string;
+  quantidade_parcelas: number;
+  valor: string;
+  motivo: string;
+  competencia_referencia: string | null;
+};
+
 export type DevolucaoKpis = {
   total_contratos: number;
   associados_impactados: number;
@@ -994,6 +1004,7 @@ export type DespesaItem = {
   categoria: string;
   descricao: string;
   valor: string;
+  natureza: string;
   data_despesa: string;
   data_pagamento: string | null;
   status: string;
@@ -1026,6 +1037,7 @@ export type DespesaResultadoMensalRow = {
   receitas: string;
   receitas_inadimplencia: string;
   receitas_retorno: string;
+  complementos_receita: string;
   despesas: string;
   despesas_manuais: string;
   devolucoes: string;
@@ -1078,7 +1090,9 @@ export type DespesaResultadoMensalPagamentoDetalhe = {
   contrato_codigo: string;
   origem: string;
   origem_label: string;
-  valor: string;
+  valor_associado: string;
+  valor_agente: string;
+  valor_total: string;
 };
 
 export type DespesaResultadoMensalDetalhePayload = {
@@ -1087,6 +1101,20 @@ export type DespesaResultadoMensalDetalhePayload = {
   receitas: DespesaResultadoMensalReceitaDetalhe[];
   despesas: DespesaResultadoMensalDespesaDetalhe[];
   pagamentos_operacionais: DespesaResultadoMensalPagamentoDetalhe[];
+};
+
+export type DashboardResumoMensalAssociacaoRow = {
+  mes: string;
+  complementos_receita: string;
+  saldo_positivo: string;
+  novos_associados: number;
+  desvinculados: number;
+  renovacoes_associado: number;
+};
+
+export type DashboardResumoMensalAssociacaoPayload = {
+  competencia: string;
+  rows: DashboardResumoMensalAssociacaoRow[];
 };
 
 export type DuplicidadeFinanceiraItem = {

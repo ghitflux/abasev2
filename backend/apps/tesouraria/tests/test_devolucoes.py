@@ -11,7 +11,12 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Role, User
 from apps.associados.models import Associado
 from apps.contratos.models import Ciclo, Contrato, Parcela
-from apps.tesouraria.models import DevolucaoAssociado, LiquidacaoContrato, Pagamento
+from apps.tesouraria.models import (
+    DevolucaoAssociado,
+    DevolucaoAssociadoAnexo,
+    LiquidacaoContrato,
+    Pagamento,
+)
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
@@ -111,17 +116,45 @@ class DevolucaoAssociadoViewSetTestCase(TestCase):
         return associado, contrato, parcela
 
     def test_lista_contratos_para_registrar_devolucao(self):
-        _associado, contrato, _parcela = self._create_contract_fixture()
+        associado_parcela, contrato_parcela, _parcela = self._create_contract_fixture()
+        associado_pagamento, contrato_pagamento, parcela_em_aberto = self._create_contract_fixture(
+            cpf="77852621366"
+        )
+        parcela_em_aberto.status = Parcela.Status.EM_ABERTO
+        parcela_em_aberto.data_pagamento = None
+        parcela_em_aberto.observacao = ""
+        parcela_em_aberto.save(update_fields=["status", "data_pagamento", "observacao", "updated_at"])
+        Pagamento.objects.create(
+            cadastro=associado_pagamento,
+            created_by=self.tesoureiro,
+            cpf_cnpj=associado_pagamento.cpf_cnpj,
+            full_name=associado_pagamento.nome_completo,
+            agente_responsavel=self.agente.full_name,
+            contrato_codigo=contrato_pagamento.codigo,
+            valor_pago=Decimal("300.00"),
+            status=Pagamento.Status.PAGO,
+        )
+        _associado_invalido, contrato_invalido, parcela_invalida = self._create_contract_fixture(
+            cpf="77852621365"
+        )
+        parcela_invalida.status = Parcela.Status.EM_ABERTO
+        parcela_invalida.data_pagamento = None
+        parcela_invalida.observacao = ""
+        parcela_invalida.save(
+            update_fields=["status", "data_pagamento", "observacao", "updated_at"]
+        )
 
         response = self.tes_client.get("/api/v1/tesouraria/devolucoes/contratos/")
 
         self.assertEqual(response.status_code, 200, response.json())
         payload = response.json()
         ids = {row["contrato_id"] for row in payload["results"]}
-        self.assertIn(contrato.id, ids)
-        row = next(row for row in payload["results"] if row["contrato_id"] == contrato.id)
+        self.assertIn(contrato_parcela.id, ids)
+        self.assertIn(contrato_pagamento.id, ids)
+        self.assertNotIn(contrato_invalido.id, ids)
+        row = next(row for row in payload["results"] if row["contrato_id"] == contrato_parcela.id)
         self.assertEqual(row["status_contrato"], Contrato.Status.ATIVO)
-        self.assertEqual(row["matricula"], contrato.associado.matricula_orgao)
+        self.assertEqual(row["matricula"], associado_parcela.matricula_orgao)
 
     def test_tesoureiro_registra_pagamento_indevido_sem_alterar_parcela(self):
         associado, contrato, parcela = self._create_contract_fixture()
@@ -233,6 +266,144 @@ class DevolucaoAssociadoViewSetTestCase(TestCase):
         self.assertEqual(payload["count"], 1)
         self.assertEqual(payload["results"][0]["status_devolucao"], "revertida")
         self.assertEqual(payload["results"][0]["tipo"], DevolucaoAssociado.Tipo.DESCONTO_INDEVIDO)
+
+    def test_tesoureiro_pode_editar_devolucao_ativa(self):
+        associado, contrato, _parcela = self._create_contract_fixture(cpf="77852621379")
+        devolucao = DevolucaoAssociado.objects.create(
+            contrato=contrato,
+            associado=associado,
+            tipo=DevolucaoAssociado.Tipo.PAGAMENTO_INDEVIDO,
+            data_devolucao=date(2026, 3, 21),
+            quantidade_parcelas=1,
+            valor=Decimal("150.00"),
+            motivo="Depósito em conta divergente.",
+            comprovante=SimpleUploadedFile("assoc.pdf", b"arquivo", content_type="application/pdf"),
+            nome_comprovante="assoc.pdf",
+            nome_snapshot=associado.nome_completo,
+            cpf_cnpj_snapshot=associado.cpf_cnpj,
+            matricula_snapshot=associado.matricula_orgao,
+            agente_snapshot=self.agente.full_name,
+            contrato_codigo_snapshot=contrato.codigo,
+            realizado_por=self.tesoureiro,
+        )
+        anexo_extra = DevolucaoAssociadoAnexo.objects.create(
+            devolucao=devolucao,
+            arquivo=SimpleUploadedFile("extra-antigo.pdf", b"arquivo", content_type="application/pdf"),
+            nome_arquivo="extra-antigo.pdf",
+        )
+
+        response = self.tes_client.patch(
+            f"/api/v1/tesouraria/devolucoes/{devolucao.id}/",
+            {
+                "tipo": DevolucaoAssociado.Tipo.DESCONTO_INDEVIDO,
+                "data_devolucao": "2026-03-25",
+                "quantidade_parcelas": 2,
+                "valor": "180.00",
+                "motivo": "Desconto indevido revisado.",
+                "competencia_referencia": "2026-02-01",
+                "comprovante": SimpleUploadedFile(
+                    "principal-atualizado.pdf",
+                    b"novo-principal",
+                    content_type="application/pdf",
+                ),
+                "novos_comprovantes": [
+                    SimpleUploadedFile(
+                        "apoio-novo.pdf",
+                        b"apoio",
+                        content_type="application/pdf",
+                    )
+                ],
+                "remover_anexos_ids": [str(anexo_extra.id)],
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        devolucao.refresh_from_db()
+        self.assertEqual(devolucao.tipo, DevolucaoAssociado.Tipo.DESCONTO_INDEVIDO)
+        self.assertEqual(devolucao.data_devolucao, date(2026, 3, 25))
+        self.assertEqual(devolucao.quantidade_parcelas, 2)
+        self.assertEqual(devolucao.valor, Decimal("180.00"))
+        self.assertEqual(devolucao.motivo, "Desconto indevido revisado.")
+        self.assertEqual(devolucao.competencia_referencia, date(2026, 2, 1))
+        self.assertEqual(devolucao.nome_comprovante, "principal-atualizado.pdf")
+        self.assertEqual(devolucao.anexos.count(), 2)
+        self.assertFalse(devolucao.anexos.filter(id=anexo_extra.id).exists())
+        self.assertTrue(
+            devolucao.anexos.filter(nome_arquivo="assoc.pdf").exists(),
+            "o comprovante principal antigo deve ser preservado como anexo extra",
+        )
+        self.assertTrue(devolucao.anexos.filter(nome_arquivo="apoio-novo.pdf").exists())
+
+    def test_nao_permite_editar_devolucao_revertida_ou_excluida(self):
+        associado, contrato, _parcela = self._create_contract_fixture(cpf="77852621380")
+        devolucao_revertida = DevolucaoAssociado.objects.create(
+            contrato=contrato,
+            associado=associado,
+            tipo=DevolucaoAssociado.Tipo.PAGAMENTO_INDEVIDO,
+            data_devolucao=date(2026, 3, 21),
+            valor=Decimal("150.00"),
+            motivo="Registro revertido.",
+            comprovante=SimpleUploadedFile("revertida.pdf", b"arquivo", content_type="application/pdf"),
+            nome_comprovante="revertida.pdf",
+            nome_snapshot=associado.nome_completo,
+            cpf_cnpj_snapshot=associado.cpf_cnpj,
+            matricula_snapshot=associado.matricula_orgao,
+            agente_snapshot=self.agente.full_name,
+            contrato_codigo_snapshot=contrato.codigo,
+            realizado_por=self.tesoureiro,
+            revertida_em=self.admin.created_at,
+            revertida_por=self.admin,
+            motivo_reversao="Ajuste administrativo.",
+        )
+        devolucao_excluida = DevolucaoAssociado.objects.create(
+            contrato=contrato,
+            associado=associado,
+            tipo=DevolucaoAssociado.Tipo.PAGAMENTO_INDEVIDO,
+            data_devolucao=date(2026, 3, 22),
+            valor=Decimal("120.00"),
+            motivo="Registro excluído.",
+            comprovante=SimpleUploadedFile("excluida.pdf", b"arquivo", content_type="application/pdf"),
+            nome_comprovante="excluida.pdf",
+            nome_snapshot=associado.nome_completo,
+            cpf_cnpj_snapshot=associado.cpf_cnpj,
+            matricula_snapshot=associado.matricula_orgao,
+            agente_snapshot=self.agente.full_name,
+            contrato_codigo_snapshot=contrato.codigo,
+            realizado_por=self.tesoureiro,
+        )
+        devolucao_excluida.delete()
+
+        revertida_response = self.coord_client.patch(
+            f"/api/v1/tesouraria/devolucoes/{devolucao_revertida.id}/",
+            {
+                "tipo": DevolucaoAssociado.Tipo.PAGAMENTO_INDEVIDO,
+                "data_devolucao": "2026-03-23",
+                "quantidade_parcelas": 1,
+                "valor": "150.00",
+                "motivo": "Tentativa inválida.",
+            },
+            format="multipart",
+        )
+        excluida_response = self.coord_client.patch(
+            f"/api/v1/tesouraria/devolucoes/{devolucao_excluida.id}/",
+            {
+                "tipo": DevolucaoAssociado.Tipo.PAGAMENTO_INDEVIDO,
+                "data_devolucao": "2026-03-23",
+                "quantidade_parcelas": 1,
+                "valor": "120.00",
+                "motivo": "Tentativa inválida.",
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(revertida_response.status_code, 400, revertida_response.json())
+        self.assertIn(
+            "Não é possível editar uma devolução já revertida.",
+            str(revertida_response.json()),
+        )
+        self.assertEqual(excluida_response.status_code, 400, excluida_response.json())
+        self.assertIn("Registro de devolução não encontrado.", str(excluida_response.json()))
 
     def test_reversao_e_admin_only(self):
         _associado, contrato, _parcela = self._create_contract_fixture(cpf="77852621371")

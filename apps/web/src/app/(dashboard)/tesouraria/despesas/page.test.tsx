@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import TesourariaDespesasPage from "./page";
@@ -15,6 +15,65 @@ jest.mock("sonner", () => ({
     error: jest.fn(),
   },
 }));
+
+jest.mock("@/components/ui/select", () => {
+  const React = require("react");
+  const SelectContext = React.createContext({
+    value: "",
+    onValueChange: (_value: string) => {},
+  });
+
+  return {
+    Select: ({
+      value,
+      onValueChange,
+      children,
+    }: {
+      value?: string;
+      onValueChange?: (value: string) => void;
+      children: React.ReactNode;
+    }) => (
+      <SelectContext.Provider
+        value={{
+          value: value ?? "",
+          onValueChange: onValueChange ?? (() => {}),
+        }}
+      >
+        <div>{children}</div>
+      </SelectContext.Provider>
+    ),
+    SelectTrigger: ({
+      children,
+      "aria-label": ariaLabel,
+    }: {
+      children?: React.ReactNode;
+      "aria-label"?: string;
+    }) => (
+      <button type="button" role="combobox" aria-label={ariaLabel}>
+        {children}
+      </button>
+    ),
+    SelectValue: ({ placeholder }: { placeholder?: string }) => {
+      const { value } = React.useContext(SelectContext);
+      return <span>{value || placeholder || ""}</span>;
+    },
+    SelectContent: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+    SelectItem: ({
+      value,
+      children,
+    }: {
+      value: string;
+      children?: React.ReactNode;
+    }) => {
+      const { onValueChange } = React.useContext(SelectContext);
+      return (
+        <button type="button" role="option" onClick={() => onValueChange(value)}>
+          {children}
+        </button>
+      );
+    },
+  };
+});
 
 jest.mock("@/components/custom/calendar-competencia", () => ({
   __esModule: true,
@@ -139,13 +198,64 @@ jest.mock("@/components/custom/file-upload-dropzone", () => ({
   ),
 }));
 
+jest.mock("@/components/custom/searchable-select", () => ({
+  __esModule: true,
+  default: ({
+    options,
+    value,
+    onChange,
+    placeholder = "Selecione",
+  }: {
+    options: Array<{ value: string; label: string }>;
+    value?: string;
+    onChange?: (value: string) => void;
+    placeholder?: string;
+  }) => (
+    <select
+      aria-label={placeholder}
+      value={value ?? ""}
+      onChange={(event) => onChange?.(event.target.value)}
+    >
+      <option value="">{placeholder}</option>
+      {options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  ),
+}));
+
+jest.mock("@/components/ui/sheet", () => ({
+  Sheet: ({ children }: { children?: unknown }) => <div>{children}</div>,
+  SheetTrigger: ({ children }: { children?: unknown }) => <div>{children}</div>,
+  SheetContent: ({ children }: { children?: unknown }) => <div>{children}</div>,
+  SheetHeader: ({ children }: { children?: unknown }) => <div>{children}</div>,
+  SheetTitle: ({ children }: { children?: unknown }) => <div>{children}</div>,
+  SheetDescription: ({ children }: { children?: unknown }) => <div>{children}</div>,
+  SheetFooter: ({ children }: { children?: unknown }) => <div>{children}</div>,
+}));
+
 const mockedApiFetch = jest.mocked(apiFetch);
+
+beforeAll(() => {
+  if (!Element.prototype.hasPointerCapture) {
+    Element.prototype.hasPointerCapture = () => false;
+  }
+  if (!Element.prototype.setPointerCapture) {
+    Element.prototype.setPointerCapture = () => {};
+  }
+  if (!Element.prototype.releasePointerCapture) {
+    Element.prototype.releasePointerCapture = () => {};
+  }
+});
 
 type ExpenseRecord = {
   id: number;
   categoria: string;
   descricao: string;
   valor: string;
+  natureza: string;
   data_despesa: string;
   data_pagamento: string | null;
   status: string;
@@ -187,6 +297,13 @@ function buildKpis(items: ExpenseRecord[]) {
   };
 }
 
+function buildCurrentMonthIso() {
+  const today = new Date();
+  const year = String(today.getFullYear());
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}-01`;
+}
+
 function renderPage() {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -207,37 +324,39 @@ describe("TesourariaDespesasPage", () => {
   const resultadoMensalPayload = {
     rows: [
       {
-        mes: "2026-03-01",
-        receitas: "450.00",
+        mes: buildCurrentMonthIso(),
+        receitas: "530.00",
         receitas_inadimplencia: "120.00",
         receitas_retorno: "330.00",
+        complementos_receita: "80.00",
         despesas: "200.00",
         despesas_manuais: "150.00",
         devolucoes: "50.00",
-        pagamentos_operacionais: "30.00",
-        lucro: "250.00",
-        lucro_liquido: "220.00",
+        pagamentos_operacionais: "45.00",
+        lucro: "330.00",
+        lucro_liquido: "285.00",
       },
     ],
     totais: {
-      receitas: "450.00",
+      receitas: "530.00",
       despesas: "200.00",
-      lucro: "250.00",
-      lucro_liquido: "220.00",
+      lucro: "330.00",
+      lucro_liquido: "285.00",
     },
   };
   const resultadoMensalDetalhePayload = {
-    mes: "2026-03-01",
+    mes: buildCurrentMonthIso(),
     resumo: {
-      receitas: "450.00",
+      receitas: "530.00",
       receitas_inadimplencia: "120.00",
       receitas_retorno: "330.00",
+      complementos_receita: "80.00",
       despesas: "200.00",
       despesas_manuais: "150.00",
       devolucoes: "50.00",
-      pagamentos_operacionais: "30.00",
-      lucro: "250.00",
-      lucro_liquido: "220.00",
+      pagamentos_operacionais: "45.00",
+      lucro: "330.00",
+      lucro_liquido: "285.00",
     },
     receitas: [
       {
@@ -265,6 +384,19 @@ describe("TesourariaDespesasPage", () => {
         agente_nome: "Agente Sul",
         descricao: "Recebimento manual de inadimplência.",
         valor: "120.00",
+      },
+      {
+        id: 3,
+        origem: "complemento_receita",
+        origem_label: "Complemento de receita",
+        data: "2026-03-18",
+        referencia: "2026-03-18",
+        associado_nome: "",
+        cpf_cnpj: "",
+        matricula: "",
+        agente_nome: "",
+        descricao: "Compensação no caixa da associação.",
+        valor: "80.00",
       },
     ],
     despesas: [
@@ -301,18 +433,22 @@ describe("TesourariaDespesasPage", () => {
         contrato_codigo: "CTR-2026-010",
         origem: "operacional",
         origem_label: "Operacional",
-        valor: "30.00",
+        valor_associado: "30.00",
+        valor_agente: "15.00",
+        valor_total: "45.00",
       },
     ],
   };
 
   beforeEach(() => {
+    mockedApiFetch.mockReset();
     expenses = [
       {
         id: 1,
         categoria: "Operacional",
         descricao: "Internet corporativa",
         valor: "149.90",
+        natureza: "despesa_operacional",
         data_despesa: "2026-03-05",
         data_pagamento: null,
         status: "pendente",
@@ -352,6 +488,14 @@ describe("TesourariaDespesasPage", () => {
         return resultadoMensalDetalhePayload as never;
       }
 
+      if (path === "associados/agentes" && method === "GET") {
+        return [
+          { id: 99, full_name: "Tesouraria ABASE" },
+          { id: 7, full_name: "Agente Norte" },
+          { id: 8, full_name: "Agente Sul" },
+        ] as never;
+      }
+
       if (path === "tesouraria/despesas" && method === "POST") {
         const formData = options.formData as FormData;
         const attachment = formData.get("anexo");
@@ -361,6 +505,7 @@ describe("TesourariaDespesasPage", () => {
           categoria: String(formData.get("categoria") ?? ""),
           descricao: String(formData.get("descricao") ?? ""),
           valor: String(formData.get("valor") ?? "0.00"),
+          natureza: String(formData.get("natureza") ?? "despesa_operacional"),
           data_despesa: String(formData.get("data_despesa") ?? ""),
           data_pagamento: (formData.get("data_pagamento") as string | null) || null,
           status: String(formData.get("status") ?? "pendente"),
@@ -402,6 +547,7 @@ describe("TesourariaDespesasPage", () => {
                 categoria: String(formData.get("categoria") ?? item.categoria),
                 descricao: String(formData.get("descricao") ?? item.descricao),
                 valor: String(formData.get("valor") ?? item.valor),
+                natureza: String(formData.get("natureza") ?? item.natureza),
                 data_despesa: String(formData.get("data_despesa") ?? item.data_despesa),
                 data_pagamento:
                   (formData.get("data_pagamento") as string | null) ??
@@ -467,10 +613,40 @@ describe("TesourariaDespesasPage", () => {
 
     expect(await screen.findByText("Despesas da associação")).toBeInTheDocument();
     expect(screen.getByPlaceholderText("Buscar por categoria ou descrição")).toBeInTheDocument();
-    expect(screen.getByText("Total de despesas")).toBeInTheDocument();
-    expect(screen.getByText("Sem anexo")).toBeInTheDocument();
+    expect(screen.getByText("Total de lançamentos")).toBeInTheDocument();
+    expect(screen.getAllByText("Sem anexo").length).toBeGreaterThan(0);
     expect(await screen.findByText("Internet corporativa")).toBeInTheDocument();
     expect(screen.getAllByText("Sem anexo").length).toBeGreaterThan(0);
+  });
+
+  it("aplica filtro avançado por agente no resultado mensal", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("tab", { name: "Resultado mensal" }));
+    expect(await screen.findByText("Janela consolidada")).toBeInTheDocument();
+    const resultadoFiltersPanel = screen.getByText("Filtros avançados do resultado")
+      .parentElement?.parentElement as HTMLElement;
+
+    await user.selectOptions(
+      within(resultadoFiltersPanel).getByRole("combobox", { name: "Todos os agentes" }),
+      "7",
+    );
+    await user.click(within(resultadoFiltersPanel).getByRole("button", { name: "Aplicar" }));
+
+    await waitFor(() => {
+      const resultadoCalls = mockedApiFetch.mock.calls.filter(
+        ([path]) => path === "tesouraria/despesas/resultado-mensal",
+      );
+      expect(
+        resultadoCalls.some(([, options]) => {
+          const agente = options?.query?.agente;
+          return agente === "Agente Norte" || agente === "7";
+        }),
+      ).toBe(true);
+    });
+
+    expect(screen.getByText("Agente: Agente Norte")).toBeInTheDocument();
   });
 
   it("cria despesa sem anexo e mantém o status financeiro escolhido", async () => {
@@ -479,21 +655,46 @@ describe("TesourariaDespesasPage", () => {
 
     await screen.findByText("Internet corporativa");
 
-    await user.click(screen.getByRole("button", { name: /Nova despesa/i }));
+    await user.click(screen.getByRole("button", { name: /Novo lançamento/i }));
+    const dialog = await screen.findByRole("dialog");
     await user.type(screen.getByLabelText("Categoria"), "Infra");
     await user.type(screen.getByLabelText("Descrição"), "Hospedagem cloud");
     await user.type(screen.getByPlaceholderText("R$ 0,00"), "299.90");
     await user.type(screen.getAllByPlaceholderText("dd/mm/aaaa")[0], "2026-03-15");
-    await user.click(screen.getByLabelText("Status financeiro"));
+    await user.click(within(dialog).getAllByRole("combobox")[1]);
     await user.click(await screen.findByRole("option", { name: "Pago" }));
     await user.type(screen.getAllByPlaceholderText("dd/mm/aaaa")[1], "2026-03-16");
     await user.type(screen.getByLabelText("Observações"), "Servidor principal");
 
-    await user.click(screen.getByRole("button", { name: /Lançar despesa/i }));
+    await user.click(screen.getByRole("button", { name: /^Lançar$/i }));
 
     expect(await screen.findByText("Hospedagem cloud")).toBeInTheDocument();
     expect(screen.getAllByText("Sem anexo").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Pago").length).toBeGreaterThan(0);
+  });
+
+  it("permite lançar complemento de receita com a classificação correta", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText("Internet corporativa");
+
+    await user.click(screen.getByRole("button", { name: /Novo lançamento/i }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(screen.getByLabelText("Categoria"), "Complementos");
+    await user.click(within(dialog).getByRole("combobox", { name: "Natureza do lançamento" }));
+    await user.click(await screen.findByRole("option", { name: "Complemento de receita" }));
+    await user.type(screen.getByLabelText("Descrição"), "Doação emergencial");
+    await user.type(screen.getByPlaceholderText("R$ 0,00"), "80.00");
+    await user.type(screen.getAllByPlaceholderText("dd/mm/aaaa")[0], "2026-03-18");
+    await user.click(within(dialog).getAllByRole("combobox")[1]);
+    await user.click(await screen.findByRole("option", { name: "Pago" }));
+    await user.type(screen.getAllByPlaceholderText("dd/mm/aaaa")[1], "2026-03-18");
+
+    await user.click(screen.getByRole("button", { name: /^Lançar$/i }));
+
+    expect(await screen.findByText("Doação emergencial")).toBeInTheDocument();
+    expect(screen.getAllByText("Complemento de receita").length).toBeGreaterThan(0);
   });
 
   it("permite anexar o comprovante já no modal de lançamento", async () => {
@@ -502,13 +703,13 @@ describe("TesourariaDespesasPage", () => {
 
     await screen.findByText("Internet corporativa");
 
-    await user.click(screen.getByRole("button", { name: /Nova despesa/i }));
+    await user.click(screen.getByRole("button", { name: /Novo lançamento/i }));
     await user.type(screen.getByLabelText("Categoria"), "Eventos");
     await user.type(screen.getByLabelText("Descrição"), "Coffee break assembleia");
     await user.type(screen.getByPlaceholderText("R$ 0,00"), "120.50");
     await user.type(screen.getAllByPlaceholderText("dd/mm/aaaa")[0], "2026-03-20");
     await user.click(screen.getByRole("button", { name: /Selecionar arquivo/i }));
-    await user.click(screen.getByRole("button", { name: /Lançar despesa/i }));
+    await user.click(screen.getByRole("button", { name: /^Lançar$/i }));
 
     expect(await screen.findByText("Coffee break assembleia")).toBeInTheDocument();
     expect(screen.getAllByText("Anexado").length).toBeGreaterThan(0);
@@ -534,18 +735,27 @@ describe("TesourariaDespesasPage", () => {
 
     await user.click(await screen.findByRole("tab", { name: "Resultado mensal" }));
 
-    await user.click(await screen.findByRole("button", { name: "março de 2026" }));
+    const lucroLiquidoButton = screen
+      .getAllByRole("button")
+      .find((button) => button.textContent?.includes("R$ 285,00"));
+    expect(lucroLiquidoButton).toBeDefined();
+    await user.click(lucroLiquidoButton as HTMLButtonElement);
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("Composição do mês")).toBeInTheDocument();
-    expect(screen.getByText("Pagamentos operacionais")).toBeInTheDocument();
+    expect(screen.getAllByText("Pagamentos operacionais").length).toBeGreaterThan(0);
+    expect(screen.getByText("Complementos de receita")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Valor associado" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Valor agente" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Valor total" })).toBeInTheDocument();
     expect(screen.getByText("Receitas de arquivo retorno")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /R\$ 450,00/i }));
+    await user.click(screen.getByRole("tab", { name: "Receitas" }));
     expect(await screen.findByText("Receitas do mês")).toBeInTheDocument();
     expect(screen.getByText("Maria Receita")).toBeInTheDocument();
     expect(screen.getByText("Carlos Manual")).toBeInTheDocument();
+    expect(screen.getByText("Compensação no caixa da associação.")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /R\$ 200,00/i }));
+    await user.click(screen.getByRole("tab", { name: "Despesas" }));
     expect(await screen.findByText("Despesas do mês")).toBeInTheDocument();
     expect(screen.getByText("Internet corporativa")).toBeInTheDocument();
     expect(screen.getByText("João Devolução")).toBeInTheDocument();

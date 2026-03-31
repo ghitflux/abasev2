@@ -9,7 +9,7 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
-from apps.contratos.models import Contrato
+from apps.contratos.models import Contrato, Parcela
 
 from .models import DevolucaoAssociado, DevolucaoAssociadoAnexo, Pagamento
 
@@ -73,6 +73,13 @@ class DevolucaoAssociadoService:
         return queryset.filter(
             liquidacoes__revertida_em__isnull=True,
             associado__tesouraria_pagamentos__status=Pagamento.Status.PAGO,
+        )
+
+    @staticmethod
+    def _apply_regular_eligible_contracts(queryset):
+        return queryset.filter(
+            Q(associado__tesouraria_pagamentos__status=Pagamento.Status.PAGO)
+            | Q(ciclos__parcelas__status=Parcela.Status.DESCONTADO)
         )
 
     @staticmethod
@@ -148,7 +155,11 @@ class DevolucaoAssociadoService:
         contract_id: int | None = None,
         fluxo: str | None = None,
     ) -> DevolucaoListPayload:
-        queryset = cls._apply_fluxo_contratos(cls._contract_queryset(), fluxo)
+        queryset = cls._contract_queryset()
+        if fluxo == cls.FLUXO_DESISTENCIA_POS_LIQUIDACAO:
+            queryset = cls._apply_fluxo_contratos(queryset, fluxo)
+        else:
+            queryset = cls._apply_regular_eligible_contracts(queryset)
         if search:
             queryset = queryset.filter(
                 Q(codigo__icontains=search)
@@ -222,6 +233,30 @@ class DevolucaoAssociadoService:
         except Contrato.DoesNotExist as exc:
             raise ValidationError("Contrato não encontrado.") from exc
 
+    @staticmethod
+    def _validate_tipo_regras(
+        *,
+        contrato: Contrato,
+        tipo: str,
+        competencia_referencia: date | None,
+    ) -> date | None:
+        associado = contrato.associado
+        if tipo == DevolucaoAssociado.Tipo.DESCONTO_INDEVIDO and competencia_referencia is None:
+            raise ValidationError(
+                {"competencia_referencia": "Informe a competência de referência para desconto indevido."}
+            )
+        if tipo == DevolucaoAssociado.Tipo.DESISTENCIA_POS_LIQUIDACAO:
+            if not contrato.liquidacoes.filter(revertida_em__isnull=True).exists():
+                raise ValidationError(
+                    "O contrato precisa ter liquidação ativa para registrar desistência pós-liquidação."
+                )
+            if not associado.tesouraria_pagamentos.filter(status=Pagamento.Status.PAGO).exists():
+                raise ValidationError(
+                    "O associado precisa ter pagamento efetivado para registrar desistência pós-liquidação."
+                )
+            return None
+        return competencia_referencia
+
     @classmethod
     @transaction.atomic
     def registrar(
@@ -241,20 +276,11 @@ class DevolucaoAssociadoService:
         associado = contrato.associado
         agente = contrato.agente or getattr(associado, "agente_responsavel", None)
 
-        if tipo == DevolucaoAssociado.Tipo.DESCONTO_INDEVIDO and competencia_referencia is None:
-            raise ValidationError(
-                {"competencia_referencia": "Informe a competência de referência para desconto indevido."}
-            )
-        if tipo == DevolucaoAssociado.Tipo.DESISTENCIA_POS_LIQUIDACAO:
-            if not contrato.liquidacoes.filter(revertida_em__isnull=True).exists():
-                raise ValidationError(
-                    "O contrato precisa ter liquidação ativa para registrar desistência pós-liquidação."
-                )
-            if not associado.tesouraria_pagamentos.filter(status=Pagamento.Status.PAGO).exists():
-                raise ValidationError(
-                    "O associado precisa ter pagamento efetivado para registrar desistência pós-liquidação."
-                )
-            competencia_referencia = None
+        competencia_referencia = cls._validate_tipo_regras(
+            contrato=contrato,
+            tipo=tipo,
+            competencia_referencia=competencia_referencia,
+        )
 
         if quantidade_parcelas < 1:
             raise ValidationError(
@@ -288,6 +314,111 @@ class DevolucaoAssociadoService:
                 arquivo=arquivo,
                 nome_arquivo=getattr(arquivo, "name", "")[:255],
             )
+        devolucao.refresh_from_db()
+        return devolucao
+
+    @classmethod
+    @transaction.atomic
+    def atualizar(
+        cls,
+        devolucao_id: int,
+        *,
+        tipo: str,
+        data_devolucao: date,
+        quantidade_parcelas: int,
+        valor: Decimal,
+        motivo: str,
+        competencia_referencia: date | None,
+        comprovante=None,
+        novos_comprovantes: list | None = None,
+        remover_anexos_ids: list[int] | None = None,
+    ) -> DevolucaoAssociado:
+        devolucao = (
+            DevolucaoAssociado.objects.select_for_update()
+            .prefetch_related("anexos")
+            .select_related("contrato", "associado")
+            .filter(pk=devolucao_id)
+            .first()
+        )
+        if devolucao is None:
+            raise ValidationError("Registro de devolução não encontrado.")
+        if devolucao.revertida_em is not None:
+            raise ValidationError("Não é possível editar uma devolução já revertida.")
+
+        contrato = cls._get_contract_for_update(devolucao.contrato_id)
+        associado = contrato.associado
+        agente = contrato.agente or getattr(associado, "agente_responsavel", None)
+        competencia_referencia = cls._validate_tipo_regras(
+            contrato=contrato,
+            tipo=tipo,
+            competencia_referencia=competencia_referencia,
+        )
+
+        if quantidade_parcelas < 1:
+            raise ValidationError(
+                {"quantidade_parcelas": "Informe pelo menos uma parcela."}
+            )
+
+        remover_anexos_ids = remover_anexos_ids or []
+        novos_comprovantes = novos_comprovantes or []
+        now = timezone.now()
+
+        anexos_queryset = devolucao.anexos.filter(id__in=remover_anexos_ids)
+        anexos_removidos_ids = set(anexos_queryset.values_list("id", flat=True))
+
+        if comprovante is not None and getattr(devolucao.comprovante, "name", ""):
+            DevolucaoAssociadoAnexo.objects.create(
+                devolucao=devolucao,
+                arquivo=devolucao.comprovante.name,
+                nome_arquivo=devolucao.nome_comprovante[:255],
+            )
+            devolucao.comprovante = comprovante
+            devolucao.nome_comprovante = getattr(comprovante, "name", "")[:255]
+
+        for arquivo in novos_comprovantes:
+            DevolucaoAssociadoAnexo.objects.create(
+                devolucao=devolucao,
+                arquivo=arquivo,
+                nome_arquivo=getattr(arquivo, "name", "")[:255],
+            )
+
+        if anexos_removidos_ids:
+            anexos_queryset.update(deleted_at=now, updated_at=now)
+
+        if not comprovante and not getattr(devolucao.comprovante, "name", ""):
+            anexos_restantes = devolucao.anexos.exclude(id__in=anexos_removidos_ids).count()
+            if anexos_restantes == 0:
+                raise ValidationError({"comprovante": "A devolução precisa manter ao menos um anexo."})
+
+        devolucao.tipo = tipo
+        devolucao.data_devolucao = data_devolucao
+        devolucao.quantidade_parcelas = quantidade_parcelas
+        devolucao.valor = valor
+        devolucao.motivo = motivo
+        devolucao.competencia_referencia = competencia_referencia
+        devolucao.nome_snapshot = associado.nome_completo
+        devolucao.cpf_cnpj_snapshot = associado.cpf_cnpj
+        devolucao.matricula_snapshot = associado.matricula_orgao or associado.matricula or ""
+        devolucao.agente_snapshot = agente.full_name if agente else ""
+        devolucao.contrato_codigo_snapshot = contrato.codigo
+        devolucao.save(
+            update_fields=[
+                "tipo",
+                "data_devolucao",
+                "quantidade_parcelas",
+                "valor",
+                "motivo",
+                "competencia_referencia",
+                "comprovante",
+                "nome_comprovante",
+                "nome_snapshot",
+                "cpf_cnpj_snapshot",
+                "matricula_snapshot",
+                "agente_snapshot",
+                "contrato_codigo_snapshot",
+                "updated_at",
+            ]
+        )
         devolucao.refresh_from_db()
         return devolucao
 

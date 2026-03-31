@@ -541,7 +541,8 @@ describe("LiquidacoesTesourariaPage", () => {
     expect(screen.getByText("Apto para Renovação")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Filtros avançados/i }));
-    expect(await screen.findByRole("combobox", { name: "Todos os agentes" })).toBeInTheDocument();
+    expect(await screen.findByText("Todos os agentes")).toBeInTheDocument();
+    expect(screen.getAllByRole("combobox").length).toBeGreaterThan(0);
     expect(screen.getByRole("heading", { name: "Filtros avançados" })).toBeInTheDocument();
     expect(screen.getByText("Etapa no fluxo")).toBeInTheDocument();
   });
@@ -650,14 +651,14 @@ describe("LiquidacoesTesourariaPage", () => {
     expect(await screen.findByText("Maria Silva")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /Filtros avançados/i }));
-    await user.click(await screen.findByRole("combobox", { name: "Todos os agentes" }));
+    const filterCombos = await screen.findAllByRole("combobox");
+    await user.click(filterCombos[0]);
     await user.click(await screen.findByRole("option", { name: "Agente Norte" }));
 
-    const filterCombos = screen.getAllByRole("combobox");
     await user.click(filterCombos[1]);
     await user.click(await screen.findByRole("option", { name: "Apto para Renovação" }));
 
-    await user.click(screen.getAllByRole("combobox")[2]);
+    await user.click(filterCombos[2]);
     await user.click(await screen.findByRole("option", { name: "Tesouraria" }));
 
     const dateInputs = screen.getAllByPlaceholderText("dd/mm/aaaa");

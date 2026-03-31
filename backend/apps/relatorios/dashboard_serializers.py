@@ -93,6 +93,20 @@ class DashboardTesourariaSerializer(serializers.Serializer):
     composition_radial = DashboardRadialPointSerializer(many=True)
 
 
+class DashboardResumoMensalAssociacaoRowSerializer(serializers.Serializer):
+    mes = serializers.DateField()
+    complementos_receita = serializers.DecimalField(max_digits=15, decimal_places=2)
+    saldo_positivo = serializers.DecimalField(max_digits=15, decimal_places=2)
+    novos_associados = serializers.IntegerField()
+    desvinculados = serializers.IntegerField()
+    renovacoes_associado = serializers.IntegerField()
+
+
+class DashboardResumoMensalAssociacaoSerializer(serializers.Serializer):
+    competencia = serializers.CharField()
+    rows = DashboardResumoMensalAssociacaoRowSerializer(many=True)
+
+
 class DashboardNovosAssociadosSerializer(serializers.Serializer):
     date_start = serializers.DateField()
     date_end = serializers.DateField()

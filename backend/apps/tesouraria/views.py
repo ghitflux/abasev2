@@ -53,6 +53,7 @@ from .serializers import (
     DespesaResultadoMensalSerializer,
     DespesaWriteSerializer,
     DarBaixaManualSerializer,
+    EditarDevolucaoSerializer,
     EfetivarContratoSerializer,
     ExcluirDevolucaoSerializer,
     ExcluirLiquidacaoSerializer,
@@ -661,11 +662,16 @@ class DevolucaoContratoViewSet(mixins.ListModelMixin, GenericViewSet):
 
 
 class DevolucaoAssociadoViewSet(mixins.ListModelMixin, GenericViewSet):
-    queryset = DevolucaoAssociado.objects.none()
+    queryset = DevolucaoAssociado.objects.all()
     serializer_class = DevolucaoAssociadoListSerializer
     permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrTesoureiroOrAdmin]
     pagination_class = StandardResultsSetPagination
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_serializer_class(self):
+        if self.action == "partial_update":
+            return EditarDevolucaoSerializer
+        return self.serializer_class
 
     def list(self, request, *args, **kwargs):  # noqa: A003
         competencia = parse_month_filter(request.query_params.get("competencia"))
@@ -689,6 +695,40 @@ class DevolucaoAssociadoViewSet(mixins.ListModelMixin, GenericViewSet):
             response.data["kpis"] = kpis
             return response
         return Response({"results": serializer.data, "kpis": kpis})
+
+    def partial_update(self, request, pk=None):
+        devolucao = self.get_object()
+        payload = self.get_serializer(
+            data=request.data,
+            context={
+                **self.get_serializer_context(),
+                "request": request,
+                "devolucao": devolucao,
+            },
+        )
+        payload.is_valid(raise_exception=True)
+        devolucao_atualizada = DevolucaoAssociadoService.atualizar(
+            int(pk),
+            tipo=payload.validated_data["tipo"],
+            data_devolucao=payload.validated_data["data_devolucao"],
+            quantidade_parcelas=payload.validated_data["quantidade_parcelas"],
+            valor=payload.validated_data["valor"],
+            motivo=payload.validated_data["motivo"],
+            competencia_referencia=payload.validated_data.get("competencia_referencia"),
+            comprovante=payload.validated_data.get("comprovante"),
+            novos_comprovantes=payload.validated_data.get("novos_comprovantes", []),
+            remover_anexos_ids=payload.validated_data.get("remover_anexos_ids", []),
+        )
+        row = DevolucaoAssociadoService.listar_historico(
+            contract_id=devolucao_atualizada.contrato_id,
+        ).rows
+        matched = [item for item in row if item["devolucao_id"] == devolucao_atualizada.id]
+        serialized = DevolucaoAssociadoListSerializer(
+            matched[:1],
+            many=True,
+            context=self.get_serializer_context(),
+        ).data
+        return Response(serialized[0] if serialized else {"id": devolucao_atualizada.id})
 
     @action(detail=True, methods=["post"], url_path="reverter")
     @extend_schema(
@@ -760,6 +800,7 @@ class DespesaViewSet(ModelViewSet):
             status=self.request.query_params.get("status"),
             status_anexo=self.request.query_params.get("status_anexo"),
             tipo=self.request.query_params.get("tipo"),
+            natureza=self.request.query_params.get("natureza"),
         )
 
     def get_serializer_class(self):
@@ -826,7 +867,10 @@ class DespesaViewSet(ModelViewSet):
     def resultado_mensal(self, request):
         competencia_param = request.query_params.get("competencia")
         competencia = parse_competencia(competencia_param) if competencia_param else None
-        payload = DespesaService.resultado_mensal(competencia=competencia)
+        payload = DespesaService.resultado_mensal(
+            competencia=competencia,
+            agente=request.query_params.get("agente"),
+        )
         serializer = DespesaResultadoMensalSerializer(payload)
         return Response(serializer.data)
 
@@ -834,7 +878,10 @@ class DespesaViewSet(ModelViewSet):
     def resultado_mensal_detalhe(self, request):
         mes_param = request.query_params.get("mes")
         mes = parse_competencia(mes_param) if mes_param else timezone.localdate().replace(day=1)
-        payload = DespesaService.resultado_mensal_detalhe(mes=mes)
+        payload = DespesaService.resultado_mensal_detalhe(
+            mes=mes,
+            agente=request.query_params.get("agente"),
+        )
         serializer = DespesaResultadoMensalDetalheSerializer(payload)
         return Response(serializer.data)
 

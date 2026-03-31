@@ -253,6 +253,27 @@ const treasuryPayload = {
   ],
 };
 
+const treasurySummaryPayload = {
+  rows: [
+    {
+      mes: "2026-03-01",
+      complementos_receita: "80.00",
+      saldo_positivo: "67.50",
+      novos_associados: 3,
+      desvinculados: 1,
+      renovacoes_associado: 1,
+    },
+    {
+      mes: "2026-02-01",
+      complementos_receita: "0.00",
+      saldo_positivo: "0.00",
+      novos_associados: 1,
+      desvinculados: 0,
+      renovacoes_associado: 0,
+    },
+  ],
+};
+
 const newAssociadosPayload = {
   date_start: "2026-03-01",
   date_end: "2026-03-31",
@@ -484,6 +505,8 @@ describe("DashboardPage", () => {
       }
       if (path === "dashboard/admin/resumo-geral") return summaryPayload;
       if (path === "dashboard/admin/tesouraria") return treasuryPayload;
+      if (path === "dashboard/admin/resumo-mensal-associacao")
+        return treasurySummaryPayload;
       if (path === "dashboard/admin/novos-associados")
         return newAssociadosPayload;
       if (path === "dashboard/admin/agentes") return agentsPayload;
@@ -570,6 +593,9 @@ describe("DashboardPage", () => {
     expect(screen.getByText("KPIs gerais")).toBeInTheDocument();
     expect(screen.getByText("Novos associados")).toBeInTheDocument();
     expect(screen.getByText("Agentes")).toBeInTheDocument();
+    expect(await screen.findByText("Resumo mensal da associação")).toBeInTheDocument();
+    expect(await screen.findByText("Complementos de receita")).toBeInTheDocument();
+    expect((await screen.findAllByText("março de 2026")).length).toBeGreaterThan(0);
 
     await user.click(
       await screen.findByRole("button", { name: "Associados cadastrados" }),
@@ -621,6 +647,14 @@ describe("DashboardPage", () => {
         }),
       );
     });
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      "dashboard/admin/resumo-mensal-associacao",
+      expect.objectContaining({
+        query: expect.objectContaining({
+          competencia: "2026-03",
+        }),
+      }),
+    );
     expect(URL.createObjectURL).toHaveBeenCalled();
   });
 });
