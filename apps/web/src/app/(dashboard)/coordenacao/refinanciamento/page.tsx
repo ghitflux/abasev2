@@ -5,7 +5,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   EyeIcon,
   FileTextIcon,
-  PrinterIcon,
   SlidersHorizontalIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -18,6 +17,7 @@ import type {
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
 import { formatMonthYear } from "@/lib/formatters";
+import { exportPaginatedRouteReport } from "@/lib/reports";
 import { RefinanciamentoDetalhesDialog } from "@/components/refinanciamento/refinanciamento-detalhes-dialog";
 import MultiSelect from "@/components/custom/multi-select";
 import SearchableSelect, {
@@ -26,6 +26,7 @@ import SearchableSelect, {
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import ExportButton from "@/components/shared/export-button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,7 +59,7 @@ import {
 } from "@/components/ui/sheet";
 
 type DialogState =
-  | { mode: "aprovar"; item: RefinanciamentoItem }
+  | { mode: "aprovar" | "devolver"; item: RefinanciamentoItem }
   | null;
 
 type CoordAdvancedFilters = {
@@ -185,6 +186,7 @@ export default function CoordenacaoRefinanciamentoPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
+  const [isExporting, setIsExporting] = React.useState(false);
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const [filters, setFilters] = React.useState<CoordAdvancedFilters>(INITIAL_FILTERS);
   const [draftFilters, setDraftFilters] = React.useState<CoordAdvancedFilters>(
@@ -277,6 +279,37 @@ export default function CoordenacaoRefinanciamentoPage() {
         error instanceof Error
           ? error.message
           : "Falha ao encaminhar para liquidação.",
+      );
+    },
+  });
+
+  const devolverAnaliseMutation = useMutation({
+    mutationFn: async ({
+      id,
+      observacao: note,
+    }: {
+      id: number;
+      observacao: string;
+    }) =>
+      apiFetch<RefinanciamentoItem>(`refinanciamentos/${id}/devolver-analise`, {
+        method: "POST",
+        body: { observacao: note },
+      }),
+    onSuccess: () => {
+      toast.success("Renovação devolvida para a análise.");
+      setDialogState(null);
+      setObservacao("");
+      void queryClient.invalidateQueries({ queryKey: ["coordenacao-refinanciamento"] });
+      void queryClient.invalidateQueries({ queryKey: ["analise-refinanciamentos"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["analise-refinanciamentos-resumo"],
+      });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao devolver a renovação para a análise.",
       );
     },
   });
@@ -430,7 +463,9 @@ export default function CoordenacaoRefinanciamentoPage() {
           <div className="space-y-2">
             <StatusBadge status={row.status} />
             <p className="text-xs text-muted-foreground">
-              {row.analista_note?.trim() || row.motivo_apto_renovacao}
+              {row.coordenador_note?.trim() ||
+                row.analista_note?.trim() ||
+                row.motivo_apto_renovacao}
             </p>
           </div>
         ),
@@ -463,6 +498,13 @@ export default function CoordenacaoRefinanciamentoPage() {
             <Button
               size="sm"
               variant="outline"
+              onClick={() => setDialogState({ mode: "devolver", item: row })}
+            >
+              Devolver para analista
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               onClick={() => setLiquidacaoTarget(row)}
             >
               Liquidar contrato
@@ -480,6 +522,57 @@ export default function CoordenacaoRefinanciamentoPage() {
     ],
   );
 
+  const handleExport = React.useCallback(
+    async (format: "csv" | "pdf" | "excel" | "xlsx") => {
+      if (format !== "pdf" && format !== "xlsx") {
+        return;
+      }
+
+      setIsExporting(true);
+      try {
+        await exportPaginatedRouteReport<RefinanciamentoItem>({
+          route: "/coordenacao/refinanciamento",
+          format,
+          sourcePath: "coordenacao/refinanciamento",
+          sourceQuery: {
+            search: search || undefined,
+            year: filters.year || undefined,
+            competencia_start: toCompetenciaDate(filters.competenciaStart),
+            competencia_end: toCompetenciaDate(filters.competenciaEnd),
+            agent: filters.agent || undefined,
+            status: filters.statuses,
+            origem: filters.origins,
+            eligibility_band: filters.eligibilityBand || undefined,
+          },
+          mapRow: (row) => ({
+            contrato_codigo: row.contrato_codigo,
+            associado_nome: row.associado_nome,
+            status: row.status,
+            analista_note: row.analista_note ?? "",
+            coordenador_note: row.coordenador_note ?? "",
+            data_solicitacao: row.data_solicitacao,
+          }),
+        });
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Falha ao exportar a fila da coordenação.",
+        );
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [
+      filters.agent,
+      filters.competenciaEnd,
+      filters.competenciaStart,
+      filters.eligibilityBand,
+      filters.origins,
+      filters.statuses,
+      filters.year,
+      search,
+    ],
+  );
+
   return (
     <div className="space-y-6">
       <section className="rounded-[1.75rem] border border-border/60 bg-card/70 p-6">
@@ -491,10 +584,11 @@ export default function CoordenacaoRefinanciamentoPage() {
               de validação: {totalCount}
             </p>
           </div>
-          <Button variant="outline" onClick={() => window.print()}>
-            <PrinterIcon className="size-4" />
-            Imprimir / PDF
-          </Button>
+          <ExportButton
+            disabled={isExporting}
+            label={isExporting ? "Exportando..." : "Exportar"}
+            onExport={(format) => void handleExport(format)}
+          />
         </div>
       </section>
 
@@ -682,13 +776,26 @@ export default function CoordenacaoRefinanciamentoPage() {
         skeletonRows={6}
       />
 
-      <Dialog open={!!dialogState} onOpenChange={(open) => !open && setDialogState(null)}>
+      <Dialog
+        open={!!dialogState}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDialogState(null);
+            setObservacao("");
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Aprovar renovação</DialogTitle>
+            <DialogTitle>
+              {dialogState?.mode === "devolver"
+                ? "Devolver para análise"
+                : "Aprovar renovação"}
+            </DialogTitle>
             <DialogDescription>
-              A coordenação valida o termo anexado e envia a renovação para a
-              tesouraria.
+              {dialogState?.mode === "devolver"
+                ? "Registre o motivo para a análise revisar o termo antes de devolver ao agente."
+                : "A coordenação valida o termo anexado e envia a renovação para a tesouraria."}
             </DialogDescription>
           </DialogHeader>
 
@@ -699,20 +806,37 @@ export default function CoordenacaoRefinanciamentoPage() {
           />
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogState(null)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDialogState(null);
+                setObservacao("");
+              }}
+            >
               Cancelar
             </Button>
             <Button
               onClick={() => {
                 if (!dialogState) return;
+                if (dialogState.mode === "devolver") {
+                  devolverAnaliseMutation.mutate({
+                    id: dialogState.item.id,
+                    observacao,
+                  });
+                  return;
+                }
                 actionMutation.mutate({
                   id: dialogState.item.id,
                   body: observacao.trim() ? { observacao } : undefined,
                 });
               }}
-              disabled={actionMutation.isPending}
+              disabled={
+                actionMutation.isPending ||
+                devolverAnaliseMutation.isPending ||
+                (dialogState?.mode === "devolver" && !observacao.trim())
+              }
             >
-              Confirmar
+              {dialogState?.mode === "devolver" ? "Devolver" : "Confirmar"}
             </Button>
           </DialogFooter>
         </DialogContent>

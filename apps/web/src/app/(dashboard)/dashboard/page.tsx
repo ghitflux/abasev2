@@ -970,7 +970,7 @@ function DashboardPageContent() {
       metrics,
       query,
     }: {
-      format: "csv" | "pdf" | "excel";
+      format: "csv" | "pdf" | "excel" | "xlsx";
       section: DashboardSection;
       title: string;
       filenameBase: string;

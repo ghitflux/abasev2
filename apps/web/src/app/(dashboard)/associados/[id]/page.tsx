@@ -68,11 +68,13 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   const associadoId = Number(id);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const adminQueryParam = searchParams.get("admin");
   const [selectedTarget, setSelectedTarget] =
     React.useState<ParcelaDetailTarget | null>(null);
   const [adminMode, setAdminMode] = React.useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
   const [deleteConfirmed, setDeleteConfirmed] = React.useState(false);
+  const [inativarDialogOpen, setInativarDialogOpen] = React.useState(false);
   const [saveAllOpen, setSaveAllOpen] = React.useState(false);
   const contractEditorRefs = React.useRef<Record<number, AdminContractEditorHandle | null>>({});
   const esteiraEditorRef = React.useRef<AdminEsteiraEditorHandle | null>(null);
@@ -137,15 +139,32 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
     },
   });
 
+  const inativarAssociadoMutation = useMutation({
+    mutationFn: async () =>
+      apiFetch<AssociadoDetail>(`associados/${associadoId}/inativar`, {
+        method: "POST",
+      }),
+    onSuccess: async (payload) => {
+      toast.success("Associado inativado com sucesso.");
+      setInativarDialogOpen(false);
+      queryClient.setQueryData(["associado", associadoId], payload);
+      await queryClient.invalidateQueries({ queryKey: ["associados"] });
+      await queryClient.invalidateQueries({ queryKey: ["contratos"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Falha ao inativar associado.");
+    },
+  });
+
   React.useEffect(() => {
-    if (!isAdmin || autoAdminEnabledRef.current) {
+    if (!isAdmin || autoAdminEnabledRef.current || adminMode) {
       return;
     }
-    if (searchParams.get("admin") === "1") {
+    if (adminQueryParam === "1") {
       setAdminMode(true);
       autoAdminEnabledRef.current = true;
     }
-  }, [isAdmin, searchParams]);
+  }, [adminMode, adminQueryParam, isAdmin]);
 
   React.useEffect(() => {
     if (!adminMode) {
@@ -289,13 +308,25 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
         <div className="flex flex-wrap gap-3">
           {isAdmin ? (
             <label className="inline-flex items-center gap-3 rounded-full border border-border/60 bg-card/60 px-4 py-2 text-sm">
-              <Switch checked={adminMode} onCheckedChange={setAdminMode} />
+              <Switch
+                checked={adminMode}
+                onCheckedChange={(checked) => setAdminMode(Boolean(checked))}
+              />
               Modo edição admin
             </label>
           ) : null}
           <Button variant="outline" asChild>
             <Link href={backHref}>Voltar</Link>
           </Button>
+          {(isAdmin || isCoordinator) && associado.status !== "inativo" ? (
+            <Button
+              variant="outline"
+              className="border-amber-500/40 text-amber-200"
+              onClick={() => setInativarDialogOpen(true)}
+            >
+              Inativar associado
+            </Button>
+          ) : null}
           {isAdmin ? (
             <>
               <Button variant="outline" asChild>
@@ -574,6 +605,37 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           }
         }}
       />
+      <AlertDialog
+        open={inativarDialogOpen}
+        onOpenChange={(open) => {
+          setInativarDialogOpen(open);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Inativar associado</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação marca o associado como inativo e o status passa a aparecer
+              nos filtros e indicadores operacionais.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={inativarAssociadoMutation.isPending}>
+              Voltar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                inativarAssociadoMutation.mutate();
+              }}
+              disabled={inativarAssociadoMutation.isPending}
+            >
+              Confirmar inativação
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlertDialog
         open={deleteDialogOpen}
         onOpenChange={(open) => {

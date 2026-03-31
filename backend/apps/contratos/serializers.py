@@ -692,6 +692,9 @@ class ContratoListSerializer(serializers.ModelSerializer):
     status_visual_label = serializers.SerializerMethodField()
     possui_meses_nao_descontados = serializers.SerializerMethodField()
     meses_nao_descontados_count = serializers.SerializerMethodField()
+    cancelamento_tipo = serializers.CharField(read_only=True)
+    cancelamento_motivo = serializers.CharField(read_only=True)
+    cancelado_em = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Contrato
@@ -719,6 +722,9 @@ class ContratoListSerializer(serializers.ModelSerializer):
             "refinanciamento_id",
             "possui_meses_nao_descontados",
             "meses_nao_descontados_count",
+            "cancelamento_tipo",
+            "cancelamento_motivo",
+            "cancelado_em",
         ]
 
     def get_status_resumido(self, obj: Contrato) -> str:

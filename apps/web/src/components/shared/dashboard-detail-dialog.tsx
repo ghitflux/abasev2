@@ -31,7 +31,7 @@ type DashboardDetailDialogProps<T extends { id: number | string }> = {
   totalPages?: number;
   onPageChange?: (page: number) => void;
   pageSize?: number;
-  onExport?: (format: "csv" | "pdf" | "excel") => void | Promise<void>;
+  onExport?: (format: "csv" | "pdf" | "excel" | "xlsx") => void | Promise<void>;
 };
 
 export default function DashboardDetailDialog<T extends { id: number | string }>({

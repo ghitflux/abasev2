@@ -8,6 +8,7 @@ import {
   HandCoinsIcon,
   PaperclipIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import type {
   PagamentoAgenteNotificacoes,
@@ -25,6 +26,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import StatusBadge from "@/components/custom/status-badge";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import ExportButton from "@/components/shared/export-button";
 import { MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +40,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { exportPaginatedRouteReport } from "@/lib/reports";
 
 const EMPTY_RESUMO: PagamentoAgenteResumo = {
   total: 0,
@@ -72,6 +75,14 @@ const PAGAMENTO_INICIAL_OPTIONS = [
   { value: "pendente", label: "Pendente" },
   { value: "cancelado", label: "Cancelado" },
   { value: "sem_pagamento_inicial", label: "Sem pagamento inicial" },
+];
+
+const PRESET_OPTIONS = [
+  { value: "todos", label: "Todas as filas" },
+  { value: "novos_contratos", label: "Novos contratos" },
+  { value: "cancelados", label: "Cancelados" },
+  { value: "congelados", label: "Congelados" },
+  { value: "pendentes", label: "Pendentes" },
 ];
 
 const NUMERO_CICLOS_OPTIONS = [
@@ -134,10 +145,12 @@ export default function PagamentosPage() {
   const [associadoStatus, setAssociadoStatus] = React.useState("todos");
   const [pagamentoInicialStatus, setPagamentoInicialStatus] = React.useState("todos");
   const [numeroCiclos, setNumeroCiclos] = React.useState("todos");
+  const [preset, setPreset] = React.useState("todos");
   const [dataInicio, setDataInicio] = React.useState("");
   const [dataFim, setDataFim] = React.useState("");
   const [pageSize, setPageSize] = React.useState("15");
   const [page, setPage] = React.useState(1);
+  const [isExporting, setIsExporting] = React.useState(false);
   const debouncedSearch = useDebouncedValue(search, 300);
   const debouncedAgente = useDebouncedValue(agente, 300);
   const markedUnreadCountRef = React.useRef(0);
@@ -154,6 +167,7 @@ export default function PagamentosPage() {
       associadoStatus,
       pagamentoInicialStatus,
       numeroCiclos,
+      preset,
       dataInicio,
       dataFim,
     ],
@@ -173,6 +187,7 @@ export default function PagamentosPage() {
               ? undefined
               : pagamentoInicialStatus,
           numero_ciclos: numeroCiclos === "todos" ? undefined : numeroCiclos,
+          preset: preset === "todos" ? undefined : preset,
           data_inicio: dataInicio || undefined,
           data_fim: dataFim || undefined,
         },
@@ -238,6 +253,9 @@ export default function PagamentosPage() {
             <p className="text-xs text-muted-foreground">
               Assinado em {formatDate(row.data_contrato)}
             </p>
+            <p className="text-xs text-muted-foreground">
+              Solicitação em {formatDate(row.data_solicitacao)}
+            </p>
           </div>
         ),
       },
@@ -261,6 +279,11 @@ export default function PagamentosPage() {
               <p className="text-xs text-amber-200">
                 {row.meses_nao_descontados_count} mês(es) não descontado(s)
               </p>
+            ) : null}
+            {row.cancelamento_tipo ? (
+              <Badge className="rounded-full bg-rose-500/15 text-rose-200">
+                {row.cancelamento_tipo === "desistente" ? "Desistente" : "Cancelado"}
+              </Badge>
             ) : null}
           </div>
         ),
@@ -328,6 +351,64 @@ export default function PagamentosPage() {
       },
     ],
     [],
+  );
+
+  const handleExport = React.useCallback(
+    async (format: "csv" | "pdf" | "excel" | "xlsx") => {
+      if (format !== "pdf" && format !== "xlsx") {
+        return;
+      }
+
+      setIsExporting(true);
+      try {
+        await exportPaginatedRouteReport<PagamentoAgenteItem>({
+          route: "/agentes/pagamentos",
+          format,
+          sourcePath: "agente/pagamentos",
+          sourceQuery: {
+            search: debouncedSearch || undefined,
+            status: status === "todos" ? undefined : status,
+            mes: mes || undefined,
+            agente: canFilterAgent ? debouncedAgente || undefined : undefined,
+            associado_status: associadoStatus === "todos" ? undefined : associadoStatus,
+            pagamento_inicial_status:
+              pagamentoInicialStatus === "todos" ? undefined : pagamentoInicialStatus,
+            numero_ciclos: numeroCiclos === "todos" ? undefined : numeroCiclos,
+            preset: preset === "todos" ? undefined : preset,
+            data_inicio: dataInicio || undefined,
+            data_fim: dataFim || undefined,
+          },
+          mapRow: (row) => ({
+            contrato_codigo: row.contrato_codigo,
+            nome: row.nome,
+            agente_nome: row.agente_nome,
+            data_solicitacao: row.data_solicitacao,
+            status_visual_label: row.status_visual_label,
+            pagamento_inicial_status_label: row.pagamento_inicial_status_label,
+            pagamento_inicial_valor: row.pagamento_inicial_valor,
+            cancelamento_tipo: row.cancelamento_tipo ?? "",
+            cancelamento_motivo: row.cancelamento_motivo ?? "",
+          }),
+        });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Falha ao exportar pagamentos.");
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [
+      associadoStatus,
+      canFilterAgent,
+      dataFim,
+      dataInicio,
+      debouncedAgente,
+      debouncedSearch,
+      mes,
+      numeroCiclos,
+      pagamentoInicialStatus,
+      preset,
+      status,
+    ],
   );
 
   return (
@@ -429,6 +510,24 @@ export default function PagamentosPage() {
           </SelectContent>
         </Select>
         <Select
+          value={preset}
+          onValueChange={(value) => {
+            setPreset(value);
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="rounded-2xl bg-card/60">
+            <SelectValue placeholder="Fila operacional" />
+          </SelectTrigger>
+          <SelectContent>
+            {PRESET_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
           value={pagamentoInicialStatus}
           onValueChange={(value) => {
             setPagamentoInicialStatus(value);
@@ -517,6 +616,7 @@ export default function PagamentosPage() {
             setAssociadoStatus("todos");
             setPagamentoInicialStatus("todos");
             setNumeroCiclos("todos");
+            setPreset("todos");
             setDataInicio("");
             setDataFim("");
             setPageSize("15");
@@ -525,6 +625,11 @@ export default function PagamentosPage() {
         >
           Limpar
         </Button>
+        <ExportButton
+          disabled={isExporting}
+          label={isExporting ? "Exportando..." : "Exportar"}
+          onExport={(format) => void handleExport(format)}
+        />
       </section>
 
       {query.isError ? (

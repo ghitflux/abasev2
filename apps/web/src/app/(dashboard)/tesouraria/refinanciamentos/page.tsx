@@ -21,10 +21,12 @@ import type {
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
 import { formatCurrency, formatDateTime, formatMonthYear } from "@/lib/formatters";
+import { exportPaginatedRouteReport } from "@/lib/reports";
 import DatePicker from "@/components/custom/date-picker";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import ExportButton from "@/components/shared/export-button";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -131,6 +133,7 @@ export default function TesourariaRefinanciamentosPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
+  const [isExporting, setIsExporting] = React.useState(false);
   const [dataInicio, setDataInicio] = React.useState<Date>();
   const [dataFim, setDataFim] = React.useState<Date>();
   const [draftDataInicio, setDraftDataInicio] = React.useState<Date>();
@@ -253,7 +256,7 @@ export default function TesourariaRefinanciamentosPage() {
       },
       {
         id: "ciclo",
-        header: "Contrato / Ciclo",
+        header: "Contrato",
         cell: (row) => (
           <div className="space-y-1">
             <CopySnippet label="Contrato" value={row.contrato_codigo} mono inline />
@@ -272,8 +275,30 @@ export default function TesourariaRefinanciamentosPage() {
         ),
       },
       {
-        id: "financeiro",
-        header: "Financeiro",
+        id: "agente",
+        header: "Agente",
+        cell: (row) => <p className="text-sm text-muted-foreground">{row.agente?.full_name || "—"}</p>,
+      },
+      {
+        id: "status",
+        header: "Status",
+        cell: (row) => (
+          <div className="space-y-2">
+            <StatusBadge status={row.status} />
+            <p className="text-xs text-muted-foreground">
+              {row.coordenador_note?.trim() || row.analista_note?.trim() || row.motivo_apto_renovacao}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "pagamento",
+        header: "Pagamento",
+        cell: (row) => <StatusBadge status={row.pagamento_status} />,
+      },
+      {
+        id: "valor_pago",
+        header: "Valor pago",
         cell: (row) => (
           <div className="space-y-1">
             <p className="font-semibold">{formatCurrency(row.valor_refinanciamento)}</p>
@@ -284,12 +309,20 @@ export default function TesourariaRefinanciamentosPage() {
         ),
       },
       {
+        id: "parcelas",
+        header: "Parcelas",
+        cell: (row) => (
+          <p className="text-sm text-muted-foreground">
+            {row.mensalidades_pagas}/{row.mensalidades_total}
+          </p>
+        ),
+      },
+      {
         id: "etapa",
-        header: "Etapa / Ativação",
+        header: "Efetivação",
         cell: (row) => (
           <div className="space-y-2">
             <StatusBadge status={row.etapa_operacional || row.status} />
-            <StatusBadge status={row.pagamento_status} />
             <p className="text-xs text-muted-foreground">
               {row.data_ativacao_ciclo
                 ? `Ativado em ${formatDateTime(row.data_ativacao_ciclo)}`
@@ -302,6 +335,11 @@ export default function TesourariaRefinanciamentosPage() {
             ) : null}
           </div>
         ),
+      },
+      {
+        id: "data_solicitacao",
+        header: "Data da solicitação",
+        cell: (row) => formatDateTime(row.data_solicitacao),
       },
       {
         id: "anexos",
@@ -397,18 +435,66 @@ export default function TesourariaRefinanciamentosPage() {
     [drafts, efetivarMutation, tab],
   );
 
+  const handleExport = React.useCallback(
+    async (format: "csv" | "pdf" | "excel" | "xlsx") => {
+      if (format !== "pdf" && format !== "xlsx") {
+        return;
+      }
+
+      setIsExporting(true);
+      try {
+        await exportPaginatedRouteReport<RefinanciamentoItem>({
+          route: "/tesouraria/refinanciamentos",
+          format,
+          sourcePath: "tesouraria/refinanciamentos",
+          sourceQuery: {
+            search: search || undefined,
+            data_inicio: toIsoDate(dataInicio),
+            data_fim: toIsoDate(dataFim),
+            status: statusFilter,
+          },
+          mapRow: (row) => ({
+            associado_nome: row.associado_nome,
+            cpf_cnpj: row.cpf_cnpj,
+            contrato_codigo: row.contrato_codigo,
+            data_solicitacao: row.data_solicitacao,
+            status: row.status,
+            valor_refinanciamento: row.valor_refinanciamento,
+            repasse_agente: row.repasse_agente,
+            pagamento_status: row.pagamento_status,
+            data_ativacao_ciclo: row.data_ativacao_ciclo,
+          }),
+        });
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Falha ao exportar renovações da tesouraria.",
+        );
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [dataFim, dataInicio, search, statusFilter],
+  );
+
   return (
     <div className="space-y-6">
       <section className="rounded-[1.75rem] border border-border/60 bg-card/70 p-6">
-        <div className="space-y-1">
-          <p className="text-sm uppercase tracking-[0.28em] text-muted-foreground">
-            Tesouraria
-          </p>
-          <h1 className="text-3xl font-semibold">Renovações</h1>
-          <p className="text-sm text-muted-foreground">
-            Renovações validadas pela coordenação, com efetivação e histórico financeiro por
-            status.
-          </p>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-1">
+            <p className="text-sm uppercase tracking-[0.28em] text-muted-foreground">
+              Tesouraria
+            </p>
+            <h1 className="text-3xl font-semibold">Renovações</h1>
+            <p className="text-sm text-muted-foreground">
+              Renovações validadas pela coordenação, com efetivação e histórico financeiro por
+              status.
+            </p>
+          </div>
+          <ExportButton
+            disabled={isExporting}
+            label={isExporting ? "Exportando..." : "Exportar"}
+            onExport={(format) => void handleExport(format)}
+          />
         </div>
       </section>
 

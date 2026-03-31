@@ -48,6 +48,17 @@ class RelatorioExportarSerializer(serializers.Serializer):
             ("tesouraria", "Tesouraria"),
             ("refinanciamentos", "Refinanciamentos"),
             ("importacao", "Importacao"),
-        ]
+        ],
+        required=False,
     )
-    formato = serializers.ChoiceField(choices=[("csv", "CSV"), ("json", "JSON"), ("pdf", "PDF")])
+    rota = serializers.CharField(required=False)
+    formato = serializers.ChoiceField(
+        choices=[("csv", "CSV"), ("json", "JSON"), ("pdf", "PDF"), ("xlsx", "XLS")]
+    )
+    filtros = serializers.JSONField(required=False, default=dict)
+
+    def validate(self, attrs):
+        if not attrs.get("rota") and not attrs.get("tipo"):
+            raise serializers.ValidationError("Informe a rota ou o tipo do relatório.")
+        attrs.setdefault("filtros", {})
+        return attrs

@@ -53,8 +53,14 @@ class ConfiguracaoComissaoViewSetTestCase(TestCase):
         self.agente_client = APIClient()
         self.agente_client.force_authenticate(self.agente)
 
-    def _cadastro_payload(self, *, cpf: str, agente_id: int) -> dict[str, object]:
-        return {
+    def _cadastro_payload(
+        self,
+        *,
+        cpf: str,
+        agente_id: int,
+        percentual_repasse: str | None = None,
+    ) -> dict[str, object]:
+        payload = {
             "tipo_documento": "CPF",
             "cpf_cnpj": cpf,
             "nome_completo": f"Associado {cpf[-4:]}",
@@ -86,8 +92,10 @@ class ConfiguracaoComissaoViewSetTestCase(TestCase):
             "mensalidade": "500.00",
             "margem_disponivel": "900.00",
             "agente_responsavel_id": agente_id,
-            "percentual_repasse": "99.99",
         }
+        if percentual_repasse is not None:
+            payload["percentual_repasse"] = percentual_repasse
+        return payload
 
     def test_agente_nao_tem_acesso_as_configuracoes_de_comissao(self):
         response = self.agente_client.get("/api/v1/configuracoes/comissoes/")
@@ -178,3 +186,20 @@ class ConfiguracaoComissaoViewSetTestCase(TestCase):
         contrato = Contrato.objects.filter(associado=associado).latest("created_at")
         self.assertEqual(associado.auxilio_taxa, Decimal("11.50"))
         self.assertEqual(contrato.comissao_agente, Decimal("57.50"))
+
+    def test_admin_pode_definir_percentual_manual_no_cadastro(self):
+        response = self.admin_client.post(
+            "/api/v1/associados/",
+            self._cadastro_payload(
+                cpf="42345678903",
+                agente_id=self.outro_agente.id,
+                percentual_repasse="14.75",
+            ),
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+
+        associado = Associado.objects.get(cpf_cnpj="42345678903")
+        contrato = Contrato.objects.filter(associado=associado).latest("created_at")
+        self.assertEqual(associado.auxilio_taxa, Decimal("14.75"))
+        self.assertEqual(contrato.comissao_agente, Decimal("73.75"))

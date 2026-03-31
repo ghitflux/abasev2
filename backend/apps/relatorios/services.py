@@ -12,6 +12,7 @@ from xml.sax.saxutils import escape
 from django.core.files.base import ContentFile
 from django.db.models import Sum
 from django.utils import timezone
+from openpyxl import Workbook
 
 from apps.associados.models import Associado
 from apps.contratos.models import Contrato, Parcela
@@ -38,6 +39,13 @@ class ReportDefinition:
 
 
 class RelatorioService:
+    LEGACY_TYPE_TO_ROUTE = {
+        "associados": "/associados",
+        "tesouraria": "/tesouraria",
+        "refinanciamentos": "/tesouraria/refinanciamentos",
+        "importacao": "/importacao",
+    }
+
     @staticmethod
     def resumo() -> dict[str, object]:
         hoje = timezone.localdate()
@@ -87,11 +95,13 @@ class RelatorioService:
         }
 
     @staticmethod
-    def exportar(tipo: str, formato: str) -> RelatorioGerado:
-        rows = RelatorioService._rows_for_tipo(tipo)
+    def exportar(rota: str, formato: str, filtros: dict[str, object] | None = None) -> RelatorioGerado:
+        rows = RelatorioService._rows_for_route(rota, filtros or {})
         timestamp = timezone.now().strftime("%Y%m%d%H%M%S")
-        file_name = f"{tipo}_{timestamp}.{formato}"
-        content = RelatorioService._render_content(tipo, rows, formato)
+        file_key = RelatorioService._resolve_route_key(rota).strip("/").replace("/", "_") or "relatorio"
+        extension = "xlsx" if formato == "xlsx" else formato
+        file_name = f"{file_key}_{timestamp}.{extension}"
+        content = RelatorioService._render_content(rota, rows, formato)
 
         relatorio = RelatorioGerado(nome=file_name, formato=formato)
         relatorio.arquivo.save(file_name, ContentFile(content), save=False)
@@ -108,6 +118,7 @@ class RelatorioService:
             "csv": "text/csv; charset=utf-8",
             "json": "application/json; charset=utf-8",
             "pdf": "application/pdf",
+            "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }.get(formato, "application/octet-stream")
 
     @staticmethod
@@ -123,9 +134,12 @@ class RelatorioService:
         }
 
     @staticmethod
-    def _render_content(tipo: str, rows: list[dict[str, object]], formato: str) -> bytes:
+    def _render_content(rota: str, rows: list[dict[str, object]], formato: str) -> bytes:
         if formato == "pdf":
-            return RelatorioService._render_pdf(tipo, rows)
+            return RelatorioService._render_pdf(rota, rows)
+
+        if formato == "xlsx":
+            return RelatorioService._render_xlsx(rota, rows)
 
         if formato == "json":
             return json.dumps(rows, ensure_ascii=True, indent=2, default=str).encode("utf-8")
@@ -136,6 +150,46 @@ class RelatorioService:
         writer.writeheader()
         writer.writerows(rows)
         return output.getvalue().encode("utf-8")
+
+    @staticmethod
+    def _resolve_route_key(rota: str) -> str:
+        return RelatorioService.LEGACY_TYPE_TO_ROUTE.get(rota, rota)
+
+    @staticmethod
+    def _rows_for_route(
+        rota: str,
+        filtros: dict[str, object],
+    ) -> list[dict[str, object]]:
+        rows = filtros.get("rows")
+        if isinstance(rows, list):
+            return [RelatorioService._normalize_row(row) for row in rows if isinstance(row, dict)]
+
+        legacy_tipo = next(
+            (
+                tipo
+                for tipo, route in RelatorioService.LEGACY_TYPE_TO_ROUTE.items()
+                if route == RelatorioService._resolve_route_key(rota)
+            ),
+            None,
+        )
+        if legacy_tipo is not None:
+            return [RelatorioService._normalize_row(row) for row in RelatorioService._rows_for_tipo(legacy_tipo)]
+        raise ValueError(f"Rota de relatório inválida: {rota}")
+
+    @staticmethod
+    def _normalize_row(row: dict[str, object]) -> dict[str, object]:
+        return {str(key): RelatorioService._normalize_cell_value(value) for key, value in row.items()}
+
+    @staticmethod
+    def _normalize_cell_value(value: object) -> object:
+        if isinstance(value, dict):
+            return ", ".join(
+                f"{key}: {RelatorioService._format_pdf_value(inner)}"
+                for key, inner in value.items()
+            )
+        if isinstance(value, list):
+            return " | ".join(RelatorioService._format_pdf_value(item) for item in value)
+        return value
 
     @staticmethod
     def _rows_for_tipo(tipo: str) -> list[dict[str, object]]:
@@ -226,10 +280,11 @@ class RelatorioService:
         ]
 
     @staticmethod
-    def _definition_for_tipo(tipo: str) -> ReportDefinition:
+    def _definition_for_route(rota: str) -> ReportDefinition:
+        route = RelatorioService._resolve_route_key(rota)
         definitions = {
-            "associados": ReportDefinition(
-                tipo="associados",
+            "/associados": ReportDefinition(
+                tipo="/associados",
                 title="Relatorio de Associados",
                 description="Base cadastral com status do associado, orgao publico e agente responsavel.",
                 columns=(
@@ -241,38 +296,111 @@ class RelatorioService:
                     ReportColumn("created_at", "Criado em", 1.3),
                 ),
             ),
-            "tesouraria": ReportDefinition(
-                tipo="tesouraria",
+            "/tesouraria": ReportDefinition(
+                tipo="/tesouraria",
                 title="Relatorio de Tesouraria",
                 description="Contratos ativos e historicos financeiros com mensalidade, comissao e agente.",
                 columns=(
                     ReportColumn("codigo", "Contrato", 1.4),
-                    ReportColumn("associado", "Associado", 2.4),
+                    ReportColumn("nome", "Associado", 2.4),
                     ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
                     ReportColumn("status", "Status", 1.0),
-                    ReportColumn("valor_mensalidade", "Mensalidade", 1.1),
+                    ReportColumn("data_solicitacao", "Data da solicitacao", 1.3),
+                    ReportColumn("margem_disponivel", "Auxilio", 1.1),
                     ReportColumn("comissao_agente", "Comissao", 1.0),
-                    ReportColumn("agente", "Agente", 1.8),
-                    ReportColumn("auxilio_liberado_em", "Liberado em", 1.2),
+                    ReportColumn("agente_nome", "Agente", 1.8),
+                    ReportColumn("cancelamento_tipo", "Tipo cancelamento", 1.2),
                 ),
             ),
-            "refinanciamentos": ReportDefinition(
-                tipo="refinanciamentos",
+            "/tesouraria/refinanciamentos": ReportDefinition(
+                tipo="/tesouraria/refinanciamentos",
                 title="Relatorio de Refinanciamentos",
                 description="Solicitacoes de refinanciamento com status, valor, repasse e responsavel pela acao.",
                 columns=(
-                    ReportColumn("associado", "Associado", 2.3),
+                    ReportColumn("associado_nome", "Associado", 2.3),
                     ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
-                    ReportColumn("contrato", "Contrato", 1.3),
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("data_solicitacao", "Data da solicitacao", 1.3),
                     ReportColumn("status", "Status", 1.2),
                     ReportColumn("valor_refinanciamento", "Valor", 1.1),
                     ReportColumn("repasse_agente", "Repasse agente", 1.1),
-                    ReportColumn("solicitado_por", "Solicitado por", 1.7),
-                    ReportColumn("executado_em", "Executado em", 1.2),
+                    ReportColumn("pagamento_status", "Pagamento", 1.0),
+                    ReportColumn("data_ativacao_ciclo", "Efetivacao", 1.2),
                 ),
             ),
-            "importacao": ReportDefinition(
-                tipo="importacao",
+            "/agentes/meus-contratos": ReportDefinition(
+                tipo="/agentes/meus-contratos",
+                title="Relatorio de Meus Contratos",
+                description="Contratos do agente conforme os filtros aplicados na tela.",
+                columns=(
+                    ReportColumn("codigo", "Contrato", 1.4),
+                    ReportColumn("associado", "Associado", 2.4),
+                    ReportColumn("status_visual_label", "Status", 1.2),
+                    ReportColumn("etapa_fluxo", "Fluxo", 1.0),
+                    ReportColumn("valor_mensalidade", "Mensalidade", 1.1),
+                    ReportColumn("status_renovacao", "Renovacao", 1.2),
+                    ReportColumn("cancelamento_tipo", "Cancelamento", 1.1),
+                    ReportColumn("cancelamento_motivo", "Motivo", 2.2),
+                ),
+            ),
+            "/agentes/pagamentos": ReportDefinition(
+                tipo="/agentes/pagamentos",
+                title="Relatorio de Pagamentos",
+                description="Pagamentos exibidos na rota de pagamentos do agente ou tesouraria.",
+                columns=(
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("nome", "Associado", 2.3),
+                    ReportColumn("agente_nome", "Agente", 1.8),
+                    ReportColumn("data_solicitacao", "Solicitacao", 1.3),
+                    ReportColumn("status_visual_label", "Status", 1.2),
+                    ReportColumn("pagamento_inicial_status_label", "Pagamento", 1.2),
+                    ReportColumn("pagamento_inicial_valor", "Valor pago", 1.1),
+                    ReportColumn("cancelamento_tipo", "Cancelamento", 1.1),
+                ),
+            ),
+            "/agentes/refinanciados": ReportDefinition(
+                tipo="/agentes/refinanciados",
+                title="Relatorio de Renovações do Agente",
+                description="Solicitacoes e historico de renovacoes do agente.",
+                columns=(
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("associado_nome", "Associado", 2.3),
+                    ReportColumn("status", "Status", 1.2),
+                    ReportColumn("data_solicitacao", "Solicitacao", 1.3),
+                    ReportColumn("valor_refinanciamento", "Valor", 1.1),
+                    ReportColumn("repasse_agente", "Repasse", 1.0),
+                    ReportColumn("analista_note", "Nota analista", 1.8),
+                    ReportColumn("coordenador_note", "Nota coordenacao", 1.8),
+                ),
+            ),
+            "/analise/aptos": ReportDefinition(
+                tipo="/analise/aptos",
+                title="Relatorio de Fila Analítica",
+                description="Renovacoes visiveis para a analise conforme os filtros ativos.",
+                columns=(
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("associado_nome", "Associado", 2.3),
+                    ReportColumn("status", "Status", 1.2),
+                    ReportColumn("motivo_apto_renovacao", "Motivo", 2.4),
+                    ReportColumn("analista_note", "Nota analista", 1.8),
+                    ReportColumn("coordenador_note", "Nota coordenacao", 1.8),
+                ),
+            ),
+            "/coordenacao/refinanciamento": ReportDefinition(
+                tipo="/coordenacao/refinanciamento",
+                title="Relatorio de Coordenação de Renovações",
+                description="Fila da coordenação conforme os filtros ativos.",
+                columns=(
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("associado_nome", "Associado", 2.3),
+                    ReportColumn("status", "Status", 1.2),
+                    ReportColumn("analista_note", "Nota analista", 1.8),
+                    ReportColumn("coordenador_note", "Nota coordenacao", 1.8),
+                    ReportColumn("data_solicitacao", "Solicitacao", 1.3),
+                ),
+            ),
+            "/importacao": ReportDefinition(
+                tipo="/importacao",
                 title="Relatorio de Importacao",
                 description="Historico de arquivos retorno com competencia, processamento e inconsistencias.",
                 columns=(
@@ -288,106 +416,30 @@ class RelatorioService:
             ),
         }
         try:
-            return definitions[tipo]
+            return definitions[route]
         except KeyError as exc:
-            raise ValueError(f"Tipo de relatorio invalido: {tipo}") from exc
+            raise ValueError(f"Rota de relatorio invalida: {route}") from exc
 
     @staticmethod
-    def _summary_for_tipo(tipo: str) -> list[tuple[str, str]]:
-        if tipo == "associados":
-            return [
-                ("Total", str(Associado.objects.count())),
-                ("Ativos", str(Associado.objects.filter(status=Associado.Status.ATIVO).count())),
-                (
-                    "Em analise",
-                    str(Associado.objects.filter(status=Associado.Status.EM_ANALISE).count()),
-                ),
-                (
-                    "Inadimplentes",
-                    str(Associado.objects.filter(status=Associado.Status.INADIMPLENTE).count()),
-                ),
-            ]
-
-        if tipo == "tesouraria":
-            total_mensalidades = (
-                Contrato.objects.aggregate(total=Sum("valor_mensalidade"))["total"] or Decimal("0")
-            )
-            return [
-                ("Total contratos", str(Contrato.objects.count())),
-                ("Ativos", str(Contrato.objects.filter(status=Contrato.Status.ATIVO).count())),
-                (
-                    "Em analise",
-                    str(Contrato.objects.filter(status=Contrato.Status.EM_ANALISE).count()),
-                ),
-                ("Mensalidade total", RelatorioService._format_number(total_mensalidades)),
-            ]
-
-        if tipo == "refinanciamentos":
-            total_refinanciado = (
-                Refinanciamento.objects.aggregate(total=Sum("valor_refinanciamento"))["total"]
-                or Decimal("0")
-            )
-            return [
-                ("Total registros", str(Refinanciamento.objects.count())),
-                (
-                    "Pendentes",
-                    str(
-                        Refinanciamento.objects.filter(
-                            status__in=[
-                                Refinanciamento.Status.PENDENTE_APTO,
-                                Refinanciamento.Status.BLOQUEADO,
-                                Refinanciamento.Status.SOLICITADO,
-                                Refinanciamento.Status.EM_ANALISE,
-                                Refinanciamento.Status.APROVADO,
-                            ]
-                        ).count()
-                    ),
-                ),
-                (
-                    "Efetivados",
-                    str(
-                        Refinanciamento.objects.filter(
-                            status__in=[
-                                Refinanciamento.Status.CONCLUIDO,
-                                Refinanciamento.Status.EFETIVADO,
-                            ]
-                        ).count()
-                    ),
-                ),
-                ("Valor total", RelatorioService._format_number(total_refinanciado)),
-            ]
-
-        if tipo == "importacao":
-            totais = ArquivoRetorno.objects.aggregate(
-                total_registros=Sum("total_registros"),
-                total_processados=Sum("processados"),
-                total_erros=Sum("erros"),
-            )
-            return [
-                ("Arquivos", str(ArquivoRetorno.objects.count())),
-                (
-                    "Concluidos",
-                    str(
-                        ArquivoRetorno.objects.filter(status=ArquivoRetorno.Status.CONCLUIDO).count()
-                    ),
-                ),
-                ("Registros", str(totais["total_registros"] or 0)),
-                ("Processados", str(totais["total_processados"] or 0)),
-                ("Erros", str(totais["total_erros"] or 0)),
-            ]
-
-        raise ValueError(f"Tipo de relatorio invalido: {tipo}")
+    def _summary_for_route(
+        rota: str,
+        rows: list[dict[str, object]],
+    ) -> list[tuple[str, str]]:
+        return [
+            ("Rota", RelatorioService._resolve_route_key(rota)),
+            ("Total registros", str(len(rows))),
+        ]
 
     @staticmethod
-    def _render_pdf(tipo: str, rows: list[dict[str, object]]) -> bytes:
+    def _render_pdf(rota: str, rows: list[dict[str, object]]) -> bytes:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
         from reportlab.lib.units import mm
         from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-        definition = RelatorioService._definition_for_tipo(tipo)
-        summary = RelatorioService._summary_for_tipo(tipo)
+        definition = RelatorioService._definition_for_route(rota)
+        summary = RelatorioService._summary_for_route(rota, rows)
         buffer = BytesIO()
         document = SimpleDocTemplate(
             buffer,
@@ -526,6 +578,25 @@ class RelatorioService:
         )
         story.append(table)
         document.build(story)
+        return buffer.getvalue()
+
+    @staticmethod
+    def _render_xlsx(rota: str, rows: list[dict[str, object]]) -> bytes:
+        definition = RelatorioService._definition_for_route(rota)
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Relatorio"
+        headers = [column.header for column in definition.columns]
+        sheet.append(headers)
+        for row in rows:
+            sheet.append(
+                [
+                    RelatorioService._format_pdf_value(row.get(column.key))
+                    for column in definition.columns
+                ]
+            )
+        buffer = BytesIO()
+        workbook.save(buffer)
         return buffer.getvalue()
 
     @staticmethod

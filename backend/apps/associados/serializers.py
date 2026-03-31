@@ -39,6 +39,16 @@ def _can_manage_agent_assignment(context: dict) -> bool:
     return user.has_role("ADMIN", "ANALISTA", "COORDENADOR", "TESOUREIRO")
 
 
+def _can_override_percentual_repasse(context: dict) -> bool:
+    request = context.get("request")
+    if not request or not getattr(request, "user", None):
+        return False
+    user = request.user
+    if not getattr(user, "is_authenticated", False) or not hasattr(user, "has_role"):
+        return False
+    return user.has_role("ADMIN", "ANALISTA", "COORDENADOR")
+
+
 class SimpleUserSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     full_name = serializers.CharField(read_only=True)
@@ -524,7 +534,7 @@ class AssociadoCreateSerializer(serializers.ModelSerializer):
         max_digits=6,
         decimal_places=2,
         required=False,
-        default=10,
+        allow_null=True,
     )
 
     class Meta:
@@ -580,6 +590,16 @@ class AssociadoCreateSerializer(serializers.ModelSerializer):
         ).exists():
             raise serializers.ValidationError(
                 {"agente_responsavel_id": "Agente responsável inválido."}
+            )
+        sent_percentual_repasse = "percentual_repasse" in self.initial_data
+        percentual_repasse = attrs.get("percentual_repasse")
+        if sent_percentual_repasse and not _can_override_percentual_repasse(self.context):
+            raise serializers.ValidationError(
+                "Seu perfil não pode definir comissão manual no cadastro."
+            )
+        if percentual_repasse is not None and percentual_repasse < 0:
+            raise serializers.ValidationError(
+                {"percentual_repasse": "Informe um percentual válido."}
             )
         contrato = {
             "valor_bruto_total": attrs.pop("valor_bruto_total"),
@@ -686,6 +706,10 @@ class AssociadoUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "matricula", "cpf_cnpj"]
 
     def validate(self, attrs):
+        if "percentual_repasse" in self.initial_data:
+            raise serializers.ValidationError(
+                {"percentual_repasse": "A comissão manual só pode ser definida no cadastro."}
+            )
         if "agente_responsavel_id" in attrs and not _can_manage_agent_assignment(self.context):
             raise serializers.ValidationError(
                 "Seu perfil não pode definir agente responsável."

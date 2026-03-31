@@ -109,9 +109,11 @@ class AssociadoService:
         agente_responsavel_id = dados.pop("agente_responsavel_id", None)
         if agente_responsavel_id:
             agente_responsavel = agente.__class__.objects.get(pk=agente_responsavel_id)
-        percentual_repasse = ComissaoService.resolve_percentual(
-            agente_responsavel.id if agente_responsavel else None
-        )
+        percentual_repasse = contrato_data.get("percentual_repasse")
+        if percentual_repasse is None:
+            percentual_repasse = ComissaoService.resolve_percentual(
+                agente_responsavel.id if agente_responsavel else None
+            )
 
         associado_data = {
             "cpf_cnpj": dados["cpf_cnpj"],
@@ -202,6 +204,13 @@ class AssociadoService:
                 observacao=documento.get("observacao", ""),
             )
 
+        return associado
+
+    @staticmethod
+    @transaction.atomic
+    def inativar_associado(associado: Associado) -> Associado:
+        associado.status = Associado.Status.INATIVO
+        associado.save(update_fields=["status", "updated_at"])
         return associado
 
     @staticmethod

@@ -268,6 +268,38 @@ class TestFluxoCompleto(TestCase):
         self.assertEqual(row["matricula"], "MAT-LEGACY-99")
         self.assertEqual(row["percentual_repasse"], "12.50")
 
+    def test_tesouraria_pode_cancelar_contrato_e_listar_liquidado_com_alias_visual(self):
+        associado_cancelado = self._criar_associado("17345678907")
+        contrato_cancelado = self._levar_para_tesouraria(associado_cancelado)
+
+        cancelamento = self.tes_client.post(
+            f"/api/v1/tesouraria/contratos/{contrato_cancelado.id}/cancelar/",
+            {
+                "tipo": "desistente",
+                "motivo": "Cliente desistiu antes da ativação.",
+            },
+            format="json",
+        )
+        self.assertEqual(cancelamento.status_code, 200, cancelamento.json())
+        contrato_cancelado.refresh_from_db()
+        self.assertEqual(contrato_cancelado.status, Contrato.Status.CANCELADO)
+        self.assertEqual(contrato_cancelado.cancelamento_tipo, "desistente")
+
+        associado_liquidado = self._criar_associado("17345678908")
+        contrato_liquidado = self._levar_para_tesouraria(associado_liquidado)
+        contrato_liquidado.status = Contrato.Status.ENCERRADO
+        contrato_liquidado.save(update_fields=["status", "updated_at"])
+
+        competencia = timezone.localdate().strftime("%Y-%m")
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/contratos/",
+            {"competencia": competencia, "pagamento": "liquidado"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()["results"]
+        row = next(item for item in payload if item["id"] == contrato_liquidado.id)
+        self.assertEqual(row["status"], "liquidado")
+
     def _efetivar_contrato(self, contrato: Contrato):
         response = self.tes_client.post(
             f"/api/v1/tesouraria/contratos/{contrato.id}/efetivar/",

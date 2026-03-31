@@ -6,8 +6,6 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
-from apps.accounts.permissions import IsAdmin
-
 from .models import RelatorioGerado
 from .serializers import (
     RelatorioExportarSerializer,
@@ -20,7 +18,7 @@ from .services import RelatorioService
 class RelatorioViewSet(mixins.ListModelMixin, GenericViewSet):
     queryset = RelatorioGerado.objects.order_by("-created_at")
     serializer_class = RelatorioGeradoSerializer
-    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    permission_classes = [permissions.IsAuthenticated]
     pagination_class = None
 
     @action(detail=False, methods=["get"])
@@ -34,8 +32,9 @@ class RelatorioViewSet(mixins.ListModelMixin, GenericViewSet):
         payload = RelatorioExportarSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         relatorio = RelatorioService.exportar(
-            payload.validated_data["tipo"],
+            payload.validated_data.get("rota") or payload.validated_data["tipo"],
             payload.validated_data["formato"],
+            payload.validated_data.get("filtros") or {},
         )
         serializer = self.get_serializer(relatorio)
         return Response(serializer.data, status=status.HTTP_201_CREATED)

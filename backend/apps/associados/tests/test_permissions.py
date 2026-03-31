@@ -17,6 +17,7 @@ class AssociadoPermissionsTestCase(TestCase):
     def setUpTestData(cls):
         cls.role_admin = Role.objects.create(codigo="ADMIN", nome="Administrador")
         cls.role_agente = Role.objects.create(codigo="AGENTE", nome="Agente")
+        cls.role_analista = Role.objects.create(codigo="ANALISTA", nome="Analista")
         cls.role_coordenador = Role.objects.create(
             codigo="COORDENADOR",
             nome="Coordenador",
@@ -28,6 +29,11 @@ class AssociadoPermissionsTestCase(TestCase):
             "coord@teste.local",
             cls.role_coordenador,
             "Coord",
+        )
+        cls.analista = cls._create_user(
+            "analista@teste.local",
+            cls.role_analista,
+            "Analista",
         )
         cls.outro_agente = cls._create_user(
             "agente2@teste.local",
@@ -82,6 +88,9 @@ class AssociadoPermissionsTestCase(TestCase):
 
         self.coord_client = APIClient()
         self.coord_client.force_authenticate(self.coordenador)
+
+        self.analyst_client = APIClient()
+        self.analyst_client.force_authenticate(self.analista)
 
         self.other_agent_client = APIClient()
         self.other_agent_client.force_authenticate(self.outro_agente)
@@ -408,7 +417,6 @@ class AssociadoPermissionsTestCase(TestCase):
                 "mensalidade": "500.00",
                 "margem_disponivel": "900.00",
                 "agente_responsavel_id": self.outro_agente.id,
-                "percentual_repasse": "99.99",
             },
             format="json",
         )
@@ -420,3 +428,56 @@ class AssociadoPermissionsTestCase(TestCase):
         self.assertEqual(associado.auxilio_taxa, Decimal("12.50"))
         self.assertEqual(contrato.agente, self.outro_agente)
         self.assertEqual(contrato.comissao_agente, Decimal("62.50"))
+
+    def test_analista_pode_criar_associado_com_agente_e_percentual_manual(self):
+        response = self.analyst_client.post(
+            "/api/v1/associados/",
+            {
+                "tipo_documento": "CPF",
+                "cpf_cnpj": "52345678901",
+                "nome_completo": "Associado Analista",
+                "endereco": {
+                    "cep": "64000000",
+                    "endereco": "Rua Teste",
+                    "numero": "10",
+                    "bairro": "Centro",
+                    "cidade": "Teresina",
+                    "uf": "PI",
+                },
+                "dados_bancarios": {
+                    "banco": "Banco do Brasil",
+                    "agencia": "1234",
+                    "conta": "12345-6",
+                    "tipo_conta": "corrente",
+                },
+                "contato": {
+                    "celular": "86999999999",
+                    "email": "analista@cadastro.local",
+                    "orgao_publico": "SEFAZ",
+                    "situacao_servidor": "ativo",
+                    "matricula_servidor": "MAT-55",
+                },
+                "valor_bruto_total": "1500.00",
+                "valor_liquido": "1200.00",
+                "prazo_meses": 3,
+                "taxa_antecipacao": "1.50",
+                "mensalidade": "500.00",
+                "margem_disponivel": "900.00",
+                "agente_responsavel_id": self.outro_agente.id,
+                "percentual_repasse": "14.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        associado = Associado.objects.get(cpf_cnpj="52345678901")
+        contrato = Contrato.objects.filter(associado=associado).latest("created_at")
+        self.assertEqual(associado.agente_responsavel, self.outro_agente)
+        self.assertEqual(associado.auxilio_taxa, Decimal("14.00"))
+        self.assertEqual(contrato.comissao_agente, Decimal("70.00"))
+
+    def test_coordenador_pode_inativar_associado(self):
+        response = self.coord_client.post(f"/api/v1/associados/{self.associado.id}/inativar/")
+        self.assertEqual(response.status_code, 200, response.json())
+        self.associado.refresh_from_db()
+        self.assertEqual(self.associado.status, Associado.Status.INATIVO)

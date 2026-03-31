@@ -125,6 +125,7 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
     data_ativacao_ciclo = serializers.SerializerMethodField()
     origem_data_ativacao = serializers.SerializerMethodField()
     data_solicitacao_renovacao = serializers.SerializerMethodField()
+    data_solicitacao = serializers.DateTimeField(source="created_at", read_only=True)
     ativacao_inferida = serializers.SerializerMethodField()
     etapa_operacional = serializers.SerializerMethodField()
     data_renovacao = serializers.SerializerMethodField()
@@ -171,6 +172,7 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
             "data_ativacao_ciclo",
             "origem_data_ativacao",
             "data_solicitacao_renovacao",
+            "data_solicitacao",
             "ativacao_inferida",
             "etapa_operacional",
             "motivo_bloqueio",
@@ -338,6 +340,10 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
     def get_motivo_apto_renovacao(self, obj: Refinanciamento) -> str:
         if obj.status == Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO:
             return "Contrato encaminhado para a fila de liquidação; aguardando tratativa da tesouraria."
+        if obj.status == Refinanciamento.Status.PENDENTE_TERMO_ANALISTA:
+            return obj.coordenador_note or "Coordenação devolveu o termo para nova conferência do analista."
+        if obj.status == Refinanciamento.Status.PENDENTE_TERMO_AGENTE:
+            return obj.analista_note or "Analista devolveu o termo para correção do agente."
         total = self.get_mensalidades_total(obj)
         pagas = min(self.get_mensalidades_pagas(obj), total)
         ciclo_numero = obj.ciclo_origem.numero if obj.ciclo_origem_id else 1
@@ -392,6 +398,10 @@ class EfetivarRefinanciamentoSerializer(serializers.Serializer):
 
 class AprovarAnaliseRefinanciamentoSerializer(serializers.Serializer):
     observacao = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class DevolverRefinanciamentoSerializer(serializers.Serializer):
+    observacao = serializers.CharField()
 
 
 class AprovarEmMassaRefinanciamentoSerializer(serializers.Serializer):

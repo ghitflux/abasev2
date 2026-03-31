@@ -19,12 +19,14 @@ import type {
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { formatMonthYear } from "@/lib/formatters";
+import { exportPaginatedRouteReport } from "@/lib/reports";
 import { RefinanciamentoDetalhesDialog } from "@/components/refinanciamento/refinanciamento-detalhes-dialog";
 import MultiSelect from "@/components/custom/multi-select";
 import SearchableSelect, { type SelectOption } from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import ExportButton from "@/components/shared/export-button";
 import { MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +63,10 @@ type KpiFilterKey = "total" | "em_analise" | "assumidos" | "aprovados";
 
 const STATUS_OPTIONS: SelectOption[] = [
   { value: "em_analise_renovacao", label: "Em análise para renovação" },
+  {
+    value: "pendente_termo_analista",
+    label: "Pendente termo para o analista",
+  },
   {
     value: "aprovado_analise_renovacao",
     label: "Aguardando validação da coordenação",
@@ -128,17 +134,21 @@ export default function AnaliseAptosPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
+  const [isExporting, setIsExporting] = React.useState(false);
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const [filters, setFilters] = React.useState<AnaliseAdvancedFilters>(INITIAL_FILTERS);
   const [draftFilters, setDraftFilters] = React.useState<AnaliseAdvancedFilters>(INITIAL_FILTERS);
   const [selected, setSelected] = React.useState<RefinanciamentoItem | null>(null);
+  const [dialogAction, setDialogAction] = React.useState<
+    "aprovar" | "devolver_agente" | null
+  >(null);
   const [detailItem, setDetailItem] = React.useState<RefinanciamentoItem | null>(null);
   const [observacao, setObservacao] = React.useState("");
   const [activeKpi, setActiveKpi] = React.useState<KpiFilterKey>("total");
 
   const resolvedStatuses = React.useMemo(() => {
     if (activeKpi === "em_analise") {
-      return ["em_analise_renovacao"];
+      return ["em_analise_renovacao", "pendente_termo_analista"];
     }
     if (activeKpi === "aprovados") {
       return ["aprovado_analise_renovacao"];
@@ -253,6 +263,34 @@ export default function AnaliseAptosPage() {
     },
   });
 
+  const devolverAgenteMutation = useMutation({
+    mutationFn: async ({
+      id,
+      note,
+    }: {
+      id: number;
+      note: string;
+    }) =>
+      apiFetch<RefinanciamentoItem>(`refinanciamentos/${id}/devolver-agente`, {
+        method: "POST",
+        body: { observacao: note },
+      }),
+    onSuccess: () => {
+      toast.success("Renovação devolvida para o agente.");
+      setSelected(null);
+      setDialogAction(null);
+      setObservacao("");
+      void queryClient.invalidateQueries({ queryKey: ["analise-refinanciamentos"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["analise-refinanciamentos-resumo"],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["agente-refinanciados"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Falha ao devolver renovação.");
+    },
+  });
+
   const rows = refinanciamentosQuery.data?.results ?? [];
   const totalCount = refinanciamentosQuery.data?.count ?? 0;
   const activeAdvancedFiltersCount = countActiveFilters(filters);
@@ -299,7 +337,9 @@ export default function AnaliseAptosPage() {
         header: "Motivo",
         cell: (row) => (
           <p className="max-w-sm text-sm text-muted-foreground">
-            {row.motivo_apto_renovacao}
+            {row.coordenador_note?.trim() ||
+              row.analista_note?.trim() ||
+              row.motivo_apto_renovacao}
           </p>
         ),
       },
@@ -321,7 +361,7 @@ export default function AnaliseAptosPage() {
               <EyeIcon className="size-4" />
               Detalhes
             </Button>
-            {row.status === "em_analise_renovacao" ? (
+            {["em_analise_renovacao", "pendente_termo_analista"].includes(row.status) ? (
               <Button
                 size="sm"
                 variant="outline"
@@ -331,10 +371,28 @@ export default function AnaliseAptosPage() {
                 Assumir
               </Button>
             ) : null}
-            {row.status === "em_analise_renovacao" ? (
-              <Button size="sm" onClick={() => setSelected(row)}>
+            {["em_analise_renovacao", "pendente_termo_analista"].includes(row.status) ? (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setSelected(row);
+                  setDialogAction("aprovar");
+                }}
+              >
                 <ForwardIcon className="size-4" />
                 Aprovar
+              </Button>
+            ) : null}
+            {["em_analise_renovacao", "pendente_termo_analista"].includes(row.status) ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setSelected(row);
+                  setDialogAction("devolver_agente");
+                }}
+              >
+                Devolver para agente
               </Button>
             ) : null}
           </div>
@@ -344,18 +402,64 @@ export default function AnaliseAptosPage() {
     [assumirMutation],
   );
 
+  const handleExport = React.useCallback(
+    async (format: "csv" | "pdf" | "excel" | "xlsx") => {
+      if (format !== "pdf" && format !== "xlsx") {
+        return;
+      }
+
+      setIsExporting(true);
+      try {
+        await exportPaginatedRouteReport<RefinanciamentoItem>({
+          route: "/analise/aptos",
+          format,
+          sourcePath: "analise/refinanciamentos",
+          sourceQuery: {
+            search: search || undefined,
+            competencia_start: toCompetenciaDate(filters.competenciaStart),
+            competencia_end: toCompetenciaDate(filters.competenciaEnd),
+            agent: filters.agent || undefined,
+            status: resolvedStatuses,
+            origem: filters.origins,
+            assignment: resolvedAssignment !== "todas" ? resolvedAssignment : undefined,
+          },
+          mapRow: (row) => ({
+            contrato_codigo: row.contrato_codigo,
+            associado_nome: row.associado_nome,
+            status: row.status,
+            motivo_apto_renovacao: row.motivo_apto_renovacao,
+            analista_note: row.analista_note ?? "",
+            coordenador_note: row.coordenador_note ?? "",
+          }),
+        });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Falha ao exportar a fila da análise.");
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [filters.agent, filters.competenciaEnd, filters.competenciaStart, filters.origins, resolvedAssignment, resolvedStatuses, search],
+  );
+
   return (
     <div className="space-y-6">
       <section className="rounded-[1.75rem] border border-border/60 bg-card/70 p-6">
-        <div className="space-y-2">
-          <p className="text-sm uppercase tracking-[0.28em] text-muted-foreground">
-            Análise
-          </p>
-          <h1 className="text-3xl font-semibold">Contratos para Renovação</h1>
-          <p className="text-sm text-muted-foreground">
-            Fila do analista para revisar solicitações enviadas pelo agente e encaminhá-las
-            para validação da coordenação. Total filtrado: {resumo.total}
-          </p>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-2">
+            <p className="text-sm uppercase tracking-[0.28em] text-muted-foreground">
+              Análise
+            </p>
+            <h1 className="text-3xl font-semibold">Contratos para Renovação</h1>
+            <p className="text-sm text-muted-foreground">
+              Fila do analista para revisar solicitações enviadas pelo agente e encaminhá-las
+              para validação da coordenação. Total filtrado: {resumo.total}
+            </p>
+          </div>
+          <ExportButton
+            disabled={isExporting}
+            label={isExporting ? "Exportando..." : "Exportar"}
+            onExport={(format) => void handleExport(format)}
+          />
         </div>
       </section>
 
@@ -583,12 +687,27 @@ export default function AnaliseAptosPage() {
         skeletonRows={6}
       />
 
-      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
+      <Dialog
+        open={!!selected}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelected(null);
+            setDialogAction(null);
+            setObservacao("");
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Aprovar e enviar à coordenação</DialogTitle>
+            <DialogTitle>
+              {dialogAction === "devolver_agente"
+                ? "Devolver termo para o agente"
+                : "Aprovar e enviar à coordenação"}
+            </DialogTitle>
             <DialogDescription>
-              O termo enviado pelo agente permanece no histórico. Aqui o analista só registra a observação da validação.
+              {dialogAction === "devolver_agente"
+                ? "Informe o motivo da devolução. O agente reenviará o termo no mesmo refinanciamento."
+                : "O termo enviado pelo agente permanece no histórico. Aqui o analista só registra a observação da validação."}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -600,20 +719,41 @@ export default function AnaliseAptosPage() {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSelected(null)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelected(null);
+                setDialogAction(null);
+                setObservacao("");
+              }}
+            >
               Cancelar
             </Button>
             <Button
-              disabled={!selected || aprovarMutation.isPending}
+              disabled={
+                !selected ||
+                aprovarMutation.isPending ||
+                devolverAgenteMutation.isPending ||
+                (dialogAction === "devolver_agente" && !observacao.trim())
+              }
               onClick={() => {
                 if (!selected) return;
+                if (dialogAction === "devolver_agente") {
+                  devolverAgenteMutation.mutate({
+                    id: selected.id,
+                    note: observacao,
+                  });
+                  return;
+                }
                 aprovarMutation.mutate({
                   id: selected.id,
                   note: observacao,
                 });
               }}
             >
-              Aprovar e enviar à coordenação
+              {dialogAction === "devolver_agente"
+                ? "Devolver para agente"
+                : "Aprovar e enviar à coordenação"}
             </Button>
           </DialogFooter>
         </DialogContent>

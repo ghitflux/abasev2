@@ -283,14 +283,22 @@ class ContratoViewSet(ReadOnlyModelViewSet):
                     filtered_ids.append(contrato.id)
             queryset = queryset.filter(id__in=filtered_ids)
 
-        status_renovacao = (self.request.query_params.get("status_renovacao") or "").strip()
-        if status_renovacao:
+        raw_status_renovacao = self.request.query_params.getlist("status_renovacao")
+        if len(raw_status_renovacao) == 1 and "," in raw_status_renovacao[0]:
+            raw_status_renovacao = [
+                item.strip()
+                for item in raw_status_renovacao[0].split(",")
+                if item.strip()
+            ]
+        status_renovacao_values = [item for item in raw_status_renovacao if item]
+        if status_renovacao_values:
             contratos_filtrados = list(queryset)
             queryset = queryset.filter(
                 id__in=[
                     contrato.id
                     for contrato in contratos_filtrados
-                    if str(build_contract_cycle_projection(contrato)["status_renovacao"]) == status_renovacao
+                    if str(build_contract_cycle_projection(contrato)["status_renovacao"])
+                    in status_renovacao_values
                 ]
             )
 

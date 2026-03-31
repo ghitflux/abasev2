@@ -24,6 +24,10 @@ class Contrato(BaseModel):
         ENCERRADO = "encerrado", "Encerrado"
         CANCELADO = "cancelado", "Cancelado"
 
+    class CancelamentoTipo(models.TextChoices):
+        CANCELADO = "cancelado", "Cancelado"
+        DESISTENTE = "desistente", "Desistente"
+
     associado = models.ForeignKey(
         "associados.Associado", on_delete=models.PROTECT, related_name="contratos"
     )
@@ -71,6 +75,14 @@ class Contrato(BaseModel):
     )
     admin_manual_layout_enabled = models.BooleanField(default=False)
     admin_manual_layout_updated_at = models.DateTimeField(null=True, blank=True)
+    cancelamento_tipo = models.CharField(
+        max_length=20,
+        choices=CancelamentoTipo.choices,
+        blank=True,
+        default="",
+    )
+    cancelamento_motivo = models.TextField(blank=True)
+    cancelado_em = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]

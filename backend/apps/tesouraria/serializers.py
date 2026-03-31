@@ -70,6 +70,7 @@ class TesourariaContratoListSerializer(serializers.Serializer):
     chave_pix = serializers.SerializerMethodField()
     codigo = serializers.CharField(read_only=True)
     data_assinatura = serializers.DateTimeField(source="created_at", read_only=True)
+    data_solicitacao = serializers.DateTimeField(source="created_at", read_only=True)
     status = serializers.SerializerMethodField()
     agente = SimpleUserSerializer(read_only=True)
     agente_nome = serializers.CharField(source="agente.full_name", read_only=True)
@@ -91,11 +92,16 @@ class TesourariaContratoListSerializer(serializers.Serializer):
     situacao_esteira = serializers.CharField(
         source="associado.esteira_item.status", read_only=True
     )
+    cancelamento_tipo = serializers.CharField(read_only=True)
+    cancelamento_motivo = serializers.CharField(read_only=True)
+    cancelado_em = serializers.DateTimeField(read_only=True)
 
     def get_status(self, obj) -> str:
         esteira = getattr(obj.associado, "esteira_item", None)
         if obj.status == obj.Status.CANCELADO:
             return "cancelado"
+        if obj.status == obj.Status.ENCERRADO:
+            return "liquidado"
         if esteira and esteira.etapa_atual == "concluido":
             return "concluido"
         if esteira and esteira.status == "pendenciado":
@@ -143,6 +149,16 @@ class SubstituirComprovanteSerializer(serializers.Serializer):
 
 
 class CongelarContratoSerializer(serializers.Serializer):
+    motivo = serializers.CharField()
+
+
+class CancelarContratoSerializer(serializers.Serializer):
+    tipo = serializers.ChoiceField(
+        choices=[
+            Contrato.CancelamentoTipo.CANCELADO,
+            Contrato.CancelamentoTipo.DESISTENTE,
+        ]
+    )
     motivo = serializers.CharField()
 
 
@@ -273,6 +289,10 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
     ciclos = serializers.SerializerMethodField()
     parcelas_total = serializers.SerializerMethodField()
     parcelas_pagas = serializers.SerializerMethodField()
+    data_solicitacao = serializers.DateTimeField(source="created_at", read_only=True)
+    cancelamento_tipo = serializers.CharField(read_only=True)
+    cancelamento_motivo = serializers.CharField(read_only=True)
+    cancelado_em = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Contrato
@@ -289,6 +309,7 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
             "possui_meses_nao_descontados",
             "meses_nao_descontados_count",
             "data_contrato",
+            "data_solicitacao",
             "auxilio_liberado_em",
             "pagamento_inicial_status",
             "pagamento_inicial_status_label",
@@ -298,6 +319,9 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
             "comissao_agente",
             "parcelas_total",
             "parcelas_pagas",
+            "cancelamento_tipo",
+            "cancelamento_motivo",
+            "cancelado_em",
             "comprovantes_efetivacao",
             "pagamento_inicial_evidencias",
             "ciclos",

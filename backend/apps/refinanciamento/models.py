@@ -17,6 +17,14 @@ class Refinanciamento(BaseModel):
             "Solicitado para liquidação",
         )
         EM_ANALISE_RENOVACAO = "em_analise_renovacao", "Em análise para renovação"
+        PENDENTE_TERMO_ANALISTA = (
+            "pendente_termo_analista",
+            "Pendente termo para o analista",
+        )
+        PENDENTE_TERMO_AGENTE = (
+            "pendente_termo_agente",
+            "Pendente termo para o agente",
+        )
         APROVADO_ANALISE_RENOVACAO = (
             "aprovado_analise_renovacao",
             "Aprovado pela análise para renovação",

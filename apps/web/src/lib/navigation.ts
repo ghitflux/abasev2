@@ -65,6 +65,7 @@ const ROLE_ROUTE_PREFIXES: Record<Role, string[]> = {
 const ROUTE_SEARCH_ALIASES: Partial<Record<string, string[]>> = {
   "/dashboard": ["inicio", "painel", "visao geral"],
   "/agentes/meus-contratos": ["contratos", "meus contratos", "cadastros"],
+  "/associados/novo": ["novo associado", "cadastro associado", "cadastrar associado"],
   "/agentes/cadastrar-associado": [
     "novo associado",
     "cadastro associado",
@@ -205,13 +206,19 @@ export const navigationSections: NavigationSection[] = [
       {
         title: "Cadastros",
         icon: Users,
-        roles: ["ADMIN", "AGENTE", "COORDENADOR"],
+        roles: ["ADMIN", "AGENTE", "COORDENADOR", "ANALISTA"],
         children: [
           {
             title: "Meus Contratos",
             href: "/agentes/meus-contratos",
             icon: BriefcaseBusiness,
             roles: ["AGENTE", "ADMIN"],
+          },
+          {
+            title: "Cadastrar Associado",
+            href: "/associados/novo",
+            icon: Users,
+            roles: ["ADMIN", "COORDENADOR", "ANALISTA"],
           },
           {
             title: "Cadastrar Associado",
@@ -517,6 +524,13 @@ export function canAccessPath(path: string, roles: Role[] = []) {
   if (
     (roles.includes("AGENTE") || roles.includes("ANALISTA")) &&
     isAgentAssociadoDetailPath(pathname)
+  ) {
+    return true;
+  }
+
+  if (
+    pathname === "/associados/novo" &&
+    (roles.includes("ANALISTA") || roles.includes("COORDENADOR"))
   ) {
     return true;
   }

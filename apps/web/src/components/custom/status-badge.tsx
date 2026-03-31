@@ -31,6 +31,10 @@ const STATUS_STYLES: Record<string, string> = {
   ciclo_iniciado: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   em_analise: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   em_analise_renovacao: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
+  pendente_termo_analista:
+    "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
+  pendente_termo_agente:
+    "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
   aprovado_analise_renovacao:
     "bg-violet-500/15 text-violet-300 ring-1 ring-violet-500/30",
   aprovado_para_renovacao:
@@ -59,6 +63,7 @@ const STATUS_STYLES: Record<string, string> = {
   rejeitado: "bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30",
   erro: "bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30",
   cancelado: "bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30",
+  desistente: "bg-rose-500/15 text-rose-300 ring-1 ring-rose-500/30",
   bloqueado: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
   revertido: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",
   revertida: "bg-slate-500/15 text-slate-300 ring-1 ring-slate-500/30",

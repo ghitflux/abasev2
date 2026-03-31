@@ -438,6 +438,82 @@ class RefinanciamentoPagamentosTestCase(TestCase):
             refinanciamento.status,
             Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
         )
+
+    def test_fluxo_devolucao_de_termo_reaproveita_mesmo_refinanciamento(self):
+        contrato = self._create_contrato("73345678902")
+        self._create_pagamento(contrato, date(2026, 1, 1))
+        self._create_pagamento(contrato, date(2026, 2, 1))
+
+        solicitar = self._solicitar_refinanciamento(contrato)
+        self.assertEqual(solicitar.status_code, 201, solicitar.json())
+        refinanciamento_id = solicitar.json()["id"]
+
+        assumir = self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/assumir_analise/"
+        )
+        self.assertEqual(assumir.status_code, 200, assumir.json())
+
+        aprovacao_analise = self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar_analise/",
+            {"observacao": "Termo inicial aprovado."},
+            format="json",
+        )
+        self.assertEqual(aprovacao_analise.status_code, 200, aprovacao_analise.json())
+
+        devolucao_analise = self.coord_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/devolver-analise/",
+            {"observacao": "Revisar assinatura do termo."},
+            format="json",
+        )
+        self.assertEqual(devolucao_analise.status_code, 200, devolucao_analise.json())
+
+        refinanciamento = Refinanciamento.objects.get(pk=refinanciamento_id)
+        self.assertEqual(
+            refinanciamento.status,
+            Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+        )
+        self.assertEqual(refinanciamento.coordenador_note, "Revisar assinatura do termo.")
+
+        devolucao_agente = self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/devolver-agente/",
+            {"observacao": "Assinatura ilegível, reenviar termo."},
+            format="json",
+        )
+        self.assertEqual(devolucao_agente.status_code, 200, devolucao_agente.json())
+
+        refinanciamento.refresh_from_db()
+        self.assertEqual(
+            refinanciamento.status,
+            Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
+        )
+        self.assertEqual(
+            refinanciamento.analista_note,
+            "Assinatura ilegível, reenviar termo.",
+        )
+
+        reenvio = self.agent_client.post(
+            f"/api/v1/refinanciamentos/{contrato.id}/solicitar/",
+            {"termo_antecipacao": self._termo_file("termo-reenviado.pdf")},
+            format="multipart",
+        )
+        self.assertEqual(reenvio.status_code, 201, reenvio.json())
+        self.assertEqual(reenvio.json()["id"], refinanciamento_id)
+
+        refinanciamento.refresh_from_db()
+        self.assertEqual(
+            refinanciamento.status,
+            Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+        )
+        self.assertEqual(
+            refinanciamento.observacao,
+            "Agente reenviou o termo de antecipação para nova análise.",
+        )
+        self.assertEqual(
+            refinanciamento.comprovantes.filter(
+                tipo=Comprovante.Tipo.TERMO_ANTECIPACAO
+            ).count(),
+            2,
+        )
         self.assertEqual(refinanciamento.coordenador_note, "Encaminhado para liquidacao")
 
         fila_coord = self.coord_client.get("/api/v1/coordenacao/refinanciamento/")

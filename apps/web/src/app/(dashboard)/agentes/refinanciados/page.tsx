@@ -28,12 +28,14 @@ import {
   formatMonthYear,
 } from "@/lib/formatters";
 import { maskCPFCNPJ } from "@/lib/masks";
+import { exportPaginatedRouteReport } from "@/lib/reports";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import ExportButton from "@/components/shared/export-button";
 import { MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
@@ -75,6 +77,8 @@ const HISTORY_STATUS_OPTIONS = [
   { value: "todos", label: "Todos no fluxo" },
   { value: "solicitado_para_liquidacao", label: "Solicitada para liquidação" },
   { value: "em_analise_renovacao", label: "Em análise" },
+  { value: "pendente_termo_analista", label: "Pendente termo no analista" },
+  { value: "pendente_termo_agente", label: "Pendente termo no agente" },
   { value: "aprovado_analise_renovacao", label: "Aguardando coordenação" },
   { value: "aprovado_para_renovacao", label: "Aguardando tesouraria" },
   { value: "efetivado", label: "Efetivados" },
@@ -126,6 +130,7 @@ export default function AgenteRefinanciadosPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = React.useState<RefinanciadosTab>("historico");
   const [search, setSearch] = React.useState("");
+  const [isExporting, setIsExporting] = React.useState(false);
   const [historyFilters, setHistoryFilters] =
     React.useState<HistoryAdvancedFilters>(INITIAL_HISTORY_FILTERS);
   const [draftHistoryFilters, setDraftHistoryFilters] =
@@ -143,6 +148,8 @@ export default function AgenteRefinanciadosPage() {
       ? [
           "solicitado_para_liquidacao",
           "em_analise_renovacao",
+          "pendente_termo_analista",
+          "pendente_termo_agente",
           "aprovado_analise_renovacao",
           "aprovado_para_renovacao",
           "efetivado",
@@ -209,7 +216,7 @@ export default function AgenteRefinanciadosPage() {
           page,
           page_size: Number(pageSize),
           associado: debouncedSearch || undefined,
-          status_renovacao: "apto_a_renovar",
+          status_renovacao: ["apto_a_renovar", "pendente_termo_agente"],
         },
       }),
   });
@@ -399,7 +406,11 @@ export default function AgenteRefinanciadosPage() {
             <p className="font-mono text-xs text-foreground">{row.codigo}</p>
             <StatusBadge
               status={row.status_renovacao || "apto_a_renovar"}
-              label="Apto a renovar"
+              label={
+                row.status_renovacao === "pendente_termo_agente"
+                  ? "Aguardando novo termo"
+                  : "Apto a renovar"
+              }
             />
           </div>
         ),
@@ -455,7 +466,9 @@ export default function AgenteRefinanciadosPage() {
           <div className="flex flex-wrap gap-2">
             <Button size="sm" onClick={() => setSendTarget(row)}>
               <ClipboardCheckIcon className="size-4" />
-              Enviar para renovação
+              {row.status_renovacao === "pendente_termo_agente"
+                ? "Reenviar termo"
+                : "Enviar para renovação"}
             </Button>
             <Button size="sm" variant="outline" onClick={() => setLiquidacaoTarget(row)}>
               <HandCoinsIcon className="size-4" />
@@ -468,6 +481,72 @@ export default function AgenteRefinanciadosPage() {
     [],
   );
 
+  const handleExport = React.useCallback(
+    async (format: "csv" | "pdf" | "excel" | "xlsx") => {
+      if (format !== "pdf" && format !== "xlsx") {
+        return;
+      }
+
+      setIsExporting(true);
+      try {
+        if (tab === "historico") {
+          await exportPaginatedRouteReport<RefinanciamentoItem>({
+            route: "/agentes/refinanciados",
+            format,
+            sourcePath: "refinanciamentos",
+            sourceQuery: {
+              search: debouncedSearch || undefined,
+              status: resolvedHistoryStatus,
+              competencia_start: toCompetenciaDate(historyFilters.competenciaStart),
+              competencia_end: toCompetenciaDate(historyFilters.competenciaEnd),
+            },
+            mapRow: (row) => ({
+              contrato_codigo: row.contrato_codigo,
+              associado_nome: row.associado_nome,
+              status: row.status,
+              data_solicitacao: row.data_solicitacao,
+              valor_refinanciamento: row.valor_refinanciamento,
+              repasse_agente: row.repasse_agente,
+              analista_note: row.analista_note ?? "",
+              coordenador_note: row.coordenador_note ?? "",
+            }),
+          });
+        } else {
+          await exportPaginatedRouteReport<ContratoListItem>({
+            route: "/agentes/refinanciados",
+            format,
+            sourcePath: "contratos",
+            sourceQuery: {
+              associado: debouncedSearch || undefined,
+              status_renovacao: ["apto_a_renovar", "pendente_termo_agente"],
+            },
+            mapRow: (row) => ({
+              contrato_codigo: row.codigo,
+              associado_nome: row.associado.nome_completo,
+              status: row.status_renovacao,
+              data_solicitacao: row.data_contrato,
+              valor_refinanciamento: row.valor_auxilio_liberado,
+              repasse_agente: row.comissao_agente,
+              analista_note: "",
+              coordenador_note: "",
+            }),
+          });
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Falha ao exportar renovações.");
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [
+      debouncedSearch,
+      historyFilters.competenciaEnd,
+      historyFilters.competenciaStart,
+      resolvedHistoryStatus,
+      tab,
+    ],
+  );
+
   return (
     <Tabs
       value={tab}
@@ -478,7 +557,7 @@ export default function AgenteRefinanciadosPage() {
       className="space-y-6"
     >
       <section className="rounded-[1.75rem] border border-border/60 bg-card/70 p-6 shadow-xl shadow-black/15">
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
             <h1 className="text-3xl font-semibold tracking-tight">
               Renovações
@@ -492,6 +571,11 @@ export default function AgenteRefinanciadosPage() {
               <TabsTrigger value="aptos">Aptos a renovar</TabsTrigger>
             </TabsList>
           </div>
+          <ExportButton
+            disabled={isExporting}
+            label={isExporting ? "Exportando..." : "Exportar"}
+            onExport={(format) => void handleExport(format)}
+          />
         </div>
       </section>
 
@@ -759,6 +843,9 @@ export default function AgenteRefinanciadosPage() {
               {sendTarget
                 ? `${sendTarget.associado.nome_completo} · ${sendTarget.codigo}`
                 : "Anexe o termo de antecipação para encaminhar a renovação ao analista."}
+              {sendTarget?.status_renovacao === "pendente_termo_agente"
+                ? " Reenvie o termo solicitado pelo analista no mesmo refinanciamento."
+                : ""}
             </DialogDescription>
           </DialogHeader>
           <FileUploadDropzone
@@ -787,7 +874,9 @@ export default function AgenteRefinanciadosPage() {
                 });
               }}
             >
-              Enviar para renovação
+              {sendTarget?.status_renovacao === "pendente_termo_agente"
+                ? "Reenviar termo"
+                : "Enviar para renovação"}
             </Button>
           </DialogFooter>
         </DialogContent>

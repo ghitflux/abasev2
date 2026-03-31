@@ -811,6 +811,9 @@ export type ContratoListItem = {
   refinanciamento_id: number | null;
   possui_meses_nao_descontados: boolean;
   meses_nao_descontados_count: number;
+  cancelamento_tipo?: string;
+  cancelamento_motivo?: string;
+  cancelado_em?: string | null;
 };
 
 export type ContratoResumoCards = {
@@ -852,6 +855,7 @@ export type TesourariaContratoItem = {
   chave_pix: string;
   codigo: string;
   data_assinatura: string;
+  data_solicitacao: string;
   status: string;
   agente?: SimpleUser | null;
   agente_nome: string;
@@ -863,6 +867,9 @@ export type TesourariaContratoItem = {
   observacao_tesouraria?: string;
   etapa_atual: string;
   situacao_esteira: string;
+  cancelamento_tipo?: string;
+  cancelamento_motivo?: string;
+  cancelado_em?: string | null;
 };
 
 export type ConfirmacaoItem = {
@@ -1193,6 +1200,7 @@ export type RefinanciamentoItem = {
   data_ativacao_ciclo: string | null;
   origem_data_ativacao: string;
   data_solicitacao_renovacao: string | null;
+  data_solicitacao: string;
   ativacao_inferida: boolean;
   etapa_operacional: string;
   motivo_apto_renovacao: string;
@@ -1247,6 +1255,7 @@ export type PagamentoAgenteItem = {
   possui_meses_nao_descontados: boolean;
   meses_nao_descontados_count: number;
   data_contrato: string;
+  data_solicitacao: string;
   auxilio_liberado_em: string | null;
   pagamento_inicial_status: string;
   pagamento_inicial_status_label: string;
@@ -1256,6 +1265,9 @@ export type PagamentoAgenteItem = {
   comissao_agente: string;
   parcelas_total: number;
   parcelas_pagas: number;
+  cancelamento_tipo?: string;
+  cancelamento_motivo?: string;
+  cancelado_em?: string | null;
   comprovantes_efetivacao: PagamentoInicialEvidencia[];
   pagamento_inicial_evidencias: PagamentoInicialEvidencia[];
   ciclos: Array<{

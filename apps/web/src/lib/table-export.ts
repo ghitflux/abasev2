@@ -138,7 +138,7 @@ function exportAsPrintableHtml<T>(
 }
 
 export function exportRows<T>(
-  format: "csv" | "pdf" | "excel",
+  format: "csv" | "pdf" | "excel" | "xlsx",
   title: string,
   filenameBase: string,
   columns: TableExportColumn<T>[],
@@ -150,6 +150,6 @@ export function exportRows<T>(
   }
 
   const separator = format === "csv" ? ";" : "\t";
-  const extension = format === "csv" ? "csv" : "xls";
+  const extension = format === "csv" ? "csv" : format === "xlsx" ? "xlsx" : "xls";
   exportAsSeparatedText(`${filenameBase}.${extension}`, columns, rows, separator);
 }

@@ -13,6 +13,7 @@ import {
   TriangleAlertIcon,
   WalletIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import type {
   AssociadoCyclesPayload,
@@ -44,6 +45,7 @@ import DashboardDetailDialog from "@/components/shared/dashboard-detail-dialog";
 import DataTable, {
   type DataTableColumn,
 } from "@/components/shared/data-table";
+import ExportButton from "@/components/shared/export-button";
 import { InlinePanelSkeleton, MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +69,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { exportPaginatedRouteReport } from "@/lib/reports";
 
 const ETAPA_FLUXO_LABELS: Record<string, string> = {
   analise: "Análise",
@@ -167,7 +170,7 @@ const METRIC_META: Record<
     title: "Liquidados",
     tone: "positive",
     icon: HandCoinsIcon,
-    delta: () => "Regra temporária: contratos encerrados",
+    delta: () => "Contratos encerrados no fluxo",
   },
 };
 
@@ -326,6 +329,7 @@ export default function MeusContratosPage() {
   const [detailMetric, setDetailMetric] =
     React.useState<ContratoMetricKey | null>(null);
   const [page, setPage] = React.useState(1);
+  const [isExporting, setIsExporting] = React.useState(false);
   const [pageSize, setPageSize] = React.useState("10");
   const [mensalidadesFilter, setMensalidadesFilter] = React.useState("todas");
   const debouncedAssociadoFilter = useDebouncedValue(associadoFilter, 300);
@@ -464,6 +468,39 @@ export default function MeusContratosPage() {
     ],
   );
 
+  const handleExport = React.useCallback(
+    async (format: "csv" | "pdf" | "excel" | "xlsx") => {
+      if (format !== "pdf" && format !== "xlsx") {
+        return;
+      }
+
+      setIsExporting(true);
+      try {
+        await exportPaginatedRouteReport<ContratoListItem>({
+          route: "/agentes/meus-contratos",
+          format,
+          sourcePath: "contratos",
+          sourceQuery: baseQueryFilters,
+          mapRow: (row) => ({
+            codigo: row.codigo,
+            associado: row.associado.nome_completo,
+            status_visual_label: row.status_visual_label,
+            etapa_fluxo: row.etapa_fluxo,
+            valor_mensalidade: row.valor_mensalidade,
+            status_renovacao: row.status_renovacao,
+            cancelamento_tipo: row.cancelamento_tipo ?? "",
+            cancelamento_motivo: row.cancelamento_motivo ?? "",
+          }),
+        });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Falha ao exportar contratos.");
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [baseQueryFilters],
+  );
+
   React.useEffect(() => {
     if (page > totalPages) {
       setPage(totalPages);
@@ -536,6 +573,23 @@ export default function MeusContratosPage() {
                   <p className="text-xs text-amber-200">
                     {row.meses_nao_descontados_count} mês(es) não descontado(s)
                   </p>
+                ) : null}
+                {row.cancelamento_tipo ? (
+                  <div className="space-y-1">
+                    <Badge className="rounded-full bg-rose-500/15 text-rose-200">
+                      {row.cancelamento_tipo === "desistente"
+                        ? "Desistente"
+                        : "Cancelado"}
+                    </Badge>
+                    <p className="max-w-xs text-xs text-rose-200/90">
+                      {row.cancelamento_motivo || "Contrato encerrado antes da ativação."}
+                    </p>
+                    {row.cancelado_em ? (
+                      <p className="text-[11px] text-muted-foreground">
+                        Registrado em {formatDate(row.cancelado_em)}
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
             </div>
             <div className="space-y-1">
@@ -730,11 +784,18 @@ export default function MeusContratosPage() {
                 : "Acompanhe seus contratos, quitações do ciclo atual e prontidão para renovação."}
             </p>
           </div>
-          {!isAdmin ? (
-            <Button asChild>
-              <Link href="/agentes/cadastrar-associado">+ Novo Associado</Link>
-            </Button>
-          ) : null}
+          <div className="flex flex-wrap gap-3">
+            <ExportButton
+              disabled={isExporting}
+              label={isExporting ? "Exportando..." : "Exportar"}
+              onExport={(format) => void handleExport(format)}
+            />
+            {!isAdmin ? (
+              <Button asChild>
+                <Link href="/agentes/cadastrar-associado">+ Novo Associado</Link>
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

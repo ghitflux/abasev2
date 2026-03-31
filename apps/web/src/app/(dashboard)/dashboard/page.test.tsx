@@ -79,7 +79,7 @@ jest.mock("@/components/shared/export-button", () => {
       disabled = false,
       label = "Exportar",
     }: {
-      onExport: (format: "csv" | "pdf" | "excel") => void;
+      onExport: (format: "csv" | "pdf" | "excel" | "xlsx") => void;
       disabled?: boolean;
       label?: string;
     }) =>

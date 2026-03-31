@@ -6,7 +6,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDaysIcon,
   EyeIcon,
-  FileDownIcon,
   SlidersHorizontalIcon,
   PaperclipIcon,
   LockIcon,
@@ -20,11 +19,13 @@ import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
 import { formatCurrency, formatDateTime, formatLongMonthYear } from "@/lib/formatters";
 import { maskCPFCNPJ } from "@/lib/masks";
+import { exportRouteReport, fetchAllPaginatedRows } from "@/lib/reports";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import StatusBadge from "@/components/custom/status-badge";
 import AssociadoDetailsDialog from "@/components/associados/associado-details-dialog";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import ExportButton from "@/components/shared/export-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -65,13 +66,19 @@ const comprovanteAccept = {
 const PAGE_SIZE = 5;
 
 type DraftMap = Record<number, { associado?: File; agente?: File }>;
-type TesourariaPagamentoFilter = "pendente" | "concluido" | "cancelado" | "processado";
+type TesourariaPagamentoFilter =
+  | "pendente"
+  | "concluido"
+  | "liquidado"
+  | "cancelado"
+  | "processado";
 type AdvancedFiltersDraft = {
   dataInicio: string;
   dataFim: string;
   agente: string;
   statusContrato: string;
   situacaoEsteira: string;
+  ordering: string;
 };
 
 function countAdvancedFilters(filters: AdvancedFiltersDraft) {
@@ -81,6 +88,7 @@ function countAdvancedFilters(filters: AdvancedFiltersDraft) {
     Boolean(filters.agente),
     filters.statusContrato !== "todos",
     filters.situacaoEsteira !== "todos",
+    filters.ordering !== "-created_at",
   ].filter(Boolean).length;
 }
 
@@ -94,6 +102,7 @@ function useTesourariaQuery({
   agente,
   statusContrato,
   situacaoEsteira,
+  ordering,
 }: {
   page: number;
   competencia: Date;
@@ -104,6 +113,7 @@ function useTesourariaQuery({
   agente: string;
   statusContrato: string;
   situacaoEsteira: string;
+  ordering: string;
 }) {
   return useQuery({
     queryKey: [
@@ -117,6 +127,7 @@ function useTesourariaQuery({
       agente,
       statusContrato,
       situacaoEsteira,
+      ordering,
     ],
     queryFn: () =>
       apiFetch<PaginatedResponse<TesourariaContratoItem>>("tesouraria/contratos", {
@@ -131,6 +142,7 @@ function useTesourariaQuery({
           agente: agente || undefined,
           status_contrato: statusContrato === "todos" ? undefined : statusContrato,
           situacao_esteira: situacaoEsteira === "todos" ? undefined : situacaoEsteira,
+          ordering,
         },
       }),
   });
@@ -140,8 +152,10 @@ export default function TesourariaPage() {
   const queryClient = useQueryClient();
   const [competencia, setCompetencia] = React.useState(() => new Date());
   const [search, setSearch] = React.useState("");
+  const [isExporting, setIsExporting] = React.useState(false);
   const [pagePending, setPagePending] = React.useState(1);
   const [pagePaid, setPagePaid] = React.useState(1);
+  const [pageLiquidated, setPageLiquidated] = React.useState(1);
   const [pageCanceled, setPageCanceled] = React.useState(1);
   const [showOnlyPending, setShowOnlyPending] = React.useState(false);
   const [dataInicio, setDataInicio] = React.useState("");
@@ -149,16 +163,21 @@ export default function TesourariaPage() {
   const [agenteFiltro, setAgenteFiltro] = React.useState("");
   const [statusContrato, setStatusContrato] = React.useState("todos");
   const [situacaoEsteira, setSituacaoEsteira] = React.useState("todos");
+  const [ordering, setOrdering] = React.useState("-created_at");
   const [draftAdvancedFilters, setDraftAdvancedFilters] = React.useState<AdvancedFiltersDraft>({
     dataInicio: "",
     dataFim: "",
     agente: "",
     statusContrato: "todos",
     situacaoEsteira: "todos",
+    ordering: "-created_at",
   });
   const [drafts, setDrafts] = React.useState<DraftMap>({});
   const [freezeTarget, setFreezeTarget] = React.useState<TesourariaContratoItem | null>(null);
   const [freezeReason, setFreezeReason] = React.useState("");
+  const [cancelTarget, setCancelTarget] = React.useState<TesourariaContratoItem | null>(null);
+  const [cancelReason, setCancelReason] = React.useState("");
+  const [cancelType, setCancelType] = React.useState<"cancelado" | "desistente">("cancelado");
   const [bankTarget, setBankTarget] = React.useState<TesourariaContratoItem | null>(null);
   const [detailTarget, setDetailTarget] = React.useState<TesourariaContratoItem | null>(null);
 
@@ -172,6 +191,7 @@ export default function TesourariaPage() {
     agente: agenteFiltro,
     statusContrato,
     situacaoEsteira,
+    ordering,
   });
   const paidQuery = useTesourariaQuery({
     page: pagePaid,
@@ -183,6 +203,19 @@ export default function TesourariaPage() {
     agente: agenteFiltro,
     statusContrato,
     situacaoEsteira,
+    ordering,
+  });
+  const liquidatedQuery = useTesourariaQuery({
+    page: pageLiquidated,
+    competencia,
+    search,
+    pagamento: "liquidado",
+    dataInicio,
+    dataFim,
+    agente: agenteFiltro,
+    statusContrato,
+    situacaoEsteira,
+    ordering,
   });
   const canceledQuery = useTesourariaQuery({
     page: pageCanceled,
@@ -194,6 +227,7 @@ export default function TesourariaPage() {
     agente: agenteFiltro,
     statusContrato,
     situacaoEsteira,
+    ordering,
   });
 
   const efetivarMutation = useMutation({
@@ -274,6 +308,33 @@ export default function TesourariaPage() {
       toast.error(
         error instanceof Error ? error.message : "Falha ao substituir o comprovante.",
       );
+    },
+  });
+
+  const cancelarMutation = useMutation({
+    mutationFn: async ({
+      contratoId,
+      tipo,
+      motivo,
+    }: {
+      contratoId: number;
+      tipo: "cancelado" | "desistente";
+      motivo: string;
+    }) =>
+      apiFetch<TesourariaContratoItem>(`tesouraria/contratos/${contratoId}/cancelar`, {
+        method: "POST",
+        body: { tipo, motivo },
+      }),
+    onSuccess: () => {
+      toast.success("Contrato cancelado com sucesso.");
+      setCancelTarget(null);
+      setCancelReason("");
+      setCancelType("cancelado");
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-contratos"] });
+      void queryClient.invalidateQueries({ queryKey: ["contratos"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Falha ao cancelar contrato.");
     },
   });
 
@@ -398,13 +459,19 @@ export default function TesourariaPage() {
       {
         id: "pix",
         header: "Chave PIX",
-        cell: (row) => row.chave_pix || "—",
+        cell: (row) =>
+          row.chave_pix ? (
+            <CopySnippet label="PIX" value={row.chave_pix} inline />
+          ) : (
+            "—"
+          ),
       },
       {
         id: "acao",
         header: "Ação",
         cell: (row) => {
           const canFreeze = row.status === "pendente" || row.status === "congelado";
+          const canCancel = row.status === "pendente" || row.status === "congelado";
 
           return (
             <div className="flex min-w-52 flex-wrap gap-2">
@@ -421,6 +488,15 @@ export default function TesourariaPage() {
               >
                 <LockIcon className="size-4" />
                 Congelar
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-rose-500/40 text-rose-200"
+                onClick={() => setCancelTarget(row)}
+                disabled={!canCancel}
+              >
+                Cancelar contrato
               </Button>
             </div>
           );
@@ -482,21 +558,108 @@ export default function TesourariaPage() {
       },
       {
         id: "data",
-        header: "Data/Hora",
-        cell: (row) => formatDateTime(row.data_assinatura),
+        header: "Data da solicitação",
+        cell: (row) => formatDateTime(row.data_solicitacao),
       },
       {
         id: "status",
         header: "Status",
-        cell: (row) => <StatusBadge status={row.status} />,
+        cell: (row) => (
+          <div className="space-y-1">
+            <StatusBadge status={row.status} />
+            {row.cancelamento_tipo ? (
+              <Badge className="rounded-full bg-rose-500/15 text-rose-200">
+                {row.cancelamento_tipo === "desistente" ? "Desistente" : "Cancelado"}
+              </Badge>
+            ) : null}
+          </div>
+        ),
       },
     ],
     [drafts, efetivarMutation, substituirComprovanteMutation],
   );
 
+  const handleExport = React.useCallback(
+    async (formatValue: "csv" | "pdf" | "excel" | "xlsx") => {
+      if (formatValue !== "pdf" && formatValue !== "xlsx") {
+        return;
+      }
+
+      setIsExporting(true);
+      try {
+        const pagamentos = showOnlyPending
+          ? (["pendente"] as const)
+          : (["pendente", "concluido", "liquidado", "cancelado"] as const);
+        const sharedQuery = {
+          competencia: format(competencia, "yyyy-MM"),
+          search: search || undefined,
+          data_inicio: dataInicio || undefined,
+          data_fim: dataFim || undefined,
+          agente: agenteFiltro || undefined,
+          status_contrato: statusContrato === "todos" ? undefined : statusContrato,
+          situacao_esteira: situacaoEsteira === "todos" ? undefined : situacaoEsteira,
+          ordering,
+        };
+
+        const rows = (
+          await Promise.all(
+            pagamentos.map((pagamento) =>
+              fetchAllPaginatedRows<TesourariaContratoItem>({
+                sourcePath: "tesouraria/contratos",
+                sourceQuery: {
+                  ...sharedQuery,
+                  pagamento,
+                },
+              }),
+            ),
+          )
+        )
+          .flat()
+          .map((row) => ({
+            codigo: row.codigo,
+            nome: row.nome,
+            cpf_cnpj: row.cpf_cnpj,
+            status: row.status,
+            data_solicitacao: row.data_solicitacao,
+            margem_disponivel: row.margem_disponivel,
+            comissao_agente: row.comissao_agente,
+            agente_nome: row.agente_nome,
+            cancelamento_tipo: row.cancelamento_tipo ?? "",
+            cancelamento_motivo: row.cancelamento_motivo ?? "",
+          }));
+
+        await exportRouteReport({
+          route: "/tesouraria",
+          format: formatValue,
+          rows,
+          filters: {
+            ...sharedQuery,
+            pagamento: pagamentos,
+          },
+        });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Falha ao exportar contratos da tesouraria.");
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [
+      agenteFiltro,
+      competencia,
+      dataFim,
+      dataInicio,
+      ordering,
+      search,
+      showOnlyPending,
+      situacaoEsteira,
+      statusContrato,
+    ],
+  );
+
   const handleRefresh = () => {
     setPagePending(1);
     setPagePaid(1);
+    setPageLiquidated(1);
     setPageCanceled(1);
     void queryClient.invalidateQueries({ queryKey: ["tesouraria-contratos"] });
   };
@@ -509,6 +672,7 @@ export default function TesourariaPage() {
 
   const pendingRows = pendingQuery.data?.results ?? [];
   const paidRows = paidQuery.data?.results ?? [];
+  const liquidatedRows = liquidatedQuery.data?.results ?? [];
   const canceledRows = canceledQuery.data?.results ?? [];
   const activeAdvancedFiltersCount = countAdvancedFilters({
     dataInicio,
@@ -516,6 +680,7 @@ export default function TesourariaPage() {
     agente: agenteFiltro,
     statusContrato,
     situacaoEsteira,
+    ordering,
   });
 
   return (
@@ -539,14 +704,16 @@ export default function TesourariaPage() {
                   setCompetencia(value);
                   setPagePending(1);
                   setPagePaid(1);
+                  setPageLiquidated(1);
                   setPageCanceled(1);
                 }}
                 className="w-full rounded-2xl bg-card/60 sm:w-56"
               />
-              <Button variant="outline" onClick={() => window.print()}>
-                <FileDownIcon className="size-4" />
-                Baixar PDF
-              </Button>
+              <ExportButton
+                disabled={isExporting}
+                label={isExporting ? "Exportando..." : "Exportar"}
+                onExport={(formatValue) => void handleExport(formatValue)}
+              />
             </div>
           </CardContent>
         </Card>
@@ -579,15 +746,16 @@ export default function TesourariaPage() {
         <Sheet
           onOpenChange={(open) => {
             if (open) {
-              setDraftAdvancedFilters({
-                dataInicio,
-                dataFim,
-                agente: agenteFiltro,
-                statusContrato,
-                situacaoEsteira,
-              });
-            }
-          }}
+                  setDraftAdvancedFilters({
+                    dataInicio,
+                    dataFim,
+                    agente: agenteFiltro,
+                    statusContrato,
+                    situacaoEsteira,
+                    ordering,
+                  });
+                }
+              }}
         >
           <SheetTrigger asChild>
             <Button variant="outline" className="rounded-2xl">
@@ -624,6 +792,25 @@ export default function TesourariaPage() {
               </FilterField>
 
               <div className="grid gap-4 md:grid-cols-2">
+                <FilterField label="Ordem">
+                  <Select
+                    value={draftAdvancedFilters.ordering}
+                    onValueChange={(value) =>
+                      setDraftAdvancedFilters((current) => ({
+                        ...current,
+                        ordering: value,
+                      }))
+                    }
+                  >
+                    <SelectTrigger className="rounded-2xl bg-card/60">
+                      <SelectValue placeholder="Mais recentes primeiro" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="-created_at">Mais recentes primeiro</SelectItem>
+                      <SelectItem value="created_at">Ordem de chegada</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FilterField>
                 <FilterField label="Data inicial">
                   <Input
                     type="date"
@@ -713,12 +900,14 @@ export default function TesourariaPage() {
                   setDataFim("");
                   setStatusContrato("todos");
                   setSituacaoEsteira("todos");
+                  setOrdering("-created_at");
                   setDraftAdvancedFilters({
                     dataInicio: "",
                     dataFim: "",
                     agente: "",
                     statusContrato: "todos",
                     situacaoEsteira: "todos",
+                    ordering: "-created_at",
                   });
                   handleRefresh();
                 }}
@@ -734,6 +923,7 @@ export default function TesourariaPage() {
                     setDataFim(draftAdvancedFilters.dataFim);
                     setStatusContrato(draftAdvancedFilters.statusContrato);
                     setSituacaoEsteira(draftAdvancedFilters.situacaoEsteira);
+                    setOrdering(draftAdvancedFilters.ordering);
                     handleRefresh();
                   }}
                 >
@@ -752,12 +942,14 @@ export default function TesourariaPage() {
             setDataFim("");
             setStatusContrato("todos");
             setSituacaoEsteira("todos");
+            setOrdering("-created_at");
             setDraftAdvancedFilters({
               dataInicio: "",
               dataFim: "",
               agente: "",
               statusContrato: "todos",
               situacaoEsteira: "todos",
+              ordering: "-created_at",
             });
             handleRefresh();
           }}
@@ -819,10 +1011,34 @@ export default function TesourariaPage() {
           <section className="space-y-4">
             <header className="flex items-center justify-between">
               <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-rose-300">
-                  Cancelados
+                <p className="text-xs uppercase tracking-[0.28em] text-emerald-300">
+                  Liquidados
                 </p>
-                <h2 className="text-xl font-semibold">Contratos cancelados</h2>
+                <h2 className="text-xl font-semibold">Contratos liquidados</h2>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Mostrando {buildRangeLabel(pageLiquidated, liquidatedRows.length, liquidatedQuery.data?.count ?? 0)}
+              </p>
+            </header>
+            <DataTable
+              data={liquidatedRows}
+              columns={columns}
+              currentPage={pageLiquidated}
+              totalPages={Math.max(1, Math.ceil((liquidatedQuery.data?.count ?? 0) / PAGE_SIZE))}
+              onPageChange={setPageLiquidated}
+              emptyMessage="Nenhum contrato liquidado para os filtros informados."
+              loading={liquidatedQuery.isLoading}
+              skeletonRows={PAGE_SIZE}
+            />
+          </section>
+
+          <section className="space-y-4">
+            <header className="flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-[0.28em] text-rose-300">
+                  Cancelados / Desistentes
+                </p>
+                <h2 className="text-xl font-semibold">Contratos cancelados / desistentes</h2>
               </div>
               <p className="text-sm text-muted-foreground">
                 Mostrando {buildRangeLabel(pageCanceled, canceledRows.length, canceledQuery.data?.count ?? 0)}
@@ -834,7 +1050,7 @@ export default function TesourariaPage() {
               currentPage={pageCanceled}
               totalPages={Math.max(1, Math.ceil((canceledQuery.data?.count ?? 0) / PAGE_SIZE))}
               onPageChange={setPageCanceled}
-              emptyMessage="Nenhum contrato cancelado para os filtros informados."
+              emptyMessage="Nenhum contrato cancelado ou desistente para os filtros informados."
               loading={canceledQuery.isLoading}
               skeletonRows={PAGE_SIZE}
             />
@@ -894,6 +1110,73 @@ export default function TesourariaPage() {
             <InfoLine label="Tipo" value={bankTarget?.dados_bancarios?.tipo_conta} />
             <InfoLine label="Chave PIX" value={bankTarget?.dados_bancarios?.chave_pix || "—"} />
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!cancelTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCancelTarget(null);
+            setCancelReason("");
+            setCancelType("cancelado");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancelar contrato</DialogTitle>
+            <DialogDescription>
+              Escolha se o contrato foi cancelado internamente ou se o cliente desistiu
+              antes da ativação.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Select value={cancelType} onValueChange={(value) => setCancelType(value as "cancelado" | "desistente")}>
+              <SelectTrigger className="rounded-2xl bg-card/60">
+                <SelectValue placeholder="Tipo do cancelamento" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cancelado">Cancelado</SelectItem>
+                <SelectItem value="desistente">Desistente</SelectItem>
+              </SelectContent>
+            </Select>
+            <Textarea
+              value={cancelReason}
+              onChange={(event) => setCancelReason(event.target.value)}
+              placeholder="Motivo do cancelamento"
+              className="min-h-32"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCancelTarget(null);
+                setCancelReason("");
+                setCancelType("cancelado");
+              }}
+            >
+              Voltar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!cancelTarget || !cancelReason.trim() || cancelarMutation.isPending}
+              onClick={() => {
+                if (!cancelTarget || !cancelReason.trim()) {
+                  toast.error("Informe o motivo do cancelamento.");
+                  return;
+                }
+                cancelarMutation.mutate({
+                  contratoId: cancelTarget.id,
+                  tipo: cancelType,
+                  motivo: cancelReason,
+                });
+              }}
+            >
+              Confirmar cancelamento
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

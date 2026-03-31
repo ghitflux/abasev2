@@ -24,6 +24,7 @@ from .serializers import (
     AprovarRefinanciamentoSerializer,
     AprovarEmMassaRefinanciamentoSerializer,
     BloquearRefinanciamentoSerializer,
+    DevolverRefinanciamentoSerializer,
     DesativarRefinanciamentoSerializer,
     EncaminharLiquidacaoRefinanciamentoSerializer,
     EfetivarRefinanciamentoSerializer,
@@ -156,6 +157,7 @@ class BaseRefinanciamentoViewSet(
             return queryset.filter(
                 status__in=[
                     Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                    Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
                     Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
                 ]
             )
@@ -177,7 +179,13 @@ class BaseRefinanciamentoViewSet(
         resumo = queryset.aggregate(
             total=Count("id"),
             em_analise=Count(
-                "id", filter=Q(status=Refinanciamento.Status.EM_ANALISE_RENOVACAO)
+                "id",
+                filter=Q(
+                    status__in=[
+                        Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                        Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+                    ]
+                ),
             ),
             assumidos=Count(
                 "id", filter=Q(assumption_status_value=Assumption.Status.ASSUMIDO)
@@ -218,6 +226,8 @@ class BaseRefinanciamentoViewSet(
                         Refinanciamento.Status.EM_ANALISE,
                         Refinanciamento.Status.APROVADO,
                         Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                        Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+                        Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
                         Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
                         Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
                     ]
@@ -245,9 +255,10 @@ class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
             "reverter",
             "desativar",
             "encaminhar_liquidacao",
+            "devolver_analise",
         ]:
             return [permissions.IsAuthenticated(), IsCoordenadorOrAdmin()]
-        if self.action in ["assumir_analise", "aprovar_analise"]:
+        if self.action in ["assumir_analise", "aprovar_analise", "devolver_agente"]:
             return [permissions.IsAuthenticated(), IsAnalistaOrAdmin()]
         if self.action == "efetivar":
             return [permissions.IsAuthenticated(), IsTesoureiroOrAdmin()]
@@ -293,6 +304,20 @@ class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
             int(pk),
             request.user,
             payload.validated_data.get("observacao", ""),
+        )
+        serializer = RefinanciamentoDetailSerializer(
+            refinanciamento, context=self.get_serializer_context()
+        )
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="devolver-analise")
+    def devolver_analise(self, request, pk=None):
+        payload = DevolverRefinanciamentoSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        refinanciamento = RefinanciamentoService.devolver_para_analise(
+            int(pk),
+            request.user,
+            payload.validated_data["observacao"],
         )
         serializer = RefinanciamentoDetailSerializer(
             refinanciamento, context=self.get_serializer_context()
@@ -359,6 +384,20 @@ class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
         )
         return Response(serializer.data)
 
+    @action(detail=True, methods=["post"], url_path="devolver-agente")
+    def devolver_agente(self, request, pk=None):
+        payload = DevolverRefinanciamentoSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        refinanciamento = RefinanciamentoService.devolver_para_agente(
+            int(pk),
+            request.user,
+            payload.validated_data["observacao"],
+        )
+        serializer = RefinanciamentoDetailSerializer(
+            refinanciamento, context=self.get_serializer_context()
+        )
+        return Response(serializer.data)
+
     @action(detail=True, methods=["post"])
     def reverter(self, request, pk=None):
         refinanciamento = RefinanciamentoService.reverter(int(pk), request.user)
@@ -408,6 +447,7 @@ class CoordenadorRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
         queryset = super().get_queryset().filter(
             status__in=[
                 Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+                Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
             ]
         )
         year = self.request.query_params.get("year")
@@ -480,6 +520,7 @@ class AnalistaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
         queryset = super().get_queryset().filter(
             status__in=[
                 Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
                 Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
             ]
         )

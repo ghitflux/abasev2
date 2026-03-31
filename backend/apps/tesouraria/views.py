@@ -21,6 +21,7 @@ from apps.associados.models import Associado
 from apps.associados.serializers import DadosBancariosSerializer
 from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.esteira.models import EsteiraItem
 from apps.financeiro.models import Despesa
 from apps.importacao.models import ArquivoRetornoItem, PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante
@@ -39,6 +40,7 @@ from core.pagination import StandardResultsSetPagination
 from .serializers import (
     AgentePagamentoContratoSerializer,
     BaixaManualItemSerializer,
+    CancelarContratoSerializer,
     ConfirmacaoLinkSerializer,
     ConfirmacaoListSerializer,
     CongelarContratoSerializer,
@@ -113,6 +115,7 @@ class TesourariaContratoViewSet(
             agente=self.request.query_params.get("agente"),
             status_contrato=self.request.query_params.get("status_contrato"),
             situacao_esteira=self.request.query_params.get("situacao_esteira"),
+            ordering=self.request.query_params.get("ordering"),
         )
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser])
@@ -147,6 +150,19 @@ class TesourariaContratoViewSet(
         payload.is_valid(raise_exception=True)
         contrato = TesourariaService.congelar_contrato(
             pk, payload.validated_data["motivo"], request.user
+        )
+        serializer = self.get_serializer(contrato)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def cancelar(self, request, pk=None):
+        payload = CancelarContratoSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        contrato = TesourariaService.cancelar_contrato(
+            pk,
+            payload.validated_data["tipo"],
+            payload.validated_data["motivo"],
+            request.user,
         )
         serializer = self.get_serializer(contrato)
         return Response(serializer.data)
@@ -309,6 +325,7 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
         ciclos_filter = (request.query_params.get("numero_ciclos") or "").strip()
         data_inicio = self.request.query_params.get("data_inicio")
         data_fim = self.request.query_params.get("data_fim")
+        preset = (request.query_params.get("preset") or "").strip()
 
         def parcela_no_recorte(parcela: dict[str, object]) -> bool:
             if competencia is None:
@@ -339,6 +356,33 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
                 contrato
                 for contrato in contratos
                 if build_initial_payment_payload(contrato).status == initial_payment_status
+            ]
+
+        if preset == "novos_contratos":
+            contratos = [
+                contrato
+                for contrato in contratos
+                if len(projection_cache[contrato.id]["cycles"]) == 1
+            ]
+        elif preset == "cancelados":
+            contratos = [
+                contrato
+                for contrato in contratos
+                if contrato.status == Contrato.Status.CANCELADO
+            ]
+        elif preset == "congelados":
+            contratos = [
+                contrato
+                for contrato in contratos
+                if getattr(getattr(contrato.associado, "esteira_item", None), "status", "")
+                == EsteiraItem.Situacao.PENDENCIADO
+            ]
+        elif preset == "pendentes":
+            contratos = [
+                contrato
+                for contrato in contratos
+                if build_initial_payment_payload(contrato).status
+                in {"pendente", "sem_pagamento_inicial"}
             ]
 
         if ciclos_filter.isdigit():

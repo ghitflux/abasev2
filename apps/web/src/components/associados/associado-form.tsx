@@ -188,6 +188,7 @@ const schema = z
       data_aprovacao: z.date().optional(),
     }),
     agente_responsavel_id: z.number().nullable().optional(),
+    percentual_repasse: z.number().nullable().optional(),
   })
   .superRefine((values, context) => {
     const digits = onlyDigits(values.cpf_cnpj);
@@ -336,6 +337,10 @@ function defaultValues(
         (mode === "create" ? today : undefined),
     },
     agente_responsavel_id: initialData?.agente?.id ?? null,
+    percentual_repasse:
+      mode === "create"
+        ? Number.parseFloat(initialData?.percentual_repasse ?? "10.00")
+        : null,
   };
 }
 
@@ -372,6 +377,9 @@ export default function AssociadoForm({
     hasRole("ANALISTA") ||
     hasRole("COORDENADOR") ||
     hasRole("TESOUREIRO");
+  const canOverridePercentualRepasse =
+    mode === "create" &&
+    (hasRole("ADMIN") || hasRole("ANALISTA") || hasRole("COORDENADOR"));
   const [step, setStep] = React.useState(0);
   const [documentos, setDocumentos] = React.useState<
     Record<string, File | null>
@@ -452,6 +460,14 @@ export default function AssociadoForm({
   const resolvedSubmitLabel =
     submitLabel ??
     (mode === "create" ? "Enviar Cadastro" : "Salvar Alterações");
+  const resolvedCancelHref =
+    cancelHref === "/associados"
+      ? hasRole("ANALISTA")
+        ? "/analise/aptos"
+        : hasRole("AGENTE")
+          ? "/agentes/meus-contratos"
+          : "/associados"
+      : cancelHref;
   const agentesQuery = useQuery({
     queryKey: ["associado-form-agentes"],
     enabled: canManageAgentAssignment,
@@ -602,6 +618,11 @@ export default function AssociadoForm({
         ...(canManageAgentAssignment
           ? {
               agente_responsavel_id: values.agente_responsavel_id,
+            }
+          : {}),
+        ...(canOverridePercentualRepasse && values.percentual_repasse != null
+          ? {
+              percentual_repasse: values.percentual_repasse.toFixed(2),
             }
           : {}),
         ...(isAdminEditMode
@@ -778,7 +799,9 @@ export default function AssociadoForm({
           const nextHref =
             typeof successHref === "function"
               ? successHref(associado)
-              : successHref;
+              : mode === "create" && successHref === "/associados"
+                ? `/associados/${associado.id}`
+                : successHref;
           startRouteTransition(nextHref);
           router.push(nextHref);
           router.refresh();
@@ -804,7 +827,7 @@ export default function AssociadoForm({
             </div>
             {!hideBackButton ? (
               <Button variant="outline" asChild>
-                <Link href={cancelHref}>Voltar</Link>
+                <Link href={resolvedCancelHref}>Voltar</Link>
               </Button>
             ) : null}
           </div>
@@ -1635,9 +1658,40 @@ export default function AssociadoForm({
                           )}
                         </FieldContent>
                       </Field>
+                      {canOverridePercentualRepasse ? (
+                        <Field>
+                          <FieldLabel>Percentual de repasse (%)</FieldLabel>
+                          <FieldContent>
+                            <Controller
+                              control={control}
+                              name="percentual_repasse"
+                              render={({ field }) => (
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={field.value ?? ""}
+                                  onChange={(event) => {
+                                    const value = event.target.value;
+                                    field.onChange(
+                                      value === ""
+                                        ? null
+                                        : Number.parseFloat(value),
+                                    );
+                                  }}
+                                  placeholder="Ex.: 10.00"
+                                  className="rounded-xl bg-card/60"
+                                />
+                              )}
+                            />
+                            <FieldError errors={[errors.percentual_repasse]} />
+                          </FieldContent>
+                        </Field>
+                      ) : null}
                       <div className="rounded-2xl border border-border/60 bg-background/40 px-4 py-3 text-sm text-muted-foreground">
-                        A comissão do agente é definida automaticamente nas configurações da
-                        tesouraria, com regra global ou override individual por agente.
+                        {canOverridePercentualRepasse
+                          ? "O percentual informado vale apenas para este novo cadastro e não altera associados já ativos."
+                          : "A comissão do agente segue a configuração automática definida na tesouraria."}
                       </div>
                     </FieldGroup>
                   </CardContent>

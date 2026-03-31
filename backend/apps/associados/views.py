@@ -11,6 +11,7 @@ from apps.accounts.models import User
 from apps.accounts.permissions import (
     IsAdmin,
     IsAgenteOrAdmin,
+    IsAgenteOrAnalistaOrCoordenadorOrAdmin,
     IsCoordenadorOrAdmin,
     IsOperacionalOrAdmin,
 )
@@ -125,6 +126,11 @@ class AssociadoViewSet(ModelViewSet):
             "update",
             "partial_update",
         }:
+            if self.action == "create":
+                return [
+                    permissions.IsAuthenticated(),
+                    IsAgenteOrAnalistaOrCoordenadorOrAdmin(),
+                ]
             return [permissions.IsAuthenticated(), IsAgenteOrAdmin()]
         if self.action == "list":
             return [permissions.IsAuthenticated(), IsCoordenadorOrAdmin()]
@@ -132,12 +138,23 @@ class AssociadoViewSet(ModelViewSet):
             return [permissions.IsAuthenticated(), IsOperacionalOrAdmin()]
         if self.action in {"retrieve", "ciclos", "parcela_detalhe"}:
             return [permissions.IsAuthenticated(), IsOperacionalOrAdmin()]
+        if self.action == "inativar":
+            return [permissions.IsAuthenticated(), IsCoordenadorOrAdmin()]
         return [permissions.IsAuthenticated(), IsAdmin()]
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         instance.soft_delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=["post"])
+    def inativar(self, request, pk=None):
+        associado = AssociadoService.inativar_associado(self.get_object())
+        serializer = AssociadoDetailSerializer(
+            associado,
+            context=self.get_serializer_context(),
+        )
+        return Response(serializer.data)
 
     @action(detail=False, methods=["get"])
     def metricas(self, request):

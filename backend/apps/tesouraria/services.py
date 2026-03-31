@@ -55,7 +55,16 @@ class TesourariaService:
         agente: str | None = None,
         status_contrato: str | None = None,
         situacao_esteira: str | None = None,
+        ordering: str | None = None,
     ):
+        ordering_map = {
+            "created_at": "created_at",
+            "-created_at": "-created_at",
+            "data_contrato": "data_contrato",
+            "-data_contrato": "-data_contrato",
+            "codigo": "codigo",
+            "-codigo": "-codigo",
+        }
         queryset = (
             Contrato.objects.select_related(
                 "associado",
@@ -69,10 +78,10 @@ class TesourariaService:
                     EsteiraItem.Etapa.TESOURARIA,
                     EsteiraItem.Etapa.CONCLUIDO,
                 ])
-                | Q(status=Contrato.Status.CANCELADO)
+                | Q(status__in=[Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO])
             )
             .distinct()
-            .order_by("-created_at")
+            .order_by(ordering_map.get(ordering or "", "-created_at"))
         )
 
         if pagamento == "pendente":
@@ -82,7 +91,9 @@ class TesourariaService:
         elif pagamento == "concluido":
             queryset = queryset.filter(
                 associado__esteira_item__etapa_atual=EsteiraItem.Etapa.CONCLUIDO
-            ).exclude(status=Contrato.Status.CANCELADO)
+            ).exclude(status__in=[Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO])
+        elif pagamento == "liquidado":
+            queryset = queryset.filter(status=Contrato.Status.ENCERRADO)
         elif pagamento == "cancelado":
             queryset = queryset.filter(status=Contrato.Status.CANCELADO)
         elif pagamento == "processado":
@@ -96,10 +107,15 @@ class TesourariaService:
                     auxilio_liberado_em__year=competencia.year,
                     auxilio_liberado_em__month=competencia.month,
                 )
-            elif pagamento == "cancelado":
+            elif pagamento == "liquidado":
                 queryset = queryset.filter(
                     updated_at__year=competencia.year,
                     updated_at__month=competencia.month,
+                )
+            elif pagamento == "cancelado":
+                queryset = queryset.filter(
+                    cancelado_em__year=competencia.year,
+                    cancelado_em__month=competencia.month,
                 )
             elif pagamento == "processado":
                 queryset = queryset.filter(
@@ -108,7 +124,7 @@ class TesourariaService:
                         auxilio_liberado_em__month=competencia.month,
                     )
                     | Q(
-                        status=Contrato.Status.CANCELADO,
+                        status__in=[Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO],
                         updated_at__year=competencia.year,
                         updated_at__month=competencia.month,
                     )
@@ -331,6 +347,64 @@ class TesourariaService:
                 "updated_at",
             ]
         )
+        return contrato
+
+    @staticmethod
+    @transaction.atomic
+    def cancelar_contrato(contrato_id: int, tipo: str, motivo: str, user) -> Contrato:
+        contrato = TesourariaService._get_contrato(int(contrato_id))
+        if contrato.status == Contrato.Status.ATIVO:
+            raise ValidationError("Somente contratos ainda não ativos podem ser cancelados.")
+        if contrato.status == Contrato.Status.ENCERRADO:
+            raise ValidationError("Contratos liquidados não podem ser cancelados.")
+        if contrato.status == Contrato.Status.CANCELADO:
+            raise ValidationError("Este contrato já foi cancelado.")
+
+        now = timezone.now()
+        contrato.status = Contrato.Status.CANCELADO
+        contrato.cancelamento_tipo = tipo
+        contrato.cancelamento_motivo = motivo.strip()
+        contrato.cancelado_em = now
+        contrato.save(
+            update_fields=[
+                "status",
+                "cancelamento_tipo",
+                "cancelamento_motivo",
+                "cancelado_em",
+                "updated_at",
+            ]
+        )
+
+        esteira_item = getattr(contrato.associado, "esteira_item", None)
+        if esteira_item:
+            de_etapa = esteira_item.etapa_atual
+            de_situacao = esteira_item.status
+            esteira_item.etapa_atual = EsteiraItem.Etapa.CONCLUIDO
+            esteira_item.status = EsteiraItem.Situacao.REJEITADO
+            esteira_item.observacao = contrato.cancelamento_motivo
+            esteira_item.tesoureiro_responsavel = user
+            esteira_item.concluido_em = now
+            esteira_item.save(
+                update_fields=[
+                    "etapa_atual",
+                    "status",
+                    "observacao",
+                    "tesoureiro_responsavel",
+                    "concluido_em",
+                    "updated_at",
+                ]
+            )
+            Transicao.objects.create(
+                esteira_item=esteira_item,
+                acao="cancelar_contrato",
+                de_status=de_etapa,
+                para_status=EsteiraItem.Etapa.CONCLUIDO,
+                de_situacao=de_situacao,
+                para_situacao=EsteiraItem.Situacao.REJEITADO,
+                realizado_por=user,
+                observacao=contrato.cancelamento_motivo,
+            )
+
         return contrato
 
 

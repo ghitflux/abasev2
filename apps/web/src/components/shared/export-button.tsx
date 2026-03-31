@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 type ExportButtonProps = {
-  onExport: (format: "csv" | "pdf" | "excel") => void;
+  onExport: (format: "csv" | "pdf" | "excel" | "xlsx") => void;
   disabled?: boolean;
   label?: string;
 };
@@ -30,11 +30,8 @@ export default function ExportButton({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="rounded-xl">
-        <DropdownMenuItem onClick={() => onExport("csv")}>CSV</DropdownMenuItem>
         <DropdownMenuItem onClick={() => onExport("pdf")}>PDF</DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onExport("excel")}>
-          Excel
-        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => onExport("xlsx")}>XLS</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
