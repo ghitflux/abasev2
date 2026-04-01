@@ -3,7 +3,7 @@ from __future__ import annotations
 from django.core.management import call_command
 from django.test import TestCase
 
-from apps.accounts.models import User
+from apps.accounts.models import Role, User, UserRole
 from apps.associados.models import Associado, Documento
 from apps.associados.serializers import AssociadoDetailSerializer
 from apps.esteira.models import DocIssue, EsteiraItem
@@ -38,6 +38,27 @@ class DocumentoStatusBackfillTestCase(TestCase):
 
         self.assertEqual(payload["matricula_display"], "000123")
         self.assertEqual(payload["matricula"], associado.matricula)
+        self.assertEqual(payload["origem_cadastro_slug"], "web")
+        self.assertEqual(payload["origem_cadastro_label"], "Web")
+
+    def test_associado_detail_serializer_expoe_origem_mobile(self):
+        role_mobile = Role.objects.create(codigo="ASSOCIADODOIS", nome="Associado 2")
+        user = User.objects.create_user(
+            email="mobile.associado@abase.local",
+            password="Senha@123",
+            first_name="Mobile",
+            last_name="Associado",
+            is_active=True,
+        )
+        UserRole.objects.create(user=user, role=role_mobile)
+        associado = self._create_associado(cpf="12312312312")
+        associado.user = user
+        associado.save(update_fields=["user", "updated_at"])
+
+        payload = AssociadoDetailSerializer(associado).data
+
+        self.assertEqual(payload["origem_cadastro_slug"], "mobile")
+        self.assertEqual(payload["origem_cadastro_label"], "Mobile")
 
     def test_backfill_aprova_documento_legado_sem_pendencia(self):
         associado = self._create_associado(cpf="98765432100")

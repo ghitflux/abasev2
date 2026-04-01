@@ -42,7 +42,7 @@ describe("navigation", () => {
     ).toBe("Pagamentos");
   });
 
-  it("expoe meus pagamentos para tesoureiro no modulo financeiro", () => {
+  it("expoe pagamentos da tesouraria para tesoureiro no modulo financeiro", () => {
     const sections = getNavigationForRole("TESOUREIRO");
     const hrefs = sections.flatMap((section) =>
       section.items.flatMap(
@@ -50,19 +50,20 @@ describe("navigation", () => {
       ),
     );
 
-    expect(hrefs).toContain("/agentes/pagamentos");
+    expect(hrefs).toContain("/tesouraria/pagamentos");
     expect(hrefs).toContain("/tesouraria/liquidacoes");
     expect(hrefs).toContain("/tesouraria/devolucoes");
     expect(hrefs).toContain("/tesouraria/despesas");
     expect(hrefs).not.toContain("/importacao");
-    expect(canAccessPath("/agentes/pagamentos", ["TESOUREIRO"])).toBe(true);
+    expect(canAccessPath("/agentes/pagamentos", ["TESOUREIRO"])).toBe(false);
+    expect(canAccessPath("/tesouraria/pagamentos", ["TESOUREIRO"])).toBe(true);
     expect(canAccessPath("/associados/123", ["TESOUREIRO"])).toBe(true);
     expect(canAccessPath("/tesouraria/liquidacoes", ["TESOUREIRO"])).toBe(true);
     expect(canAccessPath("/tesouraria/devolucoes", ["TESOUREIRO"])).toBe(true);
     expect(canAccessPath("/tesouraria/despesas", ["TESOUREIRO"])).toBe(true);
     expect(canAccessPath("/importacao", ["TESOUREIRO"])).toBe(false);
     expect(getLegacyRouteTarget("/pagamentos", "TESOUREIRO")).toBe(
-      "/agentes/pagamentos",
+      "/tesouraria/pagamentos",
     );
   });
 
@@ -92,6 +93,7 @@ describe("navigation", () => {
     const adminEntries = getNavigationRouteSearchEntries(["ADMIN"]);
 
     expect(agentEntries.map((entry) => entry.href)).toContain("/agentes/pagamentos");
+    expect(adminEntries.map((entry) => entry.href)).toContain("/tesouraria/pagamentos");
     expect(agentEntries.map((entry) => entry.href)).not.toContain("/renovacao-ciclos");
     expect(adminEntries.map((entry) => entry.href)).toContain("/renovacao-ciclos");
     expect(adminEntries.map((entry) => entry.href)).toContain("/tesouraria/despesas");
@@ -150,6 +152,9 @@ describe("navigation", () => {
     expect(tesourariaChildren.find((item) => item.href === "/tesouraria")?.title).toBe(
       "Novos Contratos",
     );
+    expect(
+      tesourariaChildren.find((item) => item.href === "/tesouraria/pagamentos")?.title,
+    ).toBe("Pagamentos");
     expect(
       tesourariaChildren.find((item) => item.href === "/tesouraria/refinanciamentos")?.title,
     ).toBe("Renovações");

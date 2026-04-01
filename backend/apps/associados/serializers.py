@@ -49,6 +49,27 @@ def _can_override_percentual_repasse(context: dict) -> bool:
     return user.has_role("ADMIN", "ANALISTA", "COORDENADOR")
 
 
+def get_associado_cadastro_origin_payload(obj: Associado) -> dict[str, str]:
+    observacao = (obj.observacao or "").casefold()
+    if "associadodois_cadastros" in observacao:
+        return {
+            "origem_cadastro_slug": "mobile",
+            "origem_cadastro_label": "Mobile",
+        }
+
+    user = getattr(obj, "user", None)
+    if user is not None and user.has_role("ASSOCIADODOIS"):
+        return {
+            "origem_cadastro_slug": "mobile",
+            "origem_cadastro_label": "Mobile",
+        }
+
+    return {
+        "origem_cadastro_slug": "web",
+        "origem_cadastro_label": "Web",
+    }
+
+
 class SimpleUserSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     full_name = serializers.CharField(read_only=True)
@@ -339,6 +360,8 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
     percentual_repasse = serializers.SerializerMethodField()
     mobile_sessions = serializers.SerializerMethodField()
     admin_history = serializers.SerializerMethodField()
+    origem_cadastro_slug = serializers.SerializerMethodField()
+    origem_cadastro_label = serializers.SerializerMethodField()
 
     class Meta:
         model = Associado
@@ -378,6 +401,8 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
             "updated_at",
             "mobile_sessions",
             "admin_history",
+            "origem_cadastro_slug",
+            "origem_cadastro_label",
         ]
 
     def __init__(self, *args, **kwargs):
@@ -490,6 +515,12 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
         if not user or not user.is_authenticated or not user.has_role("ADMIN"):
             return []
         return AdminOverrideService.build_associado_history_payload(obj, request=request)
+
+    def get_origem_cadastro_slug(self, obj: Associado) -> str:
+        return get_associado_cadastro_origin_payload(obj)["origem_cadastro_slug"]
+
+    def get_origem_cadastro_label(self, obj: Associado) -> str:
+        return get_associado_cadastro_origin_payload(obj)["origem_cadastro_label"]
 
 
 class AssociadoCreateSerializer(serializers.ModelSerializer):

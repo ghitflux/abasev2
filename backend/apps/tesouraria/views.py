@@ -105,7 +105,8 @@ class TesourariaContratoViewSet(
     pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
-        competencia = parse_competencia(self.request.query_params.get("competencia"))
+        competencia_param = self.request.query_params.get("competencia")
+        competencia = parse_competencia(competencia_param) if competencia_param else None
         return TesourariaService.listar_contratos_pendentes(
             competencia=competencia,
             data_inicio=self.request.query_params.get("data_inicio"),
@@ -117,6 +118,10 @@ class TesourariaContratoViewSet(
             situacao_esteira=self.request.query_params.get("situacao_esteira"),
             ordering=self.request.query_params.get("ordering"),
         )
+
+    @action(detail=False, methods=["get"], url_path="agentes")
+    def agentes(self, request):
+        return Response(TesourariaService.listar_usuarios_filtro_agente())
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser])
     def efetivar(self, request, pk=None):

@@ -16,6 +16,7 @@ import {
   AssociadoContractsOverview,
   AssociadoDocumentsGrid,
 } from "@/components/associados/associado-contracts-overview";
+import CadastroOrigemBadge from "@/components/associados/cadastro-origem-badge";
 import StatusBadge from "@/components/custom/status-badge";
 import {
   Dialog,
@@ -114,6 +115,10 @@ export default function AssociadoDetailsDialog({
                 <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                   <span>{associado.matricula_display || associado.matricula}</span>
                   <span>{associado.cpf_cnpj}</span>
+                  <CadastroOrigemBadge
+                    origem={associado.origem_cadastro_slug}
+                    label={associado.origem_cadastro_label}
+                  />
                   <StatusBadge
                     status={associado.status_visual_slug}
                     label={associado.status_visual_label}

@@ -61,6 +61,27 @@ def _prefetched_pagamento_por_referencia(
     return {pagamento.referencia_month: pagamento for pagamento in canonical}
 
 
+class TesourariaComprovanteResumoSerializer(serializers.Serializer):
+    id = serializers.CharField(read_only=True)
+    refinanciamento = serializers.IntegerField(read_only=True, allow_null=True)
+    contrato = serializers.IntegerField(read_only=True, allow_null=True)
+    ciclo = serializers.IntegerField(read_only=True, allow_null=True)
+    tipo = serializers.CharField(read_only=True, allow_blank=True)
+    papel = serializers.CharField(read_only=True, allow_blank=True)
+    arquivo = serializers.CharField(read_only=True, allow_blank=True)
+    arquivo_referencia = serializers.CharField(read_only=True, allow_blank=True)
+    arquivo_disponivel_localmente = serializers.BooleanField(read_only=True)
+    tipo_referencia = serializers.CharField(read_only=True, allow_blank=True)
+    nome_original = serializers.CharField(read_only=True, allow_blank=True)
+    mime = serializers.CharField(read_only=True, allow_blank=True, allow_null=True)
+    size_bytes = serializers.IntegerField(read_only=True, allow_null=True)
+    data_pagamento = serializers.DateField(read_only=True, allow_null=True)
+    origem = serializers.CharField(read_only=True, allow_blank=True)
+    legacy_comprovante_id = serializers.IntegerField(read_only=True, allow_null=True)
+    enviado_por = SimpleUserSerializer(read_only=True, allow_null=True)
+    created_at = serializers.DateTimeField(read_only=True, allow_null=True)
+
+
 class TesourariaContratoListSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     associado_id = serializers.IntegerField(source="associado.id", read_only=True)
@@ -116,10 +137,38 @@ class TesourariaContratoListSerializer(serializers.Serializer):
         associado = obj.associado
         return f"{associado.auxilio_taxa:.2f}"
 
-    @extend_schema_field(ComprovanteResumoSerializer(many=True))
+    @extend_schema_field(TesourariaComprovanteResumoSerializer(many=True))
     def get_comprovantes(self, obj):
-        comprovantes = obj.comprovantes.filter(refinanciamento__isnull=True)
-        return ComprovanteResumoSerializer(comprovantes, many=True).data
+        evidencias = build_initial_payment_payload(
+            obj,
+            request=self.context.get("request"),
+        ).evidencias
+        rows = [
+            {
+                "id": item.get("id") or f"contrato-{obj.pk}-evidencia-{index}",
+                "refinanciamento": None,
+                "contrato": obj.pk,
+                "ciclo": None,
+                "tipo": item.get("tipo") or "",
+                "papel": item.get("papel") or "",
+                "arquivo": item.get("url") or "",
+                "arquivo_referencia": item.get("arquivo_referencia") or "",
+                "arquivo_disponivel_localmente": bool(
+                    item.get("arquivo_disponivel_localmente")
+                ),
+                "tipo_referencia": item.get("tipo_referencia") or "",
+                "nome_original": item.get("nome") or item.get("arquivo_referencia") or "",
+                "mime": None,
+                "size_bytes": None,
+                "data_pagamento": None,
+                "origem": item.get("origem") or "",
+                "legacy_comprovante_id": None,
+                "enviado_por": None,
+                "created_at": item.get("created_at"),
+            }
+            for index, item in enumerate(evidencias)
+        ]
+        return TesourariaComprovanteResumoSerializer(rows, many=True).data
 
     def get_chave_pix(self, obj) -> str:
         payload = obj.associado.build_dados_bancarios_payload() or {}

@@ -69,7 +69,7 @@ class CadastroValidationStrategy(ValidationStrategy):
         contrato["doacao_associado"] = doacao_associado
 
         contrato["comissao_agente"] = (
-            mensalidade * Decimal("0.10")
+            contrato["margem_disponivel"] * Decimal("0.10")
         ).quantize(Decimal("0.01"))
         contrato["valor_total_antecipacao"] = valor_total_antecipacao
 

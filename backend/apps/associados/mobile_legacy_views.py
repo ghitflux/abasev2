@@ -116,6 +116,17 @@ def _normalized_tipo_conta(value: str | None) -> str:
     return ""
 
 
+def _payload_text(payload: dict[str, object], *keys: str) -> str:
+    for key in keys:
+        value = payload.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
 def _candidate_email_for_user(user, payload_email: str | None) -> str | None:
     payload_email = (payload_email or "").strip().lower()
     if not payload_email:
@@ -159,25 +170,37 @@ def _resolve_or_create_associado(user, payload: dict[str, object]) -> Associado:
     target.rg = str(payload.get("rg") or target.rg or "")[:30]
     target.orgao_expedidor = str(payload.get("orgao_expedidor") or target.orgao_expedidor or "")[:80]
     target.data_nascimento = parse_date(payload.get("birth_date"))
-    target.profissao = str(payload.get("profession") or target.profissao or "")[:120]
-    target.estado_civil = _normalized_marital_status(str(payload.get("marital_status") or target.estado_civil or ""))
+    target.profissao = _payload_text(payload, "profissao", "profession", "cargo", "job_title")[:120] or target.profissao or ""
+    target.cargo = _payload_text(payload, "cargo", "profession", "profissao")[:120] or target.cargo or ""
+    target.estado_civil = _normalized_marital_status(
+        _payload_text(payload, "estado_civil", "marital_status", "maritalStatus")
+        or target.estado_civil
+        or ""
+    )
     target.cep = str(payload.get("cep") or target.cep or "")[:12]
-    target.logradouro = str(payload.get("address") or target.logradouro or "")[:255]
-    target.numero = str(payload.get("address_number") or target.numero or "")[:60]
-    target.complemento = str(payload.get("complement") or target.complemento or "")[:120]
-    target.bairro = str(payload.get("neighborhood") or target.bairro or "")[:120]
-    target.cidade = str(payload.get("city") or target.cidade or "")[:120]
+    target.logradouro = _payload_text(payload, "logradouro", "address")[:255] or target.logradouro or ""
+    target.numero = _payload_text(payload, "numero", "address_number", "addressNumber")[:60] or target.numero or ""
+    target.complemento = _payload_text(payload, "complemento", "complement")[:120] or target.complemento or ""
+    target.bairro = _payload_text(payload, "bairro", "neighborhood")[:120] or target.bairro or ""
+    target.cidade = _payload_text(payload, "cidade", "city")[:120] or target.cidade or ""
     target.uf = str(payload.get("uf") or target.uf or "").upper()[:2]
     target.telefone = str(payload.get("cellphone") or target.telefone or "")[:30]
     target.orgao_publico = str(payload.get("orgao_publico") or target.orgao_publico or "")[:160]
     target.situacao_servidor = str(payload.get("situacao_servidor") or target.situacao_servidor or "")[:80]
-    target.matricula_orgao = str(payload.get("matricula_servidor_publico") or target.matricula_orgao or "")[:60]
+    target.matricula_orgao = _payload_text(
+        payload,
+        "matricula_orgao",
+        "matricula_servidor_publico",
+        "matriculaServidorPublico",
+    )[:60] or target.matricula_orgao or ""
     target.email = str(payload.get("email") or target.email or user.email or "")[:254]
-    target.banco = str(payload.get("bank_name") or target.banco or "")[:100]
-    target.agencia = str(payload.get("bank_agency") or target.agencia or "")[:20]
-    target.conta = str(payload.get("bank_account") or target.conta or "")[:30]
-    target.tipo_conta = _normalized_tipo_conta(str(payload.get("account_type") or target.tipo_conta or ""))
-    target.chave_pix = str(payload.get("pix_key") or target.chave_pix or "")[:120]
+    target.banco = _payload_text(payload, "banco", "bank_name")[:100] or target.banco or ""
+    target.agencia = _payload_text(payload, "agencia", "bank_agency")[:20] or target.agencia or ""
+    target.conta = _payload_text(payload, "conta", "bank_account")[:30] or target.conta or ""
+    target.tipo_conta = _normalized_tipo_conta(
+        _payload_text(payload, "tipo_conta", "account_type") or target.tipo_conta or ""
+    )
+    target.chave_pix = _payload_text(payload, "chave_pix", "pix_key")[:120] or target.chave_pix or ""
     if not target.auxilio1_status:
         target.auxilio1_status = "bloqueado"
     if not target.auxilio2_status:

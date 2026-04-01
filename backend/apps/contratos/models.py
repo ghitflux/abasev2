@@ -90,33 +90,49 @@ class Contrato(BaseModel):
     def __str__(self) -> str:
         return self.codigo or "Contrato sem código"
 
-    def save(self, *args, **kwargs):
-        def to_decimal(value):
-            if value in (None, ""):
-                return None
-            if isinstance(value, Decimal):
-                return value
-            try:
-                return Decimal(str(value))
-            except (InvalidOperation, TypeError, ValueError):
-                return None
+    @staticmethod
+    def _to_decimal(value):
+        if value in (None, ""):
+            return None
+        if isinstance(value, Decimal):
+            return value
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
 
-        if not self.codigo:
-            timestamp = timezone.now().strftime("%Y%m%d%H%M%S")
-            self.codigo = f"CTR-{timestamp}-{secrets.token_hex(3).upper()}"
-        base_comissao = to_decimal(self.valor_mensalidade) or to_decimal(self.valor_bruto)
+    def resolve_percentual_repasse(self) -> Decimal:
         percentual_repasse = Decimal("10.00")
         if self.associado_id and getattr(self, "associado", None):
-            associado_percentual = to_decimal(
+            associado_percentual = self._to_decimal(
                 getattr(self.associado, "auxilio_taxa", None)
             )
             if associado_percentual is not None:
                 percentual_repasse = associado_percentual
-        if base_comissao:
-            self.comissao_agente = (
-                base_comissao * (percentual_repasse / Decimal("100"))
-            ).quantize(Decimal("0.01"))
-        valor_mensalidade = to_decimal(self.valor_mensalidade)
+        return percentual_repasse
+
+    def calculate_comissao_agente(self) -> Decimal | None:
+        # O repasse do agente deve seguir o valor efetivamente liberado ao associado.
+        base_comissao = self._to_decimal(self.margem_disponivel)
+        if base_comissao is None or base_comissao <= 0:
+            base_comissao = self._to_decimal(self.valor_mensalidade) or self._to_decimal(
+                self.valor_bruto
+            )
+        if base_comissao is None:
+            return None
+        percentual_repasse = self.resolve_percentual_repasse()
+        return (base_comissao * (percentual_repasse / Decimal("100"))).quantize(
+            Decimal("0.01")
+        )
+
+    def save(self, *args, **kwargs):
+        if not self.codigo:
+            timestamp = timezone.now().strftime("%Y%m%d%H%M%S")
+            self.codigo = f"CTR-{timestamp}-{secrets.token_hex(3).upper()}"
+        comissao_agente = self.calculate_comissao_agente()
+        if comissao_agente is not None:
+            self.comissao_agente = comissao_agente
+        valor_mensalidade = self._to_decimal(self.valor_mensalidade)
         if valor_mensalidade and self.prazo_meses:
             self.valor_total_antecipacao = (
                 valor_mensalidade * self.prazo_meses

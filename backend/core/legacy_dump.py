@@ -15,8 +15,10 @@ def default_legacy_dump_path() -> Path:
     repo_root = Path(__file__).resolve().parents[2]
     candidates = [
         os.environ.get("ABASE_LEGACY_DUMP_FILE"),
+        repo_root / "dumps_legado" / "abase_banco_legado_31.03.2026.sql",
         repo_root / "dumps_legado" / "abase_dump_legado_21.03.2026.sql",
         repo_root / "scriptsphp" / "abase (2).sql",
+        "dumps_legado/abase_banco_legado_31.03.2026.sql",
         "dumps_legado/abase_dump_legado_21.03.2026.sql",
         "scriptsphp/abase (2).sql",
         "/legacy-dumps/abase (2).sql",
@@ -28,7 +30,7 @@ def default_legacy_dump_path() -> Path:
         path = Path(candidate).expanduser()
         if path.exists():
             return path
-    return Path("dumps_legado/abase_dump_legado_21.03.2026.sql")
+    return Path("dumps_legado/abase_banco_legado_31.03.2026.sql")
 
 
 def parse_timestamp(value: str | None) -> datetime | None:

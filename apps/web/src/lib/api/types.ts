@@ -448,6 +448,8 @@ export type AssociadoDetail = {
   documentos: Documento[];
   esteira?: EsteiraResumo | null;
   mobile_sessions?: { last_used_at: string | null; is_active: boolean }[];
+  origem_cadastro_slug?: string;
+  origem_cadastro_label?: string;
   created_at?: string;
   updated_at?: string;
   admin_history?: AdminOverrideHistoryEvent[];
@@ -826,7 +828,7 @@ export type ContratoResumoCards = {
 };
 
 export type ComprovanteResumo = {
-  id: number;
+  id: number | string;
   refinanciamento?: number | null;
   contrato?: number | null;
   ciclo?: number | null;

@@ -15,6 +15,7 @@ from django.utils import timezone
 from apps.accounts.models import Role, User
 from apps.associados.models import Associado
 from apps.contratos.models import Ciclo, Contrato
+from apps.esteira.models import EsteiraItem
 from apps.refinanciamento.models import Comprovante, Refinanciamento
 from apps.tesouraria.initial_payment import build_initial_payment_payload
 from apps.tesouraria.models import Pagamento
@@ -168,6 +169,69 @@ INSERT INTO `tesouraria_pagamentos` (`id`,`agente_cadastro_id`,`created_by_user_
             {item["tipo_referencia"] for item in payload.evidencias},
             {"placeholder_recebido"},
         )
+
+    def test_sync_pending_payment_moves_contract_to_tesouraria_queue(self):
+        contrato = self._create_contract(
+            cpf="47070609353",
+            nome="RAIMUNDO LEITE DA SILVA",
+            codigo="CTR-20260319091243-OETNX",
+        )
+        associado = contrato.associado
+        associado.status = Associado.Status.ATIVO
+        associado.save(update_fields=["status", "updated_at"])
+        esteira = EsteiraItem.objects.create(
+            associado=associado,
+            etapa_atual=EsteiraItem.Etapa.ANALISE,
+            status=EsteiraItem.Situacao.AGUARDANDO,
+        )
+        contrato.status = Contrato.Status.ATIVO
+        contrato.save(update_fields=["status", "updated_at"])
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            dump_path = temp_path / "legacy.sql"
+            self._write_dump(
+                dump_path,
+                legacy_payment_id=749,
+                legacy_cadastro_id=713,
+                cpf=associado.cpf_cnpj,
+                contrato_codigo=contrato.codigo,
+                status="pendente",
+                valor_pago=None,
+                paid_at=None,
+                created_at="2026-03-19 09:13:19",
+            )
+
+            call_command(
+                "sync_legacy_initial_payments",
+                "--file",
+                str(dump_path),
+                "--cpf",
+                associado.cpf_cnpj,
+                "--execute",
+            )
+
+        pagamento = Pagamento.objects.get(cadastro=associado, contrato_codigo=contrato.codigo)
+        contrato.refresh_from_db()
+        associado.refresh_from_db()
+        esteira.refresh_from_db()
+
+        self.assertEqual(pagamento.status, Pagamento.Status.PENDENTE)
+        self.assertIsNone(pagamento.paid_at)
+        self.assertEqual(
+            pagamento.referencias_externas.get("payment_kind"),
+            "contrato_inicial",
+        )
+        self.assertEqual(
+            pagamento.referencias_externas.get("contrato_id"),
+            contrato.id,
+        )
+        self.assertEqual(contrato.status, Contrato.Status.EM_ANALISE)
+        self.assertIsNone(contrato.auxilio_liberado_em)
+        self.assertEqual(associado.status, Associado.Status.EM_ANALISE)
+        self.assertEqual(esteira.etapa_atual, EsteiraItem.Etapa.TESOURARIA)
+        self.assertEqual(esteira.status, EsteiraItem.Situacao.AGUARDANDO)
+        self.assertIsNone(esteira.concluido_em)
 
     def test_sync_copies_legacy_files_and_creates_contract_comprovantes(self):
         contrato = self._create_contract(

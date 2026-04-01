@@ -25,6 +25,7 @@ const ROUTE_PREFIXES: Array<{ kind: DashboardRouteKind; prefixes: string[] }> = 
       "/associados",
       "/agentes/meus-contratos",
       "/agentes/pagamentos",
+      "/tesouraria/pagamentos",
       "/agentes/refinanciados",
       "/tesouraria",
       "/tesouraria/refinanciamentos",

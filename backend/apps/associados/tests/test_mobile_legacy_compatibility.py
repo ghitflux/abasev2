@@ -581,3 +581,117 @@ class MobileLegacyCompatibilityTestCase(TestCase):
         self.assertEqual(reset.status_code, 200, reset.json())
         registered_user = User.objects.get(email="novo-v1@teste.local")
         self.assertTrue(registered_user.check_password("NovaSenha@123"))
+
+    def test_v1_app_cadastro_accepts_mobile_new_payload_and_creates_associado(self):
+        register = self.client.post(
+            "/api/v1/auth/register/",
+            {
+                "name": "Cadastro Mobile Novo",
+                "email": "mobile-new@teste.local",
+                "password": "Senha@123",
+                "password_confirmation": "Senha@123",
+                "terms": True,
+                "terms_version": "1.0",
+            },
+            format="json",
+        )
+        self.assertEqual(register.status_code, 201, register.json())
+        access = register.json()["access"]
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+        response = self.client.post(
+            "/api/v1/app/cadastro/",
+            {
+                "doc_type": "CPF",
+                "cpf_cnpj": "98765432100",
+                "full_name": "Cadastro Mobile Novo",
+                "birth_date": "01/02/1990",
+                "rg": "112233",
+                "orgao_expedidor": "SSPPI",
+                "estado_civil": "CASADO",
+                "profissao": "PROFESSOR",
+                "cargo": "SERVIDOR",
+                "cep": "64000000",
+                "logradouro": "Rua Atualizada",
+                "numero": "100",
+                "complemento": "APTO 3",
+                "bairro": "CENTRO",
+                "cidade": "TERESINA",
+                "uf": "PI",
+                "cellphone": "86988887777",
+                "orgao_publico": "SEDUC",
+                "situacao_servidor": "Ativo",
+                "matricula_orgao": "778899",
+                "email": "mobile-new@teste.local",
+                "banco": "104",
+                "agencia": "1111",
+                "conta": "22222-3",
+                "tipo_conta": "corrente",
+                "chave_pix": "98765432100",
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertTrue(response.json()["ok"])
+
+        user = User.objects.get(email="mobile-new@teste.local")
+        associado = Associado.objects.get(user=user)
+        self.assertEqual(associado.cpf_cnpj, "98765432100")
+        self.assertEqual(associado.nome_completo, "Cadastro Mobile Novo")
+        self.assertEqual(associado.logradouro, "Rua Atualizada")
+        self.assertEqual(associado.numero, "100")
+        self.assertEqual(associado.bairro, "CENTRO")
+        self.assertEqual(associado.cidade, "TERESINA")
+        self.assertEqual(associado.matricula_orgao, "778899")
+        self.assertEqual(associado.banco, "104")
+        self.assertEqual(associado.agencia, "1111")
+        self.assertEqual(associado.conta, "22222-3")
+        self.assertEqual(associado.tipo_conta, "corrente")
+        self.assertEqual(associado.chave_pix, "98765432100")
+        self.assertEqual(associado.profissao, "PROFESSOR")
+        self.assertEqual(associado.cargo, "SERVIDOR")
+        self.assertEqual(associado.status, Associado.Status.EM_ANALISE)
+
+        upload_response = self.client.post(
+            "/api/v1/app/pendencias/reuploads/",
+            {
+                "cpf_frente": SimpleUploadedFile(
+                    "cpf-frente.jpg",
+                    b"jpg-front",
+                    content_type="image/jpeg",
+                ),
+                "comp_endereco": SimpleUploadedFile(
+                    "comp-endereco.pdf",
+                    b"pdf-endereco",
+                    content_type="application/pdf",
+                ),
+            },
+            format="multipart",
+        )
+        self.assertEqual(upload_response.status_code, 200, upload_response.json())
+        self.assertTrue(upload_response.json()["ok"])
+        self.assertEqual(upload_response.json()["saved_count"], 2)
+        self.assertEqual(
+            Documento.objects.filter(
+                associado=associado,
+                tipo__in=[
+                    Documento.Tipo.DOCUMENTO_FRENTE,
+                    Documento.Tipo.COMPROVANTE_RESIDENCIA,
+                ],
+            ).count(),
+            2,
+        )
+
+        status_response = self.client.get("/api/v1/app/cadastro/")
+        self.assertEqual(status_response.status_code, 200, status_response.json())
+        cadastro = status_response.json()["cadastro"]
+        self.assertEqual(cadastro["logradouro"], "Rua Atualizada")
+        self.assertEqual(cadastro["numero"], "100")
+        self.assertEqual(cadastro["bairro"], "CENTRO")
+        self.assertEqual(cadastro["cidade"], "TERESINA")
+        self.assertEqual(cadastro["matricula_orgao"], "778899")
+        self.assertEqual(cadastro["banco"], "104")
+        self.assertEqual(cadastro["tipo_conta"], "corrente")
+        self.assertEqual(cadastro["chave_pix"], "98765432100")
+        self.assertEqual(cadastro["profissao"], "PROFESSOR")
+        self.assertEqual(cadastro["cargo"], "SERVIDOR")

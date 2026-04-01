@@ -374,23 +374,26 @@ const AdminContractEditor = React.forwardRef<AdminContractEditorHandle, Props>(f
   const [draft, setDraft] = React.useState<ContractDraft>(createContractDraft(contract));
   const [pendingCycleUploads, setPendingCycleUploads] = React.useState<Record<string, File[]>>({});
   const queryClient = useQueryClient();
+  const onPayloadRefreshEvent = React.useEffectEvent((payload?: AdminAssociadoEditorPayload) => {
+    return onPayloadRefresh(payload);
+  });
+  const onDirtyChangeEvent = React.useEffectEvent((state: ContractEditorDirtyState) => {
+    onDirtyChange?.(state);
+  });
 
   React.useEffect(() => {
     setDraft(createContractDraft(contract));
     setPendingCycleUploads({});
   }, [contract]);
 
-  const refresh = React.useCallback(
-    async (payload?: AdminAssociadoEditorPayload) => {
-      await Promise.all([
-        onPayloadRefresh(payload),
-        queryClient.invalidateQueries({ queryKey: ["associado", associadoId] }),
-        queryClient.invalidateQueries({ queryKey: ["admin-associado-editor", associadoId] }),
-        queryClient.invalidateQueries({ queryKey: ["admin-associado-history", associadoId] }),
-      ]);
-    },
-    [associadoId, onPayloadRefresh, queryClient],
-  );
+  const refresh = async (payload?: AdminAssociadoEditorPayload) => {
+    await Promise.all([
+      onPayloadRefreshEvent(payload),
+      queryClient.invalidateQueries({ queryKey: ["associado", associadoId] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-associado-editor", associadoId] }),
+      queryClient.invalidateQueries({ queryKey: ["admin-associado-history", associadoId] }),
+    ]);
+  };
 
   const initialCorePayload = React.useMemo(
     () => buildContractCorePayload(createContractDraft(contract)),
@@ -427,8 +430,8 @@ const AdminContractEditor = React.forwardRef<AdminContractEditorHandle, Props>(f
   );
 
   React.useEffect(() => {
-    onDirtyChange?.(dirtyState);
-  }, [dirtyState, onDirtyChange]);
+    onDirtyChangeEvent?.(dirtyState);
+  }, [dirtyState]);
 
   React.useImperativeHandle(
     ref,

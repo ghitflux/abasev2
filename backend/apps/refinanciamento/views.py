@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from django.db.models import Count, OuterRef, Prefetch, Q, Subquery, Sum
+from django.db.models import Count, DateTimeField, OuterRef, Prefetch, Q, Subquery, Sum
+from django.db.models.functions import Coalesce
 from django.utils.dateparse import parse_date
 from rest_framework import mixins, permissions, status
 from rest_framework.decorators import action
@@ -549,16 +550,53 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
                 Refinanciamento.Status.DESATIVADO,
             ]
         )
+        status_filters = set(self._get_multi_param("status"))
+        pending_statuses = {Refinanciamento.Status.APROVADO_PARA_RENOVACAO}
+        efetivado_statuses = {Refinanciamento.Status.EFETIVADO}
+        cancelado_statuses = {
+            Refinanciamento.Status.BLOQUEADO,
+            Refinanciamento.Status.REVERTIDO,
+            Refinanciamento.Status.DESATIVADO,
+        }
 
         date_start = self.request.query_params.get("data_inicio")
-        if date_start:
-            queryset = queryset.filter(created_at__date__gte=date_start)
-
         date_end = self.request.query_params.get("data_fim")
-        if date_end:
-            queryset = queryset.filter(created_at__date__lte=date_end)
 
-        return queryset
+        if status_filters == pending_statuses:
+            if date_start:
+                queryset = queryset.filter(updated_at__date__gte=date_start)
+            if date_end:
+                queryset = queryset.filter(updated_at__date__lte=date_end)
+            return queryset.order_by("-updated_at", "-id")
+
+        if status_filters == efetivado_statuses:
+            queryset = queryset.annotate(
+                tesouraria_operational_date=Coalesce(
+                    "executado_em",
+                    "data_ativacao_ciclo",
+                    "updated_at",
+                    output_field=DateTimeField(),
+                )
+            )
+            if date_start:
+                queryset = queryset.filter(tesouraria_operational_date__date__gte=date_start)
+            if date_end:
+                queryset = queryset.filter(tesouraria_operational_date__date__lte=date_end)
+            return queryset.order_by("-tesouraria_operational_date", "-id")
+
+        if status_filters and status_filters.issubset(cancelado_statuses):
+            if date_start:
+                queryset = queryset.filter(updated_at__date__gte=date_start)
+            if date_end:
+                queryset = queryset.filter(updated_at__date__lte=date_end)
+            return queryset.order_by("-updated_at", "-id")
+
+        if date_start:
+            queryset = queryset.filter(updated_at__date__gte=date_start)
+        if date_end:
+            queryset = queryset.filter(updated_at__date__lte=date_end)
+
+        return queryset.order_by("-updated_at", "-id")
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser])
     def efetivar(self, request, pk=None):

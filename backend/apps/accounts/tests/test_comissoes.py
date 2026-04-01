@@ -173,7 +173,7 @@ class ConfiguracaoComissaoViewSetTestCase(TestCase):
         associado = Associado.objects.get(cpf_cnpj="42345678901")
         contrato = Contrato.objects.filter(associado=associado).latest("created_at")
         self.assertEqual(associado.auxilio_taxa, Decimal("12.50"))
-        self.assertEqual(contrato.comissao_agente, Decimal("62.50"))
+        self.assertEqual(contrato.comissao_agente, Decimal("131.25"))
 
         response = self.admin_client.post(
             "/api/v1/associados/",
@@ -185,7 +185,7 @@ class ConfiguracaoComissaoViewSetTestCase(TestCase):
         associado = Associado.objects.get(cpf_cnpj="42345678902")
         contrato = Contrato.objects.filter(associado=associado).latest("created_at")
         self.assertEqual(associado.auxilio_taxa, Decimal("11.50"))
-        self.assertEqual(contrato.comissao_agente, Decimal("57.50"))
+        self.assertEqual(contrato.comissao_agente, Decimal("120.75"))
 
     def test_admin_pode_definir_percentual_manual_no_cadastro(self):
         response = self.admin_client.post(
@@ -202,4 +202,4 @@ class ConfiguracaoComissaoViewSetTestCase(TestCase):
         associado = Associado.objects.get(cpf_cnpj="42345678903")
         contrato = Contrato.objects.filter(associado=associado).latest("created_at")
         self.assertEqual(associado.auxilio_taxa, Decimal("14.75"))
-        self.assertEqual(contrato.comissao_agente, Decimal("73.75"))
+        self.assertEqual(contrato.comissao_agente, Decimal("154.88"))

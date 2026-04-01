@@ -82,6 +82,9 @@ const AdminEsteiraEditor = React.forwardRef<AdminEsteiraEditorHandle, Props>(fun
   esteira,
   onDirtyChange,
 }: Props, ref) {
+  const onDirtyChangeEvent = React.useEffectEvent((dirty: boolean) => {
+    onDirtyChange?.(dirty);
+  });
   const resolvedEtapa = esteira?.etapa_atual || "analise";
   const resolvedStatus = esteira?.status || "aguardando";
   const resolvedPrioridade = String(esteira?.prioridade ?? 3);
@@ -124,8 +127,8 @@ const AdminEsteiraEditor = React.forwardRef<AdminEsteiraEditorHandle, Props>(fun
   );
 
   React.useEffect(() => {
-    onDirtyChange?.(isDirty);
-  }, [isDirty, onDirtyChange]);
+    onDirtyChangeEvent?.(isDirty);
+  }, [isDirty]);
 
   React.useImperativeHandle(
     ref,

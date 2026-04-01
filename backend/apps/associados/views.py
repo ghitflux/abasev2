@@ -59,7 +59,7 @@ class AssociadoViewSet(ModelViewSet):
         return AssociadoUpdateSerializer
 
     def _base_queryset(self):
-        return Associado.objects.select_related("agente_responsavel").distinct()
+        return Associado.objects.select_related("agente_responsavel", "user").distinct()
 
     def _list_queryset(self):
         return self._base_queryset().prefetch_related(

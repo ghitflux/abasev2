@@ -18,6 +18,7 @@ from django.utils.text import get_valid_filename
 
 from apps.associados.models import Associado
 from apps.contratos.models import Contrato
+from apps.esteira.models import EsteiraItem
 from apps.refinanciamento.models import Comprovante
 from apps.tesouraria.initial_payment import get_initial_payment_for_contract
 from apps.tesouraria.legacy_initial_payments import (
@@ -261,7 +262,9 @@ class Command(BaseCommand):
         )
 
     def _reference_payload(self, record: LegacyInitialPaymentRecord) -> dict[str, object]:
-        payload: dict[str, object] = {}
+        payload: dict[str, object] = {
+            "payment_kind": "contrato_inicial",
+        }
         if record.assoc_legacy_url:
             payload["assoc_legacy_url"] = record.assoc_legacy_url
         if record.agente_legacy_url:
@@ -432,6 +435,63 @@ class Command(BaseCommand):
             updated_at=reference_at,
         )
 
+    def _sync_pending_contract_state(
+        self,
+        *,
+        associado: Associado,
+        contrato: Contrato,
+        execute: bool,
+    ) -> None:
+        if contrato.status in {Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO}:
+            return
+
+        contract_changed_fields: list[str] = []
+        if contrato.status != Contrato.Status.EM_ANALISE:
+            contrato.status = Contrato.Status.EM_ANALISE
+            contract_changed_fields.append("status")
+        if contrato.auxilio_liberado_em is not None:
+            contrato.auxilio_liberado_em = None
+            contract_changed_fields.append("auxilio_liberado_em")
+
+        if execute and contract_changed_fields:
+            contract_changed_fields.append("updated_at")
+            contrato.save(update_fields=contract_changed_fields)
+
+        associado_changed_fields: list[str] = []
+        if associado.status != Associado.Status.EM_ANALISE:
+            associado.status = Associado.Status.EM_ANALISE
+            associado_changed_fields.append("status")
+
+        if execute and associado_changed_fields:
+            associado_changed_fields.append("updated_at")
+            associado.save(update_fields=associado_changed_fields)
+
+        esteira = associado.esteira
+        if esteira is None:
+            if not execute:
+                return
+            EsteiraItem.objects.create(
+                associado=associado,
+                etapa_atual=EsteiraItem.Etapa.TESOURARIA,
+                status=EsteiraItem.Situacao.AGUARDANDO,
+            )
+            return
+
+        esteira_changed_fields: list[str] = []
+        if esteira.etapa_atual != EsteiraItem.Etapa.TESOURARIA:
+            esteira.etapa_atual = EsteiraItem.Etapa.TESOURARIA
+            esteira_changed_fields.append("etapa_atual")
+        if esteira.status != EsteiraItem.Situacao.AGUARDANDO:
+            esteira.status = EsteiraItem.Situacao.AGUARDANDO
+            esteira_changed_fields.append("status")
+        if esteira.concluido_em is not None:
+            esteira.concluido_em = None
+            esteira_changed_fields.append("concluido_em")
+
+        if execute and esteira_changed_fields:
+            esteira_changed_fields.append("updated_at")
+            esteira.save(update_fields=esteira_changed_fields)
+
     def _upsert_contract_comprovante(
         self,
         *,
@@ -520,7 +580,10 @@ class Command(BaseCommand):
                 notes=record.notes,
                 legacy_tesouraria_pagamento_id=record.legacy_id,
                 origem=self._payment_origin(record),
-                referencias_externas=self._reference_payload(record),
+                referencias_externas={
+                    **self._reference_payload(record),
+                    "contrato_id": contrato.id,
+                },
             )
             created_pagamento = True
 
@@ -537,12 +600,16 @@ class Command(BaseCommand):
         pagamento.forma_pagamento = record.forma_pagamento or pagamento.forma_pagamento
         pagamento.notes = record.notes or pagamento.notes
         pagamento.valor_pago = self._resolve_value(pagamento, record)
-        if record.paid_at is not None:
+        if record.status == Pagamento.Status.PENDENTE:
+            pagamento.paid_at = None
+        elif record.paid_at is not None:
             pagamento.paid_at = record.paid_at
         if record.contrato_margem_disponivel is not None:
             pagamento.contrato_margem_disponivel = record.contrato_margem_disponivel
         pagamento.referencias_externas = {
             **(pagamento.referencias_externas or {}),
+            "payment_kind": "contrato_inicial",
+            "contrato_id": contrato.id,
             **self._reference_payload(record),
         }
 
@@ -617,6 +684,12 @@ class Command(BaseCommand):
                 record.created_at or pagamento.paid_at,
             )
             pagamento.refresh_from_db()
+            if pagamento.status == Pagamento.Status.PENDENTE:
+                self._sync_pending_contract_state(
+                    associado=associado,
+                    contrato=contrato,
+                    execute=execute,
+                )
 
         initial_payment = get_initial_payment_for_contract(contrato) or pagamento
         evidencia_status = "arquivo_local" if copied_files else ""

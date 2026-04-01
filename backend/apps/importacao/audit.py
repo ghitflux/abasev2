@@ -4,6 +4,7 @@ import json
 import re
 from collections import defaultdict
 from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from apps.contratos.models import Parcela
@@ -23,6 +24,50 @@ def _serialize_datetime(value: datetime | None) -> str | None:
 
 def _serialize_date(value: date | None) -> str | None:
     return value.isoformat() if value is not None else None
+
+
+def _decimal_or_none(value: object) -> Decimal | None:
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
+def _manual_promoted_to_return(
+    *,
+    legacy_payload: dict[str, object],
+    current_payload: dict[str, object],
+    return_items: list[dict[str, object]],
+) -> bool:
+    if (legacy_payload.get("manual_status") or "").strip() != "pago":
+        return False
+    if (current_payload.get("status_code") or "").strip() != "1":
+        return False
+    if any(
+        [
+            current_payload.get("manual_status"),
+            current_payload.get("manual_paid_at"),
+            current_payload.get("manual_comprovante_path"),
+            current_payload.get("recebido_manual") is not None,
+        ]
+    ):
+        return False
+
+    expected_value = _decimal_or_none(current_payload.get("valor"))
+    if expected_value is None:
+        expected_value = _decimal_or_none(legacy_payload.get("recebido_manual"))
+    if expected_value is None:
+        return False
+
+    for item in return_items:
+        if (item.get("status_codigo") or "").strip() != "1":
+            continue
+        return_value = _decimal_or_none(item.get("valor_descontado"))
+        if return_value == expected_value:
+            return True
+    return False
 
 
 def build_return_consistency_report(
@@ -45,6 +90,7 @@ def build_return_consistency_report(
             "current_with_manual_path": 0,
             "current_baixas_manuais": 0,
             "manual_rows_with_baixa_manual": 0,
+            "manual_promoted_to_return": 0,
             "timezone_only_paid_at": 0,
             "real_mismatches": 0,
         }
@@ -105,6 +151,7 @@ def build_return_consistency_report(
                 else None
             ),
             "status_code": (pagamento.status_code or "").strip(),
+            "valor": str(pagamento.valor) if pagamento.valor is not None else None,
         }
         current_rows[key] = payload
         competencia_key = pagamento.referencia_month.isoformat()
@@ -128,11 +175,31 @@ def build_return_consistency_report(
         baixas_lookup.add((normalized_cpf, referencia))
         per_competencia[referencia.isoformat()]["current_baixas_manuais"] += 1
 
+    return_items_by_key: dict[tuple[str, date], list[dict[str, object]]] = defaultdict(list)
+    return_items = ArquivoRetornoItem.objects.select_related("arquivo_retorno").all()
+    if competencia:
+        return_items = return_items.filter(arquivo_retorno__competencia=competencia)
+    if cpf_filter:
+        return_items = return_items.filter(cpf_cnpj=cpf_filter)
+    for item in return_items.iterator():
+        item_competencia = getattr(item.arquivo_retorno, "competencia", None)
+        normalized_cpf = _normalize_cpf(item.cpf_cnpj)
+        if item_competencia is None or not normalized_cpf:
+            continue
+        return_items_by_key[(normalized_cpf, item_competencia)].append(
+            {
+                "status_codigo": item.status_codigo,
+                "valor_descontado": item.valor_descontado,
+                "parcela_id": item.parcela_id,
+            }
+        )
+
     mismatches: list[dict[str, object]] = []
     timezone_only_total = 0
     missing_current = 0
     missing_legacy = 0
     manual_rows_with_baixa_manual = 0
+    manual_promoted_to_return_total = 0
 
     all_keys = sorted(set(legacy_rows) | set(current_rows), key=lambda item: (item[1], item[0]))
     for key in all_keys:
@@ -199,6 +266,15 @@ def build_return_consistency_report(
         if other_equal and paid_at_comparison in {"exact", "missing"}:
             continue
 
+        if _manual_promoted_to_return(
+            legacy_payload=legacy_payload,
+            current_payload=current_payload,
+            return_items=return_items_by_key.get(key, []),
+        ):
+            manual_promoted_to_return_total += 1
+            per_competencia[competencia_key]["manual_promoted_to_return"] += 1
+            continue
+
         per_competencia[competencia_key]["real_mismatches"] += 1
         mismatches.append(
             {
@@ -237,6 +313,7 @@ def build_return_consistency_report(
         },
         "summary": {
             "competencias": dict(sorted(per_competencia.items())),
+            "manual_promoted_to_return_total": manual_promoted_to_return_total,
             "timezone_only_paid_at_total": timezone_only_total,
             "real_mismatch_total": len(mismatches),
             "missing_current_total": missing_current,

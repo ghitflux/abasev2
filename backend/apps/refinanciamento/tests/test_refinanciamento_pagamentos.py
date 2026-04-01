@@ -711,6 +711,78 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         self.assertIsNotNone(row["data_ativacao_ciclo"])
         self.assertFalse(row["ativacao_inferida"])
 
+    def test_tesouraria_lista_apenas_aprovados_para_renovacao_por_updated_at(self):
+        contrato_primeiro = self._create_contrato("72345678911")
+        primeiro = Refinanciamento.objects.create(
+            associado=contrato_primeiro.associado,
+            contrato_origem=contrato_primeiro,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            cycle_key="2026-02|2026-03|2026-04",
+        )
+        Refinanciamento.objects.filter(pk=primeiro.pk).update(
+            created_at=timezone.make_aware(datetime(2026, 1, 12, 9, 0)),
+            updated_at=timezone.make_aware(datetime(2026, 4, 10, 10, 0)),
+        )
+
+        contrato_segundo = self._create_contrato("72345678912")
+        segundo = Refinanciamento.objects.create(
+            associado=contrato_segundo.associado,
+            contrato_origem=contrato_segundo,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 5, 1),
+            status=Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            cycle_key="2026-03|2026-04|2026-05",
+        )
+        Refinanciamento.objects.filter(pk=segundo.pk).update(
+            created_at=timezone.make_aware(datetime(2026, 2, 5, 11, 0)),
+            updated_at=timezone.make_aware(datetime(2026, 4, 18, 8, 30)),
+        )
+
+        contrato_fora_recorte = self._create_contrato("72345678913")
+        fora_recorte = Refinanciamento.objects.create(
+            associado=contrato_fora_recorte.associado,
+            contrato_origem=contrato_fora_recorte,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            cycle_key="2026-01|2026-02|2026-04",
+        )
+        Refinanciamento.objects.filter(pk=fora_recorte.pk).update(
+            created_at=timezone.make_aware(datetime(2026, 4, 12, 9, 0)),
+            updated_at=timezone.make_aware(datetime(2026, 3, 28, 15, 0)),
+        )
+
+        contrato_efetivado = self._create_contrato("72345678914")
+        efetivado = Refinanciamento.objects.create(
+            associado=contrato_efetivado.associado,
+            contrato_origem=contrato_efetivado,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            cycle_key="2026-02|2026-03|2026-04",
+        )
+        Refinanciamento.objects.filter(pk=efetivado.pk).update(
+            updated_at=timezone.make_aware(datetime(2026, 4, 20, 9, 0)),
+            executado_em=timezone.make_aware(datetime(2026, 4, 20, 9, 0)),
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/refinanciamentos/",
+            {
+                "status": "aprovado_para_renovacao",
+                "data_inicio": "2026-04-01",
+                "data_fim": "2026-04-30",
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        ids = [item["id"] for item in response.json()["results"]]
+        self.assertEqual(ids, [segundo.id, primeiro.id])
+        self.assertNotIn(fora_recorte.id, ids)
+        self.assertNotIn(efetivado.id, ids)
+
     def test_pagamento_manual_pago_conta_como_pagamento_livre(self):
         contrato = self._create_contrato("82345678901")
         self._create_pagamento(contrato, date(2026, 1, 1))

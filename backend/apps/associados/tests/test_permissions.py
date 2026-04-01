@@ -427,7 +427,7 @@ class AssociadoPermissionsTestCase(TestCase):
         self.assertEqual(associado.agente_responsavel, self.outro_agente)
         self.assertEqual(associado.auxilio_taxa, Decimal("12.50"))
         self.assertEqual(contrato.agente, self.outro_agente)
-        self.assertEqual(contrato.comissao_agente, Decimal("62.50"))
+        self.assertEqual(contrato.comissao_agente, Decimal("131.25"))
 
     def test_analista_pode_criar_associado_com_agente_e_percentual_manual(self):
         response = self.analyst_client.post(
@@ -474,7 +474,7 @@ class AssociadoPermissionsTestCase(TestCase):
         contrato = Contrato.objects.filter(associado=associado).latest("created_at")
         self.assertEqual(associado.agente_responsavel, self.outro_agente)
         self.assertEqual(associado.auxilio_taxa, Decimal("14.00"))
-        self.assertEqual(contrato.comissao_agente, Decimal("70.00"))
+        self.assertEqual(contrato.comissao_agente, Decimal("147.00"))
 
     def test_coordenador_pode_inativar_associado(self):
         response = self.coord_client.post(f"/api/v1/associados/{self.associado.id}/inativar/")

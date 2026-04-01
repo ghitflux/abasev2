@@ -219,3 +219,126 @@ class LegacyMediaAssetsServiceTestCase(TestCase):
         self.assertEqual(payload["summary"]["already_canonical"], 1)
         self.assertEqual(payload["summary"]["updated"], 0)
         self.assertEqual(payload["results"][0]["status"], "already_canonical")
+
+    def test_syncs_real_flat_legacy_layout(self):
+        self._write_legacy_file(
+            "public/uploads/associados/1/documento-frente.pdf",
+            b"cadastro-flat",
+        )
+        self._write_legacy_file(
+            "storage/app/public/agent-reuploads/488/reupload.pdf",
+            b"reupload-flat",
+        )
+
+        documento = Documento.objects.create(
+            associado=self.associado,
+            tipo=Documento.Tipo.DOCUMENTO_FRENTE,
+            arquivo="uploads/associados/1/documento-frente.pdf",
+            origem=Documento.Origem.LEGADO_CADASTRO,
+        )
+        reupload = DocReupload.objects.create(
+            doc_issue=DocIssue.objects.create(
+                associado=self.associado,
+                cpf_cnpj=self.associado.cpf_cnpj,
+                analista=self.user,
+                mensagem="Documento faltando",
+            ),
+            associado=self.associado,
+            cpf_cnpj=self.associado.cpf_cnpj,
+            contrato_codigo=self.contrato.codigo,
+            file_original_name="reupload.pdf",
+            file_stored_name="reupload.pdf",
+            file_relative_path="storage/agent-reuploads/488/reupload.pdf",
+        )
+
+        payload = LegacyMediaAssetsService(legacy_root=self.legacy_root).run(
+            families=("cadastro", "esteira"),
+            execute=True,
+        )
+
+        documento.refresh_from_db()
+        reupload.refresh_from_db()
+
+        self.assertEqual(payload["summary"]["updated"], 2)
+        self.assertTrue(default_storage.exists(documento.arquivo.name))
+        self.assertTrue(default_storage.exists(reupload.file_relative_path))
+
+    def test_syncs_missing_reference_from_recovered_bundle(self):
+        self._write_legacy_file(
+            "anexos_faltantes/copiados/12345678900__associado_teste/cadastro_agente/1__cpf_frente__20260101_101010_recuperado.pdf",
+            b"cadastro-recuperado",
+        )
+
+        legacy_path = "uploads/associados/1/documento-frente-ausente.pdf"
+        documento = Documento.objects.create(
+            associado=self.associado,
+            tipo=Documento.Tipo.DOCUMENTO_FRENTE,
+            arquivo=legacy_path,
+            arquivo_referencia_path=legacy_path,
+            origem=Documento.Origem.OPERACIONAL,
+        )
+        issue = DocIssue.objects.create(
+            associado=self.associado,
+            cpf_cnpj=self.associado.cpf_cnpj,
+            analista=self.user,
+            mensagem="Documento ilegível",
+            agent_uploads_json=[
+                {
+                    "legacy_path": legacy_path,
+                    "storage_path": legacy_path,
+                    "file": "documento-frente-ausente.pdf",
+                }
+            ],
+        )
+        reupload = DocReupload.objects.create(
+            doc_issue=issue,
+            associado=self.associado,
+            cpf_cnpj=self.associado.cpf_cnpj,
+            contrato_codigo=self.contrato.codigo,
+            file_original_name="documento-frente-ausente.pdf",
+            file_stored_name="documento-frente-ausente.pdf",
+            file_relative_path=legacy_path,
+        )
+
+        payload = LegacyMediaAssetsService(legacy_root=self.legacy_root).run(
+            families=("cadastro", "esteira"),
+            execute=True,
+        )
+
+        documento.refresh_from_db()
+        reupload.refresh_from_db()
+        issue.refresh_from_db()
+
+        self.assertEqual(payload["summary"]["updated"], 3)
+        self.assertTrue(documento.arquivo.name.startswith("documentos/associados/12345678900/documento_frente/"))
+        self.assertTrue(default_storage.exists(documento.arquivo.name))
+        self.assertTrue(reupload.file_relative_path.startswith("esteira/reuploads/"))
+        self.assertTrue(default_storage.exists(reupload.file_relative_path))
+        self.assertTrue(issue.agent_uploads_json[0]["storage_path"].startswith("esteira/agent_uploads/"))
+        self.assertTrue(issue.agent_uploads_json[0]["arquivo_disponivel_localmente"])
+
+    def test_syncs_agent_upload_without_legacy_path_from_recovered_bundle(self):
+        self._write_legacy_file(
+            "anexos_faltantes/copiados/12345678900__associado_teste/esteira_agente_reupload/44__termo_adesao__20260101_101010_recovered.pdf",
+            b"esteira-recuperada",
+        )
+        issue = DocIssue.objects.create(
+            associado=self.associado,
+            cpf_cnpj=self.associado.cpf_cnpj,
+            analista=self.user,
+            mensagem="Termo pendente",
+            agent_uploads_json={"field": "termo_adesao"},
+        )
+
+        payload = LegacyMediaAssetsService(legacy_root=self.legacy_root).run(
+            families=("esteira",),
+            execute=True,
+        )
+
+        issue.refresh_from_db()
+
+        self.assertEqual(payload["summary"]["updated"], 1)
+        self.assertEqual(issue.agent_uploads_json["field"], "termo_adesao")
+        self.assertTrue(issue.agent_uploads_json["storage_path"].startswith("esteira/agent_uploads/"))
+        self.assertTrue(issue.agent_uploads_json["arquivo_disponivel_localmente"])
+        self.assertIn("recovered_source_path", issue.agent_uploads_json)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -17,6 +18,15 @@ from apps.esteira.models import DocIssue, DocReupload
 
 
 ALL_FAMILIES = ("cadastro", "renovacao", "tesouraria", "manual", "esteira")
+RECOVERED_DOCUMENT_FIELD_MAP = {
+    Documento.Tipo.DOCUMENTO_FRENTE: "cpf_frente",
+    Documento.Tipo.DOCUMENTO_VERSO: "cpf_verso",
+    Documento.Tipo.COMPROVANTE_RESIDENCIA: "comp_endereco",
+    Documento.Tipo.OUTRO: "comp_renda",
+    Documento.Tipo.CONTRACHEQUE: "contracheque_atual",
+    Documento.Tipo.TERMO_ADESAO: "termo_adesao",
+    Documento.Tipo.TERMO_ANTECIPACAO: "termo_antecipacao",
+}
 
 
 @dataclass(frozen=True)
@@ -30,10 +40,32 @@ class SourceFile:
 class LegacyMediaAssetsService:
     def __init__(self, *, legacy_root: str | Path):
         self.legacy_root = Path(legacy_root).expanduser().resolve()
-        self.public_root = self.legacy_root / "public" / "public"
-        self.public_storage_root = self.public_root / "storage"
-        self.app_root = self.legacy_root / "storage" / "storage" / "app"
-        self.app_public_root = self.app_root / "public"
+        self.public_roots = self._ordered_unique_paths(
+            self.legacy_root / "public",
+            self.legacy_root / "public" / "public",
+        )
+        self.public_storage_roots = self._ordered_unique_paths(
+            self.legacy_root / "public" / "storage",
+            self.legacy_root / "public" / "public" / "storage",
+        )
+        self.app_roots = self._ordered_unique_paths(
+            self.legacy_root / "storage" / "app",
+            self.legacy_root / "storage" / "storage" / "app",
+        )
+        self.app_public_roots = self._ordered_unique_paths(
+            self.legacy_root / "storage" / "app" / "public",
+            self.legacy_root / "storage" / "storage" / "app" / "public",
+        )
+        self.recovered_roots = self._ordered_unique_paths(
+            self.legacy_root / "anexos_faltantes" / "copiados",
+            self.legacy_root / "copiados",
+        )
+        self._recovered_by_bucket_field: dict[tuple[str, str, str], list[Path]] = defaultdict(list)
+        self._recovered_by_bucket_prefix_field: dict[
+            tuple[str, str, str, str], list[Path]
+        ] = defaultdict(list)
+        self._document_field_hints: dict[tuple[str, str], str] = {}
+        self._index_recovered_files()
 
     def run(
         self,
@@ -113,6 +145,12 @@ class LegacyMediaAssetsService:
                 current_path=current_path,
                 family="cadastro",
             )
+            if source is None:
+                source = self._resolve_recovered_document_source(
+                    documento=documento,
+                    reference_path=reference_path,
+                    current_path=current_path,
+                )
             if source is None:
                 outcome["status"] = "reference_only"
                 results.append(outcome)
@@ -318,6 +356,12 @@ class LegacyMediaAssetsService:
                 family="esteira",
             )
             if source is None:
+                source = self._resolve_recovered_reupload_source(
+                    item=item,
+                    legacy_path=legacy_path,
+                    current_path=current_path,
+                )
+            if source is None:
                 outcome["status"] = "reference_only"
                 results.append(outcome)
                 continue
@@ -422,26 +466,48 @@ class LegacyMediaAssetsService:
     ) -> tuple[dict[str, object], bool, int, bool]:
         normalized = dict(entry)
         legacy_path = self._extract_agent_upload_path(entry)
-        if not legacy_path:
-            return normalized, False, 0, False
+        resolved_name = legacy_path
+        recovered_source = None
+        if not resolved_name:
+            recovered_source = self._resolve_recovered_agent_upload_source(
+                issue=issue,
+                entry=entry,
+                legacy_path="",
+                current_path="",
+            )
+            if recovered_source is None:
+                return normalized, False, 0, False
+            resolved_name = recovered_source.name
         current_path = str(entry.get("storage_path") or legacy_path)
-        planned_path = self._planned_agent_upload_path(issue, source_name=legacy_path)
-        normalized["legacy_path"] = legacy_path
+        planned_path = self._planned_agent_upload_path(issue, source_name=resolved_name)
+        if legacy_path:
+            normalized["legacy_path"] = legacy_path
         normalized["storage_path"] = current_path
         if current_path == planned_path and default_storage.exists(current_path):
             normalized["arquivo_disponivel_localmente"] = True
             return normalized, True, 0, False
 
-        source = self._resolve_source(
-            reference_path=legacy_path,
-            current_path=current_path,
-            family="esteira",
-        )
+        source = None
+        if legacy_path:
+            source = self._resolve_source(
+                reference_path=legacy_path,
+                current_path=current_path,
+                family="esteira",
+            )
+        if source is None:
+            source = recovered_source or self._resolve_recovered_agent_upload_source(
+                issue=issue,
+                entry=entry,
+                legacy_path=legacy_path,
+                current_path=current_path,
+            )
         if source is None:
             normalized["arquivo_disponivel_localmente"] = False
             return normalized, True, 0, True
 
         normalized["arquivo_disponivel_localmente"] = True
+        if not legacy_path:
+            normalized["recovered_source_path"] = source.display_path
         if execute:
             stored_path = self._copy_source_to_storage(source=source, destination=planned_path)
             normalized["storage_path"] = stored_path
@@ -482,42 +548,309 @@ class LegacyMediaAssetsService:
     def _candidate_paths(self, relative_path: str, *, family: str) -> list[Path]:
         normalized = relative_path.strip().lstrip("/")
         storage_trimmed = normalized.removeprefix("storage/")
+        public_trimmed = normalized.removeprefix("public/")
+        public_storage_trimmed = normalized.removeprefix("public/storage/")
+        app_trimmed = normalized.removeprefix("storage/app/")
+        app_public_trimmed = normalized.removeprefix("storage/app/public/")
         families = {
             "cadastro": [
-                self.public_root / normalized,
-                self.public_storage_root / storage_trimmed,
+                *self._join_roots(self.public_roots, normalized, public_trimmed),
+                *self._join_roots(
+                    self.public_storage_roots,
+                    storage_trimmed,
+                    public_storage_trimmed,
+                ),
             ],
             "esteira": [
-                self.public_root / normalized,
-                self.public_storage_root / storage_trimmed,
-                self.app_public_root / normalized,
+                *self._join_roots(self.public_roots, normalized, public_trimmed),
+                *self._join_roots(
+                    self.public_storage_roots,
+                    storage_trimmed,
+                    public_storage_trimmed,
+                ),
+                *self._join_roots(
+                    self.app_public_roots,
+                    normalized,
+                    app_public_trimmed,
+                    storage_trimmed,
+                ),
             ],
             "tesouraria": [
-                self.public_storage_root / normalized,
-                self.public_root / normalized,
-                self.app_root / normalized,
-                self.app_public_root / normalized,
+                *self._join_roots(
+                    self.public_storage_roots,
+                    normalized,
+                    storage_trimmed,
+                    public_storage_trimmed,
+                ),
+                *self._join_roots(self.public_roots, normalized, public_trimmed),
+                *self._join_roots(self.app_roots, normalized, app_trimmed),
+                *self._join_roots(
+                    self.app_public_roots,
+                    normalized,
+                    app_public_trimmed,
+                    storage_trimmed,
+                ),
             ],
             "renovacao": [
-                self.app_public_root / normalized,
-                self.app_root / normalized,
-                self.public_storage_root / normalized,
-                self.public_root / normalized,
+                *self._join_roots(
+                    self.app_public_roots,
+                    normalized,
+                    app_public_trimmed,
+                    storage_trimmed,
+                ),
+                *self._join_roots(self.app_roots, normalized, app_trimmed),
+                *self._join_roots(
+                    self.public_storage_roots,
+                    normalized,
+                    storage_trimmed,
+                    public_storage_trimmed,
+                ),
+                *self._join_roots(self.public_roots, normalized, public_trimmed),
             ],
             "manual": [
-                self.app_public_root / normalized,
-                self.public_storage_root / normalized,
-                self.public_root / normalized,
-                self.app_root / normalized,
+                *self._join_roots(
+                    self.app_public_roots,
+                    normalized,
+                    app_public_trimmed,
+                    storage_trimmed,
+                ),
+                *self._join_roots(
+                    self.public_storage_roots,
+                    normalized,
+                    storage_trimmed,
+                    public_storage_trimmed,
+                ),
+                *self._join_roots(self.public_roots, normalized, public_trimmed),
+                *self._join_roots(self.app_roots, normalized, app_trimmed),
             ],
         }
         seen: set[Path] = set()
         ordered: list[Path] = []
-        for candidate in families.get(family, families["manual"]):
+        for candidate in [
+            *families.get(family, families["manual"]),
+            self.legacy_root / normalized,
+            self.legacy_root / public_trimmed,
+            self.legacy_root / app_trimmed,
+            self.legacy_root / app_public_trimmed,
+        ]:
             if candidate not in seen:
                 seen.add(candidate)
                 ordered.append(candidate)
         return ordered
+
+    def _ordered_unique_paths(self, *paths: Path) -> list[Path]:
+        seen: set[Path] = set()
+        ordered: list[Path] = []
+        for path in paths:
+            if path in seen:
+                continue
+            seen.add(path)
+            ordered.append(path)
+        return ordered
+
+    def _join_roots(self, roots: Iterable[Path], *relative_paths: str) -> list[Path]:
+        candidates: list[Path] = []
+        for root in roots:
+            for relative_path in relative_paths:
+                if relative_path:
+                    candidates.append(root / relative_path)
+        return candidates
+
+    def _index_recovered_files(self) -> None:
+        for root in self.recovered_roots:
+            if not root.exists():
+                continue
+            for candidate in root.rglob("*"):
+                if not candidate.is_file():
+                    continue
+                try:
+                    relative = candidate.relative_to(root)
+                except ValueError:
+                    continue
+                if len(relative.parts) < 3:
+                    continue
+                owner, bucket = relative.parts[0], relative.parts[1]
+                cpf_cnpj = only_digits(owner.split("__", 1)[0])
+                if not cpf_cnpj or not bucket:
+                    continue
+                prefix_hint, field_hint = self._parse_recovered_name(candidate.name)
+                if field_hint:
+                    self._recovered_by_bucket_field[(cpf_cnpj, bucket, field_hint)].append(candidate)
+                if prefix_hint and field_hint:
+                    self._recovered_by_bucket_prefix_field[
+                        (cpf_cnpj, bucket, prefix_hint, field_hint)
+                    ].append(candidate)
+
+    def _parse_recovered_name(self, name: str) -> tuple[str, str]:
+        stem_parts = Path(name).stem.split("__")
+        if len(stem_parts) < 3:
+            return "", ""
+        return only_digits(stem_parts[0]), stem_parts[1].strip().lower()
+
+    def _resolve_recovered_document_source(
+        self,
+        *,
+        documento: Documento,
+        reference_path: str,
+        current_path: str,
+    ) -> SourceFile | None:
+        field_hint = RECOVERED_DOCUMENT_FIELD_MAP.get(documento.tipo, "")
+        if not field_hint:
+            return None
+        prefix_hint = self._extract_path_id(reference_path or current_path, marker="associados")
+        return self._resolve_recovered_source(
+            cpf_cnpj=documento.associado.cpf_cnpj,
+            bucket="cadastro_agente",
+            field_hint=field_hint,
+            prefix_hint=prefix_hint,
+            preferred_name=Path(reference_path or current_path).name,
+        )
+
+    def _resolve_recovered_reupload_source(
+        self,
+        *,
+        item: DocReupload,
+        legacy_path: str,
+        current_path: str,
+    ) -> SourceFile | None:
+        normalized_reference = (legacy_path or current_path).strip().lstrip("/")
+        if not normalized_reference:
+            return None
+        if normalized_reference.startswith("uploads/associados/"):
+            field_hint = self._lookup_document_field_hint(
+                cpf_cnpj=item.cpf_cnpj,
+                reference_path=normalized_reference,
+            )
+            prefix_hint = self._extract_path_id(normalized_reference, marker="associados")
+            return self._resolve_recovered_source(
+                cpf_cnpj=item.cpf_cnpj,
+                bucket="cadastro_agente",
+                field_hint=field_hint,
+                prefix_hint=prefix_hint,
+                preferred_name=Path(normalized_reference).name,
+            )
+
+        extras = self._coerce_dict(item.extras)
+        field_hint = str(extras.get("field") or "").strip().lower()
+        prefix_hint = self._extract_path_id(normalized_reference, marker="agent-reuploads")
+        return self._resolve_recovered_source(
+            cpf_cnpj=item.cpf_cnpj,
+            bucket="esteira_agente_reupload",
+            field_hint=field_hint,
+            prefix_hint=prefix_hint,
+            preferred_name=Path(normalized_reference).name,
+        )
+
+    def _resolve_recovered_agent_upload_source(
+        self,
+        *,
+        issue: DocIssue,
+        entry: dict[str, object],
+        legacy_path: str,
+        current_path: str,
+    ) -> SourceFile | None:
+        normalized_reference = (legacy_path or current_path).strip().lstrip("/")
+        field_hint = str(entry.get("field") or "").strip().lower()
+        bucket = "esteira_agente_reupload"
+        prefix_hint = self._extract_path_id(normalized_reference, marker="agent-reuploads")
+        preferred_name = Path(normalized_reference).name if normalized_reference else ""
+
+        if normalized_reference.startswith("uploads/associados/"):
+            bucket = "cadastro_agente"
+            field_hint = field_hint or self._lookup_document_field_hint(
+                cpf_cnpj=issue.cpf_cnpj,
+                reference_path=normalized_reference,
+            )
+            prefix_hint = self._extract_path_id(normalized_reference, marker="associados")
+
+        return self._resolve_recovered_source(
+            cpf_cnpj=issue.cpf_cnpj,
+            bucket=bucket,
+            field_hint=field_hint,
+            prefix_hint=prefix_hint,
+            preferred_name=preferred_name,
+        )
+
+    def _resolve_recovered_source(
+        self,
+        *,
+        cpf_cnpj: str,
+        bucket: str,
+        field_hint: str,
+        prefix_hint: str = "",
+        preferred_name: str = "",
+    ) -> SourceFile | None:
+        normalized_cpf = only_digits(cpf_cnpj)
+        normalized_field = field_hint.strip().lower()
+        if not normalized_cpf or not bucket or not normalized_field:
+            return None
+
+        candidates: list[Path] = []
+        if prefix_hint:
+            candidates.extend(
+                self._recovered_by_bucket_prefix_field.get(
+                    (normalized_cpf, bucket, only_digits(prefix_hint), normalized_field),
+                    [],
+                )
+            )
+        if not candidates:
+            candidates.extend(
+                self._recovered_by_bucket_field.get((normalized_cpf, bucket, normalized_field), [])
+            )
+
+        candidate = self._pick_recovered_candidate(candidates, preferred_name=preferred_name)
+        if candidate is None:
+            return None
+        return SourceFile(
+            kind="legacy_fs",
+            display_path=str(candidate),
+            open_path=candidate,
+            name=candidate.name,
+        )
+
+    def _pick_recovered_candidate(
+        self,
+        candidates: Iterable[Path],
+        *,
+        preferred_name: str = "",
+    ) -> Path | None:
+        ordered = list(dict.fromkeys(candidates))
+        if not ordered:
+            return None
+        if preferred_name:
+            preferred_matches = [candidate for candidate in ordered if candidate.name == preferred_name]
+            if len(preferred_matches) == 1:
+                return preferred_matches[0]
+        if len(ordered) == 1:
+            return ordered[0]
+        return None
+
+    def _lookup_document_field_hint(self, *, cpf_cnpj: str, reference_path: str) -> str:
+        normalized_reference = reference_path.strip().lstrip("/")
+        normalized_cpf = only_digits(cpf_cnpj)
+        cache_key = (normalized_cpf, normalized_reference)
+        if cache_key in self._document_field_hints:
+            return self._document_field_hints[cache_key]
+
+        document = (
+            Documento.all_objects.filter(associado__cpf_cnpj=normalized_cpf)
+            .filter(Q(arquivo_referencia_path=normalized_reference) | Q(arquivo=normalized_reference))
+            .order_by("id")
+            .first()
+        )
+        field_hint = RECOVERED_DOCUMENT_FIELD_MAP.get(getattr(document, "tipo", ""), "")
+        self._document_field_hints[cache_key] = field_hint
+        return field_hint
+
+    def _extract_path_id(self, path: str, *, marker: str) -> str:
+        normalized = path.strip().lstrip("/")
+        if not normalized:
+            return ""
+        parts = Path(normalized).parts
+        for index, part in enumerate(parts[:-1]):
+            if part == marker and index + 1 < len(parts):
+                return only_digits(parts[index + 1])
+        return ""
 
     def _copy_source_to_storage(self, *, source: SourceFile, destination: str) -> str:
         if default_storage.exists(destination):

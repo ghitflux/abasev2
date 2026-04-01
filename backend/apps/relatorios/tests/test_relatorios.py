@@ -15,6 +15,7 @@ from apps.esteira.models import EsteiraItem, Pendencia
 from apps.importacao.models import ArquivoRetorno
 from apps.refinanciamento.models import Refinanciamento
 from apps.relatorios.models import RelatorioGerado
+from apps.relatorios.services import RelatorioService
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
@@ -193,3 +194,22 @@ class RelatoriosViewSetTestCase(TestCase):
 
                 content = b"".join(download_response.streaming_content)
                 self.assertTrue(content.startswith(b"%PDF-"))
+
+    def test_definicao_tesouraria_reflete_colunas_da_secao(self):
+        definition = RelatorioService._definition_for_route("/tesouraria")
+
+        self.assertEqual(
+            [column.key for column in definition.columns],
+            [
+                "anexos",
+                "dados_bancarios",
+                "chave_pix",
+                "acao",
+                "nome",
+                "matricula_cpf",
+                "agente",
+                "auxilio_comissao",
+                "data_solicitacao",
+                "status",
+            ],
+        )

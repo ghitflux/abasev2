@@ -14,6 +14,7 @@ import {
   AssociadoContractsOverview,
   AssociadoDocumentsGrid,
 } from "@/components/associados/associado-contracts-overview";
+import CadastroOrigemBadge from "@/components/associados/cadastro-origem-badge";
 import AdminContractEditor from "@/components/associados/admin-contract-editor";
 import type {
   AdminContractEditorHandle,
@@ -61,6 +62,17 @@ type AssociadoPageProps = {
 
 function hasDirtyContractState(state?: ContractEditorDirtyState) {
   return Boolean(state?.core || state?.cycles || state?.refinanciamento);
+}
+
+function isSameDirtyContractState(
+  previous: ContractEditorDirtyState | undefined,
+  next: ContractEditorDirtyState,
+) {
+  return (
+    previous?.core === next.core &&
+    previous?.cycles === next.cycles &&
+    previous?.refinanciamento === next.refinanciamento
+  );
 }
 
 function AssociadoPageContent({ params }: AssociadoPageProps) {
@@ -172,6 +184,44 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
       setEsteiraDirty(false);
     }
   }, [adminMode]);
+
+  const handleAdminModeChange = React.useCallback((checked: boolean) => {
+    setAdminMode((current) => {
+      const next = Boolean(checked);
+      return current === next ? current : next;
+    });
+  }, []);
+
+  const handleContractDirtyChange = React.useCallback(
+    (contractId: number, state: ContractEditorDirtyState) => {
+      setContractDirtyState((current) => {
+        if (isSameDirtyContractState(current[contractId], state)) {
+          return current;
+        }
+        return {
+          ...current,
+          [contractId]: state,
+        };
+      });
+    },
+    [],
+  );
+
+  const handleEsteiraDirtyChange = React.useCallback((dirty: boolean) => {
+    setEsteiraDirty((current) => (current === dirty ? current : dirty));
+  }, []);
+
+  const handleAdminPayloadRefresh = React.useCallback(
+    async (payload?: AdminAssociadoEditorPayload) => {
+      if (payload) {
+        queryClient.setQueryData(["admin-associado-editor", associadoId], payload);
+      } else {
+        await adminEditorQuery.refetch();
+      }
+      await Promise.all([associadoQuery.refetch(), adminHistoryQuery.refetch()]);
+    },
+    [adminEditorQuery, adminHistoryQuery, associadoId, associadoQuery, queryClient],
+  );
 
   const hasUnsavedAdminChanges =
     isAdmin &&
@@ -293,6 +343,10 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
             <span>{associado.matricula_display || associado.matricula}</span>
             <span>{associado.cpf_cnpj}</span>
+            <CadastroOrigemBadge
+              origem={associado.origem_cadastro_slug}
+              label={associado.origem_cadastro_label}
+            />
             <StatusBadge
               status={associado.status_visual_slug}
               label={associado.status_visual_label}
@@ -310,7 +364,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             <label className="inline-flex items-center gap-3 rounded-full border border-border/60 bg-card/60 px-4 py-2 text-sm">
               <Switch
                 checked={adminMode}
-                onCheckedChange={(checked) => setAdminMode(Boolean(checked))}
+                onCheckedChange={handleAdminModeChange}
               />
               Modo edição admin
             </label>
@@ -447,20 +501,8 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
                     }}
                     associadoId={associadoId}
                     contract={contract}
-                    onDirtyChange={(state) =>
-                      setContractDirtyState((current) => ({
-                        ...current,
-                        [contract.id]: state,
-                      }))
-                    }
-                    onPayloadRefresh={async (payload) => {
-                      if (payload) {
-                        queryClient.setQueryData(["admin-associado-editor", associadoId], payload);
-                      } else {
-                        await adminEditorQuery.refetch();
-                      }
-                      await Promise.all([associadoQuery.refetch(), adminHistoryQuery.refetch()]);
-                    }}
+                    onDirtyChange={(state) => handleContractDirtyChange(contract.id, state)}
+                    onPayloadRefresh={handleAdminPayloadRefresh}
                   />
                 ))}
               </div>
@@ -501,7 +543,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
               <AdminEsteiraEditor
                 ref={esteiraEditorRef}
                 esteira={associado.esteira}
-                onDirtyChange={setEsteiraDirty}
+                onDirtyChange={handleEsteiraDirtyChange}
               />
             ) : null}
             <div className="flex flex-wrap items-center gap-3">

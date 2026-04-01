@@ -88,6 +88,12 @@ const ROUTE_SEARCH_ALIASES: Partial<Record<string, string[]>> = {
   "/coordenacao/refinanciamento": ["refinanciamento", "coordenacao refinanciamento"],
   "/coordenacao/refinanciados": ["coordenacao refinanciados", "refinanciados"],
   "/agentes/pagamentos": ["pagamentos", "meus pagamentos", "financeiro", "cadastros"],
+  "/tesouraria/pagamentos": [
+    "pagamentos",
+    "tesouraria pagamentos",
+    "financeiro",
+    "repasse",
+  ],
   "/agentes/refinanciados": [
     "minhas renovacoes",
     "minhas renovações",
@@ -160,7 +166,7 @@ function isCoordenadorUserManagementPath(pathname: string) {
 }
 
 function isTesoureiroPagamentosPath(pathname: string) {
-  return matchesPathPrefix(pathname, "/agentes/pagamentos");
+  return matchesPathPrefix(pathname, "/tesouraria/pagamentos");
 }
 
 function isTesoureiroAssociadoDetailPath(pathname: string) {
@@ -301,7 +307,7 @@ export const navigationSections: NavigationSection[] = [
           },
           {
             title: "Pagamentos",
-            href: "/agentes/pagamentos",
+            href: "/tesouraria/pagamentos",
             icon: ReceiptText,
             roles: ["TESOUREIRO", "ADMIN"],
           },
@@ -590,7 +596,10 @@ export function getLegacyRouteTarget(
   role?: Role,
 ) {
   if (legacyPath === "/pagamentos") {
-    if (role === "TESOUREIRO" || role === "AGENTE" || role === "ADMIN") {
+    if (role === "TESOUREIRO" || role === "ADMIN") {
+      return "/tesouraria/pagamentos";
+    }
+    if (role === "AGENTE") {
       return "/agentes/pagamentos";
     }
     return getDefaultRouteForRole(role);

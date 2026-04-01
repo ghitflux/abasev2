@@ -46,6 +46,53 @@ def shift_month(base_date: date, offset: int) -> date:
 
 class TesourariaService:
     @staticmethod
+    def listar_usuarios_filtro_agente() -> list[dict[str, object]]:
+        linked_queryset = Contrato.objects.filter(
+            Q(
+                associado__esteira_item__etapa_atual__in=[
+                    EsteiraItem.Etapa.TESOURARIA,
+                    EsteiraItem.Etapa.CONCLUIDO,
+                ]
+            )
+            | Q(status__in=[Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO])
+        )
+        linked_user_ids = {
+            user_id
+            for user_id in (
+                list(linked_queryset.values_list("agente_id", flat=True))
+                + list(
+                    linked_queryset.values_list(
+                        "associado__agente_responsavel_id",
+                        flat=True,
+                    )
+                )
+            )
+            if user_id
+        }
+
+        users = (
+            User.objects.filter(
+                Q(
+                    is_active=True,
+                    user_roles__deleted_at__isnull=True,
+                    user_roles__role__codigo="AGENTE",
+                )
+                | Q(id__in=linked_user_ids)
+            )
+            .distinct()
+            .order_by("first_name", "last_name", "email")
+        )
+        return [
+            {
+                "id": user.id,
+                "full_name": user.full_name or user.email,
+                "email": user.email,
+                "primary_role": user.primary_role,
+            }
+            for user in users
+        ]
+
+    @staticmethod
     def listar_contratos_pendentes(
         competencia: date | None = None,
         data_inicio: str | None = None,
@@ -65,6 +112,7 @@ class TesourariaService:
             "codigo": "codigo",
             "-codigo": "-codigo",
         }
+        has_explicit_period = bool(data_inicio or data_fim)
         queryset = (
             Contrato.objects.select_related(
                 "associado",
@@ -101,7 +149,7 @@ class TesourariaService:
                 associado__esteira_item__etapa_atual=EsteiraItem.Etapa.TESOURARIA
             )
 
-        if competencia:
+        if competencia and not has_explicit_period:
             if pagamento == "concluido":
                 queryset = queryset.filter(
                     auxilio_liberado_em__year=competencia.year,
@@ -131,10 +179,10 @@ class TesourariaService:
                 )
 
         if data_inicio:
-            queryset = queryset.filter(data_contrato__gte=data_inicio)
+            queryset = queryset.filter(created_at__date__gte=data_inicio)
 
         if data_fim:
-            queryset = queryset.filter(data_contrato__lte=data_fim)
+            queryset = queryset.filter(created_at__date__lte=data_fim)
 
         if search:
             queryset = queryset.filter(
@@ -148,15 +196,34 @@ class TesourariaService:
             agente_term = agente.strip()
             if agente_term:
                 if agente_term.isdigit():
-                    queryset = queryset.filter(agente_id=int(agente_term))
+                    agente_id = int(agente_term)
+                    queryset = queryset.filter(
+                        Q(agente_id=agente_id)
+                        | Q(associado__agente_responsavel_id=agente_id)
+                    )
                 else:
                     queryset = queryset.filter(
                         Q(agente__first_name__icontains=agente_term)
                         | Q(agente__last_name__icontains=agente_term)
                         | Q(agente__email__icontains=agente_term)
+                        | Q(
+                            associado__agente_responsavel__first_name__icontains=agente_term
+                        )
+                        | Q(
+                            associado__agente_responsavel__last_name__icontains=agente_term
+                        )
+                        | Q(
+                            associado__agente_responsavel__email__icontains=agente_term
+                        )
                     )
 
-        if status_contrato and status_contrato in {choice[0] for choice in Contrato.Status.choices}:
+        if status_contrato == "congelado":
+            queryset = queryset.filter(
+                associado__esteira_item__status=EsteiraItem.Situacao.PENDENCIADO
+            )
+        elif status_contrato and status_contrato in {
+            choice[0] for choice in Contrato.Status.choices
+        }:
             queryset = queryset.filter(status=status_contrato)
 
         if situacao_esteira and situacao_esteira in {

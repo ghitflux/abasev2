@@ -14,13 +14,14 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import type { PaginatedResponse, TesourariaContratoItem } from "@/lib/api/types";
+import type { PaginatedResponse, SimpleUser, TesourariaContratoItem } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
-import { formatCurrency, formatDateTime, formatLongMonthYear } from "@/lib/formatters";
+import { formatCurrency, formatDateTime } from "@/lib/formatters";
 import { maskCPFCNPJ } from "@/lib/masks";
 import { exportRouteReport, fetchAllPaginatedRows } from "@/lib/reports";
-import CalendarCompetencia from "@/components/custom/calendar-competencia";
+import DatePicker from "@/components/custom/date-picker";
+import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import AssociadoDetailsDialog from "@/components/associados/associado-details-dialog";
 import CopySnippet from "@/components/shared/copy-snippet";
@@ -72,14 +73,106 @@ type TesourariaPagamentoFilter =
   | "liquidado"
   | "cancelado"
   | "processado";
+type TesourariaSectionFilter =
+  | "todos"
+  | "pendente"
+  | "concluido"
+  | "liquidado"
+  | "cancelado";
 type AdvancedFiltersDraft = {
-  dataInicio: string;
-  dataFim: string;
+  dataInicio?: Date;
+  dataFim?: Date;
   agente: string;
   statusContrato: string;
   situacaoEsteira: string;
   ordering: string;
 };
+type TesourariaAgentFilterUser = SimpleUser & {
+  email?: string;
+  primary_role?: string | null;
+};
+
+function toStatusLabel(value: string) {
+  return value
+    .split("_")
+    .filter(Boolean)
+    .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+    .join(" ");
+}
+
+function formatTesourariaAnexos(row: TesourariaContratoItem) {
+  const associado = row.comprovantes.find((item) => item.papel === "associado");
+  const agente = row.comprovantes.find((item) => item.papel === "agente");
+
+  const formatItem = (label: string, item?: TesourariaContratoItem["comprovantes"][number]) => {
+    if (!item) {
+      return `${label}: sem anexo`;
+    }
+    if (item.nome_original) {
+      return `${label}: ${item.nome_original}`;
+    }
+    if (item.arquivo_referencia) {
+      return `${label}: ${item.arquivo_referencia}`;
+    }
+    return `${label}: anexado`;
+  };
+
+  return [formatItem("Associado", associado), formatItem("Agente", agente)].join(" | ");
+}
+
+function formatTesourariaDadosBancarios(row: TesourariaContratoItem) {
+  if (!row.dados_bancarios) {
+    return "Sem dados bancários";
+  }
+  const { banco, agencia, conta, tipo_conta } = row.dados_bancarios;
+  return [banco, `Ag ${agencia}`, `Conta ${conta}`, tipo_conta].filter(Boolean).join(" | ");
+}
+
+function formatTesourariaAcoes(row: TesourariaContratoItem) {
+  const actions = ["Ver detalhes", "Congelar", "Cancelar contrato"];
+  if (row.status === "cancelado" && row.cancelamento_tipo === "desistente") {
+    return [...actions, "Desistente"].join(" | ");
+  }
+  return actions.join(" | ");
+}
+
+function formatTesourariaAgente(row: TesourariaContratoItem) {
+  return [row.agente_nome || "Sem agente", `Repasse: ${row.percentual_repasse}%`].join(" | ");
+}
+
+function formatTesourariaValores(row: TesourariaContratoItem) {
+  return [
+    `Aux. liberado: ${formatCurrency(row.margem_disponivel)}`,
+    `Comissão: ${formatCurrency(row.comissao_agente)}`,
+  ].join(" | ");
+}
+
+function formatTesourariaStatus(row: TesourariaContratoItem) {
+  const parts = [toStatusLabel(row.status)];
+  if (row.cancelamento_tipo) {
+    parts.push(row.cancelamento_tipo === "desistente" ? "Desistente" : "Cancelado");
+  }
+  return parts.join(" | ");
+}
+
+function buildTesourariaExportRow(row: TesourariaContratoItem) {
+  return {
+    anexos: formatTesourariaAnexos(row),
+    dados_bancarios: formatTesourariaDadosBancarios(row),
+    chave_pix: row.chave_pix || "—",
+    acao: formatTesourariaAcoes(row),
+    nome: row.nome,
+    matricula_cpf: `${row.matricula || "—"} | ${maskCPFCNPJ(row.cpf_cnpj)}`,
+    agente: formatTesourariaAgente(row),
+    auxilio_comissao: formatTesourariaValores(row),
+    data_solicitacao: formatDateTime(row.data_solicitacao),
+    status: formatTesourariaStatus(row),
+  };
+}
+
+function toFilterDate(value?: Date) {
+  return value ? format(value, "yyyy-MM-dd") : undefined;
+}
 
 function countAdvancedFilters(filters: AdvancedFiltersDraft) {
   return [
@@ -92,9 +185,29 @@ function countAdvancedFilters(filters: AdvancedFiltersDraft) {
   ].filter(Boolean).length;
 }
 
+function formatActiveFilterScope({
+  dataInicio,
+  dataFim,
+  hasActiveFilters,
+}: {
+  dataInicio?: Date;
+  dataFim?: Date;
+  hasActiveFilters: boolean;
+}) {
+  if (dataInicio && dataFim) {
+    return `${format(dataInicio, "dd/MM/yy")} a ${format(dataFim, "dd/MM/yy")}`;
+  }
+  if (dataInicio) {
+    return `A partir de ${format(dataInicio, "dd/MM/yy")}`;
+  }
+  if (dataFim) {
+    return `Até ${format(dataFim, "dd/MM/yy")}`;
+  }
+  return hasActiveFilters ? "Filtro ativo" : "Sem recorte";
+}
+
 function useTesourariaQuery({
   page,
-  competencia,
   search,
   pagamento,
   dataInicio,
@@ -105,11 +218,10 @@ function useTesourariaQuery({
   ordering,
 }: {
   page: number;
-  competencia: Date;
   search: string;
   pagamento: TesourariaPagamentoFilter;
-  dataInicio: string;
-  dataFim: string;
+  dataInicio?: Date;
+  dataFim?: Date;
   agente: string;
   statusContrato: string;
   situacaoEsteira: string;
@@ -120,10 +232,9 @@ function useTesourariaQuery({
       "tesouraria-contratos",
       pagamento,
       page,
-      competencia.toISOString(),
       search,
-      dataInicio,
-      dataFim,
+      dataInicio?.toISOString(),
+      dataFim?.toISOString(),
       agente,
       statusContrato,
       situacaoEsteira,
@@ -134,11 +245,10 @@ function useTesourariaQuery({
         query: {
           page,
           page_size: PAGE_SIZE,
-          competencia: format(competencia, "yyyy-MM"),
           pagamento,
           search: search || undefined,
-          data_inicio: dataInicio || undefined,
-          data_fim: dataFim || undefined,
+          data_inicio: toFilterDate(dataInicio),
+          data_fim: toFilterDate(dataFim),
           agente: agente || undefined,
           status_contrato: statusContrato === "todos" ? undefined : statusContrato,
           situacao_esteira: situacaoEsteira === "todos" ? undefined : situacaoEsteira,
@@ -150,23 +260,22 @@ function useTesourariaQuery({
 
 export default function TesourariaPage() {
   const queryClient = useQueryClient();
-  const [competencia, setCompetencia] = React.useState(() => new Date());
   const [search, setSearch] = React.useState("");
   const [isExporting, setIsExporting] = React.useState(false);
   const [pagePending, setPagePending] = React.useState(1);
   const [pagePaid, setPagePaid] = React.useState(1);
   const [pageLiquidated, setPageLiquidated] = React.useState(1);
   const [pageCanceled, setPageCanceled] = React.useState(1);
-  const [showOnlyPending, setShowOnlyPending] = React.useState(false);
-  const [dataInicio, setDataInicio] = React.useState("");
-  const [dataFim, setDataFim] = React.useState("");
+  const [visibleSection, setVisibleSection] = React.useState<TesourariaSectionFilter>("todos");
+  const [dataInicio, setDataInicio] = React.useState<Date | undefined>();
+  const [dataFim, setDataFim] = React.useState<Date | undefined>();
   const [agenteFiltro, setAgenteFiltro] = React.useState("");
   const [statusContrato, setStatusContrato] = React.useState("todos");
   const [situacaoEsteira, setSituacaoEsteira] = React.useState("todos");
   const [ordering, setOrdering] = React.useState("-created_at");
   const [draftAdvancedFilters, setDraftAdvancedFilters] = React.useState<AdvancedFiltersDraft>({
-    dataInicio: "",
-    dataFim: "",
+    dataInicio: undefined,
+    dataFim: undefined,
     agente: "",
     statusContrato: "todos",
     situacaoEsteira: "todos",
@@ -180,10 +289,14 @@ export default function TesourariaPage() {
   const [cancelType, setCancelType] = React.useState<"cancelado" | "desistente">("cancelado");
   const [bankTarget, setBankTarget] = React.useState<TesourariaContratoItem | null>(null);
   const [detailTarget, setDetailTarget] = React.useState<TesourariaContratoItem | null>(null);
+  const agentesFiltroQuery = useQuery({
+    queryKey: ["tesouraria-contratos-agentes"],
+    queryFn: () => apiFetch<TesourariaAgentFilterUser[]>("tesouraria/contratos/agentes"),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const pendingQuery = useTesourariaQuery({
     page: pagePending,
-    competencia,
     search,
     pagamento: "pendente",
     dataInicio,
@@ -195,7 +308,6 @@ export default function TesourariaPage() {
   });
   const paidQuery = useTesourariaQuery({
     page: pagePaid,
-    competencia,
     search,
     pagamento: "concluido",
     dataInicio,
@@ -207,7 +319,6 @@ export default function TesourariaPage() {
   });
   const liquidatedQuery = useTesourariaQuery({
     page: pageLiquidated,
-    competencia,
     search,
     pagamento: "liquidado",
     dataInicio,
@@ -219,7 +330,6 @@ export default function TesourariaPage() {
   });
   const canceledQuery = useTesourariaQuery({
     page: pageCanceled,
-    competencia,
     search,
     pagamento: "cancelado",
     dataInicio,
@@ -587,14 +697,14 @@ export default function TesourariaPage() {
 
       setIsExporting(true);
       try {
-        const pagamentos = showOnlyPending
-          ? (["pendente"] as const)
-          : (["pendente", "concluido", "liquidado", "cancelado"] as const);
+        const pagamentos =
+          visibleSection === "todos"
+            ? (["pendente", "concluido", "liquidado", "cancelado"] as const)
+            : ([visibleSection] as const);
         const sharedQuery = {
-          competencia: format(competencia, "yyyy-MM"),
           search: search || undefined,
-          data_inicio: dataInicio || undefined,
-          data_fim: dataFim || undefined,
+          data_inicio: toFilterDate(dataInicio),
+          data_fim: toFilterDate(dataFim),
           agente: agenteFiltro || undefined,
           status_contrato: statusContrato === "todos" ? undefined : statusContrato,
           situacao_esteira: situacaoEsteira === "todos" ? undefined : situacaoEsteira,
@@ -615,18 +725,7 @@ export default function TesourariaPage() {
           )
         )
           .flat()
-          .map((row) => ({
-            codigo: row.codigo,
-            nome: row.nome,
-            cpf_cnpj: row.cpf_cnpj,
-            status: row.status,
-            data_solicitacao: row.data_solicitacao,
-            margem_disponivel: row.margem_disponivel,
-            comissao_agente: row.comissao_agente,
-            agente_nome: row.agente_nome,
-            cancelamento_tipo: row.cancelamento_tipo ?? "",
-            cancelamento_motivo: row.cancelamento_motivo ?? "",
-          }));
+          .map((row) => buildTesourariaExportRow(row));
 
         await exportRouteReport({
           route: "/tesouraria",
@@ -645,14 +744,13 @@ export default function TesourariaPage() {
     },
     [
       agenteFiltro,
-      competencia,
       dataFim,
       dataInicio,
       ordering,
       search,
-      showOnlyPending,
       situacaoEsteira,
       statusContrato,
+      visibleSection,
     ],
   );
 
@@ -682,58 +780,98 @@ export default function TesourariaPage() {
     situacaoEsteira,
     ordering,
   });
+  const hasActiveFilters = activeAdvancedFiltersCount > 0 || Boolean(search);
+  const filterScopeLabel = formatActiveFilterScope({
+    dataInicio,
+    dataFim,
+    hasActiveFilters,
+  });
+  const kpiCounts = {
+    pendente: pendingQuery.data?.count ?? 0,
+    concluido: paidQuery.data?.count ?? 0,
+    liquidado: liquidatedQuery.data?.count ?? 0,
+    cancelado: canceledQuery.data?.count ?? 0,
+  };
+  const totalKpiCount =
+    kpiCounts.pendente + kpiCounts.concluido + kpiCounts.liquidado + kpiCounts.cancelado;
+  const shouldShowSection = (section: TesourariaPagamentoFilter) =>
+    visibleSection === "todos" || visibleSection === section;
+  const kpiCards = [
+    {
+      key: "todos" as const,
+      label: "Total no filtro",
+      value: totalKpiCount,
+      accentClassName: "text-foreground",
+    },
+    {
+      key: "pendente" as const,
+      label: "Pendentes",
+      value: kpiCounts.pendente,
+      accentClassName: "text-rose-200",
+    },
+    {
+      key: "concluido" as const,
+      label: "Efetivados",
+      value: kpiCounts.concluido,
+      accentClassName: "text-emerald-200",
+    },
+    {
+      key: "liquidado" as const,
+      label: "Liquidados",
+      value: kpiCounts.liquidado,
+      accentClassName: "text-sky-200",
+    },
+    {
+      key: "cancelado" as const,
+      label: "Cancelados",
+      value: kpiCounts.cancelado,
+      accentClassName: "text-amber-200",
+    },
+  ];
+  const agentOptions = React.useMemo(
+    () =>
+      (agentesFiltroQuery.data ?? []).map((item) => ({
+        value: String(item.id),
+        label: [
+          item.full_name || item.email || `Usuário ${item.id}`,
+          item.primary_role || null,
+          item.email || null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      })),
+    [agentesFiltroQuery.data],
+  );
 
   return (
     <div className="space-y-6">
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto]">
+      <section className="space-y-4">
         <Card className="rounded-[1.75rem] border-border/60 bg-card/70">
-          <CardContent className="flex flex-col gap-4 p-6 lg:flex-row lg:items-center lg:justify-between">
+          <CardContent className="flex flex-col gap-4 p-6">
             <div>
               <p className="text-sm uppercase tracking-[0.28em] text-muted-foreground">
                 Tesouraria
               </p>
               <h1 className="text-3xl font-semibold">Novos Contratos</h1>
               <p className="text-sm text-muted-foreground">
-                Fluxo padrão de novos contratos na competência ativa: {formatLongMonthYear(competencia)}
+                Painel operacional de novos contratos, pagamentos iniciais e histórico da tesouraria.
               </p>
             </div>
-            <div className="flex flex-wrap gap-3">
-              <CalendarCompetencia
-                value={competencia}
-                onChange={(value) => {
-                  setCompetencia(value);
-                  setPagePending(1);
-                  setPagePaid(1);
-                  setPageLiquidated(1);
-                  setPageCanceled(1);
-                }}
-                className="w-full rounded-2xl bg-card/60 sm:w-56"
-              />
-              <ExportButton
-                disabled={isExporting}
-                label={isExporting ? "Exportando..." : "Exportar"}
-                onExport={(formatValue) => void handleExport(formatValue)}
-              />
-            </div>
           </CardContent>
         </Card>
-        <Card className="rounded-[1.75rem] border-border/60 bg-card/70">
-          <CardContent className="space-y-2 p-6">
-            <p className="text-sm text-muted-foreground">Pendentes na competência</p>
-            <button
-              type="button"
-              onClick={() => setShowOnlyPending((current) => !current)}
-              className="text-left"
-            >
-              <Badge className="rounded-full bg-rose-500/15 px-3 py-1 text-rose-200">
-                Pendentes: {pendingQuery.data?.count ?? 0}
-              </Badge>
-            </button>
-            <p className="text-xs text-muted-foreground">
-              Clique para {showOnlyPending ? "mostrar pagos/cancelados" : "filtrar apenas pendentes"}.
-            </p>
-          </CardContent>
-        </Card>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {kpiCards.map((card) => (
+            <TesourariaKpiCard
+              key={card.key}
+              label={card.label}
+              value={card.value}
+              scope={filterScopeLabel}
+              accentClassName={card.accentClassName}
+              active={visibleSection === card.key}
+              onClick={() => setVisibleSection(card.key)}
+            />
+          ))}
+        </div>
       </section>
 
       <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
@@ -772,26 +910,28 @@ export default function TesourariaPage() {
             <SheetHeader>
               <SheetTitle>Filtros avançados</SheetTitle>
               <SheetDescription>
-                Filtre por período, agente, status do contrato e situação operacional.
+                Filtre por data de solicitação, agente, status do contrato e situação operacional.
               </SheetDescription>
             </SheetHeader>
 
             <div className="space-y-5 overflow-y-auto px-4 pb-4">
               <FilterField label="Agente">
-                <Input
+                <SearchableSelect
+                  options={agentOptions}
                   value={draftAdvancedFilters.agente}
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setDraftAdvancedFilters((current) => ({
                       ...current,
-                      agente: event.target.value,
+                      agente: value,
                     }))
                   }
-                  placeholder="Nome ou e-mail do agente"
-                  className="rounded-2xl border-border/60 bg-card/60"
+                  placeholder="Todos os responsáveis"
+                  searchPlaceholder="Buscar usuário"
+                  clearLabel="Todos os responsáveis"
                 />
               </FilterField>
 
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <FilterField label="Ordem">
                   <Select
                     value={draftAdvancedFilters.ordering}
@@ -803,39 +943,35 @@ export default function TesourariaPage() {
                     }
                   >
                     <SelectTrigger className="rounded-2xl bg-card/60">
-                      <SelectValue placeholder="Mais recentes primeiro" />
+                      <SelectValue placeholder="Ordem decrescente" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="-created_at">Mais recentes primeiro</SelectItem>
-                      <SelectItem value="created_at">Ordem de chegada</SelectItem>
+                      <SelectItem value="-created_at">Ordem decrescente</SelectItem>
+                      <SelectItem value="created_at">Ordem crescente</SelectItem>
                     </SelectContent>
                   </Select>
                 </FilterField>
-                <FilterField label="Data inicial">
-                  <Input
-                    type="date"
+                <FilterField label="Solicitação a partir de">
+                  <DatePicker
                     value={draftAdvancedFilters.dataInicio}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setDraftAdvancedFilters((current) => ({
                         ...current,
-                        dataInicio: event.target.value,
+                        dataInicio: value,
                       }))
                     }
-                    className="rounded-2xl border-border/60 bg-card/60"
                   />
                 </FilterField>
 
-                <FilterField label="Data final">
-                  <Input
-                    type="date"
+                <FilterField label="Solicitação até">
+                  <DatePicker
                     value={draftAdvancedFilters.dataFim}
-                    onChange={(event) =>
+                    onChange={(value) =>
                       setDraftAdvancedFilters((current) => ({
                         ...current,
-                        dataFim: event.target.value,
+                        dataFim: value,
                       }))
                     }
-                    className="rounded-2xl border-border/60 bg-card/60"
                   />
                 </FilterField>
               </div>
@@ -857,6 +993,7 @@ export default function TesourariaPage() {
                     <SelectContent>
                       <SelectItem value="todos">Todos contratos</SelectItem>
                       <SelectItem value="em_analise">Em análise</SelectItem>
+                      <SelectItem value="congelado">Congelados</SelectItem>
                       <SelectItem value="ativo">Ativos</SelectItem>
                       <SelectItem value="encerrado">Encerrados</SelectItem>
                       <SelectItem value="cancelado">Cancelados</SelectItem>
@@ -896,14 +1033,14 @@ export default function TesourariaPage() {
                 type="button"
                 onClick={() => {
                   setAgenteFiltro("");
-                  setDataInicio("");
-                  setDataFim("");
+                  setDataInicio(undefined);
+                  setDataFim(undefined);
                   setStatusContrato("todos");
                   setSituacaoEsteira("todos");
                   setOrdering("-created_at");
                   setDraftAdvancedFilters({
-                    dataInicio: "",
-                    dataFim: "",
+                    dataInicio: undefined,
+                    dataFim: undefined,
                     agente: "",
                     statusContrato: "todos",
                     situacaoEsteira: "todos",
@@ -933,32 +1070,15 @@ export default function TesourariaPage() {
             </SheetFooter>
           </SheetContent>
         </Sheet>
-        <Button
-          variant="outline"
-          onClick={() => {
-            setSearch("");
-            setAgenteFiltro("");
-            setDataInicio("");
-            setDataFim("");
-            setStatusContrato("todos");
-            setSituacaoEsteira("todos");
-            setOrdering("-created_at");
-            setDraftAdvancedFilters({
-              dataInicio: "",
-              dataFim: "",
-              agente: "",
-              statusContrato: "todos",
-              situacaoEsteira: "todos",
-              ordering: "-created_at",
-            });
-            handleRefresh();
-          }}
-        >
-          Limpar
-        </Button>
+        <ExportButton
+          disabled={isExporting}
+          label={isExporting ? "Exportando..." : "Exportar"}
+          onExport={(formatValue) => void handleExport(formatValue)}
+        />
       </section>
 
-      <section className="space-y-4">
+      {shouldShowSection("pendente") ? (
+        <section className="space-y-4">
         <header className="flex items-center justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.28em] text-muted-foreground">
@@ -980,82 +1100,85 @@ export default function TesourariaPage() {
           loading={pendingQuery.isLoading}
           skeletonRows={PAGE_SIZE}
         />
-      </section>
+        </section>
+      ) : null}
 
-      {!showOnlyPending ? (
-        <>
-          <section className="space-y-4">
-            <header className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-emerald-300">
-                  Pagos
-                </p>
-                <h2 className="text-xl font-semibold">Contratos efetivados</h2>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Mostrando {buildRangeLabel(pagePaid, paidRows.length, paidQuery.data?.count ?? 0)}
+      {shouldShowSection("concluido") ? (
+        <section className="space-y-4">
+          <header className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.28em] text-emerald-300">
+                Pagos
               </p>
-            </header>
-            <DataTable
-              data={paidRows}
-              columns={columns}
-              currentPage={pagePaid}
-              totalPages={Math.max(1, Math.ceil((paidQuery.data?.count ?? 0) / PAGE_SIZE))}
-              onPageChange={setPagePaid}
-              emptyMessage="Nenhum contrato pago para os filtros informados."
-              loading={paidQuery.isLoading}
-              skeletonRows={PAGE_SIZE}
-            />
-          </section>
+              <h2 className="text-xl font-semibold">Contratos efetivados</h2>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Mostrando {buildRangeLabel(pagePaid, paidRows.length, paidQuery.data?.count ?? 0)}
+            </p>
+          </header>
+          <DataTable
+            data={paidRows}
+            columns={columns}
+            currentPage={pagePaid}
+            totalPages={Math.max(1, Math.ceil((paidQuery.data?.count ?? 0) / PAGE_SIZE))}
+            onPageChange={setPagePaid}
+            emptyMessage="Nenhum contrato pago para os filtros informados."
+            loading={paidQuery.isLoading}
+            skeletonRows={PAGE_SIZE}
+          />
+        </section>
+      ) : null}
 
-          <section className="space-y-4">
-            <header className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-emerald-300">
-                  Liquidados
-                </p>
-                <h2 className="text-xl font-semibold">Contratos liquidados</h2>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Mostrando {buildRangeLabel(pageLiquidated, liquidatedRows.length, liquidatedQuery.data?.count ?? 0)}
+      {shouldShowSection("liquidado") ? (
+        <section className="space-y-4">
+          <header className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.28em] text-emerald-300">
+                Liquidados
               </p>
-            </header>
-            <DataTable
-              data={liquidatedRows}
-              columns={columns}
-              currentPage={pageLiquidated}
-              totalPages={Math.max(1, Math.ceil((liquidatedQuery.data?.count ?? 0) / PAGE_SIZE))}
-              onPageChange={setPageLiquidated}
-              emptyMessage="Nenhum contrato liquidado para os filtros informados."
-              loading={liquidatedQuery.isLoading}
-              skeletonRows={PAGE_SIZE}
-            />
-          </section>
+              <h2 className="text-xl font-semibold">Contratos liquidados</h2>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Mostrando {buildRangeLabel(pageLiquidated, liquidatedRows.length, liquidatedQuery.data?.count ?? 0)}
+            </p>
+          </header>
+          <DataTable
+            data={liquidatedRows}
+            columns={columns}
+            currentPage={pageLiquidated}
+            totalPages={Math.max(1, Math.ceil((liquidatedQuery.data?.count ?? 0) / PAGE_SIZE))}
+            onPageChange={setPageLiquidated}
+            emptyMessage="Nenhum contrato liquidado para os filtros informados."
+            loading={liquidatedQuery.isLoading}
+            skeletonRows={PAGE_SIZE}
+          />
+        </section>
+      ) : null}
 
-          <section className="space-y-4">
-            <header className="flex items-center justify-between">
-              <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-rose-300">
-                  Cancelados / Desistentes
-                </p>
-                <h2 className="text-xl font-semibold">Contratos cancelados / desistentes</h2>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Mostrando {buildRangeLabel(pageCanceled, canceledRows.length, canceledQuery.data?.count ?? 0)}
+      {shouldShowSection("cancelado") ? (
+        <section className="space-y-4">
+          <header className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.28em] text-rose-300">
+                Cancelados / Desistentes
               </p>
-            </header>
-            <DataTable
-              data={canceledRows}
-              columns={columns}
-              currentPage={pageCanceled}
-              totalPages={Math.max(1, Math.ceil((canceledQuery.data?.count ?? 0) / PAGE_SIZE))}
-              onPageChange={setPageCanceled}
-              emptyMessage="Nenhum contrato cancelado ou desistente para os filtros informados."
-              loading={canceledQuery.isLoading}
-              skeletonRows={PAGE_SIZE}
-            />
-          </section>
-        </>
+              <h2 className="text-xl font-semibold">Contratos cancelados / desistentes</h2>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Mostrando {buildRangeLabel(pageCanceled, canceledRows.length, canceledQuery.data?.count ?? 0)}
+            </p>
+          </header>
+          <DataTable
+            data={canceledRows}
+            columns={columns}
+            currentPage={pageCanceled}
+            totalPages={Math.max(1, Math.ceil((canceledQuery.data?.count ?? 0) / PAGE_SIZE))}
+            onPageChange={setPageCanceled}
+            emptyMessage="Nenhum contrato cancelado ou desistente para os filtros informados."
+            loading={canceledQuery.isLoading}
+            skeletonRows={PAGE_SIZE}
+          />
+        </section>
       ) : null}
 
       <Dialog open={!!freezeTarget} onOpenChange={(open) => !open && setFreezeTarget(null)}>
@@ -1204,6 +1327,48 @@ function FilterField({
   );
 }
 
+function TesourariaKpiCard({
+  label,
+  value,
+  scope,
+  active,
+  accentClassName,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  scope: string;
+  active: boolean;
+  accentClassName?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      aria-label={`${label}: ${value}`}
+      onClick={onClick}
+      className={[
+        "rounded-[1.5rem] border p-5 text-left transition-colors",
+        active
+          ? "border-primary/60 bg-primary/10 shadow-[0_0_0_1px_rgba(255,255,255,0.04)]"
+          : "border-border/60 bg-card/60 hover:border-primary/30 hover:bg-card/80",
+      ].join(" ")}
+    >
+      <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+        {label}
+      </p>
+      <p className={`mt-3 text-3xl font-semibold ${accentClassName ?? "text-foreground"}`}>
+        {value}
+      </p>
+      <p className="mt-2 text-xs text-muted-foreground">{scope}</p>
+      <p className="mt-3 text-xs text-muted-foreground">
+        {active ? "Exibindo esta seção" : "Clique para focar"}
+      </p>
+    </button>
+  );
+}
+
 function ComprovanteSlot({
   label,
   existingUrl,
@@ -1250,6 +1415,17 @@ function ComprovanteSlot({
   const displayName = draftFile?.name || existingName;
   const displayUrl = draftFile ? undefined : existingUrl;
   const primaryActionLabel = label;
+  const openExistingFile = React.useCallback(
+    (event?: React.MouseEvent<HTMLButtonElement>) => {
+      if (!displayUrl) {
+        return;
+      }
+      event?.preventDefault();
+      event?.stopPropagation();
+      window.open(buildBackendFileUrl(displayUrl), "_blank", "noopener,noreferrer");
+    },
+    [displayUrl],
+  );
 
   return (
     <div
@@ -1268,11 +1444,16 @@ function ComprovanteSlot({
       {compact ? (
         <div className="space-y-2">
           {displayUrl ? (
-            <Button asChild size="xs" variant="outline" className="w-full justify-start">
-              <a href={buildBackendFileUrl(displayUrl)} target="_blank" rel="noreferrer">
-                <PaperclipIcon className="size-4" />
-                {primaryActionLabel}
-              </a>
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              className="w-full justify-start"
+              onClick={openExistingFile}
+              title={displayName || `Ver comprovante de ${label.toLowerCase()}`}
+            >
+              <PaperclipIcon className="size-4" />
+              {`Ver ${primaryActionLabel.toLowerCase()}`}
             </Button>
           ) : (
             <Button
@@ -1295,10 +1476,10 @@ function ComprovanteSlot({
               disabled={!canReplace}
             >
               <UploadIcon className="size-4" />
-              {displayName ? "Substituir" : "Enviar"}
+            {displayName ? "Substituir" : "Enviar"}
             </Button>
             {draftFile ? (
-              <Button size="icon-sm" variant="ghost" onClick={onClear}>
+              <Button size="icon-sm" variant="ghost" onClick={onClear} type="button">
                 <Trash2Icon className="size-4" />
               </Button>
             ) : null}
@@ -1335,11 +1516,9 @@ function ComprovanteSlot({
 
           <div className="flex flex-wrap gap-2">
             {displayUrl ? (
-              <Button asChild size="sm" variant="outline">
-                <a href={buildBackendFileUrl(displayUrl)} target="_blank" rel="noreferrer">
-                  <PaperclipIcon className="size-4" />
-                  Ver arquivo
-                </a>
+              <Button type="button" size="sm" variant="outline" onClick={openExistingFile}>
+                <PaperclipIcon className="size-4" />
+                Ver arquivo
               </Button>
             ) : null}
             <Button size="sm" variant="outline" onClick={openPicker} disabled={!canReplace}>

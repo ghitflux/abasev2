@@ -41,20 +41,15 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type ListingTab = "pendentes" | "efetuadas" | "canceladas";
 type DraftMap = Record<number, { associado?: File; agente?: File }>;
 
-const TAB_STATUS_MAP: Record<ListingTab, string[]> = {
-  pendentes: ["aprovado_para_renovacao"],
-  efetuadas: ["efetivado"],
-  canceladas: ["bloqueado", "revertido", "desativado"],
-};
+const PENDING_STATUS = ["aprovado_para_renovacao"];
+const EFETIVADO_STATUS = ["efetivado"];
+const CANCELADO_STATUS = ["bloqueado", "revertido", "desativado"];
 
 function toIsoDate(value?: Date) {
-  if (!value) return undefined;
-  return format(value, "yyyy-MM-dd");
+  return value ? format(value, "yyyy-MM-dd") : undefined;
 }
 
 function CompactUploadButton({
@@ -131,29 +126,29 @@ function CompactUploadButton({
 
 export default function TesourariaRefinanciamentosPage() {
   const queryClient = useQueryClient();
-  const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
   const [isExporting, setIsExporting] = React.useState(false);
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [dataInicio, setDataInicio] = React.useState<Date>();
   const [dataFim, setDataFim] = React.useState<Date>();
   const [draftDataInicio, setDraftDataInicio] = React.useState<Date>();
   const [draftDataFim, setDraftDataFim] = React.useState<Date>();
-  const [filtersOpen, setFiltersOpen] = React.useState(false);
-  const [tab, setTab] = React.useState<ListingTab>("pendentes");
+  const [pagePending, setPagePending] = React.useState(1);
+  const [pageEfetivadas, setPageEfetivadas] = React.useState(1);
+  const [pageCanceladas, setPageCanceladas] = React.useState(1);
   const [drafts, setDrafts] = React.useState<DraftMap>({});
 
-  const statusFilter = TAB_STATUS_MAP[tab];
-  const activeFiltersCount = Number(Boolean(dataInicio)) + Number(Boolean(dataFim));
-
   React.useEffect(() => {
-    setPage(1);
-  }, [search, dataInicio, dataFim, tab]);
+    setPagePending(1);
+    setPageEfetivadas(1);
+    setPageCanceladas(1);
+  }, [search, dataInicio, dataFim]);
 
-  const refinanciamentosQuery = useQuery({
+  const pendingQuery = useQuery({
     queryKey: [
       "tesouraria-refinanciamentos",
-      tab,
-      page,
+      "pendentes",
+      pagePending,
       search,
       dataInicio?.toISOString(),
       dataFim?.toISOString(),
@@ -161,12 +156,56 @@ export default function TesourariaRefinanciamentosPage() {
     queryFn: () =>
       apiFetch<PaginatedResponse<RefinanciamentoItem>>("tesouraria/refinanciamentos", {
         query: {
-          page,
+          page: pagePending,
           page_size: 15,
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
-          status: statusFilter,
+          status: PENDING_STATUS,
+        },
+      }),
+  });
+
+  const efetivadasQuery = useQuery({
+    queryKey: [
+      "tesouraria-refinanciamentos",
+      "efetivadas",
+      pageEfetivadas,
+      search,
+      dataInicio?.toISOString(),
+      dataFim?.toISOString(),
+    ],
+    queryFn: () =>
+      apiFetch<PaginatedResponse<RefinanciamentoItem>>("tesouraria/refinanciamentos", {
+        query: {
+          page: pageEfetivadas,
+          page_size: 15,
+          search: search || undefined,
+          data_inicio: toIsoDate(dataInicio),
+          data_fim: toIsoDate(dataFim),
+          status: EFETIVADO_STATUS,
+        },
+      }),
+  });
+
+  const canceladasQuery = useQuery({
+    queryKey: [
+      "tesouraria-refinanciamentos",
+      "canceladas",
+      pageCanceladas,
+      search,
+      dataInicio?.toISOString(),
+      dataFim?.toISOString(),
+    ],
+    queryFn: () =>
+      apiFetch<PaginatedResponse<RefinanciamentoItem>>("tesouraria/refinanciamentos", {
+        query: {
+          page: pageCanceladas,
+          page_size: 15,
+          search: search || undefined,
+          data_inicio: toIsoDate(dataInicio),
+          data_fim: toIsoDate(dataFim),
+          status: CANCELADO_STATUS,
         },
       }),
   });
@@ -174,7 +213,6 @@ export default function TesourariaRefinanciamentosPage() {
   const resumoQuery = useQuery({
     queryKey: [
       "tesouraria-refinanciamentos-resumo",
-      tab,
       search,
       dataInicio?.toISOString(),
       dataFim?.toISOString(),
@@ -185,7 +223,6 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
-          status: statusFilter,
         },
       }),
   });
@@ -227,57 +264,164 @@ export default function TesourariaRefinanciamentosPage() {
     },
   });
 
-  const rows = refinanciamentosQuery.data?.results ?? [];
-  const totalCount = refinanciamentosQuery.data?.count ?? 0;
   const resumo = resumoQuery.data;
   const canceladasTotal =
     (resumo?.bloqueados ?? 0) + (resumo?.revertidos ?? 0) + (resumo?.desativados ?? 0);
+  const activeFiltersCount = Number(Boolean(dataInicio)) + Number(Boolean(dataFim));
 
-  const columns = React.useMemo<DataTableColumn<RefinanciamentoItem>[]>(
+  const pendingColumns = React.useMemo<DataTableColumn<RefinanciamentoItem>[]>(
     () => [
+      {
+        id: "anexos",
+        header: "Anexos",
+        cellClassName: "min-w-[22rem]",
+        cell: (row) => {
+          const associado = row.comprovantes.find((item) => item.papel === "associado");
+          const agente = row.comprovantes.find((item) => item.papel === "agente");
+          const draft = drafts[row.id] ?? {};
+
+          return (
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <CompactUploadButton
+                  id={`renovacao-${row.id}-associado`}
+                  label="Associado"
+                  existingUrl={associado?.arquivo_disponivel_localmente ? associado.arquivo : undefined}
+                  existingReference={associado?.arquivo_referencia}
+                  existingName={associado?.nome_original}
+                  draftFile={draft.associado}
+                  onSelect={(file) =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [row.id]: { ...current[row.id], associado: file },
+                    }))
+                  }
+                  onClear={() =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [row.id]: { ...current[row.id], associado: undefined },
+                    }))
+                  }
+                />
+                <CompactUploadButton
+                  id={`renovacao-${row.id}-agente`}
+                  label="Agente"
+                  existingUrl={agente?.arquivo_disponivel_localmente ? agente.arquivo : undefined}
+                  existingReference={agente?.arquivo_referencia}
+                  existingName={agente?.nome_original}
+                  draftFile={draft.agente}
+                  onSelect={(file) =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [row.id]: { ...current[row.id], agente: file },
+                    }))
+                  }
+                  onClear={() =>
+                    setDrafts((current) => ({
+                      ...current,
+                      [row.id]: { ...current[row.id], agente: undefined },
+                    }))
+                  }
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Envie os dois anexos para liberar a efetivação da renovação.
+              </p>
+            </div>
+          );
+        },
+      },
+      {
+        id: "acao",
+        header: "Ação",
+        cell: (row) => {
+          const draft = drafts[row.id] ?? {};
+          const canEfetivar = Boolean(draft.associado && draft.agente);
+
+          return (
+            <div className="flex min-w-44 flex-col gap-2">
+              <Button
+                size="sm"
+                disabled={!canEfetivar || efetivarMutation.isPending}
+                onClick={() =>
+                  efetivarMutation.mutate({
+                    refinanciamentoId: row.id,
+                    associado: draft.associado!,
+                    agente: draft.agente!,
+                  })
+                }
+              >
+                Efetivar renovação
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                {canEfetivar ? "Pronto para efetivação." : "Aguardando anexos da tesouraria."}
+              </p>
+            </div>
+          );
+        },
+      },
       {
         id: "associado",
         header: "Associado",
         cell: (row) => (
-          <div className="space-y-2">
-            <CopySnippet label="Nome" value={row.associado_nome} inline className="max-w-[17rem]" />
-            <div className="flex flex-wrap gap-2">
-              <CopySnippet label="CPF" value={row.cpf_cnpj} mono inline />
-              <CopySnippet
-                label="Matrícula"
-                value={row.matricula_display || row.matricula}
-                mono
-                inline
-              />
-            </div>
-          </div>
+          <CopySnippet label="Associado" value={row.associado_nome} inline className="max-w-[16rem]" />
         ),
-        headerClassName: "w-[24%]",
       },
       {
-        id: "ciclo",
+        id: "contrato",
         header: "Contrato",
         cell: (row) => (
           <div className="space-y-1">
             <CopySnippet label="Contrato" value={row.contrato_codigo} mono inline />
             <p className="text-xs text-muted-foreground">
-              Competência solicitada {formatMonthYear(row.competencia_solicitada)}
-            </p>
-            <p className="text-xs text-muted-foreground">
               Parcelas pagas no ciclo: {row.mensalidades_pagas}/{row.mensalidades_total}
             </p>
-            <p className="text-xs text-muted-foreground">
-              {row.referencias.length
-                ? row.referencias.map((referencia) => formatMonthYear(referencia)).join(" · ")
-                : "Sem referências detalhadas"}
-            </p>
+          </div>
+        ),
+      },
+      {
+        id: "matricula_cpf",
+        header: "Matrícula / CPF",
+        cell: (row) => (
+          <div className="space-y-1">
+            <CopySnippet
+              label="Matrícula"
+              value={row.matricula_display || row.matricula}
+              mono
+              inline
+            />
+            <CopySnippet label="CPF" value={row.cpf_cnpj} mono inline />
           </div>
         ),
       },
       {
         id: "agente",
         header: "Agente",
-        cell: (row) => <p className="text-sm text-muted-foreground">{row.agente?.full_name || "—"}</p>,
+        cell: (row) => (
+          <p className="text-sm text-muted-foreground">{row.agente?.full_name || "—"}</p>
+        ),
+      },
+      {
+        id: "valores",
+        header: "Valor / Repasse",
+        cell: (row) => (
+          <div className="space-y-1">
+            <p className="font-semibold">{formatCurrency(row.valor_refinanciamento)}</p>
+            <p className="text-xs text-emerald-400">
+              Repasse do agente: {formatCurrency(row.repasse_agente)}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "competencia",
+        header: "Competência solicitada",
+        cell: (row) => formatMonthYear(row.competencia_solicitada),
+      },
+      {
+        id: "envio_tesouraria",
+        header: "Envio para tesouraria",
+        cell: (row) => formatDateTime(row.updated_at),
       },
       {
         id: "status",
@@ -291,153 +435,110 @@ export default function TesourariaRefinanciamentosPage() {
           </div>
         ),
       },
+    ],
+    [drafts, efetivarMutation],
+  );
+
+  const historyColumns = React.useMemo<DataTableColumn<RefinanciamentoItem>[]>(
+    () => [
       {
-        id: "pagamento",
-        header: "Pagamento",
-        cell: (row) => <StatusBadge status={row.pagamento_status} />,
+        id: "anexos",
+        header: "Anexos",
+        cellClassName: "min-w-[20rem]",
+        cell: (row) => {
+          const associado = row.comprovantes.find((item) => item.papel === "associado");
+          const agente = row.comprovantes.find((item) => item.papel === "agente");
+
+          return (
+            <div className="flex flex-wrap gap-2">
+              <CompactUploadButton
+                id={`readonly-${row.id}-associado`}
+                label="Associado"
+                existingUrl={associado?.arquivo_disponivel_localmente ? associado.arquivo : undefined}
+                existingReference={associado?.arquivo_referencia}
+                existingName={associado?.nome_original}
+                disabled
+              />
+              <CompactUploadButton
+                id={`readonly-${row.id}-agente`}
+                label="Agente"
+                existingUrl={agente?.arquivo_disponivel_localmente ? agente.arquivo : undefined}
+                existingReference={agente?.arquivo_referencia}
+                existingName={agente?.nome_original}
+                disabled
+              />
+            </div>
+          );
+        },
+      },
+      {
+        id: "associado",
+        header: "Associado",
+        cell: (row) => (
+          <div className="space-y-1">
+            <CopySnippet label="Associado" value={row.associado_nome} inline className="max-w-[16rem]" />
+            <CopySnippet label="CPF" value={row.cpf_cnpj} mono inline />
+          </div>
+        ),
+      },
+      {
+        id: "contrato",
+        header: "Contrato",
+        cell: (row) => (
+          <div className="space-y-1">
+            <CopySnippet label="Contrato" value={row.contrato_codigo} mono inline />
+            <p className="text-xs text-muted-foreground">
+              Competência solicitada {formatMonthYear(row.competencia_solicitada)}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "agente",
+        header: "Agente",
+        cell: (row) => (
+          <p className="text-sm text-muted-foreground">{row.agente?.full_name || "—"}</p>
+        ),
       },
       {
         id: "valor_pago",
-        header: "Valor pago",
+        header: "Valor / Repasse",
         cell: (row) => (
           <div className="space-y-1">
             <p className="font-semibold">{formatCurrency(row.valor_refinanciamento)}</p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-emerald-400">
               Repasse do agente: {formatCurrency(row.repasse_agente)}
             </p>
           </div>
         ),
       },
       {
-        id: "parcelas",
-        header: "Parcelas",
-        cell: (row) => (
-          <p className="text-sm text-muted-foreground">
-            {row.mensalidades_pagas}/{row.mensalidades_total}
-          </p>
-        ),
+        id: "data_operacional",
+        header: "Data operacional",
+        cell: (row) =>
+          formatDateTime(row.executado_em || row.data_ativacao_ciclo || row.updated_at),
       },
       {
-        id: "etapa",
-        header: "Efetivação",
+        id: "status",
+        header: "Status",
         cell: (row) => (
           <div className="space-y-2">
-            <StatusBadge status={row.etapa_operacional || row.status} />
-            <p className="text-xs text-muted-foreground">
-              {row.data_ativacao_ciclo
-                ? `Ativado em ${formatDateTime(row.data_ativacao_ciclo)}`
-                : "Aguardando efetivação da tesouraria"}
-            </p>
-            {row.ativacao_inferida ? (
-              <Badge className="rounded-full bg-amber-500/15 text-amber-200">
-                Data inferida
-              </Badge>
+            <StatusBadge status={row.status} />
+            {row.data_ativacao_ciclo ? (
+              <p className="text-xs text-muted-foreground">
+                Ativado em {formatDateTime(row.data_ativacao_ciclo)}
+              </p>
             ) : null}
           </div>
         ),
       },
-      {
-        id: "data_solicitacao",
-        header: "Data da solicitação",
-        cell: (row) => formatDateTime(row.data_solicitacao),
-      },
-      {
-        id: "anexos",
-        header: "Anexos / Ação",
-        cellClassName: "min-w-[26rem]",
-        cell: (row) => {
-          const associado = row.comprovantes.find((item) => item.papel === "associado");
-          const agente = row.comprovantes.find((item) => item.papel === "agente");
-          const draft = drafts[row.id] ?? {};
-          const canEfetivar = tab === "pendentes" && draft.associado && draft.agente;
-
-          return (
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <CompactUploadButton
-                  id={`ref-${row.id}-associado`}
-                  label="Associado"
-                  existingUrl={associado?.arquivo_disponivel_localmente ? associado.arquivo : undefined}
-                  existingReference={associado?.arquivo_referencia}
-                  existingName={associado?.nome_original}
-                  draftFile={draft.associado}
-                  disabled={tab !== "pendentes"}
-                  onSelect={
-                    tab === "pendentes"
-                      ? (file) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [row.id]: { ...current[row.id], associado: file },
-                          }))
-                      : undefined
-                  }
-                  onClear={
-                    tab === "pendentes"
-                      ? () =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [row.id]: { ...current[row.id], associado: undefined },
-                          }))
-                      : undefined
-                  }
-                />
-                <CompactUploadButton
-                  id={`ref-${row.id}-agente`}
-                  label="Agente"
-                  existingUrl={agente?.arquivo_disponivel_localmente ? agente.arquivo : undefined}
-                  existingReference={agente?.arquivo_referencia}
-                  existingName={agente?.nome_original}
-                  draftFile={draft.agente}
-                  disabled={tab !== "pendentes"}
-                  onSelect={
-                    tab === "pendentes"
-                      ? (file) =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [row.id]: { ...current[row.id], agente: file },
-                          }))
-                      : undefined
-                  }
-                  onClear={
-                    tab === "pendentes"
-                      ? () =>
-                          setDrafts((current) => ({
-                            ...current,
-                            [row.id]: { ...current[row.id], agente: undefined },
-                          }))
-                      : undefined
-                  }
-                />
-              </div>
-              {canEfetivar ? (
-                <Button
-                  size="sm"
-                  onClick={() =>
-                    efetivarMutation.mutate({
-                      refinanciamentoId: row.id,
-                      associado: draft.associado!,
-                      agente: draft.agente!,
-                    })
-                  }
-                >
-                  Efetivar renovação
-                </Button>
-              ) : tab === "pendentes" ? (
-                <p className="text-xs text-muted-foreground">
-                  Envie os dois anexos para efetivar a renovação.
-                </p>
-              ) : null}
-            </div>
-          );
-        },
-      },
     ],
-    [drafts, efetivarMutation, tab],
+    [],
   );
 
   const handleExport = React.useCallback(
-    async (format: "csv" | "pdf" | "excel" | "xlsx") => {
-      if (format !== "pdf" && format !== "xlsx") {
+    async (exportFormat: "csv" | "pdf" | "excel" | "xlsx") => {
+      if (exportFormat !== "pdf" && exportFormat !== "xlsx") {
         return;
       }
 
@@ -445,24 +546,24 @@ export default function TesourariaRefinanciamentosPage() {
       try {
         await exportPaginatedRouteReport<RefinanciamentoItem>({
           route: "/tesouraria/refinanciamentos",
-          format,
+          format: exportFormat,
           sourcePath: "tesouraria/refinanciamentos",
           sourceQuery: {
             search: search || undefined,
             data_inicio: toIsoDate(dataInicio),
             data_fim: toIsoDate(dataFim),
-            status: statusFilter,
           },
           mapRow: (row) => ({
             associado_nome: row.associado_nome,
             cpf_cnpj: row.cpf_cnpj,
             contrato_codigo: row.contrato_codigo,
-            data_solicitacao: row.data_solicitacao,
+            competencia_solicitada: row.competencia_solicitada,
             status: row.status,
             valor_refinanciamento: row.valor_refinanciamento,
             repasse_agente: row.repasse_agente,
-            pagamento_status: row.pagamento_status,
+            executado_em: row.executado_em,
             data_ativacao_ciclo: row.data_ativacao_ciclo,
+            updated_at: row.updated_at,
           }),
         });
       } catch (error) {
@@ -473,7 +574,7 @@ export default function TesourariaRefinanciamentosPage() {
         setIsExporting(false);
       }
     },
-    [dataFim, dataInicio, search, statusFilter],
+    [dataFim, dataInicio, search],
   );
 
   return (
@@ -486,35 +587,29 @@ export default function TesourariaRefinanciamentosPage() {
             </p>
             <h1 className="text-3xl font-semibold">Renovações</h1>
             <p className="text-sm text-muted-foreground">
-              Renovações validadas pela coordenação, com efetivação e histórico financeiro por
-              status.
+              Renovações aprovadas pela coordenação, com fila operacional da tesouraria e
+              histórico de efetivação.
             </p>
           </div>
           <ExportButton
             disabled={isExporting}
             label={isExporting ? "Exportando..." : "Exportar"}
-            onExport={(format) => void handleExport(format)}
+            onExport={(exportFormat) => void handleExport(exportFormat)}
           />
         </div>
       </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatsCard
-          title={
-            tab === "pendentes"
-              ? "Renovações Pendentes"
-              : tab === "efetuadas"
-                ? "Renovações Efetuadas"
-                : "Renovações Canceladas"
-          }
-          value={String(resumo?.total ?? 0)}
-          delta="Itens no recorte filtrado"
-          icon={tab === "pendentes" ? Clock3Icon : tab === "efetuadas" ? CheckCircle2Icon : XCircleIcon}
-          tone={tab === "canceladas" ? "warning" : tab === "efetuadas" ? "positive" : "neutral"}
+          title="Pendentes para renovação"
+          value={String(pendingQuery.data?.count ?? 0)}
+          delta="Fila operacional aguardando anexos da tesouraria"
+          icon={Clock3Icon}
+          tone="neutral"
         />
         <StatsCard
           title="Efetivadas"
-          value={String(resumo?.efetivados ?? 0)}
+          value={String(resumo?.efetivados ?? efetivadasQuery.data?.count ?? 0)}
           delta="Renovações concluídas pela tesouraria"
           icon={CheckCircle2Icon}
           tone="positive"
@@ -527,121 +622,174 @@ export default function TesourariaRefinanciamentosPage() {
           tone="warning"
         />
         <StatsCard
-          title="Repasse Total"
+          title="Repasse total"
           value={formatCurrency(resumo?.repasse_total ?? "0")}
-          delta="Soma do repasse no filtro atual"
+          delta="Soma do repasse no recorte atual"
           icon={HandCoinsIcon}
           tone="neutral"
         />
       </section>
 
-      <Tabs value={tab} onValueChange={(value) => setTab(value as ListingTab)} className="space-y-4">
-        <TabsList variant="line" className="justify-start">
-          <TabsTrigger value="pendentes">Renovações Pendentes</TabsTrigger>
-          <TabsTrigger value="efetuadas">Renovações Efetuadas</TabsTrigger>
-          <TabsTrigger value="canceladas">Renovações Canceladas</TabsTrigger>
-        </TabsList>
-
-        <section className="grid gap-4 rounded-[1.75rem] border border-border/60 bg-card/70 p-5 lg:grid-cols-[minmax(0,1fr)_auto]">
-          <Input
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-              setPage(1);
+      <section className="grid gap-4 rounded-[1.75rem] border border-border/60 bg-card/70 p-5 lg:grid-cols-[minmax(0,1fr)_auto]">
+        <Input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Buscar por associado, CPF, matrícula ou contrato..."
+          className="h-11 rounded-2xl border-border/60 bg-background/60"
+        />
+        <div className="flex justify-end">
+          <Sheet
+            open={filtersOpen}
+            onOpenChange={(open) => {
+              if (open) {
+                setDraftDataInicio(dataInicio);
+                setDraftDataFim(dataFim);
+              }
+              setFiltersOpen(open);
             }}
-            placeholder="Buscar por associado, CPF, matrícula ou contrato..."
-            className="h-11 rounded-2xl border-border/60 bg-background/60"
-          />
-          <div className="flex justify-end">
-            <Sheet
-              open={filtersOpen}
-              onOpenChange={(open) => {
-                if (open) {
-                  setDraftDataInicio(dataInicio);
-                  setDraftDataFim(dataFim);
-                }
-                setFiltersOpen(open);
-              }}
-            >
-              <SheetTrigger asChild>
-                <Button variant="outline" className="h-11 rounded-2xl">
-                  <SlidersHorizontalIcon className="size-4" />
-                  Filtros avançados
-                  {activeFiltersCount ? (
-                    <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-primary">
-                      {activeFiltersCount}
-                    </Badge>
-                  ) : null}
-                </Button>
-              </SheetTrigger>
-              <SheetContent className="w-full border-l border-border/60 sm:max-w-xl">
-                <SheetHeader>
-                  <SheetTitle>Filtros avançados</SheetTitle>
-                  <SheetDescription>
-                    Refine o recorte da tesouraria por datas de solicitação da renovação.
-                  </SheetDescription>
-                </SheetHeader>
+          >
+            <SheetTrigger asChild>
+              <Button variant="outline" className="h-11 rounded-2xl">
+                <SlidersHorizontalIcon className="size-4" />
+                Filtros avançados
+                {activeFiltersCount ? (
+                  <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-primary">
+                    {activeFiltersCount}
+                  </Badge>
+                ) : null}
+              </Button>
+            </SheetTrigger>
+            <SheetContent className="w-full border-l border-border/60 sm:max-w-xl">
+              <SheetHeader>
+                <SheetTitle>Filtros avançados</SheetTitle>
+                <SheetDescription>
+                  Refine o recorte da tesouraria por datas operacionais das renovações.
+                </SheetDescription>
+              </SheetHeader>
 
-                <div className="space-y-5 overflow-y-auto px-4 pb-4">
-                  <div className="space-y-2">
-                    <Label>Data inicial</Label>
-                    <DatePicker
-                      value={draftDataInicio}
-                      onChange={setDraftDataInicio}
-                      placeholder="Início"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Data final</Label>
-                    <DatePicker value={draftDataFim} onChange={setDraftDataFim} placeholder="Fim" />
-                  </div>
+              <div className="space-y-5 overflow-y-auto px-4 pb-4">
+                <div className="space-y-2">
+                  <Label>Data inicial</Label>
+                  <DatePicker value={draftDataInicio} onChange={setDraftDataInicio} />
                 </div>
+                <div className="space-y-2">
+                  <Label>Data final</Label>
+                  <DatePicker value={draftDataFim} onChange={setDraftDataFim} />
+                </div>
+              </div>
 
-                <SheetFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setDraftDataInicio(undefined);
-                      setDraftDataFim(undefined);
-                      setDataInicio(undefined);
-                      setDataFim(undefined);
-                      setFiltersOpen(false);
-                    }}
-                  >
-                    Limpar
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setDataInicio(draftDataInicio);
-                      setDataFim(draftDataFim);
-                      setFiltersOpen(false);
-                    }}
-                  >
-                    Aplicar
-                  </Button>
-                </SheetFooter>
-              </SheetContent>
-            </Sheet>
-          </div>
-        </section>
-      </Tabs>
+              <SheetFooter className="border-t border-border/60">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDraftDataInicio(undefined);
+                    setDraftDataFim(undefined);
+                    setDataInicio(undefined);
+                    setDataFim(undefined);
+                    setFiltersOpen(false);
+                  }}
+                >
+                  Limpar
+                </Button>
+                <Button
+                  onClick={() => {
+                    setDataInicio(draftDataInicio);
+                    setDataFim(draftDataFim);
+                    setFiltersOpen(false);
+                  }}
+                >
+                  Aplicar
+                </Button>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
+        </div>
+      </section>
 
+      <RefinanciamentoSection
+        eyebrow="Pendentes"
+        title="Renovações aprovadas para pagamento"
+        total={pendingQuery.data?.count ?? 0}
+        page={pagePending}
+        rows={pendingQuery.data?.results ?? []}
+        columns={pendingColumns}
+        onPageChange={setPagePending}
+        loading={pendingQuery.isLoading}
+        emptyMessage="Nenhuma renovação aprovada para renovação no recorte atual."
+      />
+
+      <RefinanciamentoSection
+        eyebrow="Efetivadas"
+        title="Renovações concluídas"
+        total={efetivadasQuery.data?.count ?? 0}
+        page={pageEfetivadas}
+        rows={efetivadasQuery.data?.results ?? []}
+        columns={historyColumns}
+        onPageChange={setPageEfetivadas}
+        loading={efetivadasQuery.isLoading}
+        emptyMessage="Nenhuma renovação efetivada no recorte."
+      />
+
+      <RefinanciamentoSection
+        eyebrow="Canceladas"
+        title="Renovações bloqueadas ou revertidas"
+        total={canceladasQuery.data?.count ?? 0}
+        page={pageCanceladas}
+        rows={canceladasQuery.data?.results ?? []}
+        columns={historyColumns}
+        onPageChange={setPageCanceladas}
+        loading={canceladasQuery.isLoading}
+        emptyMessage="Nenhuma renovação cancelada no recorte."
+      />
+    </div>
+  );
+}
+
+function RefinanciamentoSection({
+  eyebrow,
+  title,
+  total,
+  page,
+  rows,
+  columns,
+  onPageChange,
+  loading,
+  emptyMessage,
+}: {
+  eyebrow: string;
+  title: string;
+  total: number;
+  page: number;
+  rows: RefinanciamentoItem[];
+  columns: DataTableColumn<RefinanciamentoItem>[];
+  onPageChange: (page: number) => void;
+  loading: boolean;
+  emptyMessage: string;
+}) {
+  const start = total ? (page - 1) * 15 + 1 : 0;
+  const end = total ? start + rows.length - 1 : 0;
+
+  return (
+    <section className="space-y-4">
+      <header className="flex items-center justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-[0.28em] text-muted-foreground">{eyebrow}</p>
+          <h2 className="text-xl font-semibold">{title}</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Mostrando {total ? `${start}-${end} de ${total}` : "0"}
+        </p>
+      </header>
       <DataTable
         data={rows}
         columns={columns}
         currentPage={page}
-        totalPages={Math.max(1, Math.ceil(totalCount / 15))}
-        onPageChange={setPage}
-        emptyMessage={
-          tab === "pendentes"
-            ? "Nenhuma renovação pendente para a tesouraria."
-            : tab === "efetuadas"
-              ? "Nenhuma renovação efetuada no recorte."
-              : "Nenhuma renovação cancelada no recorte."
-        }
-        loading={refinanciamentosQuery.isLoading}
+        totalPages={Math.max(1, Math.ceil(total / 15))}
+        onPageChange={onPageChange}
+        emptyMessage={emptyMessage}
+        loading={loading}
         skeletonRows={6}
       />
-    </div>
+    </section>
   );
 }

@@ -23,10 +23,10 @@ def _build_legacy_dump(path: Path, *, competencia: date, cpf: str, manual_paid_a
         f"""
         INSERT INTO `pagamentos_mensalidades`
         (`id`, `referencia_month`, `cpf_cnpj`, `esperado_manual`, `recebido_manual`,
-         `manual_status`, `agente_refi_solicitado`, `manual_paid_at`,
+         `manual_status`, `status_code`, `agente_refi_solicitado`, `manual_paid_at`,
          `manual_forma_pagamento`, `manual_comprovante_path`, `created_at`, `updated_at`)
         VALUES
-        (1, '{competencia.isoformat()}', '{cpf}', 300.00, 300.00, 'pago', 0,
+        (1, '{competencia.isoformat()}', '{cpf}', 300.00, 300.00, 'pago', 'M', 0,
          '{manual_paid_at}', 'pix', NULL, '{manual_paid_at}', '{manual_paid_at}');
         """,
         encoding="utf-8",
@@ -59,7 +59,7 @@ class ManualReturnReportTestCase(ImportacaoBaseTestCase):
             created_by=self.tesoureiro,
             import_uuid="test-import",
             referencia_month=competencia,
-            status_code="",
+            status_code="M",
             matricula="M-100",
             orgao_pagto="ORG",
             nome_relatorio="JOSE DA SILVA",
@@ -91,6 +91,65 @@ class ManualReturnReportTestCase(ImportacaoBaseTestCase):
             )
 
         self.assertEqual(report["summary"]["timezone_only_paid_at_total"], 1)
+        self.assertEqual(report["summary"]["real_mismatch_total"], 0)
+        self.assertEqual(report["summary"]["status"], "ok")
+
+    def test_audit_return_consistency_treats_manual_promoted_to_return_as_reconciled(self):
+        competencia = date(2026, 3, 1)
+        PagamentoMensalidade.objects.create(
+            created_by=self.tesoureiro,
+            import_uuid="test-import",
+            referencia_month=competencia,
+            status_code="1",
+            matricula="M-100",
+            orgao_pagto="ORG",
+            nome_relatorio="JOSE DA SILVA",
+            cpf_cnpj="12345678901",
+            valor=Decimal("300.00"),
+            source_file_path="arquivos_retorno/retorno-marco.txt",
+        )
+        arquivo = ArquivoRetorno.objects.create(
+            arquivo_nome="retorno-marco.txt",
+            arquivo_url="arquivos_retorno/retorno-marco.txt",
+            formato=ArquivoRetorno.Formato.TXT,
+            orgao_origem="ETIPI",
+            competencia=competencia,
+            uploaded_by=self.tesoureiro,
+            status=ArquivoRetorno.Status.CONCLUIDO,
+        )
+        ArquivoRetornoItem.objects.create(
+            arquivo_retorno=arquivo,
+            linha_numero=1,
+            cpf_cnpj="12345678901",
+            matricula_servidor="M-100",
+            nome_servidor="JOSE DA SILVA",
+            cargo="-SEM PLANO",
+            competencia="03/2026",
+            valor_descontado=Decimal("300.00"),
+            status_codigo="1",
+            status_desconto=ArquivoRetornoItem.StatusDesconto.EFETIVADO,
+            status_descricao="Lançado e Efetivado",
+            orgao_codigo="1",
+            orgao_pagto_codigo="1",
+            orgao_pagto_nome="ORG",
+            processado=True,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            dump_path = Path(temp_dir) / "legacy.sql"
+            _build_legacy_dump(
+                dump_path,
+                competencia=competencia,
+                cpf="12345678901",
+                manual_paid_at="2026-03-15 12:40:00",
+            )
+            report = build_return_consistency_report(
+                dump_path=dump_path,
+                competencia=competencia,
+                cpf="12345678901",
+            )
+
+        self.assertEqual(report["summary"]["manual_promoted_to_return_total"], 1)
         self.assertEqual(report["summary"]["real_mismatch_total"], 0)
         self.assertEqual(report["summary"]["status"], "ok")
 
