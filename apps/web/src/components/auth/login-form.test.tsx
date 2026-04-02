@@ -13,19 +13,6 @@ jest.mock("next/image", () => ({
   ),
 }));
 
-jest.mock("next/link", () => ({
-  __esModule: true,
-  default: ({
-    href,
-    children,
-    ...props
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
-    <a href={href} {...props}>
-      {children}
-    </a>
-  ),
-}));
-
 jest.mock("@/providers/route-transition-provider", () => ({
   useRouteTransition: () => ({
     startRouteTransition: jest.fn(),
@@ -48,19 +35,14 @@ jest.mock("@/store/auth-store", () => ({
 }));
 
 describe("LoginForm", () => {
-  it("renderiza o branding novo e o CTA de recuperacao manual", () => {
+  it("renderiza o login em modo logo-only sem os textos antigos", () => {
     render(<LoginForm next="/dashboard" />);
 
-    expect(screen.getByText("Entrar na ABASE")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Sessão do navegador por 48h, com renovação automática via refresh por até 7 dias.",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Recuperar senha" }),
-    ).toHaveAttribute("href", "/login/recuperar-senha");
+    expect(screen.queryByText("Entrar na ABASE")).not.toBeInTheDocument();
     expect(screen.queryByText("Entrar no ABASE v2")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Operação, análise e financeiro do associado no mesmo fluxo."),
+    ).not.toBeInTheDocument();
     expect(screen.getAllByAltText("ABASE")).toHaveLength(2);
   });
 });

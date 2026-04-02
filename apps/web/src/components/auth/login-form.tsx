@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -13,7 +12,7 @@ import { useRouteTransition } from "@/providers/route-transition-provider";
 import { useAuthStore } from "@/store/auth-store";
 import AuthShell from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
-import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
 const loginSchema = z.object({
@@ -94,17 +93,7 @@ export default function LoginForm({ next }: LoginFormProps) {
 
   return (
     <AuthShell
-      badge="Portal Operacional"
-      title="Entrar na ABASE"
-      description="Use seu email operacional para acessar o painel, continuar a esteira e acompanhar o financeiro do associado."
-      footer={
-        <div className="flex w-full flex-col items-start gap-2 text-sm text-muted-foreground">
-          <span>Recuperação manual disponível apenas para usuários com perfil de agente.</span>
-          <Button asChild className="h-auto px-0 text-sm" variant="link">
-            <Link href="/login/recuperar-senha">Recuperar senha</Link>
-          </Button>
-        </div>
-      }
+      mode="logo-only"
     >
       <form className="space-y-6" onSubmit={onSubmit}>
         <FieldGroup>
@@ -122,9 +111,6 @@ export default function LoginForm({ next }: LoginFormProps) {
             <FieldLabel>Senha</FieldLabel>
             <FieldContent>
               <Input className="h-12 rounded-2xl" type="password" placeholder="••••••••" {...form.register("password")} />
-              <FieldDescription>
-                Sessão do navegador por 48h, com renovação automática via refresh por até 7 dias.
-              </FieldDescription>
               <FieldError errors={[form.formState.errors.password]} />
             </FieldContent>
           </Field>
