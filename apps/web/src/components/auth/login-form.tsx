@@ -95,7 +95,6 @@ export default function LoginForm({ next }: LoginFormProps) {
 
   return (
     <AuthShell
-      heroBadge="Acesso Operacional"
       heroTitle={
         <>
           Unindo forças
@@ -103,12 +102,11 @@ export default function LoginForm({ next }: LoginFormProps) {
           em prol de quem serve.
         </>
       }
-      heroDescription="Ambiente operacional para acompanhar a esteira, validar cadastros e manter a gestao do associado em ritmo continuo."
       heroImageSrc="/auth-hero-woman.webp"
       heroImageAlt="Representacao institucional de atendimento ao associado"
-      cardBadge="Entrar"
+      heroImagePosition="62% 26%"
+      heroAlign="end"
       cardTitle="Acesse sua conta"
-      cardDescription="Use seu email operacional e siga direto para o painel."
     >
       <form className="space-y-7" onSubmit={onSubmit}>
         <FieldGroup>
@@ -127,15 +125,7 @@ export default function LoginForm({ next }: LoginFormProps) {
             </FieldContent>
           </Field>
           <Field>
-            <div className="flex items-center justify-between gap-4">
-              <FieldLabel className="text-[0.95rem]">Senha</FieldLabel>
-              <Link
-                href="/login/recuperar-senha"
-                className="text-sm font-medium text-primary transition-colors hover:text-primary/80"
-              >
-                Recuperar senha
-              </Link>
-            </div>
+            <FieldLabel className="text-[0.95rem]">Senha</FieldLabel>
             <FieldContent>
               <div className="relative">
                 <Input
@@ -161,6 +151,11 @@ export default function LoginForm({ next }: LoginFormProps) {
           {isPending ? "Entrando..." : "Entrar"}
           <ArrowRightIcon className="size-4" />
         </Button>
+        <div className="flex justify-center">
+          <Button asChild className="h-auto px-0 text-sm" variant="link">
+            <Link href="/login/recuperar-senha">Recuperar senha</Link>
+          </Button>
+        </div>
       </form>
     </AuthShell>
   );

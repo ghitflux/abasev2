@@ -11,6 +11,8 @@ type AuthShellProps = {
   heroDescription?: React.ReactNode;
   heroImageSrc?: string;
   heroImageAlt?: string;
+  heroImagePosition?: string;
+  heroAlign?: "start" | "end";
   cardBadge?: string;
   cardTitle?: string;
   cardDescription?: string;
@@ -25,6 +27,8 @@ export default function AuthShell({
   heroDescription,
   heroImageSrc,
   heroImageAlt = "Destaque ABASE",
+  heroImagePosition = "62% center",
+  heroAlign = "start",
   cardBadge,
   cardTitle,
   cardDescription,
@@ -32,6 +36,8 @@ export default function AuthShell({
   children,
   footer,
 }: AuthShellProps) {
+  const heroIsRightAligned = heroAlign === "end";
+
   return (
     <main className="grid min-h-screen overflow-hidden bg-[linear-gradient(180deg,hsl(228_18%_10%),hsl(228_18%_7%))] lg:grid-cols-[1.16fr_0.84fr]">
       <section className="relative hidden min-h-screen overflow-hidden border-r border-border/60 lg:flex">
@@ -42,7 +48,8 @@ export default function AuthShell({
               alt={heroImageAlt}
               fill
               priority
-              className="object-cover object-[62%_center] opacity-55"
+              className="object-cover opacity-55"
+              style={{ objectPosition: heroImagePosition }}
             />
           </div>
         ) : null}
@@ -57,7 +64,9 @@ export default function AuthShell({
               </div>
             ) : null}
 
-            <div className="max-w-[24rem] space-y-8">
+            <div
+              className={`flex max-w-[28rem] flex-col space-y-8 ${heroIsRightAligned ? "ml-auto items-end text-right" : "items-start text-left"}`}
+            >
               <Image
                 src="/abase-logo-white.png"
                 alt="ABASE"
@@ -68,7 +77,7 @@ export default function AuthShell({
               />
 
               {heroTitle ? (
-                <div className="max-w-[24rem] text-6xl leading-[0.94] font-semibold tracking-[-0.06em] text-white text-balance">
+                <div className="max-w-[26rem] text-6xl leading-[0.94] font-semibold tracking-[-0.06em] text-white text-balance">
                   {heroTitle}
                 </div>
               ) : null}
@@ -79,7 +88,9 @@ export default function AuthShell({
             </div>
           </div>
 
-          <div className="max-w-[18rem] text-xs leading-6 tracking-[0.28em] text-white/42 uppercase">
+          <div
+            className={`max-w-[18rem] text-xs leading-6 tracking-[0.28em] text-white/42 uppercase ${heroIsRightAligned ? "ml-auto text-right" : ""}`}
+          >
             Associação beneficente e assistencial dos servidores públicos
           </div>
         </div>
