@@ -486,7 +486,7 @@ export default function MeusContratosPage() {
             associado: row.associado.nome_completo,
             status_visual_label: row.status_visual_label,
             etapa_fluxo: row.etapa_fluxo,
-            valor_mensalidade: row.valor_mensalidade,
+            valor_disponivel: row.valor_disponivel,
             status_renovacao: row.status_renovacao,
             cancelamento_tipo: row.cancelamento_tipo ?? "",
             cancelamento_motivo: row.cancelamento_motivo ?? "",
@@ -608,10 +608,10 @@ export default function MeusContratosPage() {
         ),
       },
       {
-        id: "mensalidade",
-        header: "Mensalidade",
+        id: "valor_disponivel",
+        header: "Valor disponível",
         headerClassName: "w-[10%] whitespace-normal leading-5",
-        cell: (row) => formatCurrency(row.valor_mensalidade),
+        cell: (row) => formatCurrency(row.valor_disponivel),
       },
       {
         id: "auxilio",

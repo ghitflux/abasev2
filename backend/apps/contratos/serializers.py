@@ -680,6 +680,7 @@ class ContratoListSerializer(serializers.ModelSerializer):
     pode_solicitar_refinanciamento = serializers.SerializerMethodField()
     status_renovacao = serializers.SerializerMethodField()
     refinanciamento_id = serializers.SerializerMethodField()
+    valor_disponivel = serializers.SerializerMethodField()
     valor_auxilio_liberado = serializers.DecimalField(
         source="margem_disponivel",
         max_digits=10,
@@ -710,6 +711,7 @@ class ContratoListSerializer(serializers.ModelSerializer):
             "status_visual_label",
             "etapa_fluxo",
             "data_contrato",
+            "valor_disponivel",
             "valor_mensalidade",
             "comissao_agente",
             "mensalidades",
@@ -755,6 +757,12 @@ class ContratoListSerializer(serializers.ModelSerializer):
         if esteira:
             return esteira.etapa_atual
         return "concluido" if obj.auxilio_liberado_em else "analise"
+
+    @extend_schema_field(
+        serializers.DecimalField(max_digits=10, decimal_places=2, allow_null=True)
+    )
+    def get_valor_disponivel(self, obj: Contrato):
+        return obj.margem_disponivel or obj.valor_total_antecipacao
 
     def get_percentual_repasse(self, obj: Contrato) -> str:
         return f"{obj.associado.auxilio_taxa:.2f}"

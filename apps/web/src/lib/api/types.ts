@@ -784,6 +784,7 @@ export type ContratoListItem = {
   status_visual_label: string;
   etapa_fluxo: string;
   data_contrato: string;
+  valor_disponivel: string | null;
   valor_mensalidade: string;
   comissao_agente: string;
   valor_auxilio_liberado: string;

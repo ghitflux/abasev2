@@ -338,7 +338,7 @@ class RelatorioService:
                     ReportColumn("associado", "Associado", 2.4),
                     ReportColumn("status_visual_label", "Status", 1.2),
                     ReportColumn("etapa_fluxo", "Fluxo", 1.0),
-                    ReportColumn("valor_mensalidade", "Mensalidade", 1.1),
+                    ReportColumn("valor_disponivel", "Valor disponível", 1.1),
                     ReportColumn("status_renovacao", "Renovacao", 1.2),
                     ReportColumn("cancelamento_tipo", "Cancelamento", 1.1),
                     ReportColumn("cancelamento_motivo", "Motivo", 2.2),
