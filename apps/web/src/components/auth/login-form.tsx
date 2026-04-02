@@ -95,26 +95,51 @@ export default function LoginForm({ next }: LoginFormProps) {
 
   return (
     <AuthShell
-      mode="logo-only"
+      heroBadge="Acesso Operacional"
+      heroTitle={
+        <>
+          Unindo forças
+          <br />
+          em prol de quem serve.
+        </>
+      }
+      heroDescription="Ambiente operacional para acompanhar a esteira, validar cadastros e manter a gestao do associado em ritmo continuo."
+      heroImageSrc="/auth-hero-woman.webp"
+      heroImageAlt="Representacao institucional de atendimento ao associado"
+      cardBadge="Entrar"
+      cardTitle="Acesse sua conta"
+      cardDescription="Use seu email operacional e siga direto para o painel."
     >
-      <form className="space-y-6" onSubmit={onSubmit}>
+      <form className="space-y-7" onSubmit={onSubmit}>
         <FieldGroup>
           <Field>
-            <FieldLabel>Email</FieldLabel>
+            <FieldLabel className="text-[0.95rem]">Email</FieldLabel>
             <FieldContent>
               <div className="relative">
                 <MailIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input className="h-12 rounded-2xl pl-10" placeholder="voce@abase.com.br" {...form.register("email")} />
+                <Input
+                  className="h-[54px] rounded-2xl border-white/10 bg-black/14 pl-10 text-base"
+                  placeholder="voce@abase.com.br"
+                  {...form.register("email")}
+                />
               </div>
               <FieldError errors={[form.formState.errors.email]} />
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel>Senha</FieldLabel>
+            <div className="flex items-center justify-between gap-4">
+              <FieldLabel className="text-[0.95rem]">Senha</FieldLabel>
+              <Link
+                href="/login/recuperar-senha"
+                className="text-sm font-medium text-primary transition-colors hover:text-primary/80"
+              >
+                Recuperar senha
+              </Link>
+            </div>
             <FieldContent>
               <div className="relative">
                 <Input
-                  className="h-12 rounded-2xl pr-12"
+                  className="h-[54px] rounded-2xl border-white/10 bg-black/14 pr-12 text-base"
                   type={showPassword ? "text" : "password"}
                   placeholder="••••••••"
                   {...form.register("password")}
@@ -132,12 +157,7 @@ export default function LoginForm({ next }: LoginFormProps) {
             </FieldContent>
           </Field>
         </FieldGroup>
-        <div className="flex justify-end">
-          <Button asChild className="h-auto px-0 text-sm" variant="link">
-            <Link href="/login/recuperar-senha">Recuperar senha</Link>
-          </Button>
-        </div>
-        <Button className="h-12 w-full rounded-2xl text-sm font-semibold" disabled={isPending}>
+        <Button className="h-[54px] w-full rounded-2xl text-sm font-semibold" disabled={isPending}>
           {isPending ? "Entrando..." : "Entrar"}
           <ArrowRightIcon className="size-4" />
         </Button>
