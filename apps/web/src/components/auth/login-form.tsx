@@ -1,21 +1,20 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
+import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { ArrowRightIcon, LockKeyholeIcon, MailIcon } from "lucide-react";
+import { ArrowRightIcon, MailIcon } from "lucide-react";
 
 import { resolvePostLoginPath } from "@/lib/navigation";
 import { useRouteTransition } from "@/providers/route-transition-provider";
 import { useAuthStore } from "@/store/auth-store";
+import AuthShell from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldContent, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { H1, Lead } from "@/components/ui/typography";
 
 const loginSchema = z.object({
   email: z.string().email("Informe um email válido."),
@@ -94,73 +93,47 @@ export default function LoginForm({ next }: LoginFormProps) {
   });
 
   return (
-    <main className="grid min-h-screen lg:grid-cols-[1.15fr_0.85fr]">
-      <section className="dashboard-grid relative hidden overflow-hidden border-r border-border/60 lg:flex">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,hsl(24_95%_55%/0.18),transparent_26%),radial-gradient(circle_at_60%_60%,hsl(150_55%_30%/0.12),transparent_32%)]" />
-        <div className="relative flex w-full flex-col justify-between p-10">
-          <div />
-          <div className="flex flex-col items-start gap-8">
-            <Image
-              src="/abase-logo-white.png"
-              alt="ABASE"
-              width={280}
-              height={80}
-              className="object-contain"
-            />
-            <div className="max-w-xl space-y-4">
-              <H1 className="text-5xl leading-tight">Gestão operacional e financeira do associado em uma única esteira.</H1>
-              <Lead className="max-w-lg">
-                Cadastro, análise, coordenação, tesouraria e importação do arquivo retorno
-                no mesmo fluxo, com autenticação por papel e base pronta para expansão.
-              </Lead>
-            </div>
-          </div>
-          <div />
+    <AuthShell
+      badge="Portal Operacional"
+      title="Entrar na ABASE"
+      description="Use seu email operacional para acessar o painel, continuar a esteira e acompanhar o financeiro do associado."
+      footer={
+        <div className="flex w-full flex-col items-start gap-2 text-sm text-muted-foreground">
+          <span>Recuperação manual disponível apenas para usuários com perfil de agente.</span>
+          <Button asChild className="h-auto px-0 text-sm" variant="link">
+            <Link href="/login/recuperar-senha">Recuperar senha</Link>
+          </Button>
         </div>
-      </section>
-      <section className="flex items-center justify-center px-6 py-10 sm:px-8">
-        <Card className="glass-panel w-full max-w-md rounded-4xl border-border/60 shadow-2xl shadow-black/30">
-          <CardHeader className="space-y-3">
-            <div className="flex size-12 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-              <LockKeyholeIcon className="size-5" />
-            </div>
-            <div>
-              <CardTitle className="text-2xl">Entrar no ABASE v2</CardTitle>
-              <CardDescription>
-                Use sua credencial do backend para iniciar a sessão no dashboard.
-              </CardDescription>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <form className="space-y-6" onSubmit={onSubmit}>
-              <FieldGroup>
-                <Field>
-                  <FieldLabel>Email</FieldLabel>
-                  <FieldContent>
-                    <div className="relative">
-                      <MailIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input className="pl-10" placeholder="voce@abase.com.br" {...form.register("email")} />
-                    </div>
-                    <FieldError errors={[form.formState.errors.email]} />
-                  </FieldContent>
-                </Field>
-                <Field>
-                  <FieldLabel>Senha</FieldLabel>
-                  <FieldContent>
-                    <Input type="password" placeholder="••••••••" {...form.register("password")} />
-                    <FieldDescription>JWT com access de 15 min e refresh de 7 dias.</FieldDescription>
-                    <FieldError errors={[form.formState.errors.password]} />
-                  </FieldContent>
-                </Field>
-              </FieldGroup>
-              <Button className="h-11 w-full rounded-2xl" disabled={isPending}>
-                {isPending ? "Entrando..." : "Entrar"}
-                <ArrowRightIcon className="size-4" />
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-      </section>
-    </main>
+      }
+    >
+      <form className="space-y-6" onSubmit={onSubmit}>
+        <FieldGroup>
+          <Field>
+            <FieldLabel>Email</FieldLabel>
+            <FieldContent>
+              <div className="relative">
+                <MailIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input className="h-12 rounded-2xl pl-10" placeholder="voce@abase.com.br" {...form.register("email")} />
+              </div>
+              <FieldError errors={[form.formState.errors.email]} />
+            </FieldContent>
+          </Field>
+          <Field>
+            <FieldLabel>Senha</FieldLabel>
+            <FieldContent>
+              <Input className="h-12 rounded-2xl" type="password" placeholder="••••••••" {...form.register("password")} />
+              <FieldDescription>
+                Sessão do navegador por 48h, com renovação automática via refresh por até 7 dias.
+              </FieldDescription>
+              <FieldError errors={[form.formState.errors.password]} />
+            </FieldContent>
+          </Field>
+        </FieldGroup>
+        <Button className="h-12 w-full rounded-2xl text-sm font-semibold" disabled={isPending}>
+          {isPending ? "Entrando..." : "Entrar"}
+          <ArrowRightIcon className="size-4" />
+        </Button>
+      </form>
+    </AuthShell>
   );
 }

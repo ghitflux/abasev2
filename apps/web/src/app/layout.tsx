@@ -29,7 +29,7 @@ const plexMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "ABASE v2",
+  title: "ABASE",
   description: "Gestão de associados da ABASE Piauí.",
 };
 

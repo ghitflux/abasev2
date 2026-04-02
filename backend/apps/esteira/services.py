@@ -24,6 +24,35 @@ class EsteiraService:
     }
 
     @staticmethod
+    @transaction.atomic
+    def garantir_item_inicial_cadastro(
+        associado: Associado,
+        user,
+        *,
+        observacao: str = "Cadastro inicial enviado para análise.",
+    ) -> tuple[EsteiraItem, bool]:
+        esteira_item = EsteiraItem.objects.filter(associado=associado).first()
+        if esteira_item is not None:
+            return esteira_item, False
+
+        esteira_item = EsteiraItem.objects.create(
+            associado=associado,
+            etapa_atual=EsteiraItem.Etapa.ANALISE,
+            status=EsteiraItem.Situacao.AGUARDANDO,
+        )
+        EsteiraService._registrar_transicao(
+            esteira_item,
+            user,
+            "criar_cadastro",
+            EsteiraItem.Etapa.CADASTRO,
+            EsteiraItem.Etapa.ANALISE,
+            EsteiraItem.Situacao.AGUARDANDO,
+            EsteiraItem.Situacao.AGUARDANDO,
+            observacao,
+        )
+        return esteira_item, True
+
+    @staticmethod
     def _validar_acao(esteira_item, acao: str):
         permitidas = EsteiraService.TRANSICOES_VALIDAS.get(
             (esteira_item.etapa_atual, esteira_item.status), []

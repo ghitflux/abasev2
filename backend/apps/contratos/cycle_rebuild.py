@@ -442,7 +442,16 @@ def rebuild_contract_cycle_state(
 
     if contrato.admin_manual_layout_enabled:
         # Admin overrides write the canonical layout directly to Ciclo/Parcela.
-        # Rebuild must not rematerialize from the automatic engine and undo manual edits.
+        # Rebuild must not rematerialize from the automatic engine and undo manual edits,
+        # but it still needs to sync the operational renewal/liquidation queue.
+        cycle_by_number = {
+            ciclo.numero: ciclo
+            for ciclo in Ciclo.objects.filter(
+                contrato=contrato,
+                deleted_at__isnull=True,
+            ).order_by("numero", "id")
+        }
+        _sync_refinanciamentos(contrato, desired_cycles, cycle_by_number, report)
         return report
 
     existing_cycles: dict[int, Ciclo] = {}

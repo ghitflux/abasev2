@@ -151,8 +151,8 @@ REST_FRAMEWORK = {
 }
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "ABASE v2 API",
-    "DESCRIPTION": "API REST do sistema de gestão de associados ABASE v2.",
+    "TITLE": "ABASE API",
+    "DESCRIPTION": "API REST do sistema de gestão de associados ABASE.",
     "VERSION": "1.0.0",
     "ENUM_NAME_OVERRIDES": {
         "AssociadoStatusEnum": "config.spectacular_enums.ASSOCIADO_STATUS",
@@ -185,7 +185,7 @@ SPECTACULAR_SETTINGS = {
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(
-        minutes=config("JWT_ACCESS_TOKEN_LIFETIME", default=15, cast=int)
+        minutes=config("JWT_ACCESS_TOKEN_LIFETIME", default=2880, cast=int)
     ),
     "REFRESH_TOKEN_LIFETIME": timedelta(
         minutes=config("JWT_REFRESH_TOKEN_LIFETIME", default=10080, cast=int)

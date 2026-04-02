@@ -1,7 +1,10 @@
 import tempfile
 from datetime import date, timedelta
 from decimal import Decimal
+from io import StringIO
+from unittest import mock
 
+from django.core.management import call_command
 from django.core import mail
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
@@ -11,7 +14,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import PasswordResetRequest, Role, User
 from apps.associados.models import Associado, Auxilio2Filiacao, Documento
 from apps.contratos.models import Ciclo, Contrato, Parcela
-from apps.esteira.models import DocIssue, DocReupload, EsteiraItem, Pendencia
+from apps.esteira.models import DocIssue, DocReupload, EsteiraItem, Pendencia, Transicao
 
 
 @override_settings(
@@ -395,6 +398,14 @@ class MobileLegacyCompatibilityTestCase(TestCase):
         self.assertTrue(atualizar.json()["ok"])
         novo_associado = Associado.objects.get(cpf_cnpj="98765432100")
         self.assertEqual(novo_associado.user.email, "novo@teste.local")
+        self.assertTrue(EsteiraItem.objects.filter(associado=novo_associado).exists())
+        self.assertEqual(
+            Transicao.objects.filter(
+                esteira_item__associado=novo_associado,
+                acao="criar_cadastro",
+            ).count(),
+            1,
+        )
 
         forgot = self.client.post(
             "/api/auth/forgot-password",
@@ -651,6 +662,14 @@ class MobileLegacyCompatibilityTestCase(TestCase):
         self.assertEqual(associado.profissao, "PROFESSOR")
         self.assertEqual(associado.cargo, "SERVIDOR")
         self.assertEqual(associado.status, Associado.Status.EM_ANALISE)
+        self.assertTrue(EsteiraItem.objects.filter(associado=associado).exists())
+        self.assertEqual(
+            Transicao.objects.filter(
+                esteira_item__associado=associado,
+                acao="criar_cadastro",
+            ).count(),
+            1,
+        )
 
         upload_response = self.client.post(
             "/api/v1/app/pendencias/reuploads/",
@@ -695,3 +714,69 @@ class MobileLegacyCompatibilityTestCase(TestCase):
         self.assertEqual(cadastro["chave_pix"], "98765432100")
         self.assertEqual(cadastro["profissao"], "PROFESSOR")
         self.assertEqual(cadastro["cargo"], "SERVIDOR")
+
+        analista_client = APIClient()
+        analista_client.force_authenticate(self.analista)
+        filas = analista_client.get(
+            "/api/v1/analise/filas/",
+            {"secao": "ver_todos", "search": "Cadastro Mobile Novo"},
+        )
+        self.assertEqual(filas.status_code, 200, filas.json())
+        self.assertIn(
+            associado.id,
+            [item["associado"]["id"] for item in filas.json()["results"]],
+        )
+
+    def test_backfill_missing_mobile_esteira_creates_single_item_idempotently(self):
+        user = User.objects.create_user(
+            email="backfill.mobile@teste.local",
+            password="Senha@123",
+            first_name="Backfill",
+            last_name="Mobile",
+            is_active=True,
+        )
+        user.roles.add(self.role_associado, self.role_associadodois)
+        associado = Associado.objects.create(
+            user=user,
+            nome_completo="Backfill Mobile",
+            cpf_cnpj="99888777666",
+            email=user.email,
+            telefone="86999999999",
+            orgao_publico="SEDUC",
+            matricula_orgao="112233",
+            status=Associado.Status.EM_ANALISE,
+        )
+        self.assertFalse(EsteiraItem.objects.filter(associado=associado).exists())
+
+        with mock.patch(
+            "apps.associados.management.commands.backfill_missing_mobile_esteira.select_restore_uploaded_by",
+            return_value=self.analista,
+        ):
+            stdout = StringIO()
+            call_command(
+                "backfill_missing_mobile_esteira",
+                "--cpf",
+                associado.cpf_cnpj,
+                "--execute",
+                stdout=stdout,
+            )
+
+            second_stdout = StringIO()
+            call_command(
+                "backfill_missing_mobile_esteira",
+                "--cpf",
+                associado.cpf_cnpj,
+                "--execute",
+                stdout=second_stdout,
+            )
+
+        self.assertTrue(EsteiraItem.objects.filter(associado=associado).exists())
+        self.assertEqual(
+            Transicao.objects.filter(
+                esteira_item__associado=associado,
+                acao="criar_cadastro",
+            ).count(),
+            1,
+        )
+        self.assertIn("1 item(ns) de esteira criado(s)", stdout.getvalue())
+        self.assertIn("Associados elegíveis: 0", second_stdout.getvalue())

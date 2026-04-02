@@ -388,6 +388,32 @@ class PasswordResetRequestSerializer(serializers.Serializer):
         return attrs
 
 
+class AgentManualPasswordResetSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    password = serializers.CharField(trim_whitespace=False, write_only=True)
+    password_confirmation = serializers.CharField(trim_whitespace=False, write_only=True)
+
+    def validate_email(self, value: str):
+        return User.objects.normalize_email(value.strip())
+
+    def validate(self, attrs):
+        password_serializer = PasswordResetRequestSerializer(
+            data={
+                "password": attrs["password"],
+                "password_confirm": attrs["password_confirmation"],
+            },
+            context={},
+        )
+        password_serializer.is_valid(raise_exception=True)
+        attrs["password"] = password_serializer.validated_data["password"]
+        return attrs
+
+
+class PublicPasswordResetResponseSerializer(serializers.Serializer):
+    ok = serializers.BooleanField()
+    message = serializers.CharField()
+
+
 class SelfServiceRegisterSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255)
     email = serializers.EmailField()

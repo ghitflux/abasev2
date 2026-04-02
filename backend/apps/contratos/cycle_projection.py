@@ -79,6 +79,16 @@ OPERATIONAL_STATUS_TO_VISUAL_PHASE = {
     Refinanciamento.Status.REJEITADO: "renovacao_em_analise",
 }
 
+RESOLVED_UNPAID_STATUSES = {
+    Parcela.Status.DESCONTADO,
+    Parcela.Status.LIQUIDADA,
+    PROJECTION_STATUS_QUITADA,
+}
+
+
+def _is_unresolved_unpaid_row(row: dict[str, object]) -> bool:
+    return str(row.get("status") or "") not in RESOLVED_UNPAID_STATUSES
+
 
 @dataclass(frozen=True)
 class FinancialReference:
@@ -986,7 +996,7 @@ def _financial_row(item: FinancialReference, *, contrato: Contrato, index: int) 
 def _manual_phase_slug(
     *,
     contrato: Contrato,
-    ciclo: Ciclo,
+    cycle_status: str,
     is_latest_cycle: bool,
 ) -> str:
     associado_status = getattr(contrato.associado, "status", "")
@@ -1000,9 +1010,9 @@ def _manual_phase_slug(
             normalized = _normalize_operational_status(refinanciamento_operacional[0].status)
             if normalized in OPERATIONAL_STATUS_TO_VISUAL_PHASE:
                 return OPERATIONAL_STATUS_TO_VISUAL_PHASE[normalized]
-    if ciclo.status == Ciclo.Status.CICLO_RENOVADO:
+    if cycle_status == Ciclo.Status.CICLO_RENOVADO:
         return "ciclo_renovado"
-    if ciclo.status == Ciclo.Status.APTO_A_RENOVAR:
+    if cycle_status == Ciclo.Status.APTO_A_RENOVAR:
         return "apto_a_renovar"
     return "ciclo_aberto"
 
@@ -1058,16 +1068,33 @@ def _build_manual_contract_projection(
             continue
         parcelas_por_ciclo.setdefault(parcela.ciclo_id, []).append(parcela)
 
-    has_unpaid = bool(unpaid_rows)
+    unresolved_unpaid_rows = [
+        item for item in unpaid_rows if _is_unresolved_unpaid_row(item)
+    ]
+    has_unpaid = bool(unresolved_unpaid_rows)
     latest_cycle_number = max((ciclo.numero for ciclo in ciclos), default=0)
+    threshold = get_future_generation_threshold(contrato)
+    refinanciamento_ativo = _active_operational_refinanciamentos(contrato)
+    refinanciamento_operacional = refinanciamento_ativo[0] if refinanciamento_ativo else None
     projected_cycles: list[dict[str, object]] = []
 
     for ciclo in ciclos:
         cycle_parcelas = parcelas_por_ciclo.get(ciclo.id, [])
         activation = get_cycle_activation_payload(ciclo)
+        paid_count = sum(
+            1 for parcela in cycle_parcelas if parcela.status == Parcela.Status.DESCONTADO
+        )
+        projected_cycle_status = ciclo.status
+        if (
+            ciclo.numero == latest_cycle_number
+            and refinanciamento_operacional is None
+            and paid_count >= threshold
+            and projected_cycle_status != Ciclo.Status.CICLO_RENOVADO
+        ):
+            projected_cycle_status = Ciclo.Status.APTO_A_RENOVAR
         phase_slug = _manual_phase_slug(
             contrato=contrato,
-            ciclo=ciclo,
+            cycle_status=projected_cycle_status,
             is_latest_cycle=ciclo.numero == latest_cycle_number,
         )
         financial_slug = _cycle_financial_status(
@@ -1090,7 +1117,7 @@ def _build_manual_contract_projection(
                 "numero": ciclo.numero,
                 "data_inicio": ciclo.data_inicio,
                 "data_fim": ciclo.data_fim,
-                "status": ciclo.status,
+                "status": projected_cycle_status,
                 "fase_ciclo": phase_slug,
                 "situacao_financeira": financial_slug,
                 "status_visual_slug": visual_status["status_visual_slug"],
@@ -1131,21 +1158,20 @@ def _build_manual_contract_projection(
             }
         )
 
-    refinanciamento_ativo = _active_operational_refinanciamentos(contrato)
     status_renovacao = ""
     refinanciamento_id: int | None = None
-    if refinanciamento_ativo:
-        status_renovacao = _normalize_operational_status(refinanciamento_ativo[0].status)
-        refinanciamento_id = refinanciamento_ativo[0].id
-    elif ciclos and ciclos[-1].status == Ciclo.Status.APTO_A_RENOVAR:
+    if refinanciamento_operacional:
+        status_renovacao = _normalize_operational_status(refinanciamento_operacional.status)
+        refinanciamento_id = refinanciamento_operacional.id
+    elif projected_cycles and projected_cycles[-1]["status"] == Ciclo.Status.APTO_A_RENOVAR:
         status_renovacao = Refinanciamento.Status.APTO_A_RENOVAR
 
     return {
         "cycle_size": get_contract_cycle_size(contrato),
         "cycles": list(sorted(projected_cycles, key=lambda item: item["numero"], reverse=True)),
         "unpaid_months": sorted(unpaid_rows, key=lambda item: item["referencia_mes"], reverse=True),
-        "possui_meses_nao_descontados": bool(unpaid_rows),
-        "meses_nao_descontados_count": len(unpaid_rows),
+        "possui_meses_nao_descontados": has_unpaid,
+        "meses_nao_descontados_count": len(unresolved_unpaid_rows),
         "status_renovacao": status_renovacao,
         "refinanciamento_id": refinanciamento_id,
         "movimentos_financeiros_avulsos": sorted(
@@ -1340,6 +1366,9 @@ def build_contract_cycle_projection(
             )
         )
     ]
+    unresolved_unpaid_rows = [
+        item for item in unpaid_rows if _is_unresolved_unpaid_row(item)
+    ]
     movimentos_avulsos = [
         _financial_row(item, contrato=contrato, index=index)
         for index, item in enumerate(
@@ -1370,8 +1399,8 @@ def build_contract_cycle_projection(
         "cycle_size": cycle_size,
         "cycles": list(sorted(cycles, key=lambda item: item["numero"], reverse=True)),
         "unpaid_months": unpaid_rows,
-        "possui_meses_nao_descontados": bool(unpaid_rows),
-        "meses_nao_descontados_count": len(unpaid_rows),
+        "possui_meses_nao_descontados": bool(unresolved_unpaid_rows),
+        "meses_nao_descontados_count": len(unresolved_unpaid_rows),
         "status_renovacao": status_renovacao,
         "refinanciamento_id": refinanciamento_id,
         "movimentos_financeiros_avulsos": movimentos_avulsos,

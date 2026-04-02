@@ -170,3 +170,20 @@ O estágio 2 é idempotente e pode ser reexecutado:
 - globalmente, após nova importação fiel;
 - por `--cpf`, para recomputação pontual;
 - depois de sincronizações complementares, sem alterar a garantia do estágio 1.
+
+## Passivo Remanescente em 02/04/2026
+
+O estado oficial do passivo de mídia legada após a última varredura está documentado em
+`docs/passivo_midia_legada_2026-04-02.md`.
+
+Resumo operacional:
+
+- `cadastro`: 42 `reference_only`
+- `renovacao`: 680 `reference_only`
+- `manual`: 38 `reference_only`
+- `esteira`: 5 `reference_only`
+- `no_path`: 94
+
+Os 42 documentos listados em `docs/ANEXOS_LEGADOS_FALTANTES_2026-04-02.md` seguem sem arquivo
+físico encontrado no acervo local disponível, mesmo após busca recursiva por nome exato e
+prefixo de timestamp.

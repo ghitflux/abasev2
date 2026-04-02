@@ -149,11 +149,16 @@ class LegacyMediaAssetsServiceTestCase(TestCase):
         self.assertTrue(default_storage.exists(documento.arquivo.name))
 
         self.assertTrue(termo.arquivo.name.startswith("refinanciamentos/renovacoes/CTR-TESTE-001/termo/"))
+        self.assertEqual(termo.arquivo_referencia_path, termo.arquivo.name)
         self.assertTrue(default_storage.exists(termo.arquivo.name))
         self.assertTrue(
             comprovante_tesouraria.arquivo.name.startswith(
                 "refinanciamentos/efetivacao_contrato/CTR-TESTE-001/associado_"
             )
+        )
+        self.assertEqual(
+            comprovante_tesouraria.arquivo_referencia_path,
+            comprovante_tesouraria.arquivo.name,
         )
         self.assertTrue(default_storage.exists(comprovante_tesouraria.arquivo.name))
 
@@ -219,6 +224,37 @@ class LegacyMediaAssetsServiceTestCase(TestCase):
         self.assertEqual(payload["summary"]["already_canonical"], 1)
         self.assertEqual(payload["summary"]["updated"], 0)
         self.assertEqual(payload["results"][0]["status"], "already_canonical")
+
+    def test_normalizes_canonical_comprovante_reference_path(self):
+        canonical_path = (
+            f"refinanciamentos/renovacoes/{self.contrato.codigo}/associado/"
+            "comprovante-associado.pdf"
+        )
+        default_storage.save(
+            canonical_path,
+            ContentFile(b"comprovante", name="comprovante-associado.pdf"),
+        )
+        comprovante = Comprovante.objects.create(
+            contrato=self.contrato,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+            papel=Comprovante.Papel.ASSOCIADO,
+            origem=Comprovante.Origem.TESOURARIA_RENOVACAO,
+            arquivo=canonical_path,
+            arquivo_referencia_path="tesouraria/refinanciamentos/99/comprovante-associado.pdf",
+            enviado_por=self.user,
+        )
+
+        payload = LegacyMediaAssetsService(legacy_root=self.legacy_root).run(
+            families=("renovacao",),
+            execute=True,
+        )
+
+        comprovante.refresh_from_db()
+        self.assertTrue(comprovante.arquivo_disponivel_localmente)
+        self.assertEqual(comprovante.arquivo_referencia_path, canonical_path)
+        self.assertEqual(payload["summary"]["updated"], 1)
+        self.assertEqual(payload["summary"]["already_canonical"], 0)
+        self.assertEqual(payload["results"][0]["status"], "updated")
 
     def test_syncs_real_flat_legacy_layout(self):
         self._write_legacy_file(

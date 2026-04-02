@@ -12,6 +12,24 @@ type RefreshResponse = {
   refresh?: string;
 };
 
+type AgentManualPasswordResetResponse = {
+  ok: boolean;
+  message: string;
+};
+
+async function resolveBackendError(response: Response, fallback: string) {
+  const payload = await response.json().catch(() => null);
+  const detail =
+    payload?.detail ??
+    payload?.non_field_errors?.[0] ??
+    payload?.message ??
+    payload?.password?.[0] ??
+    payload?.password_confirmation?.[0] ??
+    payload?.password_confirm?.[0] ??
+    fallback;
+  throw new Error(detail);
+}
+
 export async function loginWithBackend(email: string, password: string) {
   const response = await fetch(`${API_BASE_URL}/auth/login/`, {
     method: "POST",
@@ -21,13 +39,7 @@ export async function loginWithBackend(email: string, password: string) {
   });
 
   if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    const detail =
-      payload?.detail ??
-      payload?.non_field_errors?.[0] ??
-      payload?.message ??
-      "Falha ao autenticar.";
-    throw new Error(detail);
+    await resolveBackendError(response, "Falha ao autenticar.");
   }
 
   return (await response.json()) as LoginResponse;
@@ -70,4 +82,27 @@ export async function logoutWithBackend(refresh: string) {
     body: JSON.stringify({ refresh }),
     cache: "no-store",
   }).catch(() => null);
+}
+
+export async function resetAgentPasswordManuallyWithBackend(
+  email: string,
+  password: string,
+  passwordConfirmation: string,
+) {
+  const response = await fetch(`${API_BASE_URL}/auth/agent-manual-reset/`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email,
+      password,
+      password_confirmation: passwordConfirmation,
+    }),
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    await resolveBackendError(response, "Falha ao atualizar a senha.");
+  }
+
+  return (await response.json()) as AgentManualPasswordResetResponse;
 }

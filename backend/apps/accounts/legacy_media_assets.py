@@ -226,7 +226,23 @@ class LegacyMediaAssetsService:
             planned_path = self._planned_comprovante_path(comprovante, source_name=reference_path or current_path)
             outcome["planned_path"] = planned_path
             if self._is_local_canonical(current_path, planned_path):
-                outcome["status"] = "already_canonical"
+                if self._needs_reference_normalization(
+                    current_path=current_path,
+                    reference_path=reference_path,
+                ):
+                    if execute:
+                        comprovante.arquivo_referencia_path = current_path
+                        comprovante.nome_original = comprovante.nome_original or Path(current_path).name
+                        comprovante.save(
+                            update_fields=[
+                                "arquivo_referencia_path",
+                                "nome_original",
+                                "updated_at",
+                            ]
+                        )
+                    outcome["status"] = "updated"
+                else:
+                    outcome["status"] = "already_canonical"
                 results.append(outcome)
                 continue
 
@@ -245,7 +261,7 @@ class LegacyMediaAssetsService:
             if execute:
                 stored_path = self._copy_source_to_storage(source=source, destination=planned_path)
                 comprovante.arquivo = stored_path
-                comprovante.arquivo_referencia_path = reference_path or current_path
+                comprovante.arquivo_referencia_path = stored_path
                 comprovante.nome_original = comprovante.nome_original or source.name
                 comprovante.save(
                     update_fields=[
@@ -886,6 +902,16 @@ class LegacyMediaAssetsService:
 
     def _is_local_canonical(self, current_path: str, planned_path: str) -> bool:
         return current_path == planned_path and bool(current_path) and default_storage.exists(current_path)
+
+    def _needs_reference_normalization(
+        self,
+        *,
+        current_path: str,
+        reference_path: str,
+    ) -> bool:
+        normalized_current = str(current_path or "").strip()
+        normalized_reference = str(reference_path or "").strip()
+        return bool(normalized_current) and normalized_current != normalized_reference
 
     def _planned_document_path(self, documento: Documento, *, source_name: str) -> str:
         cpf_cnpj = only_digits(documento.associado.cpf_cnpj) or str(documento.associado_id)

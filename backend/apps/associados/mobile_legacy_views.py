@@ -22,6 +22,7 @@ from apps.accounts.mobile_legacy_auth import (
 )
 from apps.contratos.models import Contrato
 from apps.esteira.models import DocIssue, DocReupload
+from apps.esteira.services import EsteiraService
 
 from .mobile_legacy import (
     build_antecipacao_payload,
@@ -214,6 +215,7 @@ def _resolve_or_create_associado(user, payload: dict[str, object]) -> Associado:
         user.save(update_fields=["email", "updated_at"])
 
     ensure_associado_user(target)
+    EsteiraService.garantir_item_inicial_cadastro(target, user)
     return target
 
 

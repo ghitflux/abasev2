@@ -4,6 +4,8 @@ import tempfile
 from datetime import date, datetime
 from decimal import Decimal
 
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
@@ -279,6 +281,62 @@ class ParcelaDetalheEndpointTestCase(TestCase):
         self.assertEqual(len(payload["documentos_ciclo"]), 1)
         self.assertEqual(payload["documentos_ciclo"][0]["origem"], "tesouraria_renovacao")
         self.assertEqual(payload["termo_antecipacao"]["tipo"], "termo_antecipacao")
+
+    def test_parcela_detalhe_trata_comprovante_local_com_referencia_legada_como_local(self):
+        contrato = self._create_contract(
+            cpf="24680246800",
+            nome="Associado Referencia Legada",
+        )
+        refinanciamento = Refinanciamento.objects.create(
+            associado=contrato.associado,
+            contrato_origem=contrato,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 5, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            origem=Refinanciamento.Origem.LEGADO,
+            executado_em=self._aware(datetime(2026, 5, 10, 14, 0)),
+            data_ativacao_ciclo=self._aware(datetime(2026, 5, 10, 14, 0)),
+            cycle_key="2026-02|2026-03|2026-04",
+            ref1=date(2026, 2, 1),
+            ref2=date(2026, 3, 1),
+            ref3=date(2026, 4, 1),
+            cpf_cnpj_snapshot=contrato.associado.cpf_cnpj,
+            nome_snapshot=contrato.associado.nome_completo,
+            contrato_codigo_origem=contrato.codigo,
+        )
+        canonical_path = (
+            f"refinanciamentos/renovacoes/{contrato.codigo}/associado/"
+            "comprovante-associado.jpeg"
+        )
+        default_storage.save(
+            canonical_path,
+            ContentFile(b"assoc", name="comprovante-associado.jpeg"),
+        )
+        Comprovante.objects.create(
+            refinanciamento=refinanciamento,
+            contrato=contrato,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+            papel=Comprovante.Papel.ASSOCIADO,
+            arquivo=canonical_path,
+            arquivo_referencia_path="tesouraria/refinanciamentos/500/comprovante-associado.jpeg",
+            enviado_por=self.agente,
+            origem=Comprovante.Origem.TESOURARIA_RENOVACAO,
+        )
+
+        response = self.admin_client.get(
+            f"/api/v1/associados/{contrato.associado_id}/parcela-detalhe/",
+            {
+                "contrato_id": contrato.id,
+                "referencia_mes": "2026-05-01",
+                "kind": "cycle",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(len(payload["documentos_ciclo"]), 1)
+        self.assertEqual(payload["documentos_ciclo"][0]["tipo_referencia"], "local")
+        self.assertTrue(payload["documentos_ciclo"][0]["arquivo_disponivel_localmente"])
 
     def test_mes_nao_pago_retorna_detalhe_sem_quitacao(self):
         contrato = self._create_contract(

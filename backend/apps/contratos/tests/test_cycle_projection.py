@@ -670,7 +670,76 @@ class CycleProjectionTestCase(TestCase):
             ],
             [(date(2025, 11, 1), "quitada")],
         )
+        self.assertFalse(projection["possui_meses_nao_descontados"])
+        self.assertEqual(projection["meses_nao_descontados_count"], 0)
         self.assertEqual(projection["movimentos_financeiros_avulsos"], [])
+
+    def test_manual_layout_regularized_row_does_not_count_as_overdue(self):
+        associado = self._create_associado("11199922234", "Manual Regularizado")
+        contrato = self._create_contrato(
+            associado=associado,
+            data_primeira_mensalidade=date(2026, 1, 1),
+        )
+        contrato.admin_manual_layout_enabled = True
+        contrato.save(update_fields=["admin_manual_layout_enabled", "updated_at"])
+
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("600.00"),
+        )
+        Parcela.objects.create(
+            ciclo=ciclo,
+            associado=associado,
+            numero=1,
+            referencia_mes=date(2026, 1, 1),
+            valor=Decimal("300.00"),
+            data_vencimento=date(2026, 1, 5),
+            status=Parcela.Status.DESCONTADO,
+            data_pagamento=date(2026, 1, 5),
+        )
+        Parcela.objects.create(
+            ciclo=ciclo,
+            associado=associado,
+            numero=2,
+            referencia_mes=date(2026, 3, 1),
+            valor=Decimal("300.00"),
+            data_vencimento=date(2026, 3, 5),
+            status=Parcela.Status.EM_PREVISAO,
+        )
+        Parcela.objects.create(
+            ciclo=ciclo,
+            associado=associado,
+            numero=3,
+            referencia_mes=date(2026, 2, 1),
+            valor=Decimal("300.00"),
+            data_vencimento=date(2026, 2, 5),
+            status=Parcela.Status.DESCONTADO,
+            layout_bucket=Parcela.LayoutBucket.UNPAID,
+            data_pagamento=date(2026, 2, 5),
+            observacao="Regularizada fora do ciclo manual.",
+        )
+
+        projection = build_contract_cycle_projection(contrato)
+
+        self.assertEqual(len(projection["unpaid_months"]), 1)
+        self.assertEqual(
+            projection["unpaid_months"][0]["referencia_mes"],
+            date(2026, 2, 1),
+        )
+        self.assertEqual(
+            projection["unpaid_months"][0]["status"],
+            Parcela.Status.DESCONTADO,
+        )
+        self.assertFalse(projection["possui_meses_nao_descontados"])
+        self.assertEqual(projection["meses_nao_descontados_count"], 0)
+        self.assertEqual(
+            projection["cycles"][0]["situacao_financeira"],
+            "ciclo_em_dia",
+        )
 
     def test_manual_settlement_after_renewal_never_reenters_previous_cycle(self):
         associado = self._create_associado("11199922244", "Manual Após Renovação")

@@ -11,7 +11,7 @@ from django.utils import timezone
 from apps.accounts.services import ComissaoService
 from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.models import Ciclo, Contrato
-from apps.esteira.models import EsteiraItem, Transicao
+from apps.esteira.services import EsteiraService
 
 from .factories import AssociadoFactory
 from .models import Associado, Documento
@@ -180,20 +180,9 @@ class AssociadoService:
             status=Contrato.Status.EM_ANALISE,
         )
 
-        esteira_item = EsteiraItem.objects.create(
-            associado=associado,
-            etapa_atual=EsteiraItem.Etapa.ANALISE,
-            status=EsteiraItem.Situacao.AGUARDANDO,
-        )
-        Transicao.objects.create(
-            esteira_item=esteira_item,
-            acao="criar_cadastro",
-            de_status=EsteiraItem.Etapa.CADASTRO,
-            para_status=EsteiraItem.Etapa.ANALISE,
-            de_situacao=EsteiraItem.Situacao.AGUARDANDO,
-            para_situacao=EsteiraItem.Situacao.AGUARDANDO,
-            realizado_por=agente,
-            observacao="Cadastro inicial enviado para análise.",
+        EsteiraService.garantir_item_inicial_cadastro(
+            associado,
+            agente,
         )
 
         for documento in documentos_payload:

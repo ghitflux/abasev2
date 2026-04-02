@@ -1,3 +1,5 @@
+import logging
+
 from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -21,6 +23,7 @@ from .models import PasswordResetRequest, Role, User
 from .permissions import IsCoordenadorOrAdmin
 from .services import ComissaoService
 from .serializers import (
+    AgentManualPasswordResetSerializer,
     AdminUserCreateSerializer,
     AdminUserAccessUpdateSerializer,
     AdminUserListSerializer,
@@ -29,6 +32,7 @@ from .serializers import (
     LogoutSerializer,
     PasswordResetRequestSerializer,
     PasswordResetResultSerializer,
+    PublicPasswordResetResponseSerializer,
     ConfiguracaoComissaoAgenteResetSerializer,
     ConfiguracaoComissaoAgentesWriteSerializer,
     ConfiguracaoComissaoGlobalWriteSerializer,
@@ -42,9 +46,15 @@ from .serializers import (
     is_manageable_user_for_manager,
 )
 
+logger = logging.getLogger(__name__)
+
 
 class LoginRateThrottle(AnonRateThrottle):
     rate = "10/min"
+
+
+class AgentManualPasswordResetRateThrottle(AnonRateThrottle):
+    rate = "3/hour"
 
 
 class LoginView(APIView):
@@ -182,6 +192,66 @@ class ResetPasswordView(APIView):
                 "ok": True,
                 "message": "Senha atualizada com sucesso.",
             },
+            status=status.HTTP_200_OK,
+        )
+
+
+def _resolve_request_ip(request) -> str:
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "")
+
+
+class AgentManualPasswordResetView(APIView):
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [AgentManualPasswordResetRateThrottle]
+
+    @extend_schema(
+        request=AgentManualPasswordResetSerializer,
+        responses={200: PublicPasswordResetResponseSerializer},
+    )
+    @transaction.atomic
+    def post(self, request):
+        serializer = AgentManualPasswordResetSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        email = serializer.validated_data["email"]
+        user = (
+            User.objects.filter(
+                email__iexact=email,
+                deleted_at__isnull=True,
+                is_active=True,
+                user_roles__deleted_at__isnull=True,
+                user_roles__role__codigo="AGENTE",
+            )
+            .distinct()
+            .first()
+        )
+
+        if user is not None:
+            user.set_password(serializer.validated_data["password"])
+            user.must_set_password = False
+            user.save(update_fields=["password", "must_set_password", "updated_at"])
+
+        logger.info(
+            "agent_manual_password_reset email=%s eligible=%s user_id=%s ip=%s user_agent=%s at=%s",
+            email,
+            bool(user),
+            user.id if user else None,
+            _resolve_request_ip(request),
+            request.META.get("HTTP_USER_AGENT", "")[:255],
+            timezone.now().isoformat(),
+        )
+
+        return Response(
+            PublicPasswordResetResponseSerializer(
+                {
+                    "ok": True,
+                    "message": "Se o e-mail for elegível, a senha foi atualizada.",
+                }
+            ).data,
             status=status.HTTP_200_OK,
         )
 

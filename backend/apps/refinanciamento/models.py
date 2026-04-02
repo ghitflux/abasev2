@@ -266,9 +266,9 @@ class Comprovante(BaseModel):
 
     @property
     def arquivo_disponivel_localmente(self) -> bool:
-        if not self.arquivo:
-            return False
-        arquivo_name = self.arquivo_referencia
+        arquivo_name = str(getattr(self.arquivo, "name", "") or "")
+        if not arquivo_name:
+            arquivo_name = self.arquivo_referencia
         if not arquivo_name:
             return False
         try:

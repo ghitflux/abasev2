@@ -73,6 +73,7 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         cpf: str = "12345678901",
         *,
         agente: User | None = None,
+        admin_manual_layout_enabled: bool = False,
     ) -> Contrato:
         agente_responsavel = agente or self.agente
         associado = Associado.objects.create(
@@ -96,6 +97,7 @@ class RefinanciamentoPagamentosTestCase(TestCase):
             data_contrato=date(2025, 12, 15),
             data_aprovacao=date(2025, 12, 20),
             data_primeira_mensalidade=date(2026, 1, 1),
+            admin_manual_layout_enabled=admin_manual_layout_enabled,
         )
         Pagamento.objects.create(
             cadastro=associado,
@@ -137,6 +139,51 @@ class RefinanciamentoPagamentosTestCase(TestCase):
             manual_status=manual_status,
             source_file_path=f"retornos/{referencia.strftime('%Y-%m')}.txt",
         )
+
+    def _create_manual_cycle_quitado(self, contrato: Contrato) -> Ciclo:
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("1500.00"),
+        )
+        Parcela.objects.bulk_create(
+            [
+                Parcela(
+                    ciclo=ciclo,
+                    associado=contrato.associado,
+                    numero=1,
+                    referencia_mes=date(2026, 1, 1),
+                    valor=Decimal("500.00"),
+                    data_vencimento=date(2026, 1, 10),
+                    status=Parcela.Status.DESCONTADO,
+                    data_pagamento=date(2026, 1, 15),
+                ),
+                Parcela(
+                    ciclo=ciclo,
+                    associado=contrato.associado,
+                    numero=2,
+                    referencia_mes=date(2026, 2, 1),
+                    valor=Decimal("500.00"),
+                    data_vencimento=date(2026, 2, 10),
+                    status=Parcela.Status.DESCONTADO,
+                    data_pagamento=date(2026, 2, 15),
+                ),
+                Parcela(
+                    ciclo=ciclo,
+                    associado=contrato.associado,
+                    numero=3,
+                    referencia_mes=date(2026, 3, 1),
+                    valor=Decimal("500.00"),
+                    data_vencimento=date(2026, 3, 10),
+                    status=Parcela.Status.DESCONTADO,
+                    data_pagamento=date(2026, 3, 15),
+                ),
+            ]
+        )
+        return ciclo
 
     def _termo_file(self, name: str = "termo.pdf") -> SimpleUploadedFile:
         return SimpleUploadedFile(name, b"arquivo termo", content_type="application/pdf")
@@ -932,3 +979,43 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         ids = {item["id"] for item in response.json()["results"]}
         self.assertIn(contrato_apto.id, ids)
         self.assertNotIn(contrato_sem_apto.id, ids)
+
+    def test_contrato_manual_totalmente_quitado_aparece_na_tab_de_aptos(self):
+        contrato = self._create_contrato(
+            "92345678901",
+            admin_manual_layout_enabled=True,
+        )
+        self._create_manual_cycle_quitado(contrato)
+
+        response = self.agent_client.get(
+            "/api/v1/contratos/",
+            {"status_renovacao": Refinanciamento.Status.APTO_A_RENOVAR},
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        row = next(
+            item for item in response.json()["results"] if item["id"] == contrato.id
+        )
+        self.assertEqual(row["status_renovacao"], Refinanciamento.Status.APTO_A_RENOVAR)
+        self.assertEqual(row["ciclo_apto"]["numero"], 1)
+        self.assertEqual(row["ciclo_apto"]["status"], Ciclo.Status.APTO_A_RENOVAR)
+
+    def test_fluxo_manual_permite_solicitar_liquidacao_quando_ciclo_esta_quitado(self):
+        contrato = self._create_contrato(
+            "93345678901",
+            admin_manual_layout_enabled=True,
+        )
+        self._create_manual_cycle_quitado(contrato)
+
+        response = self.agent_client.post(
+            f"/api/v1/refinanciamentos/{contrato.id}/solicitar-liquidacao/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        refinanciamento = Refinanciamento.objects.get(pk=response.json()["id"])
+        self.assertEqual(
+            refinanciamento.status,
+            Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
+        )
