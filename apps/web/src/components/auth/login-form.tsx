@@ -104,7 +104,7 @@ export default function LoginForm({ next }: LoginFormProps) {
       heroImageSrc="/auth-hero-woman.webp"
       heroImageAlt="Representacao institucional de atendimento ao associado"
       heroImagePosition="62% 26%"
-      heroAlign="center"
+      heroAlign="end"
       heroTextAlign="end"
     >
       <form className="space-y-7" onSubmit={onSubmit}>
