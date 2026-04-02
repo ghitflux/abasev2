@@ -97,8 +97,8 @@ export default function LoginForm({ next }: LoginFormProps) {
     <AuthShell
       heroTitle={
         <>
-          <span className="block">Unindo forças em prol</span>
-          <span className="block">de quem serve.</span>
+          <span className="block whitespace-nowrap">Unindo forças em</span>
+          <span className="block whitespace-nowrap">prol de quem serve.</span>
         </>
       }
       heroImageSrc="/auth-hero-woman.webp"

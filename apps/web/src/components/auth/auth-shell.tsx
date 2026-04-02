@@ -43,6 +43,20 @@ export default function AuthShell({
   const resolvedHeroTextAlign = heroTextAlign ?? heroAlign;
   const heroTextIsRightAligned = resolvedHeroTextAlign === "end";
   const heroTextIsCentered = resolvedHeroTextAlign === "center";
+  const heroWrapperAlignment = heroIsCentered
+    ? "justify-center"
+    : heroIsRightAligned
+      ? "justify-end"
+      : "justify-start";
+  const heroBlockAlignment = heroIsCentered
+    ? heroTextIsCentered
+      ? "mx-auto items-center text-center"
+      : heroTextIsRightAligned
+        ? "mx-auto items-end text-right"
+        : "mx-auto items-start text-left"
+    : heroIsRightAligned
+      ? "ml-auto items-end text-right"
+      : "items-start text-left";
 
   return (
     <main className="grid min-h-screen overflow-hidden bg-[linear-gradient(180deg,hsl(228_18%_10%),hsl(228_18%_7%))] lg:grid-cols-[1.16fr_0.84fr]">
@@ -62,45 +76,35 @@ export default function AuthShell({
         <div className="absolute inset-0 bg-[linear-gradient(90deg,hsl(228_18%_8%/0.96)_0%,hsl(228_18%_8%/0.78)_44%,hsl(228_18%_8%/0.7)_100%),radial-gradient(circle_at_top_left,hsl(22_95%_56%/0.35),transparent_24%),radial-gradient(circle_at_72%_48%,hsl(160_48%_28%/0.18),transparent_34%)]" />
         <div className="absolute inset-0 bg-[linear-gradient(hsl(0_0%_100%/0.04)_1px,transparent_1px),linear-gradient(90deg,hsl(0_0%_100%/0.04)_1px,transparent_1px)] bg-[size:24px_24px] opacity-40" />
 
-        <div className="relative z-10 flex w-full flex-col justify-between p-12 xl:p-16">
-          <div className="space-y-8">
-            {heroBadge ? (
-              <div className="inline-flex w-fit items-center rounded-full border border-primary/30 bg-black/20 px-4 py-2 text-[11px] font-medium tracking-[0.34em] text-primary uppercase backdrop-blur-sm">
-                {heroBadge}
-              </div>
-            ) : null}
-
-            <div
-              className={`flex max-w-[28rem] flex-col space-y-8 ${
-                heroIsCentered
-                  ? heroTextIsCentered
-                    ? "mx-auto items-center text-center"
-                    : heroTextIsRightAligned
-                      ? "mx-auto items-end text-right"
-                      : "mx-auto items-start text-left"
-                  : heroIsRightAligned
-                    ? "ml-auto items-end text-right"
-                    : "items-start text-left"
-              }`}
-            >
-              <Image
-                src="/abase-logo-white.png"
-                alt="ABASE"
-                width={420}
-                height={122}
-                priority
-                className="h-auto w-auto object-contain drop-shadow-[0_18px_48px_rgba(0,0,0,0.45)]"
-              />
-
-              {heroTitle ? (
-                <div className="max-w-[26rem] text-6xl leading-[0.94] font-semibold tracking-[-0.06em] text-white text-balance">
-                  {heroTitle}
+        <div className="relative z-10 grid h-full w-full grid-rows-[1fr_auto] p-12 xl:p-16">
+          <div className={`flex items-center ${heroWrapperAlignment}`}>
+            <div className="space-y-8">
+              {heroBadge ? (
+                <div className="inline-flex w-fit items-center rounded-full border border-primary/30 bg-black/20 px-4 py-2 text-[11px] font-medium tracking-[0.34em] text-primary uppercase backdrop-blur-sm">
+                  {heroBadge}
                 </div>
               ) : null}
 
-              {heroDescription ? (
-                <div className="max-w-[30rem] text-lg leading-8 text-white/74">{heroDescription}</div>
-              ) : null}
+              <div className={`flex max-w-[34rem] flex-col space-y-8 ${heroBlockAlignment}`}>
+                <Image
+                  src="/abase-logo-white.png"
+                  alt="ABASE"
+                  width={420}
+                  height={122}
+                  priority
+                  className="h-auto w-auto object-contain drop-shadow-[0_18px_48px_rgba(0,0,0,0.45)]"
+                />
+
+                {heroTitle ? (
+                  <div className="max-w-[32rem] text-6xl leading-[0.94] font-semibold tracking-[-0.06em] text-white text-balance">
+                    {heroTitle}
+                  </div>
+                ) : null}
+
+                {heroDescription ? (
+                  <div className="max-w-[30rem] text-lg leading-8 text-white/74">{heroDescription}</div>
+                ) : null}
+              </div>
             </div>
           </div>
 
