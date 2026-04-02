@@ -88,6 +88,22 @@ body {
   color: hsl(35 30% 96%);
 }
 
+:where(
+  a[href],
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  label[for],
+  input:is([type="button"], [type="submit"], [type="reset"], [type="checkbox"], [type="radio"], [type="file"]):not(:disabled),
+  [data-slot*="trigger"]:not([data-disabled]),
+  [data-slot="button"]:not([disabled]),
+  [data-sidebar="menu-button"],
+  [data-sidebar="menu-sub-button"],
+  [data-radix-collection-item]
+) {
+  cursor: pointer;
+}
+
 .glass-panel {
   background: linear-gradient(180deg, hsl(220 18% 12% / 0.88), hsl(220 18% 10% / 0.74));
   backdrop-filter: blur(14px);
