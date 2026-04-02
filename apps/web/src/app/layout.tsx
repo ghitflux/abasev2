@@ -32,7 +32,11 @@ export const metadata: Metadata = {
   title: "ABASE",
   description: "Gestão de associados da ABASE Piauí.",
   icons: {
-    icon: "/ABASE.png",
+    icon: [
+      { url: "/favicon.ico?v=2" },
+      { url: "/ABASE.png", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico?v=2",
   },
 };
 
