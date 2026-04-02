@@ -19,7 +19,7 @@ const BRAND = '#22d3ee';
 const OK = '#10b981';
 const BAD = '#ef4444';
 
-const CONTACT_FLAG_KEY_PREFIX = 'espera:contact:submitted';
+const CONTACT_FLAG_KEY_PREFIX = 'espera.contact.submitted';
 
 function moneyBR(v?: number | null) {
   if (v == null || Number.isNaN(Number(v))) return '—';
@@ -70,7 +70,7 @@ export default function EsperaScreen() {
   const [contactRequested, setContactRequested] = useState(false);
 
   const contactKey = useMemo(
-    () => `${CONTACT_FLAG_KEY_PREFIX}:${user?.id ?? 'anon'}`,
+    () => `${CONTACT_FLAG_KEY_PREFIX}.${user?.id ?? 'anon'}`,
     [user?.id],
   );
 

@@ -19,8 +19,8 @@ const BTN_TEXT = '#692e44';
 
 const bgImage = require('@/assets/female.png');
 
-const REMEMBER_FLAG_KEY = '@Abase:rememberCpf';
-const REMEMBER_CPF_KEY = '@Abase:rememberedCpf';
+const REMEMBER_FLAG_KEY = 'Abase.rememberCpf';
+const REMEMBER_CPF_KEY = 'Abase.rememberedCpf';
 
 export default function LoginScreen() {
   const { login } = useAuth();

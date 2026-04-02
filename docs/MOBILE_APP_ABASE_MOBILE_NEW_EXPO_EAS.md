@@ -17,7 +17,10 @@ Pontos confirmados no estado atual:
 - o projeto mobile não faz parte do `pnpm-workspace.yaml` do monorepo
 - existe `package-lock.json` dentro do app, então o fluxo mais direto aqui é com `npm`
 - a variável `EXPO_PUBLIC_API_BASE_URL` está definida tanto no `.env` local quanto nos profiles do `eas.json`
+- o app já aponta para a API de produção em `https://abasepiaui.cloud/api/v1`
+- o app tem `.npmrc` local com `legacy-peer-deps=true` para evitar `ERESOLVE` causado por peers web opcionais do ecossistema Expo Router
 - o projeto EAS já está vinculado ao owner `helciovenancio` e ao `projectId` `6f760d38-1bec-4112-8471-99476fa4c13e`
+- o monorepo agora possui `.easignore` na raiz e dentro do app para impedir que o EAS envie `backend`, `backups`, `anexos_legado`, `dumps_legado`, `.git` e `node_modules`
 
 Conclusão prática:
 - para abrir o app sem alterar a estrutura do projeto, use `expo start`
@@ -50,6 +53,45 @@ EXPO_PUBLIC_API_BASE_URL=https://abasepiaui.cloud/api/v1
 Na prática:
 - no desenvolvimento local via Expo, esse valor vem do arquivo `.env`
 - no EAS Build, esse valor vem do `env` de cada profile no `eas.json`
+
+### Dependências fixadas para compatibilidade com Expo SDK 54
+
+As versões abaixo ficaram fixadas porque eram a origem do erro de `ERESOLVE` ao tentar preparar o APK:
+
+- `react`: `19.1.0`
+- `react-native`: `0.81.5`
+- `react-native-worklets`: `0.5.1`
+- `react-native-svg`: `15.12.1`
+- `lucide-react-native`: `^1.7.0`
+- `expo-updates`: `~29.0.16`
+
+Validação local final:
+
+```bash
+cd /mnt/d/apps/abasev2/abasev2/abase_mobile_new
+./node_modules/.bin/expo install --check
+```
+
+Resultado esperado:
+
+```text
+Dependencies are up to date
+```
+
+### Tamanho do pacote para EAS
+
+O erro de upload grande não vinha do app em si; vinha do monorepo inteiro sendo compactado.
+
+Maiores diretórios encontrados na raiz:
+
+- `backups`: ~`8.6 GB`
+- `anexos_legado`: ~`3.5 GB`
+- `backend`: ~`2.4 GB`
+- `.git`: ~`1.9 GB`
+
+Depois do `.easignore`, uma prévia do pacote útil do app ficou em torno de:
+
+- `3.5 MB` comprimido
 
 ## Pré-requisitos
 
@@ -152,11 +194,13 @@ Motivo:
 | Profile | Finalidade | Distribuição | Android | iOS |
 |---|---|---|---|---|
 | `development` | dev client | internal | APK | build interno |
+| `test-apk` | APK de teste explícito | internal | APK | n/a |
 | `preview` | teste interno | internal | APK | build interno |
 | `production` | release de loja | store | AAB | build de loja |
 
 Observações importantes:
 - `development` tem `developmentClient: true`
+- `test-apk` é o profile recomendado para gerar um APK de teste simples contra a API do servidor
 - `preview` é o profile mais simples para QA interno
 - `production` tem `autoIncrement: true`
 - o bloco `android.buildType` só afeta Android; os mesmos profiles também podem ser usados em iOS
@@ -182,13 +226,32 @@ Use:
 ```bash
 cd /mnt/d/apps/abasev2/abasev2/abase_mobile_new
 eas login
-eas build --platform android --profile preview
+eas build --platform android --profile test-apk
 ```
 
 Resultado esperado:
 - build `APK`
 - distribuição `internal`
 - link de instalação para QA
+
+Atalho equivalente pelo `package.json`:
+
+```bash
+cd /mnt/d/apps/abasev2/abasev2/abase_mobile_new
+npm run eas:build:android:test
+```
+
+Esse é o comando recomendado quando a exigência é apenas gerar um APK de teste apontando para:
+
+```text
+https://abasepiaui.cloud/api/v1
+```
+
+Se o EAS CLI perguntar sobre configurar `EAS Update`:
+
+- para gerar apenas um APK de teste, responda `No`
+- isso não bloqueia o build Android interno
+- a configuração de OTA updates pode ser feita depois, separadamente
 
 ### Cenário 3: gerar build interno iOS para distribuição
 Use:
@@ -293,3 +356,16 @@ Pré-requisitos práticos:
 - build iOS loja: `eas build --platform ios --profile production`
 - envio CLI Android: `eas submit --platform android --profile production`
 - envio CLI iOS: `eas submit --platform ios --profile production`
+## Observacoes de Arquivo para EAS Build
+
+- O projeto `abase_mobile_new` vive dentro de um monorepo muito maior.
+- O build remoto da Expo pode tentar empacotar a raiz do repositório inteiro se não houver `.easignore` na raiz.
+- Isso fazia o upload incluir diretórios gigantes como `backups/`, `anexos_legado/`, `backend/` e `.git/`, ultrapassando o limite de `2 GB`.
+- O repositório agora tem um [`.easignore`](/mnt/d/apps/abasev2/abasev2/.easignore) na raiz com exclusões explícitas desses diretórios pesados.
+- Não use um `.easignore` de raiz com `*` e exceções para o app; isso pode fazer o EAS montar um archive praticamente vazio e quebrar o build no hook final.
+- O app também mantém um [`.easignore`](/mnt/d/apps/abasev2/abasev2/abase_mobile_new/.easignore) próprio para excluir `node_modules`, `.expo` e artefatos locais.
+
+## Aviso de Versao do EAS
+
+- O arquivo [eas.json](/mnt/d/apps/abasev2/abasev2/abase_mobile_new/eas.json) agora define `cli.appVersionSource = remote`.
+- Isso remove o warning atual do EAS e mantém o versionamento alinhado com o serviço remoto da Expo.

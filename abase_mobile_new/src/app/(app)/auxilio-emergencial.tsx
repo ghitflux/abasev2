@@ -21,7 +21,7 @@ const MUTED = '#94a3b8';
 const BORDER = 'rgba(148,163,184,0.25)';
 const BRAND = '#22d3ee';
 
-const CONTACT_FLAG_KEY_PREFIX = 'espera:contact:submitted';
+const CONTACT_FLAG_KEY_PREFIX = 'espera.contact.submitted';
 
 function moneyBR(v?: number | null) {
   if (v == null || Number.isNaN(Number(v))) return '—';
@@ -61,7 +61,7 @@ export default function AuxilioEmergencialScreen() {
   }, [user]);
 
   const contactKey = useMemo(
-    () => `${CONTACT_FLAG_KEY_PREFIX}:${user?.id ?? 'anon'}`,
+    () => `${CONTACT_FLAG_KEY_PREFIX}.${user?.id ?? 'anon'}`,
     [user?.id],
   );
 
@@ -170,7 +170,7 @@ export default function AuxilioEmergencialScreen() {
         setPixCopiaECola(r?.pix_copia_cola ?? null);
         setImagemQrcode(r?.imagem_qrcode ?? null);
         if (String(r?.status || '').toLowerCase() === 'pago') {
-          await SecureStore.setItemAsync('auxilio2:forceEsperaOnce', '1').catch(() => {});
+          await SecureStore.setItemAsync('auxilio2.forceEsperaOnce', '1').catch(() => {});
           Alert.alert('Pagamento confirmado', 'Sua filiação foi confirmada com sucesso!');
         }
       } catch {}

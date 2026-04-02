@@ -120,7 +120,7 @@ export default function HomeScreen() {
       setAuxilioChecking(false);
       setAuxilio2Checking(false);
       (async () => {
-        const keys = ['auxilio2:forceEsperaOnce', 'auxilio1:forceEsperaOnce', 'auxilio:forceEsperaOnce'];
+        const keys = ['auxilio2.forceEsperaOnce', 'auxilio1:forceEsperaOnce', 'auxilio:forceEsperaOnce'];
         await Promise.all(keys.map((k) => SecureStore.setItemAsync(k, '0').catch(() => {})));
       })();
       return () => {
@@ -332,10 +332,10 @@ export default function HomeScreen() {
         Boolean((status2 as any)?.complete) || Boolean((status2 as any)?.completed) ||
         Boolean((status2 as any)?.is_complete) || isCompleteLike(statusTextRaw);
 
-      const flag2 = await SecureStore.getItemAsync('auxilio2:forceEsperaOnce').catch(() => null);
+      const flag2 = await SecureStore.getItemAsync('auxilio2.forceEsperaOnce').catch(() => null);
 
       if (serverSaysComplete2 || flag2 === '1') {
-        if (flag2 === '1') await SecureStore.setItemAsync('auxilio2:forceEsperaOnce', '0').catch(() => {});
+        if (flag2 === '1') await SecureStore.setItemAsync('auxilio2.forceEsperaOnce', '0').catch(() => {});
         router.push('/(app)/espera');
         return;
       }

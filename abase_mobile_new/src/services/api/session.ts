@@ -1,8 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 
-export const ACCESS_TOKEN_KEY = '@Abase:token';
-export const REFRESH_TOKEN_KEY = '@Abase:refresh';
-export const SESSION_KEY = '@Abase:session';
+export const ACCESS_TOKEN_KEY = 'Abase.token';
+export const REFRESH_TOKEN_KEY = 'Abase.refresh';
+export const SESSION_KEY = 'Abase.session';
 
 function looksLikeJwt(value?: string | null) {
   return typeof value === 'string' && value.split('.').length === 3;
