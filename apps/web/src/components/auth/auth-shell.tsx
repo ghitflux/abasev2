@@ -12,7 +12,7 @@ type AuthShellProps = {
   heroImageSrc?: string;
   heroImageAlt?: string;
   heroImagePosition?: string;
-  heroAlign?: "start" | "end";
+  heroAlign?: "start" | "center" | "end";
   cardBadge?: string;
   cardTitle?: string;
   cardDescription?: string;
@@ -37,6 +37,7 @@ export default function AuthShell({
   footer,
 }: AuthShellProps) {
   const heroIsRightAligned = heroAlign === "end";
+  const heroIsCentered = heroAlign === "center";
 
   return (
     <main className="grid min-h-screen overflow-hidden bg-[linear-gradient(180deg,hsl(228_18%_10%),hsl(228_18%_7%))] lg:grid-cols-[1.16fr_0.84fr]">
@@ -65,7 +66,13 @@ export default function AuthShell({
             ) : null}
 
             <div
-              className={`flex max-w-[28rem] flex-col space-y-8 ${heroIsRightAligned ? "ml-auto items-end text-right" : "items-start text-left"}`}
+              className={`flex max-w-[28rem] flex-col space-y-8 ${
+                heroIsCentered
+                  ? "mx-auto items-center text-center"
+                  : heroIsRightAligned
+                    ? "ml-auto items-end text-right"
+                    : "items-start text-left"
+              }`}
             >
               <Image
                 src="/abase-logo-white.png"
@@ -89,7 +96,9 @@ export default function AuthShell({
           </div>
 
           <div
-            className={`max-w-[18rem] text-xs leading-6 tracking-[0.28em] text-white/42 uppercase ${heroIsRightAligned ? "ml-auto text-right" : ""}`}
+            className={`max-w-[18rem] text-xs leading-6 tracking-[0.28em] text-white/42 uppercase ${
+              heroIsCentered ? "mx-auto text-center" : heroIsRightAligned ? "ml-auto text-right" : ""
+            }`}
           >
             Associação beneficente e assistencial dos servidores públicos
           </div>

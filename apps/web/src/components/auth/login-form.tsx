@@ -97,16 +97,15 @@ export default function LoginForm({ next }: LoginFormProps) {
     <AuthShell
       heroTitle={
         <>
-          Unindo forças
+          Unindo forças em
           <br />
-          em prol de quem serve.
+          prol de quem serve.
         </>
       }
       heroImageSrc="/auth-hero-woman.webp"
       heroImageAlt="Representacao institucional de atendimento ao associado"
       heroImagePosition="62% 26%"
-      heroAlign="end"
-      cardTitle="Acesse sua conta"
+      heroAlign="center"
     >
       <form className="space-y-7" onSubmit={onSubmit}>
         <FieldGroup>
