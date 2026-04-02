@@ -13,7 +13,7 @@ import { useRouteTransition } from "@/providers/route-transition-provider";
 import { useAuthStore } from "@/store/auth-store";
 import AuthShell from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
-import { Field, FieldContent, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldContent, FieldError, FieldGroup } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 
 const loginSchema = z.object({
@@ -97,26 +97,26 @@ export default function LoginForm({ next }: LoginFormProps) {
     <AuthShell
       heroTitle={
         <>
-          Unindo forças em
-          <br />
-          prol de quem serve.
+          <span className="block">Unindo forças em prol</span>
+          <span className="block">de quem serve.</span>
         </>
       }
       heroImageSrc="/auth-hero-woman.webp"
       heroImageAlt="Representacao institucional de atendimento ao associado"
       heroImagePosition="62% 26%"
       heroAlign="center"
+      heroTextAlign="end"
     >
       <form className="space-y-7" onSubmit={onSubmit}>
         <FieldGroup>
           <Field>
-            <FieldLabel className="text-[0.95rem]">Email</FieldLabel>
             <FieldContent>
               <div className="relative">
                 <MailIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
+                  aria-label="Email"
                   className="h-[54px] rounded-2xl border-white/10 bg-black/14 pl-10 text-base"
-                  placeholder="voce@abase.com.br"
+                  placeholder="Digite seu email de acesso"
                   {...form.register("email")}
                 />
               </div>
@@ -124,13 +124,13 @@ export default function LoginForm({ next }: LoginFormProps) {
             </FieldContent>
           </Field>
           <Field>
-            <FieldLabel className="text-[0.95rem]">Senha</FieldLabel>
             <FieldContent>
               <div className="relative">
                 <Input
+                  aria-label="Senha"
                   className="h-[54px] rounded-2xl border-white/10 bg-black/14 pr-12 text-base"
                   type={showPassword ? "text" : "password"}
-                  placeholder="••••••••"
+                  placeholder="Digite sua senha"
                   {...form.register("password")}
                 />
                 <button

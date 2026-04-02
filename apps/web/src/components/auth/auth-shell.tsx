@@ -13,6 +13,7 @@ type AuthShellProps = {
   heroImageAlt?: string;
   heroImagePosition?: string;
   heroAlign?: "start" | "center" | "end";
+  heroTextAlign?: "start" | "center" | "end";
   cardBadge?: string;
   cardTitle?: string;
   cardDescription?: string;
@@ -29,6 +30,7 @@ export default function AuthShell({
   heroImageAlt = "Destaque ABASE",
   heroImagePosition = "62% center",
   heroAlign = "start",
+  heroTextAlign,
   cardBadge,
   cardTitle,
   cardDescription,
@@ -38,6 +40,9 @@ export default function AuthShell({
 }: AuthShellProps) {
   const heroIsRightAligned = heroAlign === "end";
   const heroIsCentered = heroAlign === "center";
+  const resolvedHeroTextAlign = heroTextAlign ?? heroAlign;
+  const heroTextIsRightAligned = resolvedHeroTextAlign === "end";
+  const heroTextIsCentered = resolvedHeroTextAlign === "center";
 
   return (
     <main className="grid min-h-screen overflow-hidden bg-[linear-gradient(180deg,hsl(228_18%_10%),hsl(228_18%_7%))] lg:grid-cols-[1.16fr_0.84fr]">
@@ -68,7 +73,11 @@ export default function AuthShell({
             <div
               className={`flex max-w-[28rem] flex-col space-y-8 ${
                 heroIsCentered
-                  ? "mx-auto items-center text-center"
+                  ? heroTextIsCentered
+                    ? "mx-auto items-center text-center"
+                    : heroTextIsRightAligned
+                      ? "mx-auto items-end text-right"
+                      : "mx-auto items-start text-left"
                   : heroIsRightAligned
                     ? "ml-auto items-end text-right"
                     : "items-start text-left"
@@ -97,7 +106,15 @@ export default function AuthShell({
 
           <div
             className={`max-w-[18rem] text-xs leading-6 tracking-[0.28em] text-white/42 uppercase ${
-              heroIsCentered ? "mx-auto text-center" : heroIsRightAligned ? "ml-auto text-right" : ""
+              heroIsCentered
+                ? heroTextIsCentered
+                  ? "mx-auto text-center"
+                  : heroTextIsRightAligned
+                    ? "mx-auto text-right"
+                    : "mx-auto text-left"
+                : heroIsRightAligned
+                  ? "ml-auto text-right"
+                  : ""
             }`}
           >
             Associação beneficente e assistencial dos servidores públicos

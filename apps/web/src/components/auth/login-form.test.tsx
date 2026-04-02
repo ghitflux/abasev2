@@ -56,6 +56,10 @@ describe("LoginForm", () => {
     expect(
       screen.queryByText("Operação, análise e financeiro do associado no mesmo fluxo."),
     ).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Digite seu email de acesso")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Digite sua senha")).toBeInTheDocument();
+    expect(screen.queryByText("Email")).not.toBeInTheDocument();
+    expect(screen.queryByText("Senha")).not.toBeInTheDocument();
     expect(screen.getAllByAltText("ABASE")).toHaveLength(1);
     expect(
       screen.getByRole("link", { name: "Recuperar senha" }),
