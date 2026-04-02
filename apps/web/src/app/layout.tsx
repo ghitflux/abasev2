@@ -31,6 +31,9 @@ const plexMono = localFont({
 export const metadata: Metadata = {
   title: "ABASE",
   description: "Gestão de associados da ABASE Piauí.",
+  icons: {
+    icon: "/ABASE.png",
+  },
 };
 
 export default function RootLayout({

@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { ArrowRightIcon, MailIcon } from "lucide-react";
+import { ArrowRightIcon, EyeIcon, EyeOffIcon, MailIcon } from "lucide-react";
 
 import { resolvePostLoginPath } from "@/lib/navigation";
 import { useRouteTransition } from "@/providers/route-transition-provider";
@@ -32,6 +33,7 @@ export default function LoginForm({ next }: LoginFormProps) {
   const setLoading = useAuthStore((state) => state.setLoading);
   const setUser = useAuthStore((state) => state.setUser);
   const [isPending, setIsPending] = React.useState(false);
+  const [showPassword, setShowPassword] = React.useState(false);
 
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
@@ -110,11 +112,31 @@ export default function LoginForm({ next }: LoginFormProps) {
           <Field>
             <FieldLabel>Senha</FieldLabel>
             <FieldContent>
-              <Input className="h-12 rounded-2xl" type="password" placeholder="••••••••" {...form.register("password")} />
+              <div className="relative">
+                <Input
+                  className="h-12 rounded-2xl pr-12"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  {...form.register("password")}
+                />
+                <button
+                  type="button"
+                  aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                  className="absolute top-1/2 right-3 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                  onClick={() => setShowPassword((current) => !current)}
+                >
+                  {showPassword ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
+                </button>
+              </div>
               <FieldError errors={[form.formState.errors.password]} />
             </FieldContent>
           </Field>
         </FieldGroup>
+        <div className="flex justify-end">
+          <Button asChild className="h-auto px-0 text-sm" variant="link">
+            <Link href="/login/recuperar-senha">Recuperar senha</Link>
+          </Button>
+        </div>
         <Button className="h-12 w-full rounded-2xl text-sm font-semibold" disabled={isPending}>
           {isPending ? "Entrando..." : "Entrar"}
           <ArrowRightIcon className="size-4" />

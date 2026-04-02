@@ -24,6 +24,7 @@ export default function AuthShell({
   mode = "default",
 }: AuthShellProps) {
   const isLogoOnly = mode === "logo-only";
+  const shouldShowCardHeader = !isLogoOnly || Boolean(title || description || badge);
 
   return (
     <main className="grid min-h-screen bg-[radial-gradient(circle_at_top_left,hsl(24_95%_55%/0.16),transparent_22%),radial-gradient(circle_at_85%_15%,hsl(180_55%_35%/0.16),transparent_28%),linear-gradient(180deg,hsl(230_18%_10%),hsl(228_18%_7%))] lg:grid-cols-[1.2fr_0.8fr]">
@@ -72,33 +73,37 @@ export default function AuthShell({
       <section className="relative flex items-center justify-center px-6 py-10 sm:px-8 lg:px-10">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,hsl(28_100%_60%/0.14),transparent_26%),linear-gradient(180deg,hsl(228_18%_10%),hsl(228_18%_8%))] lg:hidden" />
         <Card className="glass-panel relative w-full max-w-lg rounded-[2rem] border-border/60 bg-card/92 py-8 shadow-2xl shadow-black/35 backdrop-blur-xl">
-          <CardHeader className={`px-8 ${isLogoOnly ? "space-y-0 pb-2" : "space-y-5"}`}>
-            <div className={`space-y-4 ${isLogoOnly ? "flex justify-center" : ""}`}>
-              {!isLogoOnly && badge ? (
-                <div className="inline-flex w-fit items-center rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-[11px] font-medium tracking-[0.22em] text-primary uppercase">
-                  {badge}
-                </div>
-              ) : null}
-              <Image
-                src="/abase-logo-white.png"
-                alt="ABASE"
-                width={isLogoOnly ? 280 : 220}
-                height={isLogoOnly ? 80 : 64}
-                className="h-auto w-auto object-contain"
-                priority
-              />
-            </div>
-            {!isLogoOnly && (title || description) ? (
-              <div className="space-y-2">
-                {title ? <CardTitle className="text-3xl leading-tight">{title}</CardTitle> : null}
-                {description ? (
-                  <CardDescription className="max-w-md text-sm leading-6 text-muted-foreground">
-                    {description}
-                  </CardDescription>
+          {shouldShowCardHeader ? (
+            <CardHeader className={`px-8 ${isLogoOnly ? "space-y-0 pb-2" : "space-y-5"}`}>
+              <div className={`space-y-4 ${isLogoOnly ? "flex justify-center" : ""}`}>
+                {!isLogoOnly && badge ? (
+                  <div className="inline-flex w-fit items-center rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-[11px] font-medium tracking-[0.22em] text-primary uppercase">
+                    {badge}
+                  </div>
+                ) : null}
+                {!isLogoOnly ? (
+                  <Image
+                    src="/abase-logo-white.png"
+                    alt="ABASE"
+                    width={220}
+                    height={64}
+                    className="h-auto w-auto object-contain"
+                    priority
+                  />
                 ) : null}
               </div>
-            ) : null}
-          </CardHeader>
+              {!isLogoOnly && (title || description) ? (
+                <div className="space-y-2">
+                  {title ? <CardTitle className="text-3xl leading-tight">{title}</CardTitle> : null}
+                  {description ? (
+                    <CardDescription className="max-w-md text-sm leading-6 text-muted-foreground">
+                      {description}
+                    </CardDescription>
+                  ) : null}
+                </div>
+              ) : null}
+            </CardHeader>
+          ) : null}
           <CardContent className="px-8">{children}</CardContent>
           {footer ? <CardFooter className="px-8">{footer}</CardFooter> : null}
         </Card>

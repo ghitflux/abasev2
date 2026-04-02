@@ -13,6 +13,19 @@ jest.mock("next/image", () => ({
   ),
 }));
 
+jest.mock("next/link", () => ({
+  __esModule: true,
+  default: ({
+    href,
+    children,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { href: string }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+}));
+
 jest.mock("@/providers/route-transition-provider", () => ({
   useRouteTransition: () => ({
     startRouteTransition: jest.fn(),
@@ -35,7 +48,7 @@ jest.mock("@/store/auth-store", () => ({
 }));
 
 describe("LoginForm", () => {
-  it("renderiza o login em modo logo-only sem os textos antigos", () => {
+  it("renderiza o login em modo logo-only com recuperar senha e toggle de senha", () => {
     render(<LoginForm next="/dashboard" />);
 
     expect(screen.queryByText("Entrar na ABASE")).not.toBeInTheDocument();
@@ -43,6 +56,12 @@ describe("LoginForm", () => {
     expect(
       screen.queryByText("Operação, análise e financeiro do associado no mesmo fluxo."),
     ).not.toBeInTheDocument();
-    expect(screen.getAllByAltText("ABASE")).toHaveLength(2);
+    expect(screen.getAllByAltText("ABASE")).toHaveLength(1);
+    expect(
+      screen.getByRole("link", { name: "Recuperar senha" }),
+    ).toHaveAttribute("href", "/login/recuperar-senha");
+    expect(
+      screen.getByRole("button", { name: "Mostrar senha" }),
+    ).toBeInTheDocument();
   });
 });
