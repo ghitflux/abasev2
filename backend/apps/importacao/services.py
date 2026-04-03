@@ -18,6 +18,7 @@ from rest_framework.exceptions import ValidationError
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Contrato
 
+from .dry_run import simular_dry_run
 from .duplicidade import DuplicidadeFinanceiraService
 from .legacy import LegacyPagamentoSnapshot, list_legacy_pagamento_snapshots
 from .manual_return_conflicts import (
@@ -181,6 +182,7 @@ class ArquivoRetornoService:
         lines = normalize_lines(text)
         ArquivoRetornoValidator.validar_cabecalho(lines)
         meta = self.parser.extract_meta(lines)
+        competencia = competencia_to_date(meta.competencia)
 
         safe_name = get_valid_filename(Path(getattr(arquivo, "name", "retorno.txt")).name)
         storage_name = default_storage.save(
@@ -193,8 +195,8 @@ class ArquivoRetornoService:
             arquivo_url=storage_name,
             formato=formato,
             orgao_origem=meta.sistema_origem,
-            competencia=competencia_to_date(meta.competencia),
-            status=ArquivoRetorno.Status.PENDENTE,
+            competencia=competencia,
+            status=ArquivoRetorno.Status.AGUARDANDO_CONFIRMACAO,
             uploaded_by=user,
             resultado_resumo={
                 "competencia": meta.competencia,
@@ -214,15 +216,52 @@ class ArquivoRetornoService:
                 "nao_descontados": 0,
             },
         )
+
+        # Parse completo e dry-run síncrono — leitura pura do banco, sem escrita
+        parsed = self.parser.parse(self._arquivo_path(arquivo_retorno))
+        items_unicos, _ = self._deduplicar_itens_por_cpf(parsed.items)
+        dry_run = simular_dry_run(competencia=competencia, parsed_items=items_unicos)
+        arquivo_retorno.dry_run_resultado = dry_run
+        arquivo_retorno.save(update_fields=["dry_run_resultado", "updated_at"])
+
         ImportacaoLog.objects.create(
             arquivo_retorno=arquivo_retorno,
             tipo=ImportacaoLog.Tipo.UPLOAD,
-            mensagem="Upload de arquivo retorno recebido.",
+            mensagem="Upload de arquivo retorno recebido. Aguardando confirmação do usuário.",
             dados={"arquivo_nome": safe_name, "competencia": meta.competencia},
+        )
+
+        arquivo_retorno.refresh_from_db()
+        return arquivo_retorno
+
+    def confirmar(self, arquivo_retorno_id: int) -> ArquivoRetorno:
+        """Confirma a importação e dispara o processamento Celery."""
+        arquivo_retorno = ArquivoRetorno.objects.get(pk=arquivo_retorno_id)
+        if arquivo_retorno.status != ArquivoRetorno.Status.AGUARDANDO_CONFIRMACAO:
+            raise ValidationError(
+                "O arquivo não está aguardando confirmação. "
+                f"Status atual: {arquivo_retorno.status}."
+            )
+        arquivo_retorno.status = ArquivoRetorno.Status.PENDENTE
+        arquivo_retorno.save(update_fields=["status", "updated_at"])
+        ImportacaoLog.objects.create(
+            arquivo_retorno=arquivo_retorno,
+            tipo=ImportacaoLog.Tipo.UPLOAD,
+            mensagem="Importação confirmada pelo usuário. Processamento iniciado.",
         )
         self._dispatch_processamento(arquivo_retorno.id)
         arquivo_retorno.refresh_from_db()
         return arquivo_retorno
+
+    def cancelar(self, arquivo_retorno_id: int) -> None:
+        """Cancela e remove (soft-delete) o arquivo aguardando confirmação."""
+        arquivo_retorno = ArquivoRetorno.objects.get(pk=arquivo_retorno_id)
+        if arquivo_retorno.status != ArquivoRetorno.Status.AGUARDANDO_CONFIRMACAO:
+            raise ValidationError(
+                "Não é possível cancelar um arquivo que não está aguardando confirmação. "
+                f"Status atual: {arquivo_retorno.status}."
+            )
+        arquivo_retorno.delete()
 
     def reprocessar(self, arquivo_retorno_id: int) -> ArquivoRetorno:
         arquivo_retorno = ArquivoRetorno.objects.get(pk=arquivo_retorno_id)

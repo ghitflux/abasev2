@@ -5,14 +5,13 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Case, IntegerField, Value, When
 from django.utils import timezone
 
 from apps.associados.models import Associado, only_digits
 from apps.contratos.competencia import propagate_competencia_status, resolve_processing_competencia_parcela
 from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
-from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.contratos.models import Ciclo, Parcela
 from apps.refinanciamento.models import Refinanciamento
 
 from .matching import find_associado
@@ -182,60 +181,6 @@ class MotorReconciliacao:
         item.processado = True
         item.save()
         return outcome
-
-    def _buscar_parcela(self, associado: Associado, competencia: date) -> Parcela | None:
-        queryset = Parcela.objects.select_for_update().select_related(
-            "ciclo",
-            "ciclo__contrato",
-            "ciclo__contrato__associado",
-        ).filter(
-            ciclo__contrato__associado=associado,
-            referencia_mes=competencia,
-        )
-        contrato_elegivel = queryset.filter(
-            ciclo__contrato__status__in=[Contrato.Status.ATIVO, Contrato.Status.ENCERRADO]
-        )
-        if contrato_elegivel.exists():
-            queryset = contrato_elegivel
-
-        return (
-            queryset.annotate(
-                prioridade_status=Case(
-                    When(status=Parcela.Status.EM_ABERTO, then=Value(0)),
-                    When(status=Parcela.Status.NAO_DESCONTADO, then=Value(1)),
-                    When(status=Parcela.Status.FUTURO, then=Value(2)),
-                    When(status=Parcela.Status.DESCONTADO, then=Value(3)),
-                    default=Value(9),
-                    output_field=IntegerField(),
-                ),
-                prioridade_contrato=Case(
-                    When(ciclo__contrato__status=Contrato.Status.ATIVO, then=Value(0)),
-                    When(ciclo__contrato__status=Contrato.Status.ENCERRADO, then=Value(1)),
-                    default=Value(9),
-                    output_field=IntegerField(),
-                ),
-                prioridade_ciclo=Case(
-                    When(ciclo__status=Ciclo.Status.ABERTO, then=Value(0)),
-                    When(ciclo__status=Ciclo.Status.APTO_A_RENOVAR, then=Value(1)),
-                    When(ciclo__status=Ciclo.Status.FUTURO, then=Value(2)),
-                    When(ciclo__status=Ciclo.Status.CICLO_RENOVADO, then=Value(3)),
-                    When(ciclo__status=Ciclo.Status.FECHADO, then=Value(4)),
-                    default=Value(9),
-                    output_field=IntegerField(),
-                ),
-            )
-            .order_by(
-                "prioridade_status",
-                "prioridade_contrato",
-                "prioridade_ciclo",
-                "-ciclo__contrato__data_aprovacao",
-                "-ciclo__contrato__created_at",
-                "-ciclo__numero",
-                "numero",
-                "-id",
-            )
-            .first()
-        )
 
     def _processar_efetivado(
         self,

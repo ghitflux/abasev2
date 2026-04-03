@@ -257,6 +257,73 @@ class ArquivoRetornoListSerializer(serializers.ModelSerializer):
         return ArquivoRetornoFinanceiroResumoSerializer(cache[obj.competencia]).data
 
 
+# ---------------------------------------------------------------------------
+# Dry-run serializers
+# ---------------------------------------------------------------------------
+
+class DryRunValores3050GrupoSerializer(serializers.Serializer):
+    count = serializers.IntegerField()
+    valor_total = serializers.DecimalField(max_digits=12, decimal_places=2)
+
+
+class DryRunValores3050Serializer(serializers.Serializer):
+    descontaram = DryRunValores3050GrupoSerializer()
+    nao_descontaram = DryRunValores3050GrupoSerializer()
+
+
+class DryRunMudancaStatusSerializer(serializers.Serializer):
+    antes = serializers.CharField()
+    depois = serializers.CharField()
+    count = serializers.IntegerField()
+
+
+class DryRunKpisSerializer(serializers.Serializer):
+    total_no_arquivo = serializers.IntegerField()
+    atualizados = serializers.IntegerField()
+    baixa_efetuada = serializers.IntegerField()
+    nao_descontado = serializers.IntegerField()
+    nao_encontrado = serializers.IntegerField()
+    pendencia_manual = serializers.IntegerField()
+    ciclo_aberto = serializers.IntegerField()
+    valor_previsto = serializers.DecimalField(max_digits=14, decimal_places=2)
+    valor_real = serializers.DecimalField(max_digits=14, decimal_places=2)
+    aptos_a_renovar = serializers.IntegerField()
+    valores_30_50 = DryRunValores3050Serializer()
+    mudancas_status_associado = DryRunMudancaStatusSerializer(many=True)
+    mudancas_status_ciclo = DryRunMudancaStatusSerializer(many=True)
+
+
+class DryRunItemSerializer(serializers.Serializer):
+    linha_numero = serializers.IntegerField(allow_null=True)
+    cpf_cnpj = serializers.CharField()
+    nome_servidor = serializers.CharField(allow_blank=True)
+    matricula_servidor = serializers.CharField(allow_blank=True)
+    orgao_pagto_nome = serializers.CharField(allow_blank=True)
+    valor_descontado = serializers.DecimalField(max_digits=10, decimal_places=2)
+    status_codigo = serializers.CharField(allow_blank=True)
+    resultado = serializers.CharField()
+    associado_id = serializers.IntegerField(allow_null=True)
+    associado_nome = serializers.CharField(allow_blank=True)
+    associado_status_antes = serializers.CharField(allow_null=True)
+    associado_status_depois = serializers.CharField(allow_null=True)
+    ciclo_status_antes = serializers.CharField(allow_null=True)
+    ciclo_status_depois = serializers.CharField(allow_null=True)
+    ficara_apto_renovar = serializers.BooleanField()
+    categoria = serializers.CharField()
+
+
+class DryRunResultadoSerializer(serializers.Serializer):
+    kpis = DryRunKpisSerializer()
+    items = DryRunItemSerializer(many=True)
+
+
 class ArquivoRetornoDetailSerializer(ArquivoRetornoListSerializer):
+    dry_run_resultado = serializers.SerializerMethodField()
+
     class Meta(ArquivoRetornoListSerializer.Meta):
-        fields = ArquivoRetornoListSerializer.Meta.fields + ["arquivo_url"]
+        fields = ArquivoRetornoListSerializer.Meta.fields + ["arquivo_url", "dry_run_resultado"]
+
+    def get_dry_run_resultado(self, obj: ArquivoRetorno):
+        if not obj.dry_run_resultado:
+            return None
+        return DryRunResultadoSerializer(obj.dry_run_resultado).data

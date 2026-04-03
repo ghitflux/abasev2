@@ -27,6 +27,7 @@ from .serializers import (
     DuplicidadeFinanceiraItemSerializer,
     DuplicidadeFinanceiraKpisSerializer,
     DuplicidadeFinanceiraResolverSerializer,
+    DryRunResultadoSerializer,
 )
 from .services import ArquivoRetornoService
 
@@ -69,7 +70,10 @@ class ArquivoRetornoViewSet(
         if getattr(self, "swagger_fake_view", False):
             return ArquivoRetorno.objects.none()
 
-        queryset = ArquivoRetorno.objects.select_related("uploaded_by")
+        # Arquivos aguardando confirmação são transitórios e não aparecem no histórico/última
+        queryset = ArquivoRetorno.objects.select_related("uploaded_by").exclude(
+            status=ArquivoRetorno.Status.AGUARDANDO_CONFIRMACAO
+        )
         competencia = parse_competencia_query(
             self.request.query_params.get("competencia")
         )
@@ -108,14 +112,14 @@ class ArquivoRetornoViewSet(
             return ArquivoRetornoItemSerializer
         if self.action == "upload":
             return ArquivoRetornoUploadSerializer
-        if self.action == "retrieve":
+        if self.action in {"retrieve", "confirmar"}:
             return ArquivoRetornoDetailSerializer
         return ArquivoRetornoListSerializer
 
     def get_throttles(self):
         if self.action == "upload":
             return [UploadArquivoRetornoRateThrottle()]
-        if self.action == "reprocessar":
+        if self.action in {"reprocessar", "confirmar"}:
             return [ReprocessarArquivoRetornoRateThrottle()]
         return super().get_throttles()
 
@@ -167,6 +171,31 @@ class ArquivoRetornoViewSet(
         arquivo = ArquivoRetornoService().reprocessar(int(pk))
         return Response(ArquivoRetornoDetailSerializer(arquivo).data)
 
+    @extend_schema(
+        responses=ArquivoRetornoDetailSerializer,
+        description=(
+            "Confirma a importação de um arquivo retorno em status 'aguardando_confirmacao'. "
+            "Dispara o processamento assíncrono (Celery). "
+            "Retorna o arquivo com status 'pendente' ou 'processando'."
+        ),
+    )
+    @action(detail=True, methods=["post"])
+    def confirmar(self, request, pk=None):
+        arquivo = ArquivoRetornoService().confirmar(int(pk))
+        return Response(ArquivoRetornoDetailSerializer(arquivo).data)
+
+    @extend_schema(
+        responses={204: None},
+        description=(
+            "Cancela e remove (soft-delete) um arquivo retorno em status 'aguardando_confirmacao'. "
+            "Não afeta arquivos já processados ou em processamento."
+        ),
+    )
+    @action(detail=True, methods=["post"])
+    def cancelar(self, request, pk=None):
+        ArquivoRetornoService().cancelar(int(pk))
+        return Response(status=204)
+
     @extend_schema(responses=ArquivoRetornoItemSerializer(many=True))
     @action(detail=True, methods=["get"])
     def descontados(self, request, pk=None):
@@ -206,7 +235,13 @@ class ArquivoRetornoViewSet(
         queryset = self._filtrar_itens(pk, gerou_novo_ciclo=True)
         return self._paginate_items(queryset)
 
-    @extend_schema(responses=ArquivoRetornoItemSerializer(many=True))
+    @extend_schema(
+        responses=ArquivoRetornoItemSerializer(many=True),
+        description=(
+            "Lista os itens do arquivo retorno cujo processamento gerou elegibilidade "
+            "de renovação (gerou_novo_ciclo=True). Esses associados podem solicitar renovação."
+        ),
+    )
     @action(detail=True, methods=["get"], url_path="aptos-renovar")
     def aptos_renovar(self, request, pk=None):
         queryset = self._filtrar_itens(pk, gerou_novo_ciclo=True)

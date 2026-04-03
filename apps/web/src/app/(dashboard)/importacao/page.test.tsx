@@ -100,6 +100,47 @@ const latestImport = {
   arquivo_url: "/media/retorno.txt",
 };
 
+const dryRunResultado = {
+  kpis: {
+    total_no_arquivo: 4,
+    atualizados: 3,
+    baixa_efetuada: 1,
+    nao_descontado: 1,
+    nao_encontrado: 1,
+    pendencia_manual: 1,
+    ciclo_aberto: 0,
+    valor_previsto: "90.00",
+    valor_real: "30.00",
+    aptos_a_renovar: 1,
+    valores_30_50: {
+      descontaram: { count: 1, valor_total: "30.00" },
+      nao_descontaram: { count: 1, valor_total: "30.00" },
+    },
+    mudancas_status_associado: [{ antes: "inadimplente", depois: "ativo", count: 1 }],
+    mudancas_status_ciclo: [{ antes: "aberto", depois: "apto_a_renovar", count: 1 }],
+  },
+  items: [
+    {
+      linha_numero: 1,
+      cpf_cnpj: "23993596315",
+      nome_servidor: "MARIA DE JESUS SANTANA COSTA",
+      matricula_servidor: "030759-9",
+      orgao_pagto_nome: "SEC. EST. ADMIN. E PREVIDEN.",
+      valor_descontado: "30.00",
+      status_codigo: "1",
+      resultado: "baixa_efetuada",
+      associado_id: 77,
+      associado_nome: "Maria de Jesus Santana Costa",
+      associado_status_antes: "inadimplente",
+      associado_status_depois: "ativo",
+      ciclo_status_antes: "aberto",
+      ciclo_status_depois: "apto_a_renovar",
+      ficara_apto_renovar: true,
+      categoria: "valores_30_50",
+    },
+  ],
+};
+
 const historyPayload = {
   count: 1,
   next: null,
@@ -164,6 +205,17 @@ describe("ImportacaoPage", () => {
           ...latestImport,
           status: "processando",
         };
+      }
+
+      if (path === `importacao/arquivo-retorno/${latestImport.id}/confirmar`) {
+        return {
+          ...latestImport,
+          status: "pendente",
+        };
+      }
+
+      if (path === `importacao/arquivo-retorno/${latestImport.id}/cancelar`) {
+        return undefined;
       }
 
       throw new Error(`Unexpected apiFetch path: ${path}`);
@@ -243,5 +295,113 @@ describe("ImportacaoPage", () => {
         status: "processando",
       });
     });
+  });
+
+  it("abre o modal de dry-run quando o upload volta aguardando confirmação", async () => {
+    const user = userEvent.setup();
+
+    mockedApiFetch.mockImplementation(async (path, options) => {
+      if (path === "importacao/arquivo-retorno/upload") {
+        const arquivo = options?.formData?.get("arquivo") as File | null;
+        return {
+          ...latestImport,
+          status: "aguardando_confirmacao",
+          arquivo_nome: arquivo?.name ?? latestImport.arquivo_nome,
+          dry_run_resultado: dryRunResultado,
+        };
+      }
+      if (path === `importacao/arquivo-retorno/${latestImport.id}/confirmar`) {
+        return {
+          ...latestImport,
+          status: "pendente",
+        };
+      }
+      if (path === `importacao/arquivo-retorno/${latestImport.id}/cancelar`) {
+        return undefined;
+      }
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    const { container } = renderPage();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["conteudo"], "retorno_dry_run.txt", { type: "text/plain" });
+
+    await user.upload(input, file);
+
+    expect(await screen.findByText("Prévia da importação")).toBeInTheDocument();
+    expect(screen.getByText("Total no arquivo")).toBeInTheDocument();
+    expect(screen.getByText("Parcelas R$30 / R$50")).toBeInTheDocument();
+  });
+
+  it("confirma a importação a partir do modal de dry-run", async () => {
+    const user = userEvent.setup();
+
+    mockedApiFetch.mockImplementation(async (path, options) => {
+      if (path === "importacao/arquivo-retorno/upload") {
+        return {
+          ...latestImport,
+          status: "aguardando_confirmacao",
+          dry_run_resultado: dryRunResultado,
+        };
+      }
+      if (path === `importacao/arquivo-retorno/${latestImport.id}/confirmar`) {
+        return {
+          ...latestImport,
+          status: "pendente",
+        };
+      }
+      if (path === `importacao/arquivo-retorno/${latestImport.id}/cancelar`) {
+        return undefined;
+      }
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    const { container } = renderPage();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["conteudo"], "retorno_dry_run.txt", { type: "text/plain" });
+
+    await user.upload(input, file);
+    await user.click(await screen.findByRole("button", { name: /confirmar importação/i }));
+
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      `importacao/arquivo-retorno/${latestImport.id}/confirmar`,
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("cancela a importação a partir do modal de dry-run", async () => {
+    const user = userEvent.setup();
+
+    mockedApiFetch.mockImplementation(async (path, options) => {
+      if (path === "importacao/arquivo-retorno/upload") {
+        return {
+          ...latestImport,
+          status: "aguardando_confirmacao",
+          dry_run_resultado: dryRunResultado,
+        };
+      }
+      if (path === `importacao/arquivo-retorno/${latestImport.id}/confirmar`) {
+        return {
+          ...latestImport,
+          status: "pendente",
+        };
+      }
+      if (path === `importacao/arquivo-retorno/${latestImport.id}/cancelar`) {
+        return undefined;
+      }
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    const { container } = renderPage();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["conteudo"], "retorno_dry_run.txt", { type: "text/plain" });
+
+    await user.upload(input, file);
+    await user.click(await screen.findByRole("button", { name: /^cancelar$/i }));
+
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      `importacao/arquivo-retorno/${latestImport.id}/cancelar`,
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 });

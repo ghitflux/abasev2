@@ -5,17 +5,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { RefreshCcwIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import type { PaginatedResponse } from "@/lib/api/types";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import StatusBadge from "@/components/custom/status-badge";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import DryRunModal from "@/components/importacao/dry-run-modal";
 import {
   useV1ImportacaoArquivoRetornoDescontadosList,
   useV1ImportacaoArquivoRetornoEncerramentosList,
@@ -27,7 +26,7 @@ import {
 } from "@/gen";
 import type { ArquivoRetornoDetail, ArquivoRetornoItem, ArquivoRetornoList } from "@/gen/models";
 import { apiFetch } from "@/lib/api/client";
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/formatters";
+import { formatCurrency, formatDateTime } from "@/lib/formatters";
 import {
   getArquivoFinanceiroResumo,
   type ArquivoRetornoWithFinanceiro,
@@ -36,6 +35,12 @@ import { maskCPFCNPJ } from "@/lib/masks";
 
 const TXT_ACCEPT = { "text/plain": [".txt"] };
 const ITEM_PAGE_SIZE = 5;
+type DryRunPreviewState = {
+  arquivoId: number;
+  arquivoNome: string;
+  competenciaDisplay: string;
+  dryRunData: NonNullable<ArquivoRetornoDetail["dry_run_resultado"]>;
+};
 
 function totalPages(count?: number, pageSize = 5) {
   return Math.max(1, Math.ceil((count ?? 0) / pageSize));
@@ -152,6 +157,7 @@ export default function ImportacaoPage() {
   const [isPolling, setIsPolling] = React.useState(false);
   const [uploadFile, setUploadFile] = React.useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = React.useState(0);
+  const [dryRunPreview, setDryRunPreview] = React.useState<DryRunPreviewState | null>(null);
 
   const historyQuery = useV1ImportacaoArquivoRetornoList(
     { page: historyPage, page_size: 5 },
@@ -211,7 +217,18 @@ export default function ImportacaoPage() {
       toast.success("Arquivo enviado com sucesso.");
       setUploadFile(null);
       setUploadProgress(100);
-      setIsPolling(statusIsPending(data.status));
+      if (data.status === "aguardando_confirmacao" && data.dry_run_resultado) {
+        setIsPolling(false);
+        setDryRunPreview({
+          arquivoId: data.id,
+          arquivoNome: data.arquivo_nome,
+          competenciaDisplay: data.competencia_display,
+          dryRunData: data.dry_run_resultado,
+        });
+      } else {
+        setDryRunPreview(null);
+        setIsPolling(statusIsPending(data.status));
+      }
       invalidateImportacao();
     },
     onError: (error) => {
@@ -233,6 +250,43 @@ export default function ImportacaoPage() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Falha ao reprocessar o arquivo.");
+    },
+  });
+
+  const confirmarMutation = useMutation<ArquivoRetornoDetail, Error, number>({
+    mutationFn: async (id) =>
+      apiFetch<ArquivoRetornoDetail>(`importacao/arquivo-retorno/${id}/confirmar`, {
+        method: "POST",
+      }),
+    onSuccess: (data) => {
+      setDryRunPreview(null);
+      setIsPolling(statusIsPending(data.status));
+      toast.success("Importação confirmada. Processando...");
+      invalidateImportacao();
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao confirmar a importação.",
+      );
+    },
+  });
+
+  const cancelarMutation = useMutation<void, Error, number>({
+    mutationFn: async (id) =>
+      apiFetch<void>(`importacao/arquivo-retorno/${id}/cancelar`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      setDryRunPreview(null);
+      setUploadFile(null);
+      setUploadProgress(0);
+      toast.success("Importação cancelada.");
+      invalidateImportacao();
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao cancelar a importação.",
+      );
     },
   });
 
@@ -625,6 +679,22 @@ export default function ImportacaoPage() {
           )}
         </CardContent>
       </Card>
+
+      {dryRunPreview ? (
+        <DryRunModal
+          open
+          onOpenChange={() => {
+            // Modal bloqueante: confirmar ou cancelar são os únicos caminhos.
+          }}
+          arquivoNome={dryRunPreview.arquivoNome}
+          competenciaDisplay={dryRunPreview.competenciaDisplay}
+          dryRunData={dryRunPreview.dryRunData}
+          onConfirm={() => confirmarMutation.mutate(dryRunPreview.arquivoId)}
+          onCancel={() => cancelarMutation.mutate(dryRunPreview.arquivoId)}
+          isConfirming={confirmarMutation.isPending}
+          isCanceling={cancelarMutation.isPending}
+        />
+      ) : null}
 
     </div>
   );

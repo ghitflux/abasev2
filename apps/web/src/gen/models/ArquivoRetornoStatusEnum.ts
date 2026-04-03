@@ -4,6 +4,7 @@
  */
 
 export const arquivoRetornoStatusEnumEnum = {
+  aguardando_confirmacao: "aguardando_confirmacao",
   pendente: "pendente",
   processando: "processando",
   concluido: "concluido",
@@ -14,6 +15,6 @@ export type ArquivoRetornoStatusEnumEnumKey =
   (typeof arquivoRetornoStatusEnumEnum)[keyof typeof arquivoRetornoStatusEnumEnum];
 
 /**
- * @description * `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro
+ * @description * `aguardando_confirmacao` - Aguardando Confirmação\n* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro
  */
 export type ArquivoRetornoStatusEnum = ArquivoRetornoStatusEnumEnumKey;

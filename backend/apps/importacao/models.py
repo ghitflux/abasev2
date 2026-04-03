@@ -75,6 +75,7 @@ class ArquivoRetorno(BaseModel):
         MANUAL = "man", "Manual"
 
     class Status(models.TextChoices):
+        AGUARDANDO_CONFIRMACAO = "aguardando_confirmacao", "Aguardando Confirmação"
         PENDENTE = "pendente", "Pendente"
         PROCESSANDO = "processando", "Processando"
         CONCLUIDO = "concluido", "Concluído"
@@ -90,9 +91,10 @@ class ArquivoRetorno(BaseModel):
     nao_encontrados = models.PositiveIntegerField(default=0)
     erros = models.PositiveIntegerField(default=0)
     status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.PENDENTE
+        max_length=24, choices=Status.choices, default=Status.PENDENTE
     )
     resultado_resumo = models.JSONField(default=dict, blank=True)
+    dry_run_resultado = models.JSONField(null=True, blank=True)
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,

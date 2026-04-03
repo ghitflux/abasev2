@@ -5,6 +5,7 @@
 
 import type { ArquivoRetornoFormatoEnum } from "./ArquivoRetornoFormatoEnum.ts";
 import type { ArquivoRetornoStatusEnum } from "./ArquivoRetornoStatusEnum.ts";
+import type { DryRunResultado } from "./DryRunResultado.ts";
 
 export type ArquivoRetornoDetail = {
   /**
@@ -90,4 +91,9 @@ export type ArquivoRetornoDetail = {
    * @type string
    */
   arquivo_url: string;
+  /**
+   * Resultado do dry-run calculado no momento do upload. Presente apenas quando
+   * status === 'aguardando_confirmacao'. Nulo após confirmação ou cancelamento.
+   */
+  readonly dry_run_resultado?: DryRunResultado | null;
 };

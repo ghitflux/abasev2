@@ -403,6 +403,16 @@ export type {
 } from "./models/AppMensalidadesRetrieve.ts";
 export type { AppTermosAceiteResponse } from "./models/AppTermosAceiteResponse.ts";
 export type { ArquivoRetornoDetail } from "./models/ArquivoRetornoDetail.ts";
+export type {
+  DryRunResultado,
+  DryRunKpis,
+  DryRunItem,
+  DryRunItemResultado,
+  DryRunItemCategoria,
+  DryRunMudancaStatus,
+  DryRunValores3050,
+  DryRunValores3050Grupo,
+} from "./models/DryRunResultado.ts";
 export type { ArquivoRetornoFinanceiroGrupo } from "./models/ArquivoRetornoFinanceiroGrupo.ts";
 export type { ArquivoRetornoFinanceiroItem } from "./models/ArquivoRetornoFinanceiroItem.ts";
 export type { ArquivoRetornoFinanceiroPayload } from "./models/ArquivoRetornoFinanceiroPayload.ts";
