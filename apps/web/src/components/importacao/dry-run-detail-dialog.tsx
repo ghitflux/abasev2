@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCurrency } from "@/lib/formatters";
 import { maskCPFCNPJ } from "@/lib/masks";
 
@@ -36,17 +35,17 @@ export default function DryRunDetailDialog({ open, onOpenChange, title, items }:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[85vh] max-w-4xl flex-col gap-0 p-0">
-        <DialogHeader className="border-b border-border/60 px-6 py-4">
+      <DialogContent className="grid max-h-[calc(100vh-2rem)] w-[96vw] max-w-[96vw] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-border/60 bg-background/95 p-0 sm:max-w-none 2xl:max-w-[100rem]">
+        <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-4">
           <DialogTitle className="text-base">{title}</DialogTitle>
           <p className="text-xs text-muted-foreground">
             {items.length} associado{items.length !== 1 ? "s" : ""}
           </p>
         </DialogHeader>
 
-        <ScrollArea className="flex-1">
-          <div className="overflow-hidden">
-            <table className="w-full text-sm">
+        <div className="min-h-0 overflow-y-auto">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[72rem] text-sm">
               <thead>
                 <tr className="border-b border-border/60 bg-muted/20">
                   <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -138,10 +137,10 @@ export default function DryRunDetailDialog({ open, onOpenChange, title, items }:
               </tbody>
             </table>
           </div>
-        </ScrollArea>
+        </div>
 
         {totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-border/60 px-6 py-3">
+          <div className="flex shrink-0 items-center justify-between border-t border-border/60 px-6 py-3">
             <span className="text-xs text-muted-foreground">
               Página {page} de {totalPages}
             </span>

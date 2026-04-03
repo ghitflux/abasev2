@@ -25,8 +25,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import { formatCurrency } from "@/lib/formatters";
 import DryRunDetailDialog from "./dry-run-detail-dialog";
 
@@ -127,18 +127,26 @@ function KpiCard({ label, value, sub, icon, colorClass = "text-muted-foreground"
     <Tag
       onClick={onClick}
       className={[
-        "flex flex-col gap-2 rounded-2xl border border-border/60 bg-background/40 p-4 text-left",
-        clickable ? "cursor-pointer transition-colors hover:border-primary/40 hover:bg-primary/5" : "",
+        "flex min-h-[11.5rem] flex-col gap-3 rounded-3xl border border-border/60 bg-card/70 p-4 text-left shadow-lg shadow-black/10",
+        clickable
+          ? "cursor-pointer transition-colors hover:border-primary/40 hover:bg-primary/[0.08]"
+          : "",
       ].join(" ")}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{label}</span>
+        <span className="max-w-[14rem] text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+          {label}
+        </span>
         <span className={colorClass}>{icon}</span>
       </div>
-      <p className={`text-2xl font-semibold ${colorClass}`}>{value}</p>
-      {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+      <div className="space-y-2">
+        <p className={cn("text-2xl font-semibold leading-tight sm:text-[2rem]", colorClass)}>
+          {value}
+        </p>
+        {sub && <p className="max-w-[18rem] text-xs leading-relaxed text-muted-foreground">{sub}</p>}
+      </div>
       {clickable && (
-        <span className="mt-auto flex items-center gap-1 text-[11px] text-primary/70">
+        <span className="mt-auto inline-flex items-center gap-1 text-[11px] font-medium text-primary/80">
           Ver detalhes <ChevronRightIcon className="size-3" />
         </span>
       )}
@@ -159,7 +167,7 @@ function MudancaRow({ mudanca, onClick }: MudancaRowProps) {
   return (
     <button
       onClick={onClick}
-      className="flex w-full items-center justify-between gap-3 rounded-xl border border-border/40 bg-background/30 px-4 py-2.5 text-left text-sm transition-colors hover:border-primary/30 hover:bg-primary/5"
+      className="flex w-full items-center justify-between gap-3 rounded-2xl border border-border/40 bg-card/70 px-4 py-3 text-left text-sm transition-colors hover:border-primary/30 hover:bg-primary/[0.08]"
     >
       <span className="flex items-center gap-2">
         <span className="text-xl font-semibold tabular-nums">{mudanca.count}</span>
@@ -200,32 +208,32 @@ export default function DryRunModal({
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
-          className="flex max-h-[92vh] max-w-3xl flex-col gap-0 p-0"
+          className="grid max-h-[calc(100vh-2rem)] w-[96vw] max-w-[96vw] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-border/60 bg-background/95 p-0 sm:max-w-none 2xl:max-w-[110rem]"
           onEscapeKeyDown={(event) => event.preventDefault()}
           onInteractOutside={(event) => event.preventDefault()}
         >
-          <DialogHeader className="border-b border-border/60 px-6 py-4">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-5">
             <DialogTitle className="flex items-center gap-2 text-lg">
               <RefreshCwIcon className="size-5 text-primary" />
               Prévia da importação
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="max-w-4xl text-sm leading-relaxed">
               <span className="font-medium text-foreground">{arquivoNome}</span>
               {" · "}Competência{" "}
               <span className="font-medium text-foreground">{competenciaDisplay}</span>
-              {" · "}Revise os dados abaixo antes de confirmar.
+              {" · "}Revise o impacto operacional e financeiro antes de confirmar a importação.
             </DialogDescription>
           </DialogHeader>
 
-          <ScrollArea className="flex-1">
-            <div className="space-y-6 px-6 py-5">
+          <div className="min-h-0 overflow-y-auto px-6 py-5">
+            <div className="space-y-6 pb-2">
 
               {/* KPI grid principal */}
               <div>
                 <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Resumo do arquivo
                 </h3>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <KpiCard
                     label="Total no arquivo"
                     value={kpis.total_no_arquivo}
@@ -235,7 +243,7 @@ export default function DryRunModal({
                     label="Descontados"
                     value={kpis.baixa_efetuada}
                     icon={<CheckCircle2Icon className="size-4" />}
-                    colorClass="text-accent"
+                    colorClass="text-emerald-300"
                     clickable={kpis.baixa_efetuada > 0}
                     onClick={() => setActiveDetail("descontados")}
                   />
@@ -243,7 +251,7 @@ export default function DryRunModal({
                     label="Não descontados"
                     value={kpis.nao_descontado}
                     icon={<CircleXIcon className="size-4" />}
-                    colorClass={kpis.nao_descontado > 0 ? "text-destructive" : "text-muted-foreground"}
+                    colorClass={kpis.nao_descontado > 0 ? "text-rose-300" : "text-muted-foreground"}
                     clickable={kpis.nao_descontado > 0}
                     onClick={() => setActiveDetail("nao_descontados")}
                   />
@@ -251,7 +259,7 @@ export default function DryRunModal({
                     label="Não encontrados"
                     value={kpis.nao_encontrado}
                     icon={<SearchXIcon className="size-4" />}
-                    colorClass={kpis.nao_encontrado > 0 ? "text-warning" : "text-muted-foreground"}
+                    colorClass={kpis.nao_encontrado > 0 ? "text-amber-300" : "text-muted-foreground"}
                     clickable={kpis.nao_encontrado > 0}
                     onClick={() => setActiveDetail("nao_encontrados")}
                   />
@@ -259,7 +267,7 @@ export default function DryRunModal({
               </div>
 
               {/* KPI financeiro */}
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <KpiCard
                   label="Valor previsto"
                   value={formatCurrency(kpis.valor_previsto)}
@@ -271,14 +279,14 @@ export default function DryRunModal({
                   value={formatCurrency(kpis.valor_real)}
                   sub="Soma dos itens efetivados"
                   icon={<TrendingUpIcon className="size-4" />}
-                  colorClass="text-accent"
+                  colorClass="text-emerald-300"
                 />
                 {kpis.pendencia_manual > 0 && (
                   <KpiCard
                     label="Pendências manuais"
                     value={kpis.pendencia_manual}
                     icon={<HelpCircleIcon className="size-4" />}
-                    colorClass="text-warning"
+                    colorClass="text-amber-300"
                     clickable
                     onClick={() => setActiveDetail("pendencias")}
                   />
@@ -292,13 +300,13 @@ export default function DryRunModal({
                   <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Parcelas R$30 / R$50
                   </h3>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <KpiCard
                       label="Descontaram"
                       value={kpis.valores_30_50.descontaram.count}
                       sub={formatCurrency(kpis.valores_30_50.descontaram.valor_total)}
                       icon={<CheckCircle2Icon className="size-4" />}
-                      colorClass="text-accent"
+                      colorClass="text-emerald-300"
                       clickable={kpis.valores_30_50.descontaram.count > 0}
                       onClick={() => setActiveDetail("v3050_descontaram")}
                     />
@@ -309,7 +317,7 @@ export default function DryRunModal({
                       icon={<CircleXIcon className="size-4" />}
                       colorClass={
                         kpis.valores_30_50.nao_descontaram.count > 0
-                          ? "text-destructive"
+                          ? "text-rose-300"
                           : "text-muted-foreground"
                       }
                       clickable={kpis.valores_30_50.nao_descontaram.count > 0}
@@ -331,16 +339,16 @@ export default function DryRunModal({
                   {kpis.aptos_a_renovar > 0 && (
                     <button
                       onClick={() => setActiveDetail("aptos_renovar")}
-                      className="flex w-full items-center justify-between gap-3 rounded-xl border border-accent/30 bg-accent/10 px-4 py-3 text-left text-sm transition-colors hover:bg-accent/15"
+                      className="flex w-full items-center justify-between gap-3 rounded-2xl border border-emerald-400/20 bg-emerald-500/5 px-4 py-3.5 text-left text-sm transition-colors hover:border-emerald-400/30 hover:bg-emerald-500/10"
                     >
-                      <span className="flex items-center gap-2 font-medium text-accent">
+                      <span className="flex items-center gap-2 font-medium text-emerald-200">
                         <CheckCircle2Icon className="size-4" />
                         {kpis.aptos_a_renovar} associado{kpis.aptos_a_renovar !== 1 ? "s" : ""} ficarão{" "}
-                        <span className="rounded bg-accent/20 px-1 py-0.5 font-semibold">
+                        <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 font-semibold">
                           APTOS A RENOVAR
                         </span>
                       </span>
-                      <ChevronRightIcon className="size-4 shrink-0 text-accent/70" />
+                      <ChevronRightIcon className="size-4 shrink-0 text-emerald-300/80" />
                     </button>
                   )}
 
@@ -392,7 +400,7 @@ export default function DryRunModal({
 
               {/* Aviso se houver itens sem correspondência */}
               {kpis.nao_encontrado > 0 && (
-                <div className="flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-warning">
+                <div className="flex items-start gap-2 rounded-2xl border border-amber-400/25 bg-amber-400/5 px-4 py-3 text-sm text-amber-200">
                   <AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />
                   <span>
                     <strong>{kpis.nao_encontrado}</strong> linha
@@ -402,9 +410,9 @@ export default function DryRunModal({
                 </div>
               )}
             </div>
-          </ScrollArea>
+          </div>
 
-          <DialogFooter className="border-t border-border/60 px-6 py-4">
+          <DialogFooter className="shrink-0 border-t border-border/60 px-6 py-4">
             <Button
               variant="outline"
               onClick={onCancel}

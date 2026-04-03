@@ -674,6 +674,39 @@ class CycleProjectionTestCase(TestCase):
         self.assertEqual(projection["meses_nao_descontados_count"], 0)
         self.assertEqual(projection["movimentos_financeiros_avulsos"], [])
 
+    def test_canceled_payment_row_is_ignored_by_projection(self):
+        associado = self._create_associado("11199922235", "Pagamento Cancelado")
+        contrato = self._create_contrato(
+            associado=associado,
+            data_primeira_mensalidade=date(2026, 2, 1),
+        )
+        self._create_financial_row(contrato, date(2026, 2, 1), status_code="1")
+        self._create_financial_row(contrato, date(2026, 3, 1), status_code="1")
+        self._create_financial_row(
+            contrato,
+            date(2026, 4, 1),
+            status_code="1",
+            manual_status=PagamentoMensalidade.ManualStatus.CANCELADO,
+        )
+
+        projection = build_contract_cycle_projection(contrato)
+        cycle = sorted(projection["cycles"], key=lambda item: item["numero"])[0]
+
+        self.assertEqual(
+            [parcela["referencia_mes"] for parcela in cycle["parcelas"]],
+            [date(2026, 2, 1), date(2026, 3, 1), date(2026, 4, 1)],
+        )
+        self.assertEqual(
+            [parcela["status"] for parcela in cycle["parcelas"]],
+            [
+                Parcela.Status.DESCONTADO,
+                Parcela.Status.DESCONTADO,
+                Parcela.Status.EM_PREVISAO,
+            ],
+        )
+        self.assertFalse(projection["possui_meses_nao_descontados"])
+        self.assertEqual(projection["meses_nao_descontados_count"], 0)
+
     def test_manual_layout_regularized_row_does_not_count_as_overdue(self):
         associado = self._create_associado("11199922234", "Manual Regularizado")
         contrato = self._create_contrato(

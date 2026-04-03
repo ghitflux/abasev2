@@ -596,6 +596,42 @@ Lições permanentes:
 - quando o dump vier sem `django_migrations` consistentes, validar `token_blacklist` antes de liberar backend
 - sempre validar abertura real de comprovantes e anexos após restore completo
 
+### 03/04/2026 — hotfix operacional na base atual para abril/2026
+
+- tipo: saneamento operacional local antes da promoção para `abasepiaui.cloud`
+- escopo: modal de prévia da importação + reversão de abril/2026 para previsão
+- comando aplicado:
+
+```bash
+docker compose exec -T backend python manage.py revert_discounted_reference_to_forecast --target-ref 2026-04 --dry-run
+docker compose exec -T backend python manage.py revert_discounted_reference_to_forecast --target-ref 2026-04 --execute
+docker compose exec -T backend python manage.py revert_discounted_reference_to_forecast --target-ref 2026-04 --dry-run
+```
+
+- dry-run inicial: `352` casos reparáveis, `0` revisão manual
+- execução: `352` casos revertidos, `0` revisão manual
+- evidências alteradas na execução:
+  - `baixas`: `352`
+  - `parcelas`: `352`
+  - `rebuilds`: `352`
+- dry-run pós-execução: `0` casos remanescentes para `2026-04`
+- validação pós-correção na base atual:
+  - parcelas de abril em `descontado/liquidada`: `0`
+  - `BaixaManual` ativa para abril/2026: `0`
+  - parcelas de abril em `em_previsao`: `502`
+
+Relatórios gerados localmente:
+
+- `backend/media/relatorios/legacy_import/revert_discounted_reference_to_forecast_20260403T204435.json`
+- `backend/media/relatorios/legacy_import/revert_discounted_reference_to_forecast_20260403T204710.json`
+- `backend/media/relatorios/legacy_import/revert_discounted_reference_to_forecast_20260403T204838.json`
+
+Observações permanentes:
+
+- executar sempre `--dry-run` antes de aplicar a reversão em homologação ou produção
+- a reversão preserva histórico bruto e neutraliza abril/2026 por cancelamento/soft-delete controlado
+- após a execução, validar contratos de amostra na UI para garantir que abril voltou para previsão e não permaneceu contado como pago
+
 ## 14. Próximo deploy planejado em `abasepiaui.cloud`
 
 Objetivo:
@@ -610,6 +646,8 @@ Fila mínima já pronta para homologação após o último deploy histórico:
 - login/auth revisado com sessão de 48h e recuperação manual para agente
 - redistribuição obrigatória de carteira ao remover/desativar agente
 - dry-run com confirmação antes da importação do arquivo retorno
+- modal de prévia da importação refeito em layout largo com scroll real
+- reversão operacional de abril/2026 para previsão com rebuild por contrato
 - saneamento operacional de comprovantes/anexos legados
 - ajuste da listagem de contratos para exibir valor disponível
 
@@ -625,8 +663,25 @@ Checklist operacional do próximo deploy em `.cloud`:
 8. Rodar `git pull origin abaseprod`.
 9. Rebuildar `backend`, `frontend` e `celery`.
 10. Subir stack e rodar `migrate` + `check`.
-11. Validar login, anexos, comprovantes, contratos, importação dry-run e redistribuição de agente.
-12. Remover staging e fazer prune controlado.
+11. Rodar a auditoria de abril/2026:
+
+```bash
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml exec -T backend \
+  python manage.py revert_discounted_reference_to_forecast --target-ref 2026-04 --dry-run
+```
+
+12. Se o dry-run confirmar casos reparáveis sem revisão manual, aplicar:
+
+```bash
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml exec -T backend \
+  python manage.py revert_discounted_reference_to_forecast --target-ref 2026-04 --execute
+```
+
+13. Rerodar o `--dry-run` para confirmar saldo `0`.
+14. Validar login, anexos, comprovantes, contratos, importação dry-run, redistribuição de agente e amostra de associados afetados por abril/2026.
+15. Remover staging e fazer prune controlado.
 
 ## 15. Ajuste do app mobile após entrada da produção oficial
 

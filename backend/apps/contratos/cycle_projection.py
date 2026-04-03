@@ -209,6 +209,10 @@ def _is_paid_pagamento(pagamento: PagamentoMensalidade) -> bool:
     )
 
 
+def _is_canceled_pagamento(pagamento: PagamentoMensalidade) -> bool:
+    return pagamento.manual_status == PagamentoMensalidade.ManualStatus.CANCELADO
+
+
 def _is_manual_regularized_pagamento(pagamento: PagamentoMensalidade) -> bool:
     return pagamento.manual_status == PagamentoMensalidade.ManualStatus.PAGO
 
@@ -367,6 +371,10 @@ def _merge_financial_references(
     for pagamento in sorted(pagamentos, key=_pagamento_record_key):
         referencia = _month_start(pagamento.referencia_month)
         if referencia is None:
+            continue
+        if _is_canceled_pagamento(pagamento):
+            paid_by_reference.pop(referencia, None)
+            unpaid_by_reference.pop(referencia, None)
             continue
         if _is_manual_regularized_pagamento(pagamento):
             paid_by_reference[referencia] = FinancialReference(
