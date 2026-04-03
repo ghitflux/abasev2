@@ -13,7 +13,7 @@
 ### FRANCISCA MARIA DA SILVA
 
 - CPF/CNPJ: `13875051300`
-- Matricula: `MAT-00103`
+- Matrícula do servidor: `0194751`
 
 | Documento ID | Tipo | Referencia legada |
 |---|---|---|
@@ -28,7 +28,7 @@
 ### JOEDI GALVAO DIAS
 
 - CPF/CNPJ: `41168755387`
-- Matricula: `MAT-00105`
+- Matrícula do servidor: `0360996`
 
 | Documento ID | Tipo | Referencia legada |
 |---|---|---|
@@ -43,7 +43,7 @@
 ### JOSE WILSON RIBEIRO
 
 - CPF/CNPJ: `35236370310`
-- Matricula: `MAT-00104`
+- Matrícula do servidor: `0219061`
 
 | Documento ID | Tipo | Referencia legada |
 |---|---|---|
@@ -58,7 +58,7 @@
 ### MARIA DA GUIA MARTINS
 
 - CPF/CNPJ: `28740602320`
-- Matricula: `MAT-00106`
+- Matrícula do servidor: `0368393`
 
 | Documento ID | Tipo | Referencia legada |
 |---|---|---|
@@ -73,7 +73,7 @@
 ### RICARDO GOMES DOURADO FILHO
 
 - CPF/CNPJ: `30673305368`
-- Matricula: `MAT-00102`
+- Matrícula do servidor: `319794-8`
 
 | Documento ID | Tipo | Referencia legada |
 |---|---|---|
@@ -88,7 +88,7 @@
 ### ZILDA DE ARAUJO BARROS
 
 - CPF/CNPJ: `35112344334`
-- Matricula: `MAT-00107`
+- Matrícula do servidor: `1595610`
 
 | Documento ID | Tipo | Referencia legada |
 |---|---|---|
@@ -104,3 +104,4 @@
 
 - Associados impactados: 6
 - Documentos faltantes: 42
+- Associados fora da planilha Maristela: 0

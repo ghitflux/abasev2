@@ -23,4 +23,9 @@ mysql_data
 redis_data
 *.sqlite3
 *.log
-anexos_legado/
+/anexos_legado/
+/media/
+/backups/
+/dumps_legado/
+/backend/legacy_reports/
+/fundo (1).webp
