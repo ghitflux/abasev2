@@ -16,6 +16,8 @@ import {
 import { toast } from "sonner";
 
 import type {
+  AgentPortfolioImpactedAssociado,
+  SystemUserAgentRedistributionPreview,
   AvailableRole,
   PaginatedMetaResponse,
   SystemUserAccessUpdatePayload,
@@ -46,10 +48,43 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 
 type StatusFilter = "todos" | "ativos" | "inativos";
+type AccessUpdateDraft = {
+  user: SystemUserListItem;
+  body: SystemUserAccessUpdatePayload;
+  preview: SystemUserAgentRedistributionPreview;
+};
+
+function shouldRequireAgentRedistribution(
+  user: SystemUserListItem,
+  payload: SystemUserAccessUpdatePayload,
+) {
+  return user.roles.includes("AGENTE") && (!payload.is_active || !payload.roles.includes("AGENTE"));
+}
+
+function statusBadgeClass(status: AgentPortfolioImpactedAssociado["status"]) {
+  if (status === "ativo") {
+    return "bg-emerald-500/15 text-emerald-200";
+  }
+  if (status === "inadimplente") {
+    return "bg-amber-500/15 text-amber-200";
+  }
+  if (status === "em_analise") {
+    return "bg-sky-500/15 text-sky-200";
+  }
+  return "bg-muted/60 text-muted-foreground";
+}
 
 function AccessDialog({
   open,
@@ -192,6 +227,159 @@ function AccessDialog({
           >
             {isPending ? <Spinner /> : null}
             Salvar acesso
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AgentRedistributionDialog({
+  open,
+  onOpenChange,
+  draft,
+  isPending,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  draft: AccessUpdateDraft | null;
+  isPending: boolean;
+  onConfirm: (newAgentId: number) => void;
+}) {
+  const [selectedAgentId, setSelectedAgentId] = React.useState("");
+  const [error, setError] = React.useState("");
+
+  React.useEffect(() => {
+    if (!open) {
+      setSelectedAgentId("");
+      setError("");
+      return;
+    }
+    setSelectedAgentId("");
+    setError("");
+  }, [open, draft]);
+
+  if (!draft) return null;
+
+  const { preview } = draft;
+  const hasEligibleAgents = preview.eligible_agents.length > 0;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-4xl">
+        <DialogHeader>
+          <DialogTitle>Redistribuir carteira do agente</DialogTitle>
+          <DialogDescription>
+            Este acesso só pode ser desativado ou perder o papel AGENTE depois que toda a carteira
+            for direcionada para um novo responsável.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6">
+          <Card className="rounded-2xl border-border/60 bg-card/60 py-4">
+            <CardContent className="grid gap-4 px-4 md:grid-cols-[minmax(0,1.2fr)_auto] md:items-center">
+              <div className="space-y-2">
+                <p className="text-base font-semibold text-foreground">{preview.source_user.full_name}</p>
+                <p className="text-sm text-muted-foreground">{preview.source_user.email}</p>
+              </div>
+              <Badge variant="outline" className="justify-center px-3 py-1 text-sm">
+                {preview.impacted_count} associado(s) impactado(s)
+              </Badge>
+            </CardContent>
+          </Card>
+
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Novo agente responsável</p>
+              <p className="text-xs text-muted-foreground">
+                O redirecionamento é feito em lote para todos os associados listados abaixo.
+              </p>
+            </div>
+
+            {hasEligibleAgents ? (
+              <Select
+                value={selectedAgentId}
+                onValueChange={(value) => {
+                  setSelectedAgentId(value);
+                  setError("");
+                }}
+              >
+                <SelectTrigger className="h-11 rounded-2xl border-border/60 bg-card/60">
+                  <SelectValue placeholder="Selecione o agente destino" />
+                </SelectTrigger>
+                <SelectContent>
+                  {preview.eligible_agents.map((agent) => (
+                    <SelectItem key={agent.id} value={String(agent.id)}>
+                      {agent.full_name} · {agent.email}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                Nenhum agente ativo elegível foi encontrado para receber a carteira.
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Associados impactados</p>
+              <p className="text-xs text-muted-foreground">
+                A matrícula exibida é a matrícula do servidor vinculada ao cadastro.
+              </p>
+            </div>
+
+            <ScrollArea className="h-72 rounded-2xl border border-border/60 bg-card/60">
+              <div className="min-w-[720px]">
+                <div className="grid grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 border-b border-border/60 px-4 py-3 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                  <p>Associado</p>
+                  <p>CPF</p>
+                  <p>Matrícula do servidor</p>
+                  <p>Status</p>
+                </div>
+
+                {preview.impacted_associados.map((associado) => (
+                  <div
+                    key={associado.id}
+                    className="grid grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 border-b border-border/40 px-4 py-3 text-sm last:border-b-0"
+                  >
+                    <p className="font-medium text-foreground">{associado.nome_completo}</p>
+                    <p className="text-muted-foreground">{associado.cpf_cnpj}</p>
+                    <p className="text-muted-foreground">
+                      {associado.matricula_servidor || "Não informada"}
+                    </p>
+                    <div>
+                      <Badge className={statusBadgeClass(associado.status)}>
+                        {associado.status_label}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </div>
+
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button
+            disabled={isPending || !hasEligibleAgents}
+            onClick={() => {
+              if (!selectedAgentId) {
+                setError("Selecione o agente destino antes de concluir a alteração.");
+                return;
+              }
+              onConfirm(Number(selectedAgentId));
+            }}
+          >
+            {isPending ? <Spinner /> : null}
+            Confirmar redistribuição
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -560,6 +748,9 @@ function UsuariosConfiguracoesPageContent() {
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false);
   const [selectedUser, setSelectedUser] = React.useState<SystemUserListItem | null>(null);
   const [passwordUser, setPasswordUser] = React.useState<SystemUserListItem | null>(null);
+  const [reassignmentDraft, setReassignmentDraft] = React.useState<AccessUpdateDraft | null>(
+    null,
+  );
   const debouncedSearch = useDebouncedValue(search, 300);
 
   const usersQuery = useQuery({
@@ -590,9 +781,14 @@ function UsuariosConfiguracoesPageContent() {
         method: "PATCH",
         body: payload.body,
       }),
-    onSuccess: async (updatedUser) => {
-      toast.success("Acesso atualizado com sucesso.");
+    onSuccess: async (updatedUser, payload) => {
+      toast.success(
+        payload.body.agent_reassignment
+          ? "Carteira redistribuída e acesso atualizado com sucesso."
+          : "Acesso atualizado com sucesso.",
+      );
       setSelectedUser(null);
+      setReassignmentDraft(null);
       await queryClient.invalidateQueries({ queryKey: ["configuracoes-usuarios"] });
 
       if (updatedUser.id === user?.id) {
@@ -601,6 +797,20 @@ function UsuariosConfiguracoesPageContent() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Falha ao atualizar acesso.");
+    },
+  });
+
+  const previewRedistributionMutation = useMutation({
+    mutationFn: (userId: number) =>
+      apiFetch<SystemUserAgentRedistributionPreview>(
+        `configuracoes/usuarios/${userId}/redistribuicao-agente`,
+      ),
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao carregar a prévia da redistribuição.",
+      );
     },
   });
 
@@ -931,12 +1141,55 @@ function UsuariosConfiguracoesPageContent() {
         }}
         selectedUser={selectedUser}
         availableRoles={roleOptions}
-        isPending={updateAccessMutation.isPending}
+        isPending={updateAccessMutation.isPending || previewRedistributionMutation.isPending}
         onSave={(payload) => {
           if (!selectedUser) return;
+          if (!shouldRequireAgentRedistribution(selectedUser, payload)) {
+            updateAccessMutation.mutate({
+              userId: selectedUser.id,
+              body: payload,
+            });
+            return;
+          }
+
+          previewRedistributionMutation.mutate(selectedUser.id, {
+            onSuccess: (preview) => {
+              if (preview.impacted_count === 0) {
+                updateAccessMutation.mutate({
+                  userId: selectedUser.id,
+                  body: payload,
+                });
+                return;
+              }
+
+              setSelectedUser(null);
+              setReassignmentDraft({
+                user: selectedUser,
+                body: payload,
+                preview,
+              });
+            },
+          });
+        }}
+      />
+
+      <AgentRedistributionDialog
+        open={Boolean(reassignmentDraft)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReassignmentDraft(null);
+          }
+        }}
+        draft={reassignmentDraft}
+        isPending={updateAccessMutation.isPending}
+        onConfirm={(newAgentId) => {
+          if (!reassignmentDraft) return;
           updateAccessMutation.mutate({
-            userId: selectedUser.id,
-            body: payload,
+            userId: reassignmentDraft.user.id,
+            body: {
+              ...reassignmentDraft.body,
+              agent_reassignment: { new_agent_id: newAgentId },
+            },
           });
         }}
       />

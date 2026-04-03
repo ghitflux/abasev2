@@ -2,6 +2,7 @@ import re
 
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
@@ -15,6 +16,7 @@ from .mobile_legacy_auth import (
     split_name,
 )
 from .models import Role, User, UserRole
+from .services import AgentPortfolioRedistributionService
 
 
 def _only_digits(value: str) -> str:
@@ -173,6 +175,33 @@ class AdminUsersMetaSerializer(serializers.Serializer):
     available_roles = AvailableRoleSerializer(many=True)
 
 
+class AgentReassignmentSerializer(serializers.Serializer):
+    new_agent_id = serializers.IntegerField(min_value=1)
+
+
+class AgentRedistributionUserSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    full_name = serializers.CharField()
+    email = serializers.EmailField()
+    is_active = serializers.BooleanField(required=False)
+
+
+class AgentRedistributionAssociadoSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    nome_completo = serializers.CharField()
+    cpf_cnpj = serializers.CharField()
+    matricula_servidor = serializers.CharField(allow_blank=True)
+    status = serializers.CharField()
+    status_label = serializers.CharField()
+
+
+class AgentRedistributionPreviewSerializer(serializers.Serializer):
+    source_user = AgentRedistributionUserSerializer()
+    impacted_count = serializers.IntegerField()
+    impacted_associados = AgentRedistributionAssociadoSerializer(many=True)
+    eligible_agents = AgentRedistributionUserSerializer(many=True)
+
+
 class ConfiguracaoComissaoGlobalSerializer(serializers.Serializer):
     percentual = serializers.DecimalField(max_digits=6, decimal_places=2)
     vigente_desde = serializers.DateTimeField(allow_null=True)
@@ -279,6 +308,7 @@ class AdminUserAccessUpdateSerializer(serializers.Serializer):
         allow_empty=False,
     )
     is_active = serializers.BooleanField(required=False)
+    agent_reassignment = AgentReassignmentSerializer(required=False)
 
     def validate(self, attrs):
         instance: User = self.instance
@@ -310,6 +340,7 @@ class AdminUserAccessUpdateSerializer(serializers.Serializer):
 
         next_is_active = attrs.get("is_active", instance.is_active)
         next_role_codes = {role.codigo for role in roles}
+        current_role_codes = set(get_user_role_codes(instance))
 
         if instance.pk == manager.pk and not next_is_active:
             raise serializers.ValidationError(
@@ -325,15 +356,55 @@ class AdminUserAccessUpdateSerializer(serializers.Serializer):
                 {"roles": "Seu usuário precisa manter o perfil ADMIN."}
             )
 
+        reassignment_payload = attrs.get("agent_reassignment")
+        requires_reassignment = "AGENTE" in current_role_codes and (
+            not next_is_active or "AGENTE" not in next_role_codes
+        )
+        impacted_count = 0
+        if requires_reassignment:
+            impacted_count = AgentPortfolioRedistributionService.impacted_count(
+                source_user=instance
+            )
+            if impacted_count > 0 and not reassignment_payload:
+                raise serializers.ValidationError(
+                    {
+                        "agent_reassignment": (
+                            "Selecione o novo agente responsável antes de desativar "
+                            "ou remover o papel AGENTE."
+                        )
+                    }
+                )
+
+        destination_agent = None
+        if reassignment_payload:
+            destination_agent = AgentPortfolioRedistributionService.resolve_destination_agent(
+                source_user=instance,
+                new_agent_id=reassignment_payload["new_agent_id"],
+            )
+
         attrs["roles"] = roles
         attrs["is_active"] = next_is_active
+        attrs["agent_reassignment_required"] = requires_reassignment and impacted_count > 0
+        attrs["destination_agent"] = destination_agent
         return attrs
 
+    @transaction.atomic
     def update(self, instance: User, validated_data):
         roles: list[Role] = validated_data["roles"]
         role_codes = {role.codigo for role in roles}
         next_is_active = validated_data["is_active"]
         next_role_ids = {role.id for role in roles}
+        destination_agent: User | None = validated_data.get("destination_agent")
+        agent_reassignment_required = validated_data.get(
+            "agent_reassignment_required",
+            False,
+        )
+
+        if agent_reassignment_required and destination_agent is not None:
+            AgentPortfolioRedistributionService.reassign_portfolio(
+                source_user=instance,
+                destination_user=destination_agent,
+            )
 
         instance.is_active = next_is_active
         instance.is_staff = instance.is_superuser or "ADMIN" in role_codes

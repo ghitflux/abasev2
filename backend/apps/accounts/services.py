@@ -7,12 +7,143 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from apps.associados.models import Associado
+from apps.contratos.models import Contrato
+
 from .models import (
     AgenteMargemConfig,
     ConfiguracaoComissaoGlobal,
     ConfiguracaoComissaoHistorico,
     User,
 )
+
+
+class AgentPortfolioRedistributionService:
+    @staticmethod
+    def get_impacted_associados_queryset(*, source_user: User):
+        return (
+            Associado.objects.select_related("contato_historico")
+            .filter(agente_responsavel=source_user)
+            .order_by("nome_completo", "id")
+        )
+
+    @staticmethod
+    def get_eligible_agents_queryset(*, source_user: User):
+        return (
+            User.objects.filter(
+                is_active=True,
+                user_roles__deleted_at__isnull=True,
+                user_roles__role__codigo="AGENTE",
+            )
+            .exclude(pk=source_user.pk)
+            .distinct()
+            .order_by("first_name", "last_name", "email")
+        )
+
+    @classmethod
+    def impacted_count(cls, *, source_user: User) -> int:
+        return cls.get_impacted_associados_queryset(source_user=source_user).count()
+
+    @classmethod
+    def build_preview(cls, *, source_user: User) -> dict[str, object]:
+        impacted_associados = list(
+            cls.get_impacted_associados_queryset(source_user=source_user)
+        )
+        eligible_agents = list(cls.get_eligible_agents_queryset(source_user=source_user))
+
+        return {
+            "source_user": {
+                "id": source_user.id,
+                "full_name": source_user.full_name,
+                "email": source_user.email,
+                "is_active": source_user.is_active,
+            },
+            "impacted_count": len(impacted_associados),
+            "impacted_associados": [
+                {
+                    "id": associado.id,
+                    "nome_completo": associado.nome_completo,
+                    "cpf_cnpj": associado.cpf_cnpj,
+                    "matricula_servidor": associado.matricula_display,
+                    "status": associado.status,
+                    "status_label": associado.get_status_display(),
+                }
+                for associado in impacted_associados
+            ],
+            "eligible_agents": [
+                {
+                    "id": agente.id,
+                    "full_name": agente.full_name,
+                    "email": agente.email,
+                }
+                for agente in eligible_agents
+            ],
+        }
+
+    @classmethod
+    def resolve_destination_agent(
+        cls,
+        *,
+        source_user: User,
+        new_agent_id: int,
+    ) -> User:
+        if new_agent_id == source_user.pk:
+            raise ValidationError(
+                {
+                    "agent_reassignment": {
+                        "new_agent_id": "Selecione outro agente responsável."
+                    }
+                }
+            )
+
+        destination = (
+            cls.get_eligible_agents_queryset(source_user=source_user)
+            .filter(pk=new_agent_id)
+            .first()
+        )
+        if destination is None:
+            raise ValidationError(
+                {
+                    "agent_reassignment": {
+                        "new_agent_id": (
+                            "Selecione um agente ativo e válido para receber a carteira."
+                        )
+                    }
+                }
+            )
+
+        return destination
+
+    @classmethod
+    @transaction.atomic
+    def reassign_portfolio(
+        cls,
+        *,
+        source_user: User,
+        destination_user: User,
+    ) -> dict[str, int]:
+        impacted_ids = list(
+            cls.get_impacted_associados_queryset(source_user=source_user).values_list(
+                "id",
+                flat=True,
+            )
+        )
+        if not impacted_ids:
+            return {"associados_updated": 0, "contratos_updated": 0}
+
+        now = timezone.now()
+        associados_updated = Associado.objects.filter(id__in=impacted_ids).update(
+            agente_responsavel_id=destination_user.id,
+            updated_at=now,
+        )
+        contratos_updated = Contrato.objects.filter(associado_id__in=impacted_ids).update(
+            agente_id=destination_user.id,
+            updated_at=now,
+        )
+        return {
+            "associados_updated": associados_updated,
+            "contratos_updated": contratos_updated,
+        }
 
 
 class ComissaoService:

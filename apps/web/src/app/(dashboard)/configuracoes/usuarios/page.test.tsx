@@ -47,6 +47,25 @@ function renderPage() {
 }
 
 describe("UsuariosConfiguracoesPage", () => {
+  let previewResponse: {
+    source_user: {
+      id: number;
+      full_name: string;
+      email: string;
+      is_active: boolean;
+    };
+    impacted_count: number;
+    impacted_associados: Array<{
+      id: number;
+      nome_completo: string;
+      cpf_cnpj: string;
+      matricula_servidor: string;
+      status: string;
+      status_label: string;
+    }>;
+    eligible_agents: Array<{ id: number; full_name: string; email: string }>;
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
 
@@ -87,6 +106,37 @@ describe("UsuariosConfiguracoesPage", () => {
         is_current_user: false,
       },
     ];
+    previewResponse = {
+      source_user: {
+        id: 2,
+        full_name: "joana",
+        email: "joana@abase.com",
+        is_active: true,
+      },
+      impacted_count: 2,
+      impacted_associados: [
+        {
+          id: 101,
+          nome_completo: "Teresa Oliveira Ribeiro",
+          cpf_cnpj: "74716972372",
+          matricula_servidor: "143545-X",
+          status: "ativo",
+          status_label: "Ativo",
+        },
+        {
+          id: 102,
+          nome_completo: "Erikiane Aparecida de Sousa e Silva",
+          cpf_cnpj: "12345678901",
+          matricula_servidor: "998877-A",
+          status: "inadimplente",
+          status_label: "Inadimplente",
+        },
+      ],
+      eligible_agents: [
+        { id: 5, full_name: "Maria Agente", email: "maria@abase.com" },
+        { id: 6, full_name: "Paulo Agente", email: "paulo@abase.com" },
+      ],
+    };
 
     mockedApiFetch.mockImplementation(async (path, options) => {
       if (path === "configuracoes/usuarios" && !options?.method) {
@@ -131,6 +181,26 @@ describe("UsuariosConfiguracoesPage", () => {
         };
         currentUsers = [...currentUsers, createdUser];
         return createdUser;
+      }
+
+      if (path === "configuracoes/usuarios/2/redistribuicao-agente") {
+        return previewResponse;
+      }
+
+      if (path === "configuracoes/usuarios/2" && options?.method === "PATCH") {
+        const body = options.body as {
+          is_active: boolean;
+          roles: string[];
+          agent_reassignment?: { new_agent_id: number };
+        };
+        const updatedUser = {
+          ...currentUsers[0],
+          is_active: body.is_active,
+          roles: body.roles,
+          primary_role: body.roles[0] ?? null,
+        };
+        currentUsers = [updatedUser];
+        return updatedUser;
       }
 
       if (path === "configuracoes/usuarios/2/resetar-senha") {
@@ -215,6 +285,110 @@ describe("UsuariosConfiguracoesPage", () => {
       expect(mockedToast.success).toHaveBeenCalledWith(
         "Usuário Maria Coord criado com sucesso.",
       ),
+    );
+  });
+
+  it("salva direto quando a prévia não encontra carteira impactada", async () => {
+    const user = userEvent.setup();
+    previewResponse = {
+      source_user: {
+        id: 2,
+        full_name: "joana",
+        email: "joana@abase.com",
+        is_active: true,
+      },
+      impacted_count: 0,
+      impacted_associados: [],
+      eligible_agents: [{ id: 5, full_name: "Maria Agente", email: "maria@abase.com" }],
+    };
+
+    renderPage();
+    expect(await screen.findByText("joana@abase.com")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /acesso/i }));
+    const dialog = screen.getByRole("dialog");
+
+    await user.click(within(dialog).getByText("Agente"));
+    await user.click(within(dialog).getByText("Analista"));
+    await user.click(within(dialog).getByRole("button", { name: /salvar acesso/i }));
+
+    await waitFor(() =>
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        "configuracoes/usuarios/2/redistribuicao-agente",
+        undefined,
+      ),
+    );
+    await waitFor(() =>
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        "configuracoes/usuarios/2",
+        expect.objectContaining({
+          method: "PATCH",
+          body: {
+            roles: ["ANALISTA"],
+            is_active: true,
+          },
+        }),
+      ),
+    );
+  });
+
+  it("abre o modal de redistribuição e envia o novo agente no PATCH", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText("joana@abase.com")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /acesso/i }));
+    const dialog = screen.getByRole("dialog");
+
+    await user.click(within(dialog).getByText("Agente"));
+    await user.click(within(dialog).getByText("Analista"));
+    await user.click(within(dialog).getByRole("button", { name: /salvar acesso/i }));
+
+    expect(await screen.findByText("Redistribuir carteira do agente")).toBeInTheDocument();
+    expect(screen.getByText("143545-X")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByText("Maria Agente · maria@abase.com"));
+    await user.click(screen.getByRole("button", { name: /confirmar redistribuição/i }));
+
+    await waitFor(() =>
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        "configuracoes/usuarios/2",
+        expect.objectContaining({
+          method: "PATCH",
+          body: {
+            roles: ["ANALISTA"],
+            is_active: true,
+            agent_reassignment: { new_agent_id: 5 },
+          },
+        }),
+      ),
+    );
+  });
+
+  it("não salva a alteração quando a redistribuição é cancelada", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(await screen.findByText("joana@abase.com")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /acesso/i }));
+    const dialog = screen.getByRole("dialog");
+
+    await user.click(within(dialog).getByText("Agente"));
+    await user.click(within(dialog).getByText("Analista"));
+    await user.click(within(dialog).getByRole("button", { name: /salvar acesso/i }));
+
+    expect(await screen.findByText("Redistribuir carteira do agente")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^cancelar$/i }));
+
+    await waitFor(() =>
+      expect(
+        mockedApiFetch.mock.calls.filter(([path, options]) => {
+          return path === "configuracoes/usuarios/2" && options?.method === "PATCH";
+        }),
+      ).toHaveLength(0),
     );
   });
 });

@@ -65,9 +65,14 @@ export type SystemUsersMeta = {
   available_roles: AvailableRole[];
 };
 
+export type SystemUserAgentReassignmentPayload = {
+  new_agent_id: number;
+};
+
 export type SystemUserAccessUpdatePayload = {
   roles: Role[];
   is_active: boolean;
+  agent_reassignment?: SystemUserAgentReassignmentPayload;
 };
 
 export type SystemUserCreatePayload = {
@@ -88,6 +93,35 @@ export type SystemUserPasswordResetPayload = {
 export type SystemUserPasswordResetResult = {
   detail: string;
   must_set_password: boolean;
+};
+
+export type AgentPortfolioImpactedAssociado = {
+  id: number;
+  nome_completo: string;
+  cpf_cnpj: string;
+  matricula_servidor: string;
+  status: string;
+  status_label: string;
+};
+
+export type AgentPortfolioEligibleAgent = {
+  id: number;
+  full_name: string;
+  email: string;
+};
+
+export type AgentPortfolioSourceUser = {
+  id: number;
+  full_name: string;
+  email: string;
+  is_active: boolean;
+};
+
+export type SystemUserAgentRedistributionPreview = {
+  source_user: AgentPortfolioSourceUser;
+  impacted_count: number;
+  impacted_associados: AgentPortfolioImpactedAssociado[];
+  eligible_agents: AgentPortfolioEligibleAgent[];
 };
 
 export type Metrica = {

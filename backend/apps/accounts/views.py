@@ -21,9 +21,10 @@ from core.pagination import StandardResultsSetPagination
 from .mobile_legacy_auth import build_password_reset_request, consume_password_reset_token
 from .models import PasswordResetRequest, Role, User
 from .permissions import IsCoordenadorOrAdmin
-from .services import ComissaoService
+from .services import AgentPortfolioRedistributionService, ComissaoService
 from .serializers import (
     AgentManualPasswordResetSerializer,
+    AgentRedistributionPreviewSerializer,
     AdminUserCreateSerializer,
     AdminUserAccessUpdateSerializer,
     AdminUserListSerializer,
@@ -390,6 +391,19 @@ class AdminUserViewSet(
             context=self.get_serializer_context(),
         )
         return Response(output.data, status=status.HTTP_200_OK)
+
+    @extend_schema(responses={200: AgentRedistributionPreviewSerializer})
+    @action(detail=True, methods=["get"], url_path="redistribuicao-agente")
+    def redistribuicao_agente(self, request, pk=None):
+        user = self.get_object()
+        payload = AgentPortfolioRedistributionService.build_preview(source_user=user)
+        return Response(
+            AgentRedistributionPreviewSerializer(
+                payload,
+                context=self.get_serializer_context(),
+            ).data,
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(
         request=PasswordResetRequestSerializer,

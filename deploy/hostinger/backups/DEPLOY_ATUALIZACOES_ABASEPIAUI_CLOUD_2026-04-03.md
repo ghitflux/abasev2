@@ -9,6 +9,7 @@ Use este fluxo para subir:
 - ajustes de login e autenticação
 - revisão visual do login
 - correções operacionais já versionadas no Git
+- redistribuição obrigatória de carteira ao desativar ou remover papel `AGENTE`
 - documentação nova
 
 Não use este roteiro para:
@@ -94,6 +95,11 @@ docker compose -p abase --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T backen
 docker compose -p abase --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T backend python manage.py check
 ```
 
+Observação deste lote:
+
+- a redistribuição de carteira **não exige migração de schema**
+- ainda assim, manter `migrate` no roteiro para aplicar qualquer ajuste pendente do branch
+
 ## Validação pós-deploy
 
 ```bash
@@ -108,6 +114,15 @@ O esperado é:
 - `backend`, `celery`, `frontend` e `nginx` em `Up`
 - health check do backend respondendo `200`
 - `/login` abrindo normalmente
+
+Validar manualmente em `Configurações > Usuários`:
+
+- editar um agente com carteira e tentar desativar o acesso
+- confirmar que o sistema abre o modal de redistribuição antes de salvar
+- escolher um único agente destino e concluir a alteração
+- confirmar que os associados aparecem no agente destino
+- repetir o teste removendo o papel `AGENTE` sem desativar o usuário
+- confirmar que cancelar o modal não grava a alteração
 
 ## Mídia legada restaurada
 
