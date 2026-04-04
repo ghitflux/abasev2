@@ -539,6 +539,7 @@ paths:
           - hi
           - hr
           - hsb
+          - ht
           - hu
           - hy
           - ia
@@ -630,7 +631,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -663,7 +664,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -684,7 +685,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -717,30 +718,30 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -762,7 +763,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -821,7 +822,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este comprovante.
+        description: A unique integer value identifying this comprovante.
         required: true
       tags:
       - v1
@@ -854,7 +855,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -887,7 +888,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -920,7 +921,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este documento.
+        description: A unique integer value identifying this documento.
         required: true
       tags:
       - v1
@@ -953,7 +954,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este admin override event.
+        description: A unique integer value identifying this admin override event.
         required: true
       tags:
       - v1
@@ -986,7 +987,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -1018,25 +1019,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -1096,25 +1097,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -1272,25 +1273,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -1312,7 +1313,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -1616,7 +1617,7 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - in: query
@@ -1627,13 +1628,13 @@ paths:
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - in: query
@@ -1644,7 +1645,7 @@ paths:
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       - in: query
@@ -1696,7 +1697,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -1716,7 +1717,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -1748,7 +1749,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -1779,7 +1780,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -1796,7 +1797,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -1817,7 +1818,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -1844,7 +1845,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -1877,7 +1878,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este associado.
+        description: A unique integer value identifying this associado.
         required: true
       tags:
       - v1
@@ -2231,25 +2232,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -2296,7 +2297,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este user.
+        description: A unique integer value identifying this user.
         required: true
       tags:
       - v1
@@ -2316,7 +2317,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este user.
+        description: A unique integer value identifying this user.
         required: true
       tags:
       - v1
@@ -2340,6 +2341,27 @@ paths:
               schema:
                 $ref: '#/components/schemas/AdminUserAccessUpdate'
           description: ''
+  /api/v1/configuracoes/usuarios/{id}/redistribuicao-agente/:
+    get:
+      operationId: v1_configuracoes_usuarios_redistribuicao_agente_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this user.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRedistributionPreview'
+          description: ''
   /api/v1/configuracoes/usuarios/{id}/resetar-senha/:
     post:
       operationId: v1_configuracoes_usuarios_resetar_senha_create
@@ -2348,7 +2370,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este user.
+        description: A unique integer value identifying this user.
         required: true
       tags:
       - v1
@@ -2380,25 +2402,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -2420,7 +2442,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -2454,25 +2476,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -2494,7 +2516,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -2528,25 +2550,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -2568,7 +2590,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -2692,7 +2714,7 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - in: query
@@ -2858,25 +2880,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -2898,7 +2920,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este esteira item.
+        description: A unique integer value identifying this esteira item.
         required: true
       tags:
       - v1
@@ -2911,6 +2933,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/EsteiraDetail'
           description: ''
+    delete:
+      operationId: v1_esteira_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this esteira item.
+        required: true
+      tags:
+      - v1
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/v1/esteira/{id}/aprovar/:
     post:
       operationId: v1_esteira_aprovar_create
@@ -2919,7 +2957,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este esteira item.
+        description: A unique integer value identifying this esteira item.
         required: true
       tags:
       - v1
@@ -2951,7 +2989,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este esteira item.
+        description: A unique integer value identifying this esteira item.
         required: true
       tags:
       - v1
@@ -2983,7 +3021,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este esteira item.
+        description: A unique integer value identifying this esteira item.
         required: true
       tags:
       - v1
@@ -3004,7 +3042,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este esteira item.
+        description: A unique integer value identifying this esteira item.
         required: true
       tags:
       - v1
@@ -3036,7 +3074,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este esteira item.
+        description: A unique integer value identifying this esteira item.
         required: true
       tags:
       - v1
@@ -3068,7 +3106,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este esteira item.
+        description: A unique integer value identifying this esteira item.
         required: true
       tags:
       - v1
@@ -3089,7 +3127,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este esteira item.
+        description: A unique integer value identifying this esteira item.
         required: true
       tags:
       - v1
@@ -3153,19 +3191,19 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - in: query
@@ -3176,7 +3214,7 @@ paths:
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3198,7 +3236,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       tags:
       - v1
@@ -3214,35 +3252,37 @@ paths:
   /api/v1/importacao/arquivo-retorno/{id}/aptos-renovar/:
     get:
       operationId: v1_importacao_arquivo_retorno_aptos_renovar_list
+      description: Lista os itens do arquivo retorno cujo processamento gerou elegibilidade
+        de renovação (gerou_novo_ciclo=True). Esses associados podem solicitar renovação.
       parameters:
       - in: path
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3256,6 +3296,73 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaginatedArquivoRetornoItemList'
           description: ''
+  /api/v1/importacao/arquivo-retorno/{id}/cancelar/:
+    post:
+      operationId: v1_importacao_arquivo_retorno_cancelar_create
+      description: Cancela e remove (soft-delete) um arquivo retorno em status 'aguardando_confirmacao'.
+        Não afeta arquivos já processados ou em processamento.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this arquivo retorno.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArquivoRetornoList'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ArquivoRetornoList'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ArquivoRetornoList'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/importacao/arquivo-retorno/{id}/confirmar/:
+    post:
+      operationId: v1_importacao_arquivo_retorno_confirmar_create
+      description: Confirma a importação de um arquivo retorno em status 'aguardando_confirmacao'.
+        Dispara o processamento assíncrono (Celery). Retorna o arquivo com status
+        'pendente' ou 'processando'.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        description: A unique integer value identifying this arquivo retorno.
+        required: true
+      tags:
+      - v1
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArquivoRetornoDetail'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ArquivoRetornoDetail'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ArquivoRetornoDetail'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArquivoRetornoDetail'
+          description: ''
   /api/v1/importacao/arquivo-retorno/{id}/descontados/:
     get:
       operationId: v1_importacao_arquivo_retorno_descontados_list
@@ -3264,30 +3371,30 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3309,30 +3416,30 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3354,30 +3461,30 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3399,7 +3506,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       tags:
       - v1
@@ -3420,30 +3527,30 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3465,30 +3572,30 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3510,30 +3617,30 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3555,7 +3662,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este arquivo retorno.
+        description: A unique integer value identifying this arquivo retorno.
         required: true
       tags:
       - v1
@@ -3621,25 +3728,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3661,7 +3768,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este duplicidade financeira.
+        description: A unique integer value identifying this duplicidade financeira.
         required: true
       tags:
       - v1
@@ -3693,7 +3800,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este duplicidade financeira.
+        description: A unique integer value identifying this duplicidade financeira.
         required: true
       tags:
       - v1
@@ -3724,25 +3831,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -3764,7 +3871,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3785,7 +3892,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3818,7 +3925,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3851,7 +3958,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3884,7 +3991,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3917,7 +4024,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3950,7 +4057,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -3983,7 +4090,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -4016,7 +4123,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -4043,7 +4150,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -4064,7 +4171,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -4097,7 +4204,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -4130,7 +4237,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -4160,7 +4267,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -4206,13 +4313,13 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -4236,7 +4343,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este relatorio gerado.
+        description: A unique integer value identifying this relatorio gerado.
         required: true
       tags:
       - v1
@@ -4300,7 +4407,7 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - in: query
@@ -4364,13 +4471,13 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -4420,25 +4527,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -4460,7 +4567,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este parcela.
+        description: A unique integer value identifying this parcela.
         required: true
       tags:
       - v1
@@ -4485,25 +4592,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -4525,7 +4632,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este confirmacao.
+        description: A unique integer value identifying this confirmacao.
         required: true
       tags:
       - v1
@@ -4558,7 +4665,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este confirmacao.
+        description: A unique integer value identifying this confirmacao.
         required: true
       tags:
       - v1
@@ -4591,7 +4698,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este confirmacao.
+        description: A unique integer value identifying this confirmacao.
         required: true
       tags:
       - v1
@@ -4623,25 +4730,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -4663,7 +4770,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -4684,7 +4791,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -4716,7 +4823,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -4748,7 +4855,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -4769,7 +4876,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -4795,7 +4902,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -4834,25 +4941,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -4896,7 +5003,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este despesa.
+        description: A unique integer value identifying this despesa.
         required: true
       tags:
       - v1
@@ -4916,7 +5023,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este despesa.
+        description: A unique integer value identifying this despesa.
         required: true
       tags:
       - v1
@@ -4945,7 +5052,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este despesa.
+        description: A unique integer value identifying this despesa.
         required: true
       tags:
       - v1
@@ -4973,7 +5080,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este despesa.
+        description: A unique integer value identifying this despesa.
         required: true
       tags:
       - v1
@@ -4990,7 +5097,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este despesa.
+        description: A unique integer value identifying this despesa.
         required: true
       tags:
       - v1
@@ -5061,25 +5168,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -5101,7 +5208,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este devolucao associado.
+        description: A unique integer value identifying this devolucao associado.
         required: true
       tags:
       - v1
@@ -5133,7 +5240,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este devolucao associado.
+        description: A unique integer value identifying this devolucao associado.
         required: true
       tags:
       - v1
@@ -5165,7 +5272,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este devolucao associado.
+        description: A unique integer value identifying this devolucao associado.
         required: true
       tags:
       - v1
@@ -5196,25 +5303,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -5236,7 +5343,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este contrato.
+        description: A unique integer value identifying this contrato.
         required: true
       tags:
       - v1
@@ -5298,19 +5405,19 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - in: query
@@ -5344,7 +5451,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este liquidacao contrato.
+        description: A unique integer value identifying this liquidacao contrato.
         required: true
       tags:
       - v1
@@ -5376,7 +5483,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este liquidacao contrato.
+        description: A unique integer value identifying this liquidacao contrato.
         required: true
       tags:
       - v1
@@ -5408,7 +5515,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este liquidacao contrato.
+        description: A unique integer value identifying this liquidacao contrato.
         required: true
       tags:
       - v1
@@ -5439,25 +5546,25 @@ paths:
       - name: ordering
         required: false
         in: query
-        description: Qual campo usar ao ordenar os resultados.
+        description: Which field to use when ordering the results.
         schema:
           type: string
       - name: page
         required: false
         in: query
-        description: Um número de página dentro do conjunto de resultados paginado.
+        description: A page number within the paginated result set.
         schema:
           type: integer
       - name: page_size
         required: false
         in: query
-        description: Número de resultados a serem retornados por página.
+        description: Number of results to return per page.
         schema:
           type: integer
       - name: search
         required: false
         in: query
-        description: Um termo de busca.
+        description: A search term.
         schema:
           type: string
       tags:
@@ -5479,7 +5586,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -5500,7 +5607,7 @@ paths:
         name: id
         schema:
           type: integer
-        description: Um valor inteiro único que identifica este refinanciamento.
+        description: A unique integer value identifying this refinanciamento.
         required: true
       tags:
       - v1
@@ -6098,6 +6205,8 @@ components:
             maxLength: 30
         is_active:
           type: boolean
+        agent_reassignment:
+          $ref: '#/components/schemas/AgentReassignment'
     AdminUserCreate:
       type: object
       properties:
@@ -6197,6 +6306,72 @@ components:
       - email
       - password
       - password_confirmation
+    AgentReassignment:
+      type: object
+      properties:
+        new_agent_id:
+          type: integer
+          minimum: 1
+      required:
+      - new_agent_id
+    AgentRedistributionAssociado:
+      type: object
+      properties:
+        id:
+          type: integer
+        nome_completo:
+          type: string
+        cpf_cnpj:
+          type: string
+        matricula_servidor:
+          type: string
+        status:
+          type: string
+        status_label:
+          type: string
+      required:
+      - cpf_cnpj
+      - id
+      - matricula_servidor
+      - nome_completo
+      - status
+      - status_label
+    AgentRedistributionPreview:
+      type: object
+      properties:
+        source_user:
+          $ref: '#/components/schemas/AgentRedistributionUser'
+        impacted_count:
+          type: integer
+        impacted_associados:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentRedistributionAssociado'
+        eligible_agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentRedistributionUser'
+      required:
+      - eligible_agents
+      - impacted_associados
+      - impacted_count
+      - source_user
+    AgentRedistributionUser:
+      type: object
+      properties:
+        id:
+          type: integer
+        full_name:
+          type: string
+        email:
+          type: string
+          format: email
+        is_active:
+          type: boolean
+      required:
+      - email
+      - full_name
+      - id
     AgentePagamentoCiclo:
       type: object
       properties:
@@ -6720,6 +6895,9 @@ components:
           maximum: 4294967295
           minimum: 0
           format: int64
+        associados_importados:
+          type: integer
+          readOnly: true
         nao_encontrados:
           type: integer
           maximum: 4294967295
@@ -6753,12 +6931,19 @@ components:
           nullable: true
         arquivo_url:
           type: string
+        dry_run_resultado:
+          allOf:
+          - $ref: '#/components/schemas/DryRunResultado'
+          nullable: true
+          readOnly: true
       required:
       - arquivo_nome
       - arquivo_url
+      - associados_importados
       - competencia
       - competencia_display
       - created_at
+      - dry_run_resultado
       - financeiro
       - formato
       - id
@@ -7056,6 +7241,9 @@ components:
           maximum: 4294967295
           minimum: 0
           format: int64
+        associados_importados:
+          type: integer
+          readOnly: true
         nao_encontrados:
           type: integer
           maximum: 4294967295
@@ -7089,6 +7277,7 @@ components:
           nullable: true
       required:
       - arquivo_nome
+      - associados_importados
       - competencia
       - competencia_display
       - created_at
@@ -7100,12 +7289,14 @@ components:
       - uploaded_by_nome
     ArquivoRetornoStatusEnum:
       enum:
+      - aguardando_confirmacao
       - pendente
       - processando
       - concluido
       - erro
       type: string
       description: |-
+        * `aguardando_confirmacao` - Aguardando Confirmação
         * `pendente` - Pendente
         * `processando` - Processando
         * `concluido` - Concluído
@@ -7503,6 +7694,20 @@ components:
           maxLength: 120
         status:
           $ref: '#/components/schemas/AssociadoStatusEnum'
+        arquivo_retorno_origem:
+          type: string
+          maxLength: 255
+        competencia_importacao_retorno:
+          type: string
+          format: date
+          nullable: true
+        data_geracao_importacao_retorno:
+          type: string
+          format: date
+          nullable: true
+        ultimo_arquivo_retorno:
+          type: string
+          maxLength: 255
         status_renovacao:
           type: string
           readOnly: true
@@ -7666,6 +7871,7 @@ components:
     AssociadoStatusEnum:
       enum:
       - cadastrado
+      - importado
       - em_analise
       - ativo
       - pendente
@@ -7674,6 +7880,7 @@ components:
       type: string
       description: |-
         * `cadastrado` - Cadastrado
+        * `importado` - Importado
         * `em_analise` - Em análise
         * `ativo` - Ativo
         * `pendente` - Pendente
@@ -8664,6 +8871,12 @@ components:
         data_contrato:
           type: string
           format: date
+        valor_disponivel:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+          readOnly: true
         valor_mensalidade:
           type: string
           format: decimal
@@ -8740,6 +8953,7 @@ components:
       - status_visual_label
       - status_visual_slug
       - valor_auxilio_liberado
+      - valor_disponivel
     ContratoResumo:
       type: object
       properties:
@@ -9939,6 +10153,167 @@ components:
           type: string
       required:
       - motivo
+    DryRunItem:
+      type: object
+      properties:
+        linha_numero:
+          type: integer
+          nullable: true
+        cpf_cnpj:
+          type: string
+        nome_servidor:
+          type: string
+        matricula_servidor:
+          type: string
+        orgao_pagto_nome:
+          type: string
+        valor_descontado:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        status_codigo:
+          type: string
+        resultado:
+          type: string
+        associado_id:
+          type: integer
+          nullable: true
+        associado_nome:
+          type: string
+        associado_status_antes:
+          type: string
+          nullable: true
+        associado_status_depois:
+          type: string
+          nullable: true
+        ciclo_status_antes:
+          type: string
+          nullable: true
+        ciclo_status_depois:
+          type: string
+          nullable: true
+        ficara_apto_renovar:
+          type: boolean
+        categoria:
+          type: string
+      required:
+      - associado_id
+      - associado_nome
+      - associado_status_antes
+      - associado_status_depois
+      - categoria
+      - ciclo_status_antes
+      - ciclo_status_depois
+      - cpf_cnpj
+      - ficara_apto_renovar
+      - linha_numero
+      - matricula_servidor
+      - nome_servidor
+      - orgao_pagto_nome
+      - resultado
+      - status_codigo
+      - valor_descontado
+    DryRunKpis:
+      type: object
+      properties:
+        total_no_arquivo:
+          type: integer
+        atualizados:
+          type: integer
+        baixa_efetuada:
+          type: integer
+        nao_descontado:
+          type: integer
+        nao_encontrado:
+          type: integer
+        associados_importados:
+          type: integer
+        pendencia_manual:
+          type: integer
+        ciclo_aberto:
+          type: integer
+        valor_previsto:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        valor_real:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,12}(?:\.\d{0,2})?$
+        aptos_a_renovar:
+          type: integer
+        valores_30_50:
+          $ref: '#/components/schemas/DryRunValores3050'
+        mudancas_status_associado:
+          type: array
+          items:
+            $ref: '#/components/schemas/DryRunMudancaStatus'
+        mudancas_status_ciclo:
+          type: array
+          items:
+            $ref: '#/components/schemas/DryRunMudancaStatus'
+      required:
+      - aptos_a_renovar
+      - associados_importados
+      - atualizados
+      - baixa_efetuada
+      - ciclo_aberto
+      - mudancas_status_associado
+      - mudancas_status_ciclo
+      - nao_descontado
+      - nao_encontrado
+      - pendencia_manual
+      - total_no_arquivo
+      - valor_previsto
+      - valor_real
+      - valores_30_50
+    DryRunMudancaStatus:
+      type: object
+      properties:
+        antes:
+          type: string
+        depois:
+          type: string
+        count:
+          type: integer
+      required:
+      - antes
+      - count
+      - depois
+    DryRunResultado:
+      type: object
+      properties:
+        kpis:
+          $ref: '#/components/schemas/DryRunKpis'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DryRunItem'
+      required:
+      - items
+      - kpis
+    DryRunValores3050:
+      type: object
+      properties:
+        descontaram:
+          $ref: '#/components/schemas/DryRunValores3050Grupo'
+        nao_descontaram:
+          $ref: '#/components/schemas/DryRunValores3050Grupo'
+      required:
+      - descontaram
+      - nao_descontaram
+    DryRunValores3050Grupo:
+      type: object
+      properties:
+        count:
+          type: integer
+        valor_total:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+      required:
+      - count
+      - valor_total
     DuplicidadeFinanceiraItem:
       type: object
       properties:
@@ -11541,6 +11916,8 @@ components:
             maxLength: 30
         is_active:
           type: boolean
+        agent_reassignment:
+          $ref: '#/components/schemas/AgentReassignment'
     PatchedAnaliseDadosUpdate:
       type: object
       properties:

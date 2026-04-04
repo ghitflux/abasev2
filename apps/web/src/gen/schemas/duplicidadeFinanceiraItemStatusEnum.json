@@ -1,0 +1,6 @@
+{
+  "enum": ["aberta", "em_tratamento", "resolvida", "descartada"],
+  "type": "string",
+  "description": "* `aberta` - Aberta\n* `em_tratamento` - Em tratamento\n* `resolvida` - Resolvida\n* `descartada` - Descartada",
+  "x-readme-ref-name": "DuplicidadeFinanceiraItemStatusEnum"
+}

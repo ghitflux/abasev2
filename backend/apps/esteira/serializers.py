@@ -282,7 +282,7 @@ class EsteiraListSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_acoes_disponiveis(self, obj: EsteiraItem) -> list[str]:
-        return EsteiraService.TRANSICOES_VALIDAS.get((obj.etapa_atual, obj.status), [])
+        return EsteiraService.get_available_actions(obj)
 
 
 class EsteiraDetailSerializer(EsteiraListSerializer):

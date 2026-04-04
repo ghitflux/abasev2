@@ -7,6 +7,34 @@ import type { PaginatedLiquidacaoContratoListList } from "./PaginatedLiquidacaoC
 
 export type V1TesourariaLiquidacoesListQueryParams = {
   /**
+   * @type string | undefined
+   */
+  agente?: string;
+  /**
+   * @type string | undefined, date
+   */
+  competencia?: string;
+  /**
+   * @type integer | undefined
+   */
+  contract_id?: number;
+  /**
+   * @type string | undefined, date
+   */
+  data_fim?: string;
+  /**
+   * @type string | undefined, date
+   */
+  data_inicio?: string;
+  /**
+   * @type string | undefined
+   */
+  estado?: string;
+  /**
+   * @type string | undefined
+   */
+  etapa_fluxo?: string;
+  /**
    * @description Which field to use when ordering the results.
    * @type string | undefined
    */
@@ -22,10 +50,17 @@ export type V1TesourariaLiquidacoesListQueryParams = {
    */
   page_size?: number;
   /**
-   * @description A search term.
    * @type string | undefined
    */
   search?: string;
+  /**
+   * @type string | undefined
+   */
+  status?: string;
+  /**
+   * @type string | undefined
+   */
+  status_associado?: string;
 };
 
 export type V1TesourariaLiquidacoesList200 =

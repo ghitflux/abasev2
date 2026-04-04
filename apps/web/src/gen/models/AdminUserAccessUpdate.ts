@@ -3,6 +3,8 @@
  * Do not edit manually.
  */
 
+import type { AgentReassignment } from "./AgentReassignment.ts";
+
 export type AdminUserAccessUpdate = {
   /**
    * @type array | undefined
@@ -12,4 +14,8 @@ export type AdminUserAccessUpdate = {
    * @type boolean | undefined
    */
   is_active?: boolean;
+  /**
+   * @type object | undefined
+   */
+  agent_reassignment?: AgentReassignment;
 };

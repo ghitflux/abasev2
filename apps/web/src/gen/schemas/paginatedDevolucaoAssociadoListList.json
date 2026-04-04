@@ -93,6 +93,11 @@
               {
                 "type": "object",
                 "properties": {
+                  "id": {
+                    "type": "integer",
+                    "readOnly": true,
+                    "nullable": true
+                  },
                   "nome": { "type": "string", "readOnly": true },
                   "url": { "type": "string", "readOnly": true },
                   "arquivo_referencia": { "type": "string", "readOnly": true },
@@ -105,6 +110,7 @@
                 "required": [
                   "arquivo_disponivel_localmente",
                   "arquivo_referencia",
+                  "id",
                   "nome",
                   "tipo_referencia",
                   "url"
@@ -120,6 +126,7 @@
             "items": {
               "type": "object",
               "properties": {
+                "id": { "type": "integer", "readOnly": true, "nullable": true },
                 "nome": { "type": "string", "readOnly": true },
                 "url": { "type": "string", "readOnly": true },
                 "arquivo_referencia": { "type": "string", "readOnly": true },
@@ -132,6 +139,7 @@
               "required": [
                 "arquivo_disponivel_localmente",
                 "arquivo_referencia",
+                "id",
                 "nome",
                 "tipo_referencia",
                 "url"

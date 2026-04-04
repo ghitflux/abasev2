@@ -52,6 +52,7 @@ export const V1RefinanciamentosAssumirAnaliseCreateMutationRequestSchema = z
     data_ativacao_ciclo: true,
     origem_data_ativacao: true,
     data_solicitacao_renovacao: true,
+    data_solicitacao: true,
     ativacao_inferida: true,
     etapa_operacional: true,
     created_at: true,

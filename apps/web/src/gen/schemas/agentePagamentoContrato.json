@@ -13,6 +13,11 @@
     "possui_meses_nao_descontados": { "type": "boolean", "readOnly": true },
     "meses_nao_descontados_count": { "type": "integer", "readOnly": true },
     "data_contrato": { "type": "string", "format": "date" },
+    "data_solicitacao": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true
+    },
     "auxilio_liberado_em": {
       "type": "string",
       "format": "date",
@@ -43,6 +48,13 @@
     },
     "parcelas_total": { "type": "integer", "readOnly": true },
     "parcelas_pagas": { "type": "integer", "readOnly": true },
+    "cancelamento_tipo": { "type": "string", "readOnly": true },
+    "cancelamento_motivo": { "type": "string", "readOnly": true },
+    "cancelado_em": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true
+    },
     "comprovantes_efetivacao": {
       "type": "array",
       "items": {
@@ -282,10 +294,14 @@
   "required": [
     "agente_nome",
     "associado_id",
+    "cancelado_em",
+    "cancelamento_motivo",
+    "cancelamento_tipo",
     "ciclos",
     "comprovantes_efetivacao",
     "contrato_codigo",
     "cpf_cnpj",
+    "data_solicitacao",
     "id",
     "meses_nao_descontados_count",
     "nome",

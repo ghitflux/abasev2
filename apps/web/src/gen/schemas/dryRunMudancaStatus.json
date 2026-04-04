@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {
+    "antes": { "type": "string" },
+    "depois": { "type": "string" },
+    "count": { "type": "integer" }
+  },
+  "required": ["antes", "count", "depois"],
+  "x-readme-ref-name": "DryRunMudancaStatus"
+}

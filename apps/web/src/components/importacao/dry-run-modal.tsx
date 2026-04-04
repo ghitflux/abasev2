@@ -14,7 +14,9 @@ import {
   UsersIcon,
 } from "lucide-react";
 
-import type { DryRunItem, DryRunMudancaStatus, DryRunResultado } from "@/gen/models/DryRunResultado";
+import type { DryRunItem } from "@/gen/models/DryRunItem";
+import type { DryRunMudancaStatus } from "@/gen/models/DryRunMudancaStatus";
+import type { DryRunResultado } from "@/gen/models/DryRunResultado";
 import StatusBadge from "@/components/custom/status-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -93,7 +95,7 @@ function detailTitle(key: DetailKey): string {
     const map: Record<string, string> = {
       descontados: "Descontados (baixa efetuada)",
       nao_descontados: "Não descontados",
-      nao_encontrados: "Não encontrados no sistema",
+      nao_encontrados: "Associados importados a partir do retorno",
       pendencias: "Pendências manuais",
       ciclo_aberto: "Sem parcela elegível (ciclo aberto)",
       aptos_renovar: "Ficarão aptos a renovar",
@@ -200,6 +202,7 @@ export default function DryRunModal({
   const [activeDetail, setActiveDetail] = React.useState<DetailKey | null>(null);
 
   const { kpis, items } = dryRunData;
+  const isBusy = isConfirming || isCanceling;
 
   const detailItems = activeDetail ? filterItems(items, activeDetail) : [];
   const detailTitleStr = activeDetail ? detailTitle(activeDetail) : "";
@@ -209,8 +212,12 @@ export default function DryRunModal({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
           className="grid max-h-[calc(100vh-2rem)] w-[96vw] max-w-[96vw] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-border/60 bg-background/95 p-0 sm:max-w-none 2xl:max-w-[110rem]"
-          onEscapeKeyDown={(event) => event.preventDefault()}
-          onInteractOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => {
+            if (isBusy) event.preventDefault();
+          }}
+          onInteractOutside={(event) => {
+            if (isBusy) event.preventDefault();
+          }}
         >
           <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-5">
             <DialogTitle className="flex items-center gap-2 text-lg">
@@ -256,11 +263,14 @@ export default function DryRunModal({
                     onClick={() => setActiveDetail("nao_descontados")}
                   />
                   <KpiCard
-                    label="Não encontrados"
-                    value={kpis.nao_encontrado}
+                    label="Associados importados"
+                    value={kpis.associados_importados}
                     icon={<SearchXIcon className="size-4" />}
-                    colorClass={kpis.nao_encontrado > 0 ? "text-amber-300" : "text-muted-foreground"}
-                    clickable={kpis.nao_encontrado > 0}
+                    sub="Cadastros mínimos criados a partir do arquivo retorno."
+                    colorClass={
+                      kpis.associados_importados > 0 ? "text-amber-300" : "text-muted-foreground"
+                    }
+                    clickable={kpis.associados_importados > 0}
                     onClick={() => setActiveDetail("nao_encontrados")}
                   />
                 </div>
@@ -399,13 +409,13 @@ export default function DryRunModal({
               </div>
 
               {/* Aviso se houver itens sem correspondência */}
-              {kpis.nao_encontrado > 0 && (
+              {kpis.associados_importados > 0 && (
                 <div className="flex items-start gap-2 rounded-2xl border border-amber-400/25 bg-amber-400/5 px-4 py-3 text-sm text-amber-200">
                   <AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />
                   <span>
-                    <strong>{kpis.nao_encontrado}</strong> linha
-                    {kpis.nao_encontrado !== 1 ? "s" : ""} do arquivo não têm correspondência no
-                    sistema e serão ignoradas.
+                    <strong>{kpis.associados_importados}</strong> linha
+                    {kpis.associados_importados !== 1 ? "s" : ""} do arquivo não tinham cadastro
+                    prévio e serão importadas com status associado importado.
                   </span>
                 </div>
               )}

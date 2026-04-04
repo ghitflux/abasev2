@@ -267,7 +267,7 @@ export const navigationSections: NavigationSection[] = [
             title: "Dashboard Análise",
             href: "/analise",
             icon: ShieldCheck,
-            roles: ["ANALISTA", "ADMIN"],
+            roles: ["ANALISTA", "COORDENADOR", "ADMIN"],
           },
           {
             title: "Contratos para Renovação",
@@ -538,6 +538,10 @@ export function canAccessPath(path: string, roles: Role[] = []) {
     pathname === "/associados/novo" &&
     (roles.includes("ANALISTA") || roles.includes("COORDENADOR"))
   ) {
+    return true;
+  }
+
+  if (pathname === "/analise" && roles.includes("COORDENADOR")) {
     return true;
   }
 

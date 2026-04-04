@@ -1,0 +1,11 @@
+{
+  "enum": [
+    "baixa_manual_duplicada",
+    "baixa_manual_mes_errado",
+    "divergencia_valor",
+    "conflito_retorno"
+  ],
+  "type": "string",
+  "description": "* `baixa_manual_duplicada` - Baixa manual duplicada\n* `baixa_manual_mes_errado` - Baixa manual em mês errado\n* `divergencia_valor` - Divergência de valor\n* `conflito_retorno` - Conflito vindo do retorno",
+  "x-readme-ref-name": "MotivoEnum"
+}

@@ -21,6 +21,7 @@ class AnaliseViewSetTestCase(TestCase):
         cls.role_admin = Role.objects.create(codigo="ADMIN", nome="Administrador")
         cls.role_agente = Role.objects.create(codigo="AGENTE", nome="Agente")
         cls.role_analista = Role.objects.create(codigo="ANALISTA", nome="Analista")
+        cls.role_coord = Role.objects.create(codigo="COORDENADOR", nome="Coordenador")
 
         cls.admin = cls._create_user("admin@abase.local", cls.role_admin, "Admin")
         cls.agente = cls._create_user("agente@abase.local", cls.role_agente, "Agente")
@@ -28,6 +29,11 @@ class AnaliseViewSetTestCase(TestCase):
             "analista@abase.local",
             cls.role_analista,
             "Analista",
+        )
+        cls.coordenador = cls._create_user(
+            "coord@abase.local",
+            cls.role_coord,
+            "Coordenador",
         )
         cls.outro_agente = cls._create_user(
             "agente2@abase.local",
@@ -55,6 +61,9 @@ class AnaliseViewSetTestCase(TestCase):
     def setUp(self):
         self.admin_client = APIClient()
         self.admin_client.force_authenticate(self.admin)
+
+        self.coord_client = APIClient()
+        self.coord_client.force_authenticate(self.coordenador)
 
         self.analyst_client = APIClient()
         self.analyst_client.force_authenticate(self.analista)
@@ -242,6 +251,16 @@ class AnaliseViewSetTestCase(TestCase):
         self.assertNotIn(item_outro.id, ids)
         self.assertEqual(len(ids), 1)
 
+    def test_coordenador_tem_acesso_ao_modulo_analise(self):
+        self._create_item(suffix="203", documentos=1)
+
+        response = self.coord_client.get("/api/v1/analise/")
+        self.assertEqual(response.status_code, 200, response.json())
+
+        filas = self.coord_client.get("/api/v1/analise/filas/?secao=ver_todos")
+        self.assertEqual(filas.status_code, 200, filas.json())
+        self.assertEqual(filas.json()["count"], 1)
+
     def test_resumo_e_filas_respeitam_filtros_avancados_e_analista_responsavel(self):
         sem_responsavel = self._create_item(
             suffix="210",
@@ -410,6 +429,51 @@ class AnaliseViewSetTestCase(TestCase):
         self.assertEqual(response.json()["associado_id"], item.associado_id)
         self.assertEqual(len(response.json()["documentos"]), 1)
         self.assertTrue(response.json()["documentos"][0]["arquivo"])
+
+    def test_detalhe_da_esteira_bloqueia_item_assumido_por_outro_analista(self):
+        item = self._create_item(
+            suffix="4021",
+            documentos=1,
+            status=EsteiraItem.Situacao.EM_ANDAMENTO,
+            analista=self.outro_analista,
+        )
+
+        response = self.analyst_client.get(f"/api/v1/esteira/{item.id}/")
+        self.assertEqual(response.status_code, 404, response.json())
+
+    def test_excluir_solicitacao_aguardando_faz_soft_delete_do_pacote(self):
+        item = self._create_item(suffix="4022", documentos=1)
+        contrato = item.associado.contratos.get()
+        ciclos = list(contrato.ciclos.all())
+        parcelas = [parcela for ciclo in ciclos for parcela in ciclo.parcelas.all()]
+
+        response = self.coord_client.delete(f"/api/v1/esteira/{item.id}/")
+        self.assertEqual(response.status_code, 204)
+
+        self.assertFalse(EsteiraItem.objects.filter(pk=item.id).exists())
+        self.assertIsNotNone(EsteiraItem.all_objects.get(pk=item.id).deleted_at)
+        self.assertFalse(Associado.objects.filter(pk=item.associado_id).exists())
+        self.assertIsNotNone(Associado.all_objects.get(pk=item.associado_id).deleted_at)
+        self.assertIsNotNone(Contrato.all_objects.get(pk=contrato.id).deleted_at)
+        for ciclo in ciclos:
+            self.assertIsNotNone(type(ciclo).all_objects.get(pk=ciclo.id).deleted_at)
+        for parcela in parcelas:
+            self.assertIsNotNone(type(parcela).all_objects.get(pk=parcela.id).deleted_at)
+        self.assertEqual(
+            list(EsteiraItem.all_objects.get(pk=item.id).pendencias.all()),
+            [],
+        )
+
+    def test_excluir_solicitacao_recusa_item_assumido(self):
+        item = self._create_item(
+            suffix="4023",
+            documentos=1,
+            status=EsteiraItem.Situacao.EM_ANDAMENTO,
+            analista=self.analista,
+        )
+
+        response = self.analyst_client.delete(f"/api/v1/esteira/{item.id}/")
+        self.assertEqual(response.status_code, 400, response.json())
 
     def test_agente_reenvia_correcao_e_item_volta_para_analise(self):
         item = self._create_item(

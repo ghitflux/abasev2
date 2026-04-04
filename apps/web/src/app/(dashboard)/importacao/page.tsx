@@ -289,6 +289,7 @@ export default function ImportacaoPage() {
       );
     },
   });
+  const isDryRunBusy = confirmarMutation.isPending || cancelarMutation.isPending;
 
   const descontadosQuery = useV1ImportacaoArquivoRetornoDescontadosList(
     latestId,
@@ -397,9 +398,9 @@ export default function ImportacaoPage() {
       accessor: "processados",
     },
     {
-      id: "nao_encontrados",
-      header: "Não encontrados",
-      accessor: "nao_encontrados",
+      id: "associados_importados",
+      header: "Associados importados",
+      cell: (row) => row.associados_importados ?? row.nao_encontrados ?? 0,
     },
     {
       id: "erros",
@@ -683,8 +684,11 @@ export default function ImportacaoPage() {
       {dryRunPreview ? (
         <DryRunModal
           open
-          onOpenChange={() => {
-            // Modal bloqueante: confirmar ou cancelar são os únicos caminhos.
+          onOpenChange={(open) => {
+            if (open || isDryRunBusy) {
+              return;
+            }
+            cancelarMutation.mutate(dryRunPreview.arquivoId);
           }}
           arquivoNome={dryRunPreview.arquivoNome}
           competenciaDisplay={dryRunPreview.competenciaDisplay}

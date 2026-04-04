@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "updated_at": { "type": "string", "format": "date-time", "nullable": true },
+    "etapa_atual": { "type": "string" },
+    "status": { "type": "string" },
+    "prioridade": { "type": "integer" },
+    "observacao": { "type": "string" }
+  },
+  "x-readme-ref-name": "SaveAllEsteiraWrite"
+}

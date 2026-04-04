@@ -395,6 +395,38 @@ Pós-deploy manual obrigatório:
 - gestão de usuários e redistribuição de carteira
 - abertura de contratos com comprovantes
 
+### 10.1 Gate técnico antes do deploy oficial
+
+Antes de qualquer promoção para `abasepiaui.cloud` ou `abasepiaui.com`, executar e registrar:
+
+```bash
+docker compose run --rm backend-tools \
+  python manage.py test \
+  apps.accounts apps.associados apps.contratos apps.esteira \
+  apps.financeiro apps.importacao apps.refinanciamento apps.relatorios apps.tesouraria
+
+docker compose run --rm backend-tools \
+  python manage.py test \
+  apps.importacao.tests.test_reconciliacao \
+  apps.importacao.tests.test_services \
+  apps.importacao.tests.test_reimport_staged_return_files \
+  apps.esteira.tests.test_analise
+
+docker compose run --rm frontend sh -lc \
+  "pnpm --filter @abase/web test -- --runInBand --runTestsByPath \
+  src/app/'(dashboard)'/importacao/page.test.tsx \
+  src/lib/navigation.test.ts"
+
+docker compose run --rm frontend sh -lc \
+  "pnpm --filter @abase/web type-check"
+```
+
+Regra operacional:
+
+- a suíte completa do backend por app label é o gate bloqueador de release
+- a bateria focada em `importacao`/`esteira` e o `type-check` do frontend são obrigatórios, mas não substituem a suíte completa
+- se a suíte completa falhar, o deploy oficial fica bloqueado até correção ou aprovação explícita de risco
+
 ## 11. Backup e restore
 
 ### Backup manual
@@ -632,6 +664,57 @@ Observações permanentes:
 - a reversão preserva histórico bruto e neutraliza abril/2026 por cancelamento/soft-delete controlado
 - após a execução, validar contratos de amostra na UI para garantir que abril voltou para previsão e não permaneceu contado como pago
 
+### 04/04/2026 — validação final local do pacote importação + análise
+
+- tipo: validação pré-release local
+- branch: `abaseprod`
+- base local validada na árvore de trabalho desta janela
+- escopo validado em verde:
+  - importação de retorno com dry-run, cancelamento por `X` e confirmação explícita
+  - autoimportação de associados com status `importado`
+  - dashboard `/analise` para `COORDENADOR`, `ANALISTA` e `ADMIN`
+  - exclusão lógica elegível da esteira e bloqueio de visibilidade entre analistas
+  - regeneração do schema OpenAPI e artefatos Kubb
+- comandos que fecharam em verde:
+
+```bash
+docker compose run --rm backend-tools \
+  python manage.py test \
+  apps.importacao.tests.test_reconciliacao \
+  apps.importacao.tests.test_services \
+  apps.importacao.tests.test_reimport_staged_return_files \
+  apps.esteira.tests.test_analise
+
+docker compose run --rm frontend sh -lc \
+  "pnpm --filter @abase/web test -- --runInBand --runTestsByPath \
+  src/app/'(dashboard)'/importacao/page.test.tsx \
+  src/lib/navigation.test.ts"
+
+docker compose run --rm frontend sh -lc \
+  "pnpm --filter @abase/web type-check"
+```
+
+- comando bloqueador que permaneceu vermelho:
+
+```bash
+docker compose run --rm backend-tools \
+  python manage.py test \
+  apps.accounts apps.associados apps.contratos apps.esteira \
+  apps.financeiro apps.importacao apps.refinanciamento apps.relatorios apps.tesouraria
+```
+
+- resultado consolidado da suíte completa: `323` testes, `17` falhas e `6` erros
+- áreas ainda quebradas fora do pacote desta release:
+  - `accounts`: gestão de usuários internos e importações legadas
+  - `associados`: agenda/materialização de contrato e compatibilidade mobile legado
+  - `contratos`: duplicate billing, renovação e reparo de referência deslocada
+  - `refinanciamento`: reaproveitamento de refinanciamento após devolução
+  - `tesouraria`: pagamentos do agente, materialização de ciclos, resultado mensal, devoluções e fluxo completo com `termo_antecipacao`
+- correção incorporada nesta revisão:
+  - o comando `reimport_staged_return_files` agora confirma automaticamente arquivos que entram em `aguardando_confirmacao`, para operar corretamente com o novo fluxo de importação
+- decisão operacional:
+  - deploy oficial bloqueado até a suíte completa do backend fechar em verde ou haver aceite explícito do risco
+
 ## 14. Próximo deploy planejado em `abasepiaui.cloud`
 
 Objetivo:
@@ -640,6 +723,11 @@ Objetivo:
 - importação completa da fonte de verdade mais recente
 - promoção do código atual do branch `abaseprod`
 - validação de anexos, comprovantes e fluxo de importação de retorno
+
+Situação atual:
+
+- bloqueado pela suíte completa do backend ainda vermelha em `04/04/2026`
+- permitido apenas continuar com correções locais e rerodar o gate técnico da seção `10.1`
 
 Fila mínima já pronta para homologação após o último deploy histórico:
 

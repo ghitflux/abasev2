@@ -2,11 +2,17 @@
   "type": "object",
   "properties": {
     "categoria": { "type": "string", "maxLength": 100 },
-    "descricao": { "type": "string", "maxLength": 255 },
+    "descricao": { "type": "string", "nullable": true },
     "valor": {
       "type": "string",
       "format": "decimal",
       "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$"
+    },
+    "natureza": {
+      "enum": ["despesa_operacional", "complemento_receita"],
+      "type": "string",
+      "description": "* `despesa_operacional` - Despesa operacional\n* `complemento_receita` - Complemento de receita",
+      "x-readme-ref-name": "NaturezaEnum"
     },
     "data_despesa": { "type": "string", "format": "date" },
     "data_pagamento": { "type": "string", "format": "date", "nullable": true },
@@ -37,6 +43,6 @@
     "observacoes": { "type": "string" },
     "anexo": { "type": "string", "format": "uri", "nullable": true }
   },
-  "required": ["categoria", "data_despesa", "descricao", "valor"],
+  "required": ["categoria", "data_despesa", "valor"],
   "x-readme-ref-name": "DespesaWrite"
 }

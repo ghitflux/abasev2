@@ -53,7 +53,7 @@ export type RefinanciamentoList = {
    */
   competencia_solicitada: string;
   /**
-   * @description * `apto_a_renovar` - Apto a renovar\n* `solicitado_para_liquidacao` - Solicitado para liquidação\n* `em_analise_renovacao` - Em análise para renovação\n* `aprovado_analise_renovacao` - Aprovado pela análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado
+   * @description * `apto_a_renovar` - Apto a renovar\n* `solicitado_para_liquidacao` - Solicitado para liquidação\n* `em_analise_renovacao` - Em análise para renovação\n* `pendente_termo_analista` - Pendente termo para o analista\n* `pendente_termo_agente` - Pendente termo para o agente\n* `aprovado_analise_renovacao` - Aprovado pela análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado
    * @type string | undefined
    */
   status?: RefinanciamentoStatusEnum;
@@ -135,6 +135,10 @@ export type RefinanciamentoList = {
    * @type string, date-time
    */
   readonly data_solicitacao_renovacao: string | null;
+  /**
+   * @type string, date-time
+   */
+  readonly data_solicitacao: string;
   /**
    * @type boolean
    */

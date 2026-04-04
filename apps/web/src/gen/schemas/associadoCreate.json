@@ -125,7 +125,7 @@
       "type": "string",
       "format": "decimal",
       "pattern": "^-?\\d{0,4}(?:\\.\\d{0,2})?$",
-      "default": "10.00"
+      "nullable": true
     },
     "documentos_payload": {
       "type": "array",

@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer" },
+    "full_name": { "type": "string" },
+    "email": { "type": "string", "format": "email" },
+    "is_active": { "type": "boolean" }
+  },
+  "required": ["email", "full_name", "id"],
+  "x-readme-ref-name": "AgentRedistributionUser"
+}

@@ -5,6 +5,10 @@
 
 export type DevolucaoAnexo = {
   /**
+   * @type integer
+   */
+  readonly id: number | null;
+  /**
    * @type string
    */
   readonly nome: string;

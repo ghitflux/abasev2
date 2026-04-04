@@ -48,6 +48,7 @@ export type V1RefinanciamentosDesativarCreateMutationRequest = Omit<
   | "data_ativacao_ciclo"
   | "origem_data_ativacao"
   | "data_solicitacao_renovacao"
+  | "data_solicitacao"
   | "ativacao_inferida"
   | "etapa_operacional"
   | "created_at"

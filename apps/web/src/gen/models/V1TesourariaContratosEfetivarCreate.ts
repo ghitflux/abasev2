@@ -25,6 +25,7 @@ export type V1TesourariaContratosEfetivarCreateMutationRequest = Omit<
   | "chave_pix"
   | "codigo"
   | "data_assinatura"
+  | "data_solicitacao"
   | "status"
   | "agente"
   | "agente_nome"
@@ -36,6 +37,9 @@ export type V1TesourariaContratosEfetivarCreateMutationRequest = Omit<
   | "observacao_tesouraria"
   | "etapa_atual"
   | "situacao_esteira"
+  | "cancelamento_tipo"
+  | "cancelamento_motivo"
+  | "cancelado_em"
 >;
 
 export type V1TesourariaContratosEfetivarCreateMutationResponse =

@@ -27,6 +27,7 @@ export const V1ImportacaoArquivoRetornoReprocessarCreateMutationRequestSchema =
       id: true,
       sistema_origem: true,
       competencia_display: true,
+      associados_importados: true,
       resumo: true,
       financeiro: true,
       uploaded_by_nome: true,

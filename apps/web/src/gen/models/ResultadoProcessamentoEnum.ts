@@ -7,6 +7,7 @@ export const resultadoProcessamentoEnumEnum = {
   baixa_efetuada: "baixa_efetuada",
   nao_descontado: "nao_descontado",
   pendencia_manual: "pendencia_manual",
+  duplicidade: "duplicidade",
   nao_encontrado: "nao_encontrado",
   erro: "erro",
   ciclo_aberto: "ciclo_aberto",
@@ -16,6 +17,6 @@ export type ResultadoProcessamentoEnumEnumKey =
   (typeof resultadoProcessamentoEnumEnum)[keyof typeof resultadoProcessamentoEnumEnum];
 
 /**
- * @description * `baixa_efetuada` - Baixa efetuada\n* `nao_descontado` - Não descontado\n* `pendencia_manual` - Pendência manual\n* `nao_encontrado` - Não encontrado\n* `erro` - Erro\n* `ciclo_aberto` - Ciclo aberto
+ * @description * `baixa_efetuada` - Baixa efetuada\n* `nao_descontado` - Não descontado\n* `pendencia_manual` - Pendência manual\n* `duplicidade` - Duplicidade\n* `nao_encontrado` - Não encontrado\n* `erro` - Erro\n* `ciclo_aberto` - Ciclo aberto
  */
 export type ResultadoProcessamentoEnum = ResultadoProcessamentoEnumEnumKey;

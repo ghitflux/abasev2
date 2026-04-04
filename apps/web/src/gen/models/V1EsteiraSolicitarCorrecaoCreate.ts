@@ -31,6 +31,7 @@ export type V1EsteiraSolicitarCorrecaoCreateMutationRequest = Omit<
   | "contato_web"
   | "termos_web"
   | "agente"
+  | "analista_responsavel"
   | "orgao_publico"
   | "documentos_count"
   | "acoes_disponiveis"

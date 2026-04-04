@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "properties": {
+    "percentual": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,4}(?:\\.\\d{0,2})?$"
+    },
+    "motivo": { "type": "string", "default": "" }
+  },
+  "required": ["percentual"],
+  "x-readme-ref-name": "ConfiguracaoComissaoGlobalWrite"
+}

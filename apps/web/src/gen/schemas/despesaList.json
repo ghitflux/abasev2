@@ -9,6 +9,12 @@
       "format": "decimal",
       "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$"
     },
+    "natureza": {
+      "enum": ["despesa_operacional", "complemento_receita"],
+      "type": "string",
+      "description": "* `despesa_operacional` - Despesa operacional\n* `complemento_receita` - Complemento de receita",
+      "x-readme-ref-name": "NaturezaEnum"
+    },
     "data_despesa": { "type": "string", "format": "date" },
     "data_pagamento": { "type": "string", "format": "date", "nullable": true },
     "status": {
@@ -91,7 +97,6 @@
     "categoria",
     "created_at",
     "data_despesa",
-    "descricao",
     "id",
     "lancado_por",
     "updated_at",

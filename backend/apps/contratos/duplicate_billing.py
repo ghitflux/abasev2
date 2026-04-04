@@ -13,7 +13,6 @@ from apps.importacao.models import ArquivoRetornoItem
 from apps.refinanciamento.models import Comprovante, Refinanciamento
 from apps.tesouraria.models import BaixaManual, Confirmacao, Pagamento
 
-from .competencia import sync_competencia_locks_for_references
 from .cycle_projection import build_contract_cycle_projection
 from .cycle_rebuild import (
     rebuild_contract_cycle_state,
@@ -21,6 +20,7 @@ from .cycle_rebuild import (
     relink_contract_documents,
 )
 from .models import Ciclo, Contrato, Parcela
+from .soft_delete import soft_delete_contract_tree
 
 
 @dataclass(frozen=True)
@@ -307,37 +307,6 @@ def _append_merge_note(base: str, note: str) -> str:
     return f"{base}\n{note}"
 
 
-def _soft_delete_contract_tree(
-    contrato: Contrato,
-    *,
-    summary: DuplicateBillingRepairSummary,
-) -> None:
-    referencias = set(
-        Parcela.all_objects.filter(
-            ciclo__contrato=contrato,
-            deleted_at__isnull=True,
-        )
-        .exclude(status=Parcela.Status.CANCELADO)
-        .values_list("referencia_mes", flat=True)
-    )
-    for parcela in Parcela.all_objects.filter(
-        ciclo__contrato=contrato,
-        deleted_at__isnull=True,
-    ).exclude(status=Parcela.Status.CANCELADO):
-        parcela.soft_delete()
-        summary.parcelas_soft_deleted += 1
-    for ciclo in Ciclo.all_objects.filter(contrato=contrato, deleted_at__isnull=True):
-        ciclo.soft_delete()
-        summary.cycles_soft_deleted += 1
-    if contrato.deleted_at is None:
-        contrato.soft_delete()
-        summary.contracts_soft_deleted += 1
-    sync_competencia_locks_for_references(
-        associado_id=contrato.associado_id,
-        referencias=sorted(referencias),
-    )
-
-
 def _primary_parcela_by_reference(contrato: Contrato) -> dict[date, Parcela]:
     return {
         parcela.referencia_mes: parcela
@@ -438,7 +407,10 @@ def _repair_group(
             )
             summary.refinanciamentos_reassigned += 1
 
-        _soft_delete_contract_tree(duplicate, summary=summary)
+        delete_summary = soft_delete_contract_tree(duplicate)
+        summary.contracts_soft_deleted += delete_summary["contracts_soft_deleted"]
+        summary.cycles_soft_deleted += delete_summary["cycles_soft_deleted"]
+        summary.parcelas_soft_deleted += delete_summary["parcelas_soft_deleted"]
 
     rebuild_report = rebuild_contract_cycle_state(
         group.primary_contract,

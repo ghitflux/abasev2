@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "properties": {
+    "percentual": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,4}(?:\\.\\d{0,2})?$"
+    },
+    "vigente_desde": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+    },
+    "updated_by": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "readOnly": true },
+            "email": { "type": "string", "format": "email", "maxLength": 254 },
+            "first_name": { "type": "string", "maxLength": 150 },
+            "last_name": { "type": "string", "maxLength": 150 },
+            "full_name": { "type": "string", "readOnly": true },
+            "primary_role": {
+              "type": "string",
+              "nullable": true,
+              "readOnly": true
+            },
+            "roles": {
+              "type": "array",
+              "items": { "type": "string" },
+              "readOnly": true
+            }
+          },
+          "required": [
+            "email",
+            "first_name",
+            "full_name",
+            "id",
+            "primary_role",
+            "roles"
+          ],
+          "x-readme-ref-name": "User"
+        }
+      ],
+      "nullable": true
+    },
+    "motivo": { "type": "string" }
+  },
+  "required": ["motivo", "percentual", "updated_by", "vigente_desde"],
+  "x-readme-ref-name": "ConfiguracaoComissaoGlobal"
+}

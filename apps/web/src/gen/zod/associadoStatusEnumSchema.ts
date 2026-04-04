@@ -6,11 +6,12 @@
 import * as z from "zod";
 
 /**
- * @description * `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente
+ * @description * `cadastrado` - Cadastrado\n* `importado` - Importado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente
  */
 export const associadoStatusEnumSchema = z
   .enum([
     "cadastrado",
+    "importado",
     "em_analise",
     "ativo",
     "pendente",
@@ -18,5 +19,5 @@ export const associadoStatusEnumSchema = z
     "inadimplente",
   ])
   .describe(
-    "* `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente",
+    "* `cadastrado` - Cadastrado\n* `importado` - Importado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente",
   );

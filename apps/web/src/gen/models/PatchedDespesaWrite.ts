@@ -6,6 +6,7 @@
 import type { BlankEnum } from "./BlankEnum.ts";
 import type { DespesaStatusEnum } from "./DespesaStatusEnum.ts";
 import type { DespesaTipoEnum } from "./DespesaTipoEnum.ts";
+import type { NaturezaEnum } from "./NaturezaEnum.ts";
 import type { RecorrenciaEnum } from "./RecorrenciaEnum.ts";
 
 export type PatchedDespesaWrite = {
@@ -15,15 +16,19 @@ export type PatchedDespesaWrite = {
    */
   categoria?: string;
   /**
-   * @maxLength 255
-   * @type string | undefined
+   * @type string
    */
-  descricao?: string;
+  descricao?: string | null;
   /**
    * @pattern ^-?\d{0,13}(?:\.\d{0,2})?$
    * @type string | undefined, decimal
    */
   valor?: string;
+  /**
+   * @description * `despesa_operacional` - Despesa operacional\n* `complemento_receita` - Complemento de receita
+   * @type string | undefined
+   */
+  natureza?: NaturezaEnum;
   /**
    * @type string | undefined, date
    */

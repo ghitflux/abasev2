@@ -1,0 +1,5 @@
+{
+  "type": "object",
+  "properties": { "motivo": { "type": "string", "default": "" } },
+  "x-readme-ref-name": "ConfiguracaoComissaoAgenteReset"
+}

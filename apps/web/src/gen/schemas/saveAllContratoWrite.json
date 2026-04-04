@@ -1,0 +1,206 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer" },
+    "core": {
+      "type": "object",
+      "properties": {
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        },
+        "status": { "type": "string" },
+        "contato_web": { "type": "boolean" },
+        "termos_web": { "type": "boolean" },
+        "agente_id": { "type": "integer", "nullable": true },
+        "valor_bruto": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+        },
+        "valor_liquido": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+        },
+        "valor_mensalidade": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+        },
+        "taxa_antecipacao": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,3}(?:\\.\\d{0,2})?$"
+        },
+        "margem_disponivel": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+        },
+        "valor_total_antecipacao": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+        },
+        "doacao_associado": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+        },
+        "comissao_agente": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+        },
+        "data_contrato": {
+          "type": "string",
+          "format": "date",
+          "nullable": true
+        },
+        "data_aprovacao": {
+          "type": "string",
+          "format": "date",
+          "nullable": true
+        },
+        "data_primeira_mensalidade": {
+          "type": "string",
+          "format": "date",
+          "nullable": true
+        },
+        "mes_averbacao": {
+          "type": "string",
+          "format": "date",
+          "nullable": true
+        },
+        "auxilio_liberado_em": {
+          "type": "string",
+          "format": "date",
+          "nullable": true
+        }
+      },
+      "x-readme-ref-name": "SaveAllContratoCoreWrite"
+    },
+    "cycles": {
+      "type": "object",
+      "properties": {
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        },
+        "cycles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "integer", "nullable": true },
+              "client_key": { "type": "string" },
+              "numero": { "type": "integer" },
+              "data_inicio": { "type": "string", "format": "date" },
+              "data_fim": { "type": "string", "format": "date" },
+              "status": { "type": "string" },
+              "valor_total": {
+                "type": "string",
+                "format": "decimal",
+                "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+              }
+            },
+            "required": [
+              "data_fim",
+              "data_inicio",
+              "numero",
+              "status",
+              "valor_total"
+            ],
+            "x-readme-ref-name": "CicloLayoutWrite"
+          }
+        },
+        "parcelas": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "integer", "nullable": true },
+              "cycle_ref": { "type": "string" },
+              "cycle_id": { "type": "integer", "nullable": true },
+              "numero": { "type": "integer" },
+              "referencia_mes": { "type": "string", "format": "date" },
+              "valor": {
+                "type": "string",
+                "format": "decimal",
+                "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+              },
+              "data_vencimento": { "type": "string", "format": "date" },
+              "status": { "type": "string" },
+              "data_pagamento": {
+                "type": "string",
+                "format": "date",
+                "nullable": true
+              },
+              "observacao": { "type": "string" },
+              "layout_bucket": { "type": "string" }
+            },
+            "required": [
+              "data_vencimento",
+              "numero",
+              "referencia_mes",
+              "status",
+              "valor"
+            ],
+            "x-readme-ref-name": "ParcelaLayoutWrite"
+          }
+        }
+      },
+      "required": ["cycles", "parcelas"],
+      "x-readme-ref-name": "SaveAllCycleLayoutWrite"
+    },
+    "refinanciamento": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer" },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        },
+        "status": { "type": "string" },
+        "competencia_solicitada": {
+          "type": "string",
+          "format": "date",
+          "nullable": true
+        },
+        "valor_refinanciamento": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+        },
+        "repasse_agente": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+        },
+        "executado_em": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        },
+        "data_ativacao_ciclo": {
+          "type": "string",
+          "format": "date-time",
+          "nullable": true
+        },
+        "motivo_bloqueio": { "type": "string" },
+        "observacao": { "type": "string" },
+        "analista_note": { "type": "string" },
+        "coordenador_note": { "type": "string" },
+        "reviewed_by_id": { "type": "integer", "nullable": true }
+      },
+      "required": ["id"],
+      "x-readme-ref-name": "SaveAllRefinanciamentoWrite"
+    }
+  },
+  "required": ["id"],
+  "x-readme-ref-name": "SaveAllContratoWrite"
+}

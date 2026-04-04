@@ -7,12 +7,20 @@ import * as z from "zod";
 import { blankEnumSchema } from "./blankEnumSchema.ts";
 import { despesaStatusEnumSchema } from "./despesaStatusEnumSchema.ts";
 import { despesaTipoEnumSchema } from "./despesaTipoEnumSchema.ts";
+import { naturezaEnumSchema } from "./naturezaEnumSchema.ts";
 import { recorrenciaEnumSchema } from "./recorrenciaEnumSchema.ts";
 
 export const patchedDespesaWriteSchema = z.object({
   categoria: z.optional(z.string().max(100)),
-  descricao: z.optional(z.string().max(255)),
+  descricao: z.string().nullish(),
   valor: z.optional(z.string().regex(/^-?\d{0,13}(?:\.\d{0,2})?$/)),
+  get natureza() {
+    return naturezaEnumSchema
+      .describe(
+        "* `despesa_operacional` - Despesa operacional\n* `complemento_receita` - Complemento de receita",
+      )
+      .optional();
+  },
   data_despesa: z.optional(z.iso.date()),
   data_pagamento: z.iso.date().nullish(),
   get status() {

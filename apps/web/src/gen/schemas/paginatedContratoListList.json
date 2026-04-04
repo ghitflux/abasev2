@@ -83,6 +83,13 @@
           "status_visual_label": { "type": "string", "readOnly": true },
           "etapa_fluxo": { "type": "string", "readOnly": true },
           "data_contrato": { "type": "string", "format": "date" },
+          "valor_disponivel": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+            "nullable": true,
+            "readOnly": true
+          },
           "valor_mensalidade": {
             "type": "string",
             "format": "decimal",
@@ -186,11 +193,24 @@
             "type": "boolean",
             "readOnly": true
           },
-          "meses_nao_descontados_count": { "type": "integer", "readOnly": true }
+          "meses_nao_descontados_count": {
+            "type": "integer",
+            "readOnly": true
+          },
+          "cancelamento_tipo": { "type": "string", "readOnly": true },
+          "cancelamento_motivo": { "type": "string", "readOnly": true },
+          "cancelado_em": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          }
         },
         "required": [
           "agente",
           "associado",
+          "cancelado_em",
+          "cancelamento_motivo",
+          "cancelamento_tipo",
           "ciclo_apto",
           "etapa_fluxo",
           "id",
@@ -205,7 +225,8 @@
           "status_resumido",
           "status_visual_label",
           "status_visual_slug",
-          "valor_auxilio_liberado"
+          "valor_auxilio_liberado",
+          "valor_disponivel"
         ],
         "x-readme-ref-name": "ContratoList"
       }

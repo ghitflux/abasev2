@@ -35,6 +35,7 @@ export const V1EsteiraValidarDocumentoCreateMutationRequestSchema = z
     contato_web: true,
     termos_web: true,
     agente: true,
+    analista_responsavel: true,
     orgao_publico: true,
     documentos_count: true,
     acoes_disponiveis: true,

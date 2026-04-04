@@ -117,14 +117,29 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
         payload = response.json()
 
         self.assertEqual(payload["competencia_display"], "05/2025")
+        self.assertEqual(payload["status"], ArquivoRetorno.Status.AGUARDANDO_CONFIRMACAO)
+        self.assertEqual(payload["dry_run_resultado"]["kpis"]["associados_importados"], 1)
+
+        response = self.coord_client.post(
+            f"/api/v1/importacao/arquivo-retorno/{payload['id']}/confirmar/"
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+
         self.assertEqual(payload["status"], ArquivoRetorno.Status.CONCLUIDO)
         self.assertEqual(payload["resumo"]["baixa_efetuada"], 2)
         self.assertEqual(payload["resumo"]["nao_descontado"], 1)
         self.assertEqual(payload["resumo"]["pendencias_manuais"], 0)
         self.assertEqual(payload["resumo"]["nao_encontrado"], 1)
+        self.assertEqual(payload["resumo"]["associados_importados"], 1)
         self.assertEqual(payload["financeiro"]["total"], 4)
         self.assertEqual(payload["financeiro"]["ok"], 2)
         self.assertEqual(payload["financeiro"]["recebido"], "60.00")
+        associado_importado = Associado.objects.get(cpf_cnpj="18084974300")
+        self.assertEqual(associado_importado.status, Associado.Status.IMPORTADO)
+        self.assertEqual(associado_importado.arquivo_retorno_origem, "retorno_etipi_052025.txt")
+        self.assertEqual(associado_importado.ultimo_arquivo_retorno, "retorno_etipi_052025.txt")
+        self.assertEqual(associado_importado.competencia_importacao_retorno, date(2025, 5, 1))
 
         response = self.coord_client.get(
             f"/api/v1/importacao/arquivo-retorno/{payload['id']}/descontados/",
@@ -199,6 +214,7 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
             ),
             self.tesoureiro,
         )
+        arquivo = service.confirmar(arquivo.id)
 
         contrato = arquivo.itens.get(status_codigo="1").parcela.ciclo.contrato
         self.assertEqual(contrato.ciclos.count(), 1)
@@ -262,6 +278,11 @@ STATUS MATRICULA NOME                           CARGO                          F
             format="multipart",
         )
         self.assertEqual(response.status_code, 201, response.json())
+
+        confirmacao = self.coord_client.post(
+            f"/api/v1/importacao/arquivo-retorno/{response.json()['id']}/confirmar/"
+        )
+        self.assertEqual(confirmacao.status_code, 200, confirmacao.json())
 
         arquivo = ArquivoRetorno.objects.get(pk=response.json()["id"])
         self.assertEqual(arquivo.total_registros, 1)
@@ -351,12 +372,18 @@ STATUS MATRICULA NOME                           CARGO                          F
         )
         self.assertEqual(response.status_code, 201, response.json())
 
+        confirmacao = self.coord_client.post(
+            f"/api/v1/importacao/arquivo-retorno/{response.json()['id']}/confirmar/"
+        )
+        self.assertEqual(confirmacao.status_code, 200, confirmacao.json())
+
         arquivo = ArquivoRetorno.objects.get(pk=response.json()["id"])
         self.assertEqual(arquivo.resultado_resumo["cpfs_duplicados_arquivo"], 1)
         self.assertEqual(arquivo.resultado_resumo["linhas_duplicadas_ignoradas"], 1)
         self.assertEqual(arquivo.resultado_resumo["pendencias_manuais"], 0)
         self.assertEqual(arquivo.resultado_resumo["baixa_efetuada"], 2)
         self.assertEqual(arquivo.resultado_resumo["pm_criados"], 2)
+        self.assertEqual(arquivo.resultado_resumo["associados_importados"], 0)
 
         itens_duplicados = arquivo.itens.filter(cpf_cnpj="12345678901").order_by("linha_numero")
         self.assertEqual(itens_duplicados.count(), 1)
@@ -385,6 +412,11 @@ STATUS MATRICULA NOME                           CARGO                          F
             format="multipart",
         )
         self.assertEqual(response.status_code, 201, response.json())
+
+        confirmacao = self.coord_client.post(
+            f"/api/v1/importacao/arquivo-retorno/{response.json()['id']}/confirmar/"
+        )
+        self.assertEqual(confirmacao.status_code, 200, confirmacao.json())
 
         arquivo = ArquivoRetorno.objects.get(pk=response.json()["id"])
         self.assertEqual(arquivo.total_registros, 238)
@@ -417,6 +449,109 @@ STATUS MATRICULA NOME                           CARGO                          F
         self.assertEqual(payload["resumo"]["ok"], 217)
         self.assertEqual(payload["resumo"]["recebido"], "45491.38")
         self.assertEqual(len(payload["rows"]), 238)
+
+    def test_upload_preenche_dry_run_com_associados_importados(self):
+        self.create_associado_com_contrato(
+            cpf="23993596315",
+            nome="Maria de Jesus Santana Costa",
+        )
+        self.create_associado_com_contrato(
+            cpf="21819424391",
+            nome="Francisco Crisostomo Batista",
+        )
+        self.create_associado_com_contrato(
+            cpf="48204773315",
+            nome="Maria de Jesus Araujo Goncalves",
+        )
+
+        service = ArquivoRetornoService()
+        arquivo = service.upload(
+            SimpleUploadedFile(
+                "retorno_etipi_052025.txt",
+                self.fixture_bytes(),
+                content_type="text/plain",
+            ),
+            self.coordenador,
+        )
+
+        self.assertEqual(arquivo.status, ArquivoRetorno.Status.AGUARDANDO_CONFIRMACAO)
+        self.assertEqual(arquivo.dry_run_resultado["kpis"]["associados_importados"], 1)
+        item_importado = next(
+            item
+            for item in arquivo.dry_run_resultado["items"]
+            if item["resultado"] == "nao_encontrado"
+        )
+        self.assertEqual(item_importado["associado_status_depois"], Associado.Status.IMPORTADO)
+
+    def test_importacao_futura_atualiza_mesmo_associado_importado(self):
+        service = ArquivoRetornoService()
+        arquivo_inicial = self.create_arquivo_retorno(nome="retorno_inicial.txt")
+        arquivo_inicial.resultado_resumo = {
+            "competencia": "05/2025",
+            "data_geracao": "23/05/2025",
+        }
+        arquivo_inicial.save(update_fields=["resultado_resumo", "updated_at"])
+
+        resumo_um = service._upsert_pagamentos_mensalidade(
+            arquivo_retorno=arquivo_inicial,
+            items=[
+                {
+                    "linha_numero": 1,
+                    "cpf_cnpj": "18084974300",
+                    "matricula_servidor": "021293-8",
+                    "nome_servidor": "MIGUEL ALVES DO NASCIMENTO",
+                    "cargo": "AGENTE OPERACIONAL",
+                    "orgao_pagto_nome": "SEAD",
+                    "status_codigo": "3",
+                    "valor_descontado": "30.00",
+                }
+            ],
+            import_uuid="import-1",
+            user=self.coordenador,
+        )
+        associado = Associado.objects.get(cpf_cnpj="18084974300")
+
+        arquivo_seguinte = self.create_arquivo_retorno(nome="retorno_seguinte.txt")
+        arquivo_seguinte.competencia = date(2025, 6, 1)
+        arquivo_seguinte.resultado_resumo = {
+            "competencia": "06/2025",
+            "data_geracao": "21/06/2025",
+        }
+        arquivo_seguinte.save(
+            update_fields=["competencia", "resultado_resumo", "updated_at"]
+        )
+
+        resumo_dois = service._upsert_pagamentos_mensalidade(
+            arquivo_retorno=arquivo_seguinte,
+            items=[
+                {
+                    "linha_numero": 1,
+                    "cpf_cnpj": "18084974300",
+                    "matricula_servidor": "021293-9",
+                    "nome_servidor": "MIGUEL ALVES NASCIMENTO",
+                    "cargo": "AGENTE OPERACIONAL SR",
+                    "orgao_pagto_nome": "SEAD NOVA",
+                    "status_codigo": "1",
+                    "valor_descontado": "30.00",
+                }
+            ],
+            import_uuid="import-2",
+            user=self.coordenador,
+        )
+
+        associado.refresh_from_db()
+        self.assertEqual(Associado.objects.filter(cpf_cnpj="18084974300").count(), 1)
+        self.assertEqual(associado.id, Associado.objects.get(cpf_cnpj="18084974300").id)
+        self.assertEqual(associado.status, Associado.Status.IMPORTADO)
+        self.assertEqual(associado.nome_completo, "MIGUEL ALVES NASCIMENTO")
+        self.assertEqual(associado.matricula_orgao, "021293-9")
+        self.assertEqual(associado.orgao_publico, "SEAD NOVA")
+        self.assertEqual(associado.cargo, "AGENTE OPERACIONAL SR")
+        self.assertEqual(associado.arquivo_retorno_origem, "retorno_inicial.txt")
+        self.assertEqual(associado.ultimo_arquivo_retorno, "retorno_seguinte.txt")
+        self.assertEqual(associado.competencia_importacao_retorno, date(2025, 5, 1))
+        self.assertEqual(resumo_um["pm_associados_importados"], 1)
+        self.assertEqual(resumo_dois["pm_associados_importados"], 0)
 
     def test_upload_aplica_snapshot_manual_do_legado_na_tabela_atual_e_no_resumo(self):
         self.create_associado_com_contrato(
@@ -456,6 +591,11 @@ STATUS MATRICULA NOME                           CARGO                          F
                 format="multipart",
             )
             self.assertEqual(response.status_code, 201, response.json())
+
+            confirmacao = self.coord_client.post(
+                f"/api/v1/importacao/arquivo-retorno/{response.json()['id']}/confirmar/"
+            )
+            self.assertEqual(confirmacao.status_code, 200, confirmacao.json())
 
             pagamento = PagamentoMensalidade.objects.get(
                 cpf_cnpj="21819424391",

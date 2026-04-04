@@ -24,6 +24,7 @@
       "minimum": 0,
       "format": "int64"
     },
+    "associados_importados": { "type": "integer", "readOnly": true },
     "nao_encontrados": {
       "type": "integer",
       "maximum": 4294967295,
@@ -37,9 +38,15 @@
       "format": "int64"
     },
     "status": {
-      "enum": ["pendente", "processando", "concluido", "erro"],
+      "enum": [
+        "aguardando_confirmacao",
+        "pendente",
+        "processando",
+        "concluido",
+        "erro"
+      ],
       "type": "string",
-      "description": "* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro",
+      "description": "* `aguardando_confirmacao` - Aguardando Confirmação\n* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro",
       "x-readme-ref-name": "ArquivoRetornoStatusEnum"
     },
     "resumo": {
@@ -59,14 +66,182 @@
       "format": "date-time",
       "nullable": true
     },
-    "arquivo_url": { "type": "string" }
+    "arquivo_url": { "type": "string" },
+    "dry_run_resultado": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kpis": {
+              "type": "object",
+              "properties": {
+                "total_no_arquivo": { "type": "integer" },
+                "atualizados": { "type": "integer" },
+                "baixa_efetuada": { "type": "integer" },
+                "nao_descontado": { "type": "integer" },
+                "nao_encontrado": { "type": "integer" },
+                "associados_importados": { "type": "integer" },
+                "pendencia_manual": { "type": "integer" },
+                "ciclo_aberto": { "type": "integer" },
+                "valor_previsto": {
+                  "type": "string",
+                  "format": "decimal",
+                  "pattern": "^-?\\d{0,12}(?:\\.\\d{0,2})?$"
+                },
+                "valor_real": {
+                  "type": "string",
+                  "format": "decimal",
+                  "pattern": "^-?\\d{0,12}(?:\\.\\d{0,2})?$"
+                },
+                "aptos_a_renovar": { "type": "integer" },
+                "valores_30_50": {
+                  "type": "object",
+                  "properties": {
+                    "descontaram": {
+                      "type": "object",
+                      "properties": {
+                        "count": { "type": "integer" },
+                        "valor_total": {
+                          "type": "string",
+                          "format": "decimal",
+                          "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+                        }
+                      },
+                      "required": ["count", "valor_total"],
+                      "x-readme-ref-name": "DryRunValores3050Grupo"
+                    },
+                    "nao_descontaram": {
+                      "type": "object",
+                      "properties": {
+                        "count": { "type": "integer" },
+                        "valor_total": {
+                          "type": "string",
+                          "format": "decimal",
+                          "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+                        }
+                      },
+                      "required": ["count", "valor_total"],
+                      "x-readme-ref-name": "DryRunValores3050Grupo"
+                    }
+                  },
+                  "required": ["descontaram", "nao_descontaram"],
+                  "x-readme-ref-name": "DryRunValores3050"
+                },
+                "mudancas_status_associado": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "antes": { "type": "string" },
+                      "depois": { "type": "string" },
+                      "count": { "type": "integer" }
+                    },
+                    "required": ["antes", "count", "depois"],
+                    "x-readme-ref-name": "DryRunMudancaStatus"
+                  }
+                },
+                "mudancas_status_ciclo": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "antes": { "type": "string" },
+                      "depois": { "type": "string" },
+                      "count": { "type": "integer" }
+                    },
+                    "required": ["antes", "count", "depois"],
+                    "x-readme-ref-name": "DryRunMudancaStatus"
+                  }
+                }
+              },
+              "required": [
+                "aptos_a_renovar",
+                "associados_importados",
+                "atualizados",
+                "baixa_efetuada",
+                "ciclo_aberto",
+                "mudancas_status_associado",
+                "mudancas_status_ciclo",
+                "nao_descontado",
+                "nao_encontrado",
+                "pendencia_manual",
+                "total_no_arquivo",
+                "valor_previsto",
+                "valor_real",
+                "valores_30_50"
+              ],
+              "x-readme-ref-name": "DryRunKpis"
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "linha_numero": { "type": "integer", "nullable": true },
+                  "cpf_cnpj": { "type": "string" },
+                  "nome_servidor": { "type": "string" },
+                  "matricula_servidor": { "type": "string" },
+                  "orgao_pagto_nome": { "type": "string" },
+                  "valor_descontado": {
+                    "type": "string",
+                    "format": "decimal",
+                    "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+                  },
+                  "status_codigo": { "type": "string" },
+                  "resultado": { "type": "string" },
+                  "associado_id": { "type": "integer", "nullable": true },
+                  "associado_nome": { "type": "string" },
+                  "associado_status_antes": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "associado_status_depois": {
+                    "type": "string",
+                    "nullable": true
+                  },
+                  "ciclo_status_antes": { "type": "string", "nullable": true },
+                  "ciclo_status_depois": { "type": "string", "nullable": true },
+                  "ficara_apto_renovar": { "type": "boolean" },
+                  "categoria": { "type": "string" }
+                },
+                "required": [
+                  "associado_id",
+                  "associado_nome",
+                  "associado_status_antes",
+                  "associado_status_depois",
+                  "categoria",
+                  "ciclo_status_antes",
+                  "ciclo_status_depois",
+                  "cpf_cnpj",
+                  "ficara_apto_renovar",
+                  "linha_numero",
+                  "matricula_servidor",
+                  "nome_servidor",
+                  "orgao_pagto_nome",
+                  "resultado",
+                  "status_codigo",
+                  "valor_descontado"
+                ],
+                "x-readme-ref-name": "DryRunItem"
+              }
+            }
+          },
+          "required": ["items", "kpis"],
+          "x-readme-ref-name": "DryRunResultado"
+        }
+      ],
+      "nullable": true,
+      "readOnly": true
+    }
   },
   "required": [
     "arquivo_nome",
     "arquivo_url",
+    "associados_importados",
     "competencia",
     "competencia_display",
     "created_at",
+    "dry_run_resultado",
     "financeiro",
     "formato",
     "id",

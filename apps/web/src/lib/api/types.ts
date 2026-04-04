@@ -467,6 +467,10 @@ export type AssociadoDetail = {
   matricula_orgao?: string;
   cargo?: string;
   status: string;
+  arquivo_retorno_origem?: string;
+  competencia_importacao_retorno?: string | null;
+  data_geracao_importacao_retorno?: string | null;
+  ultimo_arquivo_retorno?: string;
   status_renovacao: string;
   status_visual_slug: string;
   status_visual_label: string;

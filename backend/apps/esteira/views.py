@@ -25,6 +25,7 @@ from .services import EsteiraService
 class EsteiraViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
+    mixins.DestroyModelMixin,
     GenericViewSet,
 ):
     permission_classes = [permissions.IsAuthenticated]
@@ -79,9 +80,15 @@ class EsteiraViewSet(
 
         user = self.request.user
         if user.has_role("ANALISTA") and not user.has_role("ADMIN"):
-            queryset = queryset.filter(etapa_atual=EsteiraItem.Etapa.ANALISE)
+            if self.action in {"retrieve", "destroy"}:
+                queryset = queryset.filter(
+                    Q(analista_responsavel=user) | Q(analista_responsavel__isnull=True)
+                )
+            else:
+                queryset = queryset.filter(etapa_atual=EsteiraItem.Etapa.ANALISE)
         elif user.has_role("COORDENADOR") and not user.has_role("ADMIN"):
-            queryset = queryset.filter(etapa_atual=EsteiraItem.Etapa.COORDENACAO)
+            if self.action not in {"retrieve", "destroy"}:
+                queryset = queryset.filter(etapa_atual=EsteiraItem.Etapa.COORDENACAO)
         elif user.has_role("TESOUREIRO") and not user.has_role("ADMIN"):
             queryset = queryset.filter(etapa_atual=EsteiraItem.Etapa.TESOURARIA)
         elif user.has_role("AGENTE") and not user.has_role("ADMIN"):
@@ -122,6 +129,21 @@ class EsteiraViewSet(
             ).distinct()
 
         return queryset
+
+    def destroy(self, request, *args, **kwargs):
+        user = request.user
+        if not (
+            user.has_role("ADMIN")
+            or user.has_role("COORDENADOR")
+            or user.has_role("ANALISTA")
+        ):
+            raise PermissionDenied(
+                "Somente admin, coordenador ou analista podem excluir solicitações da esteira."
+            )
+
+        esteira_item = self.get_object()
+        EsteiraService.excluir_solicitacao(esteira_item)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"])
     def assumir(self, request, pk=None):

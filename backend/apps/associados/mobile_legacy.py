@@ -552,6 +552,7 @@ def get_status_label(associado: Associado | None) -> str:
         return visual_label
     mapping = {
         Associado.Status.CADASTRADO: "Pendente",
+        Associado.Status.IMPORTADO: "Importado",
         Associado.Status.EM_ANALISE: "Em análise",
         Associado.Status.PENDENTE: "Pendente",
         Associado.Status.INADIMPLENTE: "Em atraso",

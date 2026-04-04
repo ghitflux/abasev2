@@ -17,7 +17,7 @@ export const associadoListSchema = z.object({
   get status() {
     return associadoStatusEnumSchema
       .describe(
-        "* `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente",
+        "* `cadastrado` - Cadastrado\n* `importado` - Importado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente",
       )
       .optional();
   },

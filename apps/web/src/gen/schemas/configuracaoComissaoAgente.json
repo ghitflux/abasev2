@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "properties": {
+    "agente_id": { "type": "integer" },
+    "agente_nome": { "type": "string" },
+    "agente_email": { "type": "string", "format": "email" },
+    "percentual_efetivo": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,4}(?:\\.\\d{0,2})?$"
+    },
+    "percentual_override": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,4}(?:\\.\\d{0,2})?$",
+      "nullable": true
+    },
+    "possui_override": { "type": "boolean" }
+  },
+  "required": [
+    "agente_email",
+    "agente_id",
+    "agente_nome",
+    "percentual_efetivo",
+    "percentual_override",
+    "possui_override"
+  ],
+  "x-readme-ref-name": "ConfiguracaoComissaoAgente"
+}

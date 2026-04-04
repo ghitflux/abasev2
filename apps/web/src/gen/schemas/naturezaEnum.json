@@ -1,0 +1,6 @@
+{
+  "enum": ["despesa_operacional", "complemento_receita"],
+  "type": "string",
+  "description": "* `despesa_operacional` - Despesa operacional\n* `complemento_receita` - Complemento de receita",
+  "x-readme-ref-name": "NaturezaEnum"
+}

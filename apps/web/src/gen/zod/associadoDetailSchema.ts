@@ -42,10 +42,14 @@ export const associadoDetailSchema = z.object({
   get status() {
     return associadoStatusEnumSchema
       .describe(
-        "* `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente",
+        "* `cadastrado` - Cadastrado\n* `importado` - Importado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente",
       )
       .optional();
   },
+  arquivo_retorno_origem: z.optional(z.string().max(255)),
+  competencia_importacao_retorno: z.iso.date().nullish(),
+  data_geracao_importacao_retorno: z.iso.date().nullish(),
+  ultimo_arquivo_retorno: z.optional(z.string().max(255)),
   status_renovacao: z.string(),
   status_visual_slug: z.string(),
   status_visual_label: z.string(),
@@ -78,4 +82,6 @@ export const associadoDetailSchema = z.object({
   updated_at: z.iso.datetime(),
   mobile_sessions: z.array(z.any()),
   admin_history: z.array(z.any()),
+  origem_cadastro_slug: z.string(),
+  origem_cadastro_label: z.string(),
 });

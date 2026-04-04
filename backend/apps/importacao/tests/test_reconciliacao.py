@@ -275,8 +275,15 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
         outcome = MotorReconciliacao(arquivo).reconciliar_item(item)
 
         item.refresh_from_db()
+        associado = item.associado
         self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.NAO_ENCONTRADO)
         self.assertEqual(item.resultado_processamento, ArquivoRetornoItem.ResultadoProcessamento.NAO_ENCONTRADO)
+        self.assertTrue(outcome["associado_importado"])
+        self.assertIsNotNone(associado)
+        self.assertEqual(associado.status, Associado.Status.IMPORTADO)
+        self.assertEqual(associado.arquivo_retorno_origem, "retorno_nao_encontrado.txt")
+        self.assertEqual(associado.ultimo_arquivo_retorno, "retorno_nao_encontrado.txt")
+        self.assertEqual(associado.competencia_importacao_retorno, date(2025, 5, 1))
 
     def test_casamento_por_matricula_faz_baixa_quando_cpf_nao_bate(self):
         _, _, ciclo = self.create_associado_com_contrato(

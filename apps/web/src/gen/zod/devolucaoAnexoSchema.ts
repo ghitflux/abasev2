@@ -6,6 +6,7 @@
 import * as z from "zod";
 
 export const devolucaoAnexoSchema = z.object({
+  id: z.nullable(z.int()),
   nome: z.string(),
   url: z.string(),
   arquivo_referencia: z.string(),

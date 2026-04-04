@@ -20,6 +20,7 @@ export const agentePagamentoContratoSchema = z.object({
   possui_meses_nao_descontados: z.boolean(),
   meses_nao_descontados_count: z.int(),
   data_contrato: z.optional(z.iso.date()),
+  data_solicitacao: z.iso.datetime(),
   auxilio_liberado_em: z.iso.date().nullish(),
   pagamento_inicial_status: z.string(),
   pagamento_inicial_status_label: z.string(),
@@ -29,6 +30,9 @@ export const agentePagamentoContratoSchema = z.object({
   comissao_agente: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
   parcelas_total: z.int(),
   parcelas_pagas: z.int(),
+  cancelamento_tipo: z.string(),
+  cancelamento_motivo: z.string(),
+  cancelado_em: z.iso.datetime(),
   get comprovantes_efetivacao() {
     return z.array(agentePagamentoComprovanteSchema);
   },

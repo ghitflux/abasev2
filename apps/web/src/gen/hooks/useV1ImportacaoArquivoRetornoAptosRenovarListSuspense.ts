@@ -64,6 +64,7 @@ export function v1ImportacaoArquivoRetornoAptosRenovarListSuspenseQueryOptions(
 }
 
 /**
+ * @description Lista os itens do arquivo retorno cujo processamento gerou elegibilidade de renovação (gerou_novo_ciclo=True). Esses associados podem solicitar renovação.
  * {@link /api/v1/importacao/arquivo-retorno/:id/aptos-renovar/}
  */
 export function useV1ImportacaoArquivoRetornoAptosRenovarListSuspense<

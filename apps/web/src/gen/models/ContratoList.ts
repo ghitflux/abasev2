@@ -52,6 +52,11 @@ export type ContratoList = {
   data_contrato?: string;
   /**
    * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
+   * @type string, decimal
+   */
+  readonly valor_disponivel: string | null;
+  /**
+   * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
    * @type string | undefined, decimal
    */
   valor_mensalidade?: string;
@@ -95,4 +100,16 @@ export type ContratoList = {
    * @type integer
    */
   readonly meses_nao_descontados_count: number;
+  /**
+   * @type string
+   */
+  readonly cancelamento_tipo: string;
+  /**
+   * @type string
+   */
+  readonly cancelamento_motivo: string;
+  /**
+   * @type string, date-time
+   */
+  readonly cancelado_em: string;
 };

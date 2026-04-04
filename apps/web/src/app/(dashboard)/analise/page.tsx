@@ -161,6 +161,7 @@ type DialogState =
   | { mode: "assumir"; item: EsteiraItem }
   | { mode: "aprovar"; item: EsteiraItem }
   | { mode: "documentos"; item: EsteiraItem }
+  | { mode: "excluir"; item: EsteiraItem }
   | { mode: "correcao"; item: EsteiraItem }
   | null;
 
@@ -200,7 +201,7 @@ function SummaryCard({
 export default function AnalisePage() {
   const queryClient = useQueryClient();
   const { hasAnyRole, hasRole, status, user } = usePermissions();
-  const isAnalistaEnabled = hasAnyRole(["ANALISTA", "ADMIN"]);
+  const isAnalistaEnabled = hasAnyRole(["ANALISTA", "COORDENADOR", "ADMIN"]);
   const [search, setSearch] = React.useState("");
   const [pageSize, setPageSize] = React.useState("5");
   const [filaPages, setFilaPages] = React.useState<Record<AnaliseSectionKey, number>>(
@@ -296,7 +297,7 @@ export default function AnalisePage() {
           },
         },
       ),
-    enabled: hasRole("ADMIN"),
+    enabled: hasAnyRole(["ADMIN", "COORDENADOR"]),
     ...dashboardOptionsQueryOptions,
   });
 
@@ -373,6 +374,23 @@ export default function AnalisePage() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Falha ao executar ação.");
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (item: EsteiraItem) => {
+      await apiFetch(`esteira/${item.id}`, {
+        method: "DELETE",
+      });
+    },
+    onSuccess: () => {
+      toast.success("Solicitação excluída com sucesso.");
+      setDialogState(null);
+      setObservacao("");
+      invalidateAnaliseQueries();
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Falha ao excluir solicitação.");
     },
   });
 
@@ -491,6 +509,15 @@ export default function AnalisePage() {
                 Solicitar correção
               </Button>
             ) : null}
+            {row.acoes_disponiveis.includes("excluir") ? (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => setDialogState({ mode: "excluir", item: row })}
+              >
+                Excluir
+              </Button>
+            ) : null}
           </div>
         ),
       },
@@ -518,7 +545,7 @@ export default function AnalisePage() {
   const analystOptions = React.useMemo(() => {
     const options = [
       { value: "sem_responsavel", label: "Sem responsável" },
-      ...(hasRole("ADMIN")
+      ...(hasAnyRole(["ADMIN", "COORDENADOR"])
         ? (analistasQuery.data?.results ?? []).map((item) => ({
             value: String(item.id),
             label: item.full_name,
@@ -529,7 +556,7 @@ export default function AnalisePage() {
     ];
 
     return options;
-  }, [analistasQuery.data?.results, hasRole, user]);
+  }, [analistasQuery.data?.results, hasAnyRole, user]);
 
   if (status !== "authenticated") {
     return <WorklistRouteSkeleton />;
@@ -539,7 +566,7 @@ export default function AnalisePage() {
     return (
       <EmptyState
         title="Acesso não disponível"
-        description="Este módulo está liberado apenas para perfis de analista ou administrador."
+        description="Este módulo está liberado para perfis de analista, coordenador ou administrador."
       />
     );
   }
@@ -560,10 +587,10 @@ export default function AnalisePage() {
           <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">
             Análise operacional
           </p>
-          <h1 className="text-3xl font-semibold text-foreground">Dashboard do analista</h1>
+          <h1 className="text-3xl font-semibold text-foreground">Dashboard de análise</h1>
           <p className="max-w-4xl text-sm text-muted-foreground">
             Painel consolidado das filas da esteira para revisar documentação, acompanhar
-            encaminhamentos e entrar no detalhe completo de cada associado.
+            encaminhamentos, excluir solicitações elegíveis e entrar no detalhe completo de cada associado.
           </p>
         </div>
 
@@ -849,6 +876,8 @@ export default function AnalisePage() {
                 ? "Assumir análise"
                 : dialogState?.mode === "aprovar"
                   ? "Confirmar aprovação"
+                  : dialogState?.mode === "excluir"
+                    ? "Excluir solicitação"
                   : dialogState?.mode === "correcao"
                     ? "Solicitar correção"
                     : "Documentos e formulário"}
@@ -858,6 +887,8 @@ export default function AnalisePage() {
                 ? `Deseja assumir a análise do contrato ${dialogState.item.contrato?.codigo}?`
                 : dialogState?.mode === "aprovar"
                   ? `Confirme a aprovação do contrato ${dialogState.item.contrato?.codigo} para a próxima etapa da esteira.`
+                  : dialogState?.mode === "excluir"
+                    ? `Confirme a exclusão lógica da solicitação ${dialogState.item.contrato?.codigo}. O associado, a esteira e a árvore contratual ativa serão removidos das filas operacionais.`
                   : dialogState?.mode === "correcao"
                     ? "Informe a observação que deve ser enviada ao agente."
                     : "Documentos anexados e resumo rápido do cadastro em análise."}
@@ -1050,6 +1081,14 @@ export default function AnalisePage() {
                 }
               >
                 Enviar correção
+              </Button>
+            ) : null}
+            {dialogState?.mode === "excluir" ? (
+              <Button
+                variant="destructive"
+                onClick={() => deleteMutation.mutate(dialogState.item)}
+              >
+                Excluir solicitação
               </Button>
             ) : null}
           </DialogFooter>

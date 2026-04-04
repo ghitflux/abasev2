@@ -57,6 +57,10 @@ export type AgentePagamentoContrato = {
    */
   data_contrato?: string;
   /**
+   * @type string, date-time
+   */
+  readonly data_solicitacao: string;
+  /**
    * @type string, date
    */
   auxilio_liberado_em?: string | null;
@@ -94,6 +98,18 @@ export type AgentePagamentoContrato = {
    * @type integer
    */
   readonly parcelas_pagas: number;
+  /**
+   * @type string
+   */
+  readonly cancelamento_tipo: string;
+  /**
+   * @type string
+   */
+  readonly cancelamento_motivo: string;
+  /**
+   * @type string, date-time
+   */
+  readonly cancelado_em: string;
   /**
    * @type array
    */

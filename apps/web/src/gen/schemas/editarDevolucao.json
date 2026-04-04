@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "properties": {
+    "tipo": {
+      "enum": [
+        "pagamento_indevido",
+        "desconto_indevido",
+        "desistencia_pos_liquidacao"
+      ],
+      "type": "string",
+      "description": "* `pagamento_indevido` - Pagamento indevido\n* `desconto_indevido` - Desconto indevido\n* `desistencia_pos_liquidacao` - Desistência pós-liquidação",
+      "x-readme-ref-name": "DevolucaoAssociadoTipoEnum"
+    },
+    "data_devolucao": { "type": "string", "format": "date" },
+    "quantidade_parcelas": { "type": "integer", "minimum": 1 },
+    "valor": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+    },
+    "motivo": { "type": "string" },
+    "competencia_referencia": {
+      "type": "string",
+      "format": "date",
+      "nullable": true
+    }
+  },
+  "x-readme-ref-name": "EditarDevolucao"
+}

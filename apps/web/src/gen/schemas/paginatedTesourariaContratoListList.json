@@ -32,6 +32,11 @@
             "format": "date-time",
             "readOnly": true
           },
+          "data_solicitacao": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
           "status": { "type": "string", "readOnly": true },
           "agente": {
             "allOf": [
@@ -66,68 +71,52 @@
             "items": {
               "type": "object",
               "properties": {
-                "id": { "type": "integer", "readOnly": true },
-                "refinanciamento": { "type": "integer", "nullable": true },
-                "contrato": { "type": "integer", "nullable": true },
-                "ciclo": { "type": "integer", "nullable": true },
-                "tipo": {
-                  "enum": [
-                    "pix",
-                    "contrato",
-                    "termo_antecipacao",
-                    "comprovante_pagamento_associado",
-                    "comprovante_pagamento_agente",
-                    "outro"
-                  ],
-                  "type": "string",
-                  "description": "* `pix` - PIX\n* `contrato` - Contrato\n* `termo_antecipacao` - Termo de antecipação\n* `comprovante_pagamento_associado` - Comprovante pagamento associado\n* `comprovante_pagamento_agente` - Comprovante pagamento agente\n* `outro` - Outro",
-                  "x-readme-ref-name": "ComprovanteTipoEnum"
+                "id": { "type": "string", "readOnly": true },
+                "refinanciamento": {
+                  "type": "integer",
+                  "readOnly": true,
+                  "nullable": true
                 },
-                "papel": {
-                  "enum": ["associado", "agente", "operacional"],
-                  "type": "string",
-                  "description": "* `associado` - Associado\n* `agente` - Agente\n* `operacional` - Operacional",
-                  "x-readme-ref-name": "ComprovantePapelEnum"
+                "contrato": {
+                  "type": "integer",
+                  "readOnly": true,
+                  "nullable": true
                 },
-                "arquivo": { "type": "string", "format": "uri" },
+                "ciclo": {
+                  "type": "integer",
+                  "readOnly": true,
+                  "nullable": true
+                },
+                "tipo": { "type": "string", "readOnly": true },
+                "papel": { "type": "string", "readOnly": true },
+                "arquivo": { "type": "string", "readOnly": true },
                 "arquivo_referencia": { "type": "string", "readOnly": true },
                 "arquivo_disponivel_localmente": {
                   "type": "boolean",
                   "readOnly": true
                 },
                 "tipo_referencia": { "type": "string", "readOnly": true },
-                "nome_original": { "type": "string", "maxLength": 255 },
-                "mime": { "type": "string", "maxLength": 120 },
+                "nome_original": { "type": "string", "readOnly": true },
+                "mime": {
+                  "type": "string",
+                  "readOnly": true,
+                  "nullable": true
+                },
                 "size_bytes": {
                   "type": "integer",
-                  "maximum": 9223372036854776000,
-                  "minimum": -9223372036854776000,
-                  "format": "int64",
+                  "readOnly": true,
                   "nullable": true
                 },
                 "data_pagamento": {
                   "type": "string",
-                  "format": "date-time",
+                  "format": "date",
+                  "readOnly": true,
                   "nullable": true
                 },
-                "origem": {
-                  "enum": [
-                    "efetivacao_contrato",
-                    "solicitacao_renovacao",
-                    "analise_renovacao",
-                    "tesouraria_renovacao",
-                    "legado",
-                    "outro"
-                  ],
-                  "type": "string",
-                  "description": "* `efetivacao_contrato` - Efetivação do contrato\n* `solicitacao_renovacao` - Solicitação de renovação\n* `analise_renovacao` - Análise da renovação\n* `tesouraria_renovacao` - Tesouraria da renovação\n* `legado` - Legado\n* `outro` - Outro",
-                  "x-readme-ref-name": "ComprovanteOrigemEnum"
-                },
+                "origem": { "type": "string", "readOnly": true },
                 "legacy_comprovante_id": {
                   "type": "integer",
-                  "maximum": 4294967295,
-                  "minimum": 0,
-                  "format": "int64",
+                  "readOnly": true,
                   "nullable": true
                 },
                 "enviado_por": {
@@ -142,24 +131,37 @@
                       "x-readme-ref-name": "SimpleUser"
                     }
                   ],
-                  "readOnly": true
+                  "readOnly": true,
+                  "nullable": true
                 },
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
-                  "readOnly": true
+                  "readOnly": true,
+                  "nullable": true
                 }
               },
               "required": [
                 "arquivo",
                 "arquivo_disponivel_localmente",
                 "arquivo_referencia",
+                "ciclo",
+                "contrato",
                 "created_at",
+                "data_pagamento",
                 "enviado_por",
                 "id",
+                "legacy_comprovante_id",
+                "mime",
+                "nome_original",
+                "origem",
+                "papel",
+                "refinanciamento",
+                "size_bytes",
+                "tipo",
                 "tipo_referencia"
               ],
-              "x-readme-ref-name": "ComprovanteResumo"
+              "x-readme-ref-name": "TesourariaComprovanteResumo"
             },
             "readOnly": true
           },
@@ -194,12 +196,22 @@
           },
           "observacao_tesouraria": { "type": "string", "readOnly": true },
           "etapa_atual": { "type": "string", "readOnly": true },
-          "situacao_esteira": { "type": "string", "readOnly": true }
+          "situacao_esteira": { "type": "string", "readOnly": true },
+          "cancelamento_tipo": { "type": "string", "readOnly": true },
+          "cancelamento_motivo": { "type": "string", "readOnly": true },
+          "cancelado_em": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          }
         },
         "required": [
           "agente",
           "agente_nome",
           "associado_id",
+          "cancelado_em",
+          "cancelamento_motivo",
+          "cancelamento_tipo",
           "chave_pix",
           "codigo",
           "comissao_agente",
@@ -207,6 +219,7 @@
           "cpf_cnpj",
           "dados_bancarios",
           "data_assinatura",
+          "data_solicitacao",
           "etapa_atual",
           "id",
           "margem_disponivel",

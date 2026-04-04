@@ -29,6 +29,7 @@ export const V1TesourariaContratosEfetivarCreateMutationRequestSchema = z
     chave_pix: true,
     codigo: true,
     data_assinatura: true,
+    data_solicitacao: true,
     status: true,
     agente: true,
     agente_nome: true,
@@ -40,6 +41,9 @@ export const V1TesourariaContratosEfetivarCreateMutationRequestSchema = z
     observacao_tesouraria: true,
     etapa_atual: true,
     situacao_esteira: true,
+    cancelamento_tipo: true,
+    cancelamento_motivo: true,
+    cancelado_em: true,
   });
 
 export const V1TesourariaContratosEfetivarCreateMutationResponseSchema = z.lazy(

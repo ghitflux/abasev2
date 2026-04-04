@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import ImportacaoPage from "./page";
@@ -64,9 +64,10 @@ const latestImport = {
   competencia_display: "05/2025",
   total_registros: 4,
   processados: 4,
+  associados_importados: 1,
   nao_encontrados: 1,
   erros: 0,
-  status: "processando",
+  status: "concluido",
   resumo: {
     baixa_efetuada: 1,
     nao_descontado: 1,
@@ -107,6 +108,7 @@ const dryRunResultado = {
     baixa_efetuada: 1,
     nao_descontado: 1,
     nao_encontrado: 1,
+    associados_importados: 1,
     pendencia_manual: 1,
     ciclo_aberto: 0,
     valor_previsto: "90.00",
@@ -329,8 +331,10 @@ describe("ImportacaoPage", () => {
     await user.upload(input, file);
 
     expect(await screen.findByText("Prévia da importação")).toBeInTheDocument();
-    expect(screen.getByText("Total no arquivo")).toBeInTheDocument();
-    expect(screen.getByText("Parcelas R$30 / R$50")).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Total no arquivo")).toBeInTheDocument();
+    expect(within(dialog).getByText("Parcelas R$30 / R$50")).toBeInTheDocument();
+    expect(within(dialog).getByText("Associados importados")).toBeInTheDocument();
   });
 
   it("confirma a importação a partir do modal de dry-run", async () => {
@@ -403,5 +407,72 @@ describe("ImportacaoPage", () => {
       `importacao/arquivo-retorno/${latestImport.id}/cancelar`,
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("aciona cancelamento ao clicar no botao de fechar do modal", async () => {
+    const user = userEvent.setup();
+
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (path === "importacao/arquivo-retorno/upload") {
+        return {
+          ...latestImport,
+          status: "aguardando_confirmacao",
+          dry_run_resultado: dryRunResultado,
+        };
+      }
+      if (path === `importacao/arquivo-retorno/${latestImport.id}/cancelar`) {
+        return undefined;
+      }
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    const { container } = renderPage();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["conteudo"], "retorno_dry_run.txt", { type: "text/plain" });
+
+    await user.upload(input, file);
+    await user.click(await screen.findByRole("button", { name: /^close$/i }));
+
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      `importacao/arquivo-retorno/${latestImport.id}/cancelar`,
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("mantem o modal aberto quando cancelar falha e permite nova tentativa", async () => {
+    const user = userEvent.setup();
+    let cancelCalls = 0;
+
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (path === "importacao/arquivo-retorno/upload") {
+        return {
+          ...latestImport,
+          status: "aguardando_confirmacao",
+          dry_run_resultado: dryRunResultado,
+        };
+      }
+      if (path === `importacao/arquivo-retorno/${latestImport.id}/cancelar`) {
+        cancelCalls += 1;
+        if (cancelCalls === 1) {
+          throw new Error("Falha ao cancelar");
+        }
+        return undefined;
+      }
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    const { container } = renderPage();
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const file = new File(["conteudo"], "retorno_dry_run.txt", { type: "text/plain" });
+
+    await user.upload(input, file);
+    await user.click(await screen.findByRole("button", { name: /^cancelar$/i }));
+
+    expect(await screen.findByText("Prévia da importação")).toBeInTheDocument();
+    expect(cancelCalls).toBe(1);
+
+    await user.click(await screen.findByRole("button", { name: /^close$/i }));
+
+    expect(cancelCalls).toBe(2);
   });
 });

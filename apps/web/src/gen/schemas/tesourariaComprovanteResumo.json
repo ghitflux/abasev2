@@ -1,0 +1,76 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "string", "readOnly": true },
+    "refinanciamento": {
+      "type": "integer",
+      "readOnly": true,
+      "nullable": true
+    },
+    "contrato": { "type": "integer", "readOnly": true, "nullable": true },
+    "ciclo": { "type": "integer", "readOnly": true, "nullable": true },
+    "tipo": { "type": "string", "readOnly": true },
+    "papel": { "type": "string", "readOnly": true },
+    "arquivo": { "type": "string", "readOnly": true },
+    "arquivo_referencia": { "type": "string", "readOnly": true },
+    "arquivo_disponivel_localmente": { "type": "boolean", "readOnly": true },
+    "tipo_referencia": { "type": "string", "readOnly": true },
+    "nome_original": { "type": "string", "readOnly": true },
+    "mime": { "type": "string", "readOnly": true, "nullable": true },
+    "size_bytes": { "type": "integer", "readOnly": true, "nullable": true },
+    "data_pagamento": {
+      "type": "string",
+      "format": "date",
+      "readOnly": true,
+      "nullable": true
+    },
+    "origem": { "type": "string", "readOnly": true },
+    "legacy_comprovante_id": {
+      "type": "integer",
+      "readOnly": true,
+      "nullable": true
+    },
+    "enviado_por": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "readOnly": true },
+            "full_name": { "type": "string", "readOnly": true }
+          },
+          "required": ["full_name", "id"],
+          "x-readme-ref-name": "SimpleUser"
+        }
+      ],
+      "readOnly": true,
+      "nullable": true
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "readOnly": true,
+      "nullable": true
+    }
+  },
+  "required": [
+    "arquivo",
+    "arquivo_disponivel_localmente",
+    "arquivo_referencia",
+    "ciclo",
+    "contrato",
+    "created_at",
+    "data_pagamento",
+    "enviado_por",
+    "id",
+    "legacy_comprovante_id",
+    "mime",
+    "nome_original",
+    "origem",
+    "papel",
+    "refinanciamento",
+    "size_bytes",
+    "tipo",
+    "tipo_referencia"
+  ],
+  "x-readme-ref-name": "TesourariaComprovanteResumo"
+}

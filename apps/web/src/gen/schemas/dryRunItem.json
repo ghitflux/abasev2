@@ -1,0 +1,44 @@
+{
+  "type": "object",
+  "properties": {
+    "linha_numero": { "type": "integer", "nullable": true },
+    "cpf_cnpj": { "type": "string" },
+    "nome_servidor": { "type": "string" },
+    "matricula_servidor": { "type": "string" },
+    "orgao_pagto_nome": { "type": "string" },
+    "valor_descontado": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "status_codigo": { "type": "string" },
+    "resultado": { "type": "string" },
+    "associado_id": { "type": "integer", "nullable": true },
+    "associado_nome": { "type": "string" },
+    "associado_status_antes": { "type": "string", "nullable": true },
+    "associado_status_depois": { "type": "string", "nullable": true },
+    "ciclo_status_antes": { "type": "string", "nullable": true },
+    "ciclo_status_depois": { "type": "string", "nullable": true },
+    "ficara_apto_renovar": { "type": "boolean" },
+    "categoria": { "type": "string" }
+  },
+  "required": [
+    "associado_id",
+    "associado_nome",
+    "associado_status_antes",
+    "associado_status_depois",
+    "categoria",
+    "ciclo_status_antes",
+    "ciclo_status_depois",
+    "cpf_cnpj",
+    "ficara_apto_renovar",
+    "linha_numero",
+    "matricula_servidor",
+    "nome_servidor",
+    "orgao_pagto_nome",
+    "resultado",
+    "status_codigo",
+    "valor_descontado"
+  ],
+  "x-readme-ref-name": "DryRunItem"
+}

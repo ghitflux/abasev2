@@ -10,6 +10,7 @@
     "status": {
       "enum": [
         "cadastrado",
+        "importado",
         "em_analise",
         "ativo",
         "pendente",
@@ -17,7 +18,7 @@
         "inadimplente"
       ],
       "type": "string",
-      "description": "* `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente",
+      "description": "* `cadastrado` - Cadastrado\n* `importado` - Importado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente",
       "x-readme-ref-name": "AssociadoStatusEnum"
     },
     "status_renovacao": { "type": "string", "readOnly": true },

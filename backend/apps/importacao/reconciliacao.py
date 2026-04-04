@@ -14,6 +14,10 @@ from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Ciclo, Parcela
 from apps.refinanciamento.models import Refinanciamento
 
+from .imported_associados import (
+    RETORNO_IMPORTED_FLAG,
+    upsert_imported_associado_from_retorno,
+)
 from .matching import find_associado
 from .models import ArquivoRetorno, ArquivoRetornoItem, ImportacaoLog
 
@@ -42,6 +46,7 @@ class MotorReconciliacao:
             "pendencias_manuais": 0,
             "duplicidades": 0,
             "nao_encontrado": 0,
+            "associados_importados": 0,
             "erro": 0,
             "ciclo_aberto": 0,
             "encerramentos": 0,
@@ -70,6 +75,8 @@ class MotorReconciliacao:
                 resumo["efetivados"] += 1
             if outcome["resultado"] == ArquivoRetornoItem.ResultadoProcessamento.NAO_DESCONTADO:
                 resumo["nao_descontados"] += 1
+            if outcome.get("associado_importado"):
+                resumo["associados_importados"] += 1
             if outcome["gerou_encerramento"]:
                 resumo["encerramentos"] += 1
             if outcome["gerou_novo_ciclo"]:
@@ -82,12 +89,21 @@ class MotorReconciliacao:
             "resultado": item.resultado_processamento,
             "gerou_encerramento": item.gerou_encerramento,
             "gerou_novo_ciclo": item.gerou_novo_ciclo,
+            "associado_importado": bool(
+                (item.payload_bruto or {}).get(RETORNO_IMPORTED_FLAG)
+                and item.resultado_processamento
+                == ArquivoRetornoItem.ResultadoProcessamento.NAO_ENCONTRADO
+            ),
         }
 
     @transaction.atomic
     def reconciliar_item(self, item: ArquivoRetornoItem) -> dict[str, object]:
         cpf = only_digits(item.cpf_cnpj)
-        associado = find_associado(
+        competencia = parse_competencia(item.competencia)
+        imported_from_current_return = bool(
+            (item.payload_bruto or {}).get(RETORNO_IMPORTED_FLAG)
+        )
+        associado = item.associado or find_associado(
             cpf=cpf,
             matricula=item.matricula_servidor,
             nome=item.nome_servidor,
@@ -95,6 +111,73 @@ class MotorReconciliacao:
             orgao_alternativo=item.orgao_pagto_codigo,
             orgao_codigo=item.orgao_codigo,
         )
+        if associado is None:
+            associado = upsert_imported_associado_from_retorno(
+                arquivo_nome=self.arquivo_retorno.arquivo_nome,
+                competencia=competencia,
+                data_geracao=self.arquivo_retorno.resultado_resumo.get("data_geracao"),
+                cpf_cnpj=cpf,
+                nome_completo=item.nome_servidor,
+                matricula_orgao=item.matricula_servidor,
+                orgao_publico=item.orgao_pagto_nome,
+                cargo=item.cargo,
+            )
+            imported_from_current_return = associado is not None
+        elif associado.status == Associado.Status.IMPORTADO:
+            associado = upsert_imported_associado_from_retorno(
+                arquivo_nome=self.arquivo_retorno.arquivo_nome,
+                competencia=competencia,
+                data_geracao=self.arquivo_retorno.resultado_resumo.get("data_geracao"),
+                cpf_cnpj=cpf,
+                nome_completo=item.nome_servidor,
+                matricula_orgao=item.matricula_servidor,
+                orgao_publico=item.orgao_pagto_nome,
+                cargo=item.cargo,
+                existing=associado,
+            )
+
+        if imported_from_current_return and associado is not None:
+            payload_bruto = dict(item.payload_bruto or {})
+            payload_bruto[RETORNO_IMPORTED_FLAG] = True
+            item.associado = associado
+            item.parcela = None
+            item.payload_bruto = payload_bruto
+            item.processado = True
+            item.resultado_processamento = ArquivoRetornoItem.ResultadoProcessamento.NAO_ENCONTRADO
+            item.observacao = (
+                "Associado não encontrado no cadastro atual. "
+                "Cadastro mínimo importado a partir do arquivo retorno."
+            )
+            item.save(
+                update_fields=[
+                    "associado",
+                    "parcela",
+                    "payload_bruto",
+                    "processado",
+                    "resultado_processamento",
+                    "observacao",
+                    "updated_at",
+                ]
+            )
+            ImportacaoLog.objects.create(
+                arquivo_retorno=self.arquivo_retorno,
+                tipo=ImportacaoLog.Tipo.RECONCILIACAO,
+                mensagem="Associado ausente no cadastro e importado a partir do retorno.",
+                dados={
+                    "linha_numero": item.linha_numero,
+                    "cpf_cnpj": cpf,
+                    "matricula": item.matricula_servidor,
+                    "nome": item.nome_servidor,
+                    "associado_id": associado.id,
+                },
+            )
+            return {
+                "resultado": ArquivoRetornoItem.ResultadoProcessamento.NAO_ENCONTRADO,
+                "gerou_encerramento": False,
+                "gerou_novo_ciclo": False,
+                "associado_importado": True,
+            }
+
         if not associado:
             item.associado = None
             item.parcela = None
@@ -126,9 +209,9 @@ class MotorReconciliacao:
                 "resultado": ArquivoRetornoItem.ResultadoProcessamento.NAO_ENCONTRADO,
                 "gerou_encerramento": False,
                 "gerou_novo_ciclo": False,
+                "associado_importado": False,
             }
 
-        competencia = parse_competencia(item.competencia)
         parcela = resolve_processing_competencia_parcela(
             associado_id=associado.id,
             referencia_mes=competencia,
@@ -160,6 +243,7 @@ class MotorReconciliacao:
                 "resultado": ArquivoRetornoItem.ResultadoProcessamento.CICLO_ABERTO,
                 "gerou_encerramento": False,
                 "gerou_novo_ciclo": False,
+                "associado_importado": False,
             }
 
         item.associado = associado
@@ -180,7 +264,10 @@ class MotorReconciliacao:
 
         item.processado = True
         item.save()
-        return outcome
+        return {
+            **outcome,
+            "associado_importado": False,
+        }
 
     def _processar_efetivado(
         self,
@@ -199,6 +286,7 @@ class MotorReconciliacao:
                 "resultado": ArquivoRetornoItem.ResultadoProcessamento.PENDENCIA_MANUAL,
                 "gerou_encerramento": False,
                 "gerou_novo_ciclo": False,
+                "associado_importado": False,
             }
 
         if item.valor_descontado != parcela.valor and not permitir_diferenca:
@@ -220,6 +308,7 @@ class MotorReconciliacao:
                 "resultado": ArquivoRetornoItem.ResultadoProcessamento.PENDENCIA_MANUAL,
                 "gerou_encerramento": False,
                 "gerou_novo_ciclo": False,
+                "associado_importado": False,
             }
 
         if parcela.status != Parcela.Status.DESCONTADO:
@@ -255,6 +344,7 @@ class MotorReconciliacao:
             "resultado": ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA,
             "gerou_novo_ciclo": item.gerou_novo_ciclo,
             **post_result,
+            "associado_importado": False,
         }
 
     def _processar_rejeitado(
@@ -282,6 +372,7 @@ class MotorReconciliacao:
             "resultado": ArquivoRetornoItem.ResultadoProcessamento.NAO_DESCONTADO,
             "gerou_encerramento": False,
             "gerou_novo_ciclo": False,
+            "associado_importado": False,
         }
 
     def _processar_pendencia_manual(
@@ -299,6 +390,7 @@ class MotorReconciliacao:
             "resultado": ArquivoRetornoItem.ResultadoProcessamento.PENDENCIA_MANUAL,
             "gerou_encerramento": False,
             "gerou_novo_ciclo": False,
+            "associado_importado": False,
         }
 
     def _processar_erro(
@@ -316,6 +408,7 @@ class MotorReconciliacao:
             "resultado": ArquivoRetornoItem.ResultadoProcessamento.ERRO,
             "gerou_encerramento": False,
             "gerou_novo_ciclo": False,
+            "associado_importado": False,
         }
 
     def _pos_processar_ciclo(self, ciclo: Ciclo) -> dict[str, bool]:

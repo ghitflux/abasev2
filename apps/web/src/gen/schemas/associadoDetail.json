@@ -41,6 +41,7 @@
     "status": {
       "enum": [
         "cadastrado",
+        "importado",
         "em_analise",
         "ativo",
         "pendente",
@@ -48,9 +49,21 @@
         "inadimplente"
       ],
       "type": "string",
-      "description": "* `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente",
+      "description": "* `cadastrado` - Cadastrado\n* `importado` - Importado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente",
       "x-readme-ref-name": "AssociadoStatusEnum"
     },
+    "arquivo_retorno_origem": { "type": "string", "maxLength": 255 },
+    "competencia_importacao_retorno": {
+      "type": "string",
+      "format": "date",
+      "nullable": true
+    },
+    "data_geracao_importacao_retorno": {
+      "type": "string",
+      "format": "date",
+      "nullable": true
+    },
+    "ultimo_arquivo_retorno": { "type": "string", "maxLength": 255 },
     "status_renovacao": { "type": "string", "readOnly": true },
     "status_visual_slug": { "type": "string", "readOnly": true },
     "status_visual_label": { "type": "string", "readOnly": true },
@@ -1170,7 +1183,9 @@
     "created_at": { "type": "string", "format": "date-time", "readOnly": true },
     "updated_at": { "type": "string", "format": "date-time", "readOnly": true },
     "mobile_sessions": { "type": "array", "items": {}, "readOnly": true },
-    "admin_history": { "type": "array", "items": {}, "readOnly": true }
+    "admin_history": { "type": "array", "items": {}, "readOnly": true },
+    "origem_cadastro_slug": { "type": "string", "readOnly": true },
+    "origem_cadastro_label": { "type": "string", "readOnly": true }
   },
   "required": [
     "admin_history",
@@ -1188,6 +1203,8 @@
     "meses_nao_descontados_count",
     "mobile_sessions",
     "nome_completo",
+    "origem_cadastro_label",
+    "origem_cadastro_slug",
     "percentual_repasse",
     "possui_meses_nao_descontados",
     "status_renovacao",

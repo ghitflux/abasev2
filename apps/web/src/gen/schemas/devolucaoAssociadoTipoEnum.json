@@ -1,0 +1,10 @@
+{
+  "enum": [
+    "pagamento_indevido",
+    "desconto_indevido",
+    "desistencia_pos_liquidacao"
+  ],
+  "type": "string",
+  "description": "* `pagamento_indevido` - Pagamento indevido\n* `desconto_indevido` - Desconto indevido\n* `desistencia_pos_liquidacao` - Desistência pós-liquidação",
+  "x-readme-ref-name": "DevolucaoAssociadoTipoEnum"
+}

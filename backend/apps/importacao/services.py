@@ -15,11 +15,16 @@ from django.utils import timezone
 from django.utils.text import get_valid_filename
 from rest_framework.exceptions import ValidationError
 
+from apps.associados.models import Associado
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Contrato
 
 from .dry_run import simular_dry_run
 from .duplicidade import DuplicidadeFinanceiraService
+from .imported_associados import (
+    RETORNO_IMPORTED_FLAG,
+    upsert_imported_associado_from_retorno,
+)
 from .legacy import LegacyPagamentoSnapshot, list_legacy_pagamento_snapshots
 from .manual_return_conflicts import (
     should_skip_legacy_manual_snapshot,
@@ -208,6 +213,7 @@ class ArquivoRetornoService:
                 "pendencias_manuais": 0,
                 "duplicidades": 0,
                 "nao_encontrado": 0,
+                "associados_importados": 0,
                 "erro": 0,
                 "ciclo_aberto": 0,
                 "encerramentos": 0,
@@ -371,7 +377,7 @@ class ArquivoRetornoService:
                     f"{resumo_pm['pm_duplicidades_abertas']} conflitos enviados para duplicidade, "
                     f"{resumo_pm['pm_cpfs_duplicados_arquivo']} CPFs duplicados no arquivo consolidados, "
                     f"{resumo_pm['pm_vinculados']} vinculados a associados, "
-                    f"{resumo_pm['pm_nao_encontrados']} não encontrados."
+                    f"{resumo_pm['pm_associados_importados']} associados importados."
                 ),
                 dados=resumo,
             )
@@ -420,7 +426,7 @@ class ArquivoRetornoService:
         vinculados = 0
         duplicidades_abertas = 0
         contract_ids_to_rebuild: set[int] = set()
-        nao_encontrados_list: list[dict] = []
+        associados_importados_list: list[dict] = []
         erros_list: list[dict] = []
 
         # referencia_month vem da competencia do arquivo (MM/YYYY → YYYY-MM-01)
@@ -460,12 +466,50 @@ class ArquivoRetornoService:
                     orgao_alternativo=orgao_codigo,
                     orgao_codigo=orgao_interno,
                 )
+                associado_importado_nesta_linha = False
+                if assoc is None:
+                    assoc = upsert_imported_associado_from_retorno(
+                        arquivo_nome=arquivo_retorno.arquivo_nome,
+                        competencia=ref_date,
+                        data_geracao=arquivo_retorno.resultado_resumo.get("data_geracao"),
+                        cpf_cnpj=cpf,
+                        nome_completo=nome,
+                        matricula_orgao=matricula,
+                        orgao_publico=orgao,
+                        cargo=item.get("cargo", ""),
+                    )
+                    associado_importado_nesta_linha = assoc is not None
+                elif assoc.status == Associado.Status.IMPORTADO:
+                    assoc = upsert_imported_associado_from_retorno(
+                        arquivo_nome=arquivo_retorno.arquivo_nome,
+                        competencia=ref_date,
+                        data_geracao=arquivo_retorno.resultado_resumo.get("data_geracao"),
+                        cpf_cnpj=cpf,
+                        nome_completo=nome,
+                        matricula_orgao=matricula,
+                        orgao_publico=orgao,
+                        cargo=item.get("cargo", ""),
+                        existing=assoc,
+                    )
 
                 existing = PagamentoMensalidade.objects.filter(
                     cpf_cnpj=cpf,
                     referencia_month=ref_date,
                 ).first()
                 item_obj = arquivo_retorno.itens.filter(linha_numero=linha).first()
+                if item_obj is not None:
+                    item_update_fields: list[str] = []
+                    if assoc and item_obj.associado_id != assoc.id:
+                        item_obj.associado = assoc
+                        item_update_fields.append("associado")
+                    if associado_importado_nesta_linha:
+                        payload_bruto = dict(item_obj.payload_bruto or {})
+                        if not payload_bruto.get(RETORNO_IMPORTED_FLAG):
+                            payload_bruto[RETORNO_IMPORTED_FLAG] = True
+                            item_obj.payload_bruto = payload_bruto
+                            item_update_fields.append("payload_bruto")
+                    if item_update_fields:
+                        item_obj.save(update_fields=[*item_update_fields, "updated_at"])
 
                 if existing:
                     # Duplicado: backfill do vínculo se não tiver
@@ -475,9 +519,6 @@ class ArquivoRetornoService:
                         existing.associado = assoc
                         update_fields.append("associado")
                         vinculados += 1
-                    if item_obj is not None and assoc and item_obj.associado_id != assoc.id:
-                        item_obj.associado = assoc
-                        item_obj.save(update_fields=["associado", "updated_at"])
                     duplicidade = None
                     if item_obj is not None:
                         duplicidade, _pagamento_conflict = (
@@ -505,12 +546,18 @@ class ArquivoRetornoService:
                         )
                     if update_fields:
                         existing.save(update_fields=[*sorted(set(update_fields)), "updated_at"])
+                    if associado_importado_nesta_linha and assoc:
+                        associados_importados_list.append(
+                            {
+                                "linha": linha,
+                                "cpf": cpf,
+                                "nome": nome,
+                                "associado_id": assoc.id,
+                            }
+                        )
                     continue
 
                 # Novo lançamento
-                if item_obj is not None and assoc and item_obj.associado_id != assoc.id:
-                    item_obj.associado = assoc
-                    item_obj.save(update_fields=["associado", "updated_at"])
                 if item_obj is not None:
                     duplicidade, conflito_pagamento = (
                         DuplicidadeFinanceiraService.detect_existing_conflict(
@@ -552,11 +599,17 @@ class ArquivoRetornoService:
                 criados += 1
                 if assoc:
                     vinculados += 1
-                else:
-                    nao_encontrados_list.append({
-                        "linha": linha, "cpf": cpf, "nome": nome,
-                        "valor": str(valor), "status": status,
-                    })
+                if associado_importado_nesta_linha and assoc:
+                    associados_importados_list.append(
+                        {
+                            "linha": linha,
+                            "cpf": cpf,
+                            "nome": nome,
+                            "valor": str(valor),
+                            "status": status,
+                            "associado_id": assoc.id,
+                        }
+                    )
 
             except Exception as exc:
                 erros_list.append({
@@ -569,7 +622,8 @@ class ArquivoRetornoService:
             "pm_duplicados": duplicados,
             "pm_vinculados": vinculados,
             "pm_duplicidades_abertas": duplicidades_abertas,
-            "pm_nao_encontrados": len(nao_encontrados_list),
+            "pm_nao_encontrados": len(associados_importados_list),
+            "pm_associados_importados": len(associados_importados_list),
             "pm_erros": len(erros_list),
             "pm_cpfs_duplicados_arquivo": 0,
             "pm_linhas_duplicadas_ignoradas": 0,

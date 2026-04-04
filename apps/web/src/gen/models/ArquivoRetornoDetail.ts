@@ -47,6 +47,10 @@ export type ArquivoRetornoDetail = {
    */
   processados?: number;
   /**
+   * @type integer
+   */
+  readonly associados_importados: number;
+  /**
    * @minLength 0
    * @maxLength 4294967295
    * @type integer | undefined, int64
@@ -59,7 +63,7 @@ export type ArquivoRetornoDetail = {
    */
   erros?: number;
   /**
-   * @description * `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro
+   * @description * `aguardando_confirmacao` - Aguardando Confirmação\n* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro
    * @type string | undefined
    */
   status?: ArquivoRetornoStatusEnum;
@@ -91,9 +95,5 @@ export type ArquivoRetornoDetail = {
    * @type string
    */
   arquivo_url: string;
-  /**
-   * Resultado do dry-run calculado no momento do upload. Presente apenas quando
-   * status === 'aguardando_confirmacao'. Nulo após confirmação ou cancelamento.
-   */
-  readonly dry_run_resultado?: DryRunResultado | null;
+  readonly dry_run_resultado: DryRunResultado | null;
 };

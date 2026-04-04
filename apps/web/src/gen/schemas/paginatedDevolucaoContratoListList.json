@@ -39,7 +39,8 @@
             "format": "date",
             "readOnly": true,
             "nullable": true
-          }
+          },
+          "tipo_sugerido": { "type": "string", "readOnly": true }
         },
         "required": [
           "agente_nome",
@@ -52,7 +53,8 @@
           "matricula",
           "mes_averbacao",
           "nome",
-          "status_contrato"
+          "status_contrato",
+          "tipo_sugerido"
         ],
         "x-readme-ref-name": "DevolucaoContratoList"
       }

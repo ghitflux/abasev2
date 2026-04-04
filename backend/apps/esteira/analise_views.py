@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
-from apps.accounts.permissions import IsAnalistaOrAdmin
+from apps.accounts.permissions import IsAnalistaOrCoordenadorOrAdmin
 from core.pagination import StandardResultsSetPagination
 
 from .analise_serializers import (
@@ -24,7 +24,7 @@ from .serializers import EsteiraListSerializer
 
 class AnaliseViewSet(GenericViewSet):
     queryset = EsteiraItem.objects.none()
-    permission_classes = [permissions.IsAuthenticated, IsAnalistaOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsAnalistaOrCoordenadorOrAdmin]
     pagination_class = StandardResultsSetPagination
 
     def get_serializer_class(self):

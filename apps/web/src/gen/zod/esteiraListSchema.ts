@@ -28,6 +28,9 @@ export const esteiraListSchema = z.object({
   get agente() {
     return esteiraSimpleUserSchema;
   },
+  get analista_responsavel() {
+    return esteiraSimpleUserSchema;
+  },
   orgao_publico: z.string(),
   documentos_count: z.int(),
   acoes_disponiveis: z.array(z.string()),

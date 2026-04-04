@@ -43,6 +43,7 @@
             "minimum": 0,
             "format": "int64"
           },
+          "associados_importados": { "type": "integer", "readOnly": true },
           "nao_encontrados": {
             "type": "integer",
             "maximum": 4294967295,
@@ -56,9 +57,15 @@
             "format": "int64"
           },
           "status": {
-            "enum": ["pendente", "processando", "concluido", "erro"],
+            "enum": [
+              "aguardando_confirmacao",
+              "pendente",
+              "processando",
+              "concluido",
+              "erro"
+            ],
             "type": "string",
-            "description": "* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro",
+            "description": "* `aguardando_confirmacao` - Aguardando Confirmação\n* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro",
             "x-readme-ref-name": "ArquivoRetornoStatusEnum"
           },
           "resumo": {
@@ -85,6 +92,7 @@
         },
         "required": [
           "arquivo_nome",
+          "associados_importados",
           "competencia",
           "competencia_display",
           "created_at",

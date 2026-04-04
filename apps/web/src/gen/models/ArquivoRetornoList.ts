@@ -46,6 +46,10 @@ export type ArquivoRetornoList = {
    */
   processados?: number;
   /**
+   * @type integer
+   */
+  readonly associados_importados: number;
+  /**
    * @minLength 0
    * @maxLength 4294967295
    * @type integer | undefined, int64
@@ -58,7 +62,7 @@ export type ArquivoRetornoList = {
    */
   erros?: number;
   /**
-   * @description * `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro
+   * @description * `aguardando_confirmacao` - Aguardando Confirmação\n* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro
    * @type string | undefined
    */
   status?: ArquivoRetornoStatusEnum;

@@ -30,6 +30,7 @@ const STATUS_STYLES: Record<string, string> = {
   analise: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   ciclo_iniciado: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   em_analise: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
+  importado: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   em_analise_renovacao: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   pendente_termo_analista:
     "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",

@@ -6,13 +6,15 @@
 import * as z from "zod";
 
 /**
- * @description * `apto_a_renovar` - Apto a renovar\n* `solicitado_para_liquidacao` - Solicitado para liquidação\n* `em_analise_renovacao` - Em análise para renovação\n* `aprovado_analise_renovacao` - Aprovado pela análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado
+ * @description * `apto_a_renovar` - Apto a renovar\n* `solicitado_para_liquidacao` - Solicitado para liquidação\n* `em_analise_renovacao` - Em análise para renovação\n* `pendente_termo_analista` - Pendente termo para o analista\n* `pendente_termo_agente` - Pendente termo para o agente\n* `aprovado_analise_renovacao` - Aprovado pela análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado
  */
 export const refinanciamentoStatusEnumSchema = z
   .enum([
     "apto_a_renovar",
     "solicitado_para_liquidacao",
     "em_analise_renovacao",
+    "pendente_termo_analista",
+    "pendente_termo_agente",
     "aprovado_analise_renovacao",
     "aprovado_para_renovacao",
     "pendente_apto",
@@ -27,5 +29,5 @@ export const refinanciamentoStatusEnumSchema = z
     "rejeitado",
   ])
   .describe(
-    "* `apto_a_renovar` - Apto a renovar\n* `solicitado_para_liquidacao` - Solicitado para liquidação\n* `em_analise_renovacao` - Em análise para renovação\n* `aprovado_analise_renovacao` - Aprovado pela análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
+    "* `apto_a_renovar` - Apto a renovar\n* `solicitado_para_liquidacao` - Solicitado para liquidação\n* `em_analise_renovacao` - Em análise para renovação\n* `pendente_termo_analista` - Pendente termo para o analista\n* `pendente_termo_agente` - Pendente termo para o agente\n* `aprovado_analise_renovacao` - Aprovado pela análise para renovação\n* `aprovado_para_renovacao` - Aprovado para renovação\n* `pendente_apto` - Pendente apto\n* `bloqueado` - Bloqueado\n* `concluido` - Concluído\n* `desativado` - Desativado\n* `revertido` - Revertido\n* `efetivado` - Efetivado\n* `solicitado` - Solicitado\n* `em_analise` - Em análise\n* `aprovado` - Aprovado\n* `rejeitado` - Rejeitado",
   );

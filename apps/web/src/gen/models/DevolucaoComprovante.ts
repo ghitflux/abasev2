@@ -5,6 +5,10 @@
 
 export type DevolucaoComprovante = {
   /**
+   * @type integer
+   */
+  readonly id: number | null;
+  /**
    * @type string
    */
   readonly nome: string;

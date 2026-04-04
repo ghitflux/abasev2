@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import type { DryRunItem } from "@/gen/models/DryRunResultado";
+import type { DryRunItem } from "@/gen/models/DryRunItem";
 import CopySnippet from "@/components/shared/copy-snippet";
 import StatusBadge from "@/components/custom/status-badge";
 import {

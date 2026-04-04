@@ -132,10 +132,9 @@ export type AssociadoCreate = {
   agente_responsavel_id?: number | null;
   /**
    * @pattern ^-?\d{0,4}(?:\.\d{0,2})?$
-   * @default "10.00"
-   * @type string | undefined, decimal
+   * @type string, decimal
    */
-  percentual_repasse?: string;
+  percentual_repasse?: string | null;
   /**
    * @type array | undefined
    */

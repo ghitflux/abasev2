@@ -22,6 +22,7 @@ class Associado(BaseModel):
 
     class Status(models.TextChoices):
         CADASTRADO = "cadastrado", "Cadastrado"
+        IMPORTADO = "importado", "Importado"
         EM_ANALISE = "em_analise", "Em análise"
         ATIVO = "ativo", "Ativo"
         PENDENTE = "pendente", "Pendente"
@@ -102,6 +103,10 @@ class Associado(BaseModel):
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.CADASTRADO
     )
+    arquivo_retorno_origem = models.CharField(max_length=255, blank=True)
+    competencia_importacao_retorno = models.DateField(null=True, blank=True)
+    data_geracao_importacao_retorno = models.DateField(null=True, blank=True)
+    ultimo_arquivo_retorno = models.CharField(max_length=255, blank=True)
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

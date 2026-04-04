@@ -1,0 +1,146 @@
+{
+  "type": "object",
+  "required": ["count", "results"],
+  "properties": {
+    "count": { "type": "integer", "example": 123 },
+    "next": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=4"
+    },
+    "previous": {
+      "type": "string",
+      "nullable": true,
+      "format": "uri",
+      "example": "http://api.example.org/accounts/?page=2"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "readOnly": true },
+          "arquivo_retorno_item_id": { "type": "integer", "readOnly": true },
+          "arquivo_retorno_id": { "type": "integer", "readOnly": true },
+          "arquivo_nome": { "type": "string", "readOnly": true },
+          "linha_numero": { "type": "integer", "readOnly": true },
+          "associado_id": {
+            "type": "integer",
+            "readOnly": true,
+            "nullable": true
+          },
+          "nome": { "type": "string", "readOnly": true },
+          "cpf_cnpj": { "type": "string", "readOnly": true },
+          "matricula": { "type": "string", "readOnly": true },
+          "agente_nome": { "type": "string", "readOnly": true },
+          "contrato_id": {
+            "type": "integer",
+            "readOnly": true,
+            "nullable": true
+          },
+          "contrato_codigo": { "type": "string", "readOnly": true },
+          "motivo": {
+            "allOf": [
+              {
+                "enum": [
+                  "baixa_manual_duplicada",
+                  "baixa_manual_mes_errado",
+                  "divergencia_valor",
+                  "conflito_retorno"
+                ],
+                "type": "string",
+                "description": "* `baixa_manual_duplicada` - Baixa manual duplicada\n* `baixa_manual_mes_errado` - Baixa manual em mês errado\n* `divergencia_valor` - Divergência de valor\n* `conflito_retorno` - Conflito vindo do retorno",
+                "x-readme-ref-name": "MotivoEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "status": {
+            "allOf": [
+              {
+                "enum": ["aberta", "em_tratamento", "resolvida", "descartada"],
+                "type": "string",
+                "description": "* `aberta` - Aberta\n* `em_tratamento` - Em tratamento\n* `resolvida` - Resolvida\n* `descartada` - Descartada",
+                "x-readme-ref-name": "DuplicidadeFinanceiraItemStatusEnum"
+              }
+            ],
+            "readOnly": true
+          },
+          "competencia_retorno": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true
+          },
+          "competencia_manual": {
+            "type": "string",
+            "format": "date",
+            "readOnly": true,
+            "nullable": true
+          },
+          "valor_retorno": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+            "readOnly": true,
+            "nullable": true
+          },
+          "valor_manual": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+            "readOnly": true,
+            "nullable": true
+          },
+          "observacao": { "type": "string", "readOnly": true },
+          "devolucao_id": {
+            "type": "integer",
+            "readOnly": true,
+            "nullable": true
+          },
+          "resolvido_em": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true,
+            "nullable": true
+          },
+          "resolvido_por": { "type": "string", "readOnly": true },
+          "motivo_resolucao": { "type": "string", "readOnly": true },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          }
+        },
+        "required": [
+          "agente_nome",
+          "arquivo_nome",
+          "arquivo_retorno_id",
+          "arquivo_retorno_item_id",
+          "associado_id",
+          "competencia_manual",
+          "competencia_retorno",
+          "contrato_codigo",
+          "contrato_id",
+          "cpf_cnpj",
+          "created_at",
+          "devolucao_id",
+          "id",
+          "linha_numero",
+          "matricula",
+          "motivo",
+          "motivo_resolucao",
+          "nome",
+          "observacao",
+          "resolvido_em",
+          "resolvido_por",
+          "status",
+          "valor_manual",
+          "valor_retorno"
+        ],
+        "x-readme-ref-name": "DuplicidadeFinanceiraItem"
+      }
+    }
+  },
+  "x-readme-ref-name": "PaginatedDuplicidadeFinanceiraItemList"
+}

@@ -1,0 +1,20 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer" },
+    "nome_completo": { "type": "string" },
+    "cpf_cnpj": { "type": "string" },
+    "matricula_servidor": { "type": "string" },
+    "status": { "type": "string" },
+    "status_label": { "type": "string" }
+  },
+  "required": [
+    "cpf_cnpj",
+    "id",
+    "matricula_servidor",
+    "nome_completo",
+    "status",
+    "status_label"
+  ],
+  "x-readme-ref-name": "AgentRedistributionAssociado"
+}

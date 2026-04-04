@@ -39,6 +39,7 @@ export const V1TesourariaLiquidacoesExcluirCreateMutationRequestSchema = z
     status_operacional: true,
     pode_liquidar_agora: true,
     status_associado: true,
+    status_associado_label: true,
     status_contrato: true,
     status_renovacao: true,
     origem_solicitacao: true,

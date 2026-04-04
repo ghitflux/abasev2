@@ -81,6 +81,10 @@ class Command(BaseCommand):
             with staged_path.open("rb") as source:
                 arquivo = service.upload(File(source, name=Path(item["source_name"]).name), user)
 
+            if arquivo.status == ArquivoRetorno.Status.AGUARDANDO_CONFIRMACAO:
+                arquivo = service.confirmar(arquivo.id)
+
+            arquivo.refresh_from_db()
             if arquivo.status != ArquivoRetorno.Status.CONCLUIDO:
                 raise CommandError(
                     f"Arquivo {arquivo.arquivo_nome} não concluiu processamento: {arquivo.status}"

@@ -1,0 +1,40 @@
+{
+  "type": "object",
+  "properties": {
+    "id": { "type": "integer" },
+    "updated_at": { "type": "string", "format": "date-time", "nullable": true },
+    "status": { "type": "string" },
+    "competencia_solicitada": {
+      "type": "string",
+      "format": "date",
+      "nullable": true
+    },
+    "valor_refinanciamento": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "repasse_agente": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+    },
+    "executado_em": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+    },
+    "data_ativacao_ciclo": {
+      "type": "string",
+      "format": "date-time",
+      "nullable": true
+    },
+    "motivo_bloqueio": { "type": "string" },
+    "observacao": { "type": "string" },
+    "analista_note": { "type": "string" },
+    "coordenador_note": { "type": "string" },
+    "reviewed_by_id": { "type": "integer", "nullable": true }
+  },
+  "required": ["id"],
+  "x-readme-ref-name": "SaveAllRefinanciamentoWrite"
+}

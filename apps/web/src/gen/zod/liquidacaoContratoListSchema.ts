@@ -11,7 +11,7 @@ import { simpleUserSchema } from "./simpleUserSchema.ts";
 
 export const liquidacaoContratoListSchema = z.object({
   id: z.int(),
-  contrato_id: z.int(),
+  contrato_id: z.nullable(z.int()),
   liquidacao_id: z.nullable(z.int()),
   associado_id: z.int(),
   nome: z.string(),
@@ -28,6 +28,7 @@ export const liquidacaoContratoListSchema = z.object({
   status_operacional: z.string(),
   pode_liquidar_agora: z.boolean(),
   status_associado: z.string(),
+  status_associado_label: z.string(),
   status_contrato: z.string(),
   status_renovacao: z.string(),
   origem_solicitacao: z.string(),

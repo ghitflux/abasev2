@@ -35,6 +35,7 @@ export type V1TesourariaLiquidacoesReverterCreateMutationRequest = Omit<
   | "status_operacional"
   | "pode_liquidar_agora"
   | "status_associado"
+  | "status_associado_label"
   | "status_contrato"
   | "status_renovacao"
   | "origem_solicitacao"

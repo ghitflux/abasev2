@@ -7,6 +7,7 @@ import type { BlankEnum } from "./BlankEnum.ts";
 import type { DespesaAnexo } from "./DespesaAnexo.ts";
 import type { DespesaStatusEnum } from "./DespesaStatusEnum.ts";
 import type { DespesaTipoEnum } from "./DespesaTipoEnum.ts";
+import type { NaturezaEnum } from "./NaturezaEnum.ts";
 import type { RecorrenciaEnum } from "./RecorrenciaEnum.ts";
 import type { SimpleUser } from "./SimpleUser.ts";
 import type { StatusAnexoEnum } from "./StatusAnexoEnum.ts";
@@ -23,14 +24,19 @@ export type DespesaList = {
   categoria: string;
   /**
    * @maxLength 255
-   * @type string
+   * @type string | undefined
    */
-  descricao: string;
+  descricao?: string;
   /**
    * @pattern ^-?\d{0,13}(?:\.\d{0,2})?$
    * @type string, decimal
    */
   valor: string;
+  /**
+   * @description * `despesa_operacional` - Despesa operacional\n* `complemento_receita` - Complemento de receita
+   * @type string | undefined
+   */
+  natureza?: NaturezaEnum;
   /**
    * @type string, date
    */

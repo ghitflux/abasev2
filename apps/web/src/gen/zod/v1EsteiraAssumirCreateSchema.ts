@@ -33,6 +33,7 @@ export const V1EsteiraAssumirCreateMutationRequestSchema = z
     contato_web: true,
     termos_web: true,
     agente: true,
+    analista_responsavel: true,
     orgao_publico: true,
     documentos_count: true,
     acoes_disponiveis: true,

@@ -16,7 +16,7 @@ export type LiquidacaoContratoList = {
   /**
    * @type integer
    */
-  readonly contrato_id: number;
+  readonly contrato_id: number | null;
   /**
    * @type integer
    */
@@ -82,6 +82,10 @@ export type LiquidacaoContratoList = {
    * @type string
    */
   readonly status_associado: string;
+  /**
+   * @type string
+   */
+  readonly status_associado_label: string;
   /**
    * @type string
    */

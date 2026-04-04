@@ -1,0 +1,61 @@
+{
+  "type": "object",
+  "properties": {
+    "source_user": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "integer" },
+        "full_name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "is_active": { "type": "boolean" }
+      },
+      "required": ["email", "full_name", "id"],
+      "x-readme-ref-name": "AgentRedistributionUser"
+    },
+    "impacted_count": { "type": "integer" },
+    "impacted_associados": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "nome_completo": { "type": "string" },
+          "cpf_cnpj": { "type": "string" },
+          "matricula_servidor": { "type": "string" },
+          "status": { "type": "string" },
+          "status_label": { "type": "string" }
+        },
+        "required": [
+          "cpf_cnpj",
+          "id",
+          "matricula_servidor",
+          "nome_completo",
+          "status",
+          "status_label"
+        ],
+        "x-readme-ref-name": "AgentRedistributionAssociado"
+      }
+    },
+    "eligible_agents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "full_name": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "is_active": { "type": "boolean" }
+        },
+        "required": ["email", "full_name", "id"],
+        "x-readme-ref-name": "AgentRedistributionUser"
+      }
+    }
+  },
+  "required": [
+    "eligible_agents",
+    "impacted_associados",
+    "impacted_count",
+    "source_user"
+  ],
+  "x-readme-ref-name": "AgentRedistributionPreview"
+}

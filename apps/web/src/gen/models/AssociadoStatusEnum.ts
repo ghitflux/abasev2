@@ -5,6 +5,7 @@
 
 export const associadoStatusEnumEnum = {
   cadastrado: "cadastrado",
+  importado: "importado",
   em_analise: "em_analise",
   ativo: "ativo",
   pendente: "pendente",
@@ -16,6 +17,6 @@ export type AssociadoStatusEnumEnumKey =
   (typeof associadoStatusEnumEnum)[keyof typeof associadoStatusEnumEnum];
 
 /**
- * @description * `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente
+ * @description * `cadastrado` - Cadastrado\n* `importado` - Importado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente
  */
 export type AssociadoStatusEnum = AssociadoStatusEnumEnumKey;

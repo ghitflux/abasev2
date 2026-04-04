@@ -61,6 +61,7 @@ export type EsteiraList = {
    */
   readonly termos_web: boolean;
   readonly agente: EsteiraSimpleUser;
+  readonly analista_responsavel: EsteiraSimpleUser;
   /**
    * @type string
    */

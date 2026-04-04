@@ -22,6 +22,7 @@ export type V1ImportacaoArquivoRetornoReprocessarCreateMutationRequest = Omit<
   | "id"
   | "sistema_origem"
   | "competencia_display"
+  | "associados_importados"
   | "resumo"
   | "financeiro"
   | "uploaded_by_nome"

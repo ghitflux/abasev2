@@ -1,0 +1,28 @@
+{
+  "type": "object",
+  "properties": {
+    "mes": { "type": "string", "format": "date" },
+    "complementos_receita": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$"
+    },
+    "saldo_positivo": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,13}(?:\\.\\d{0,2})?$"
+    },
+    "novos_associados": { "type": "integer" },
+    "desvinculados": { "type": "integer" },
+    "renovacoes_associado": { "type": "integer" }
+  },
+  "required": [
+    "complementos_receita",
+    "desvinculados",
+    "mes",
+    "novos_associados",
+    "renovacoes_associado",
+    "saldo_positivo"
+  ],
+  "x-readme-ref-name": "DashboardResumoMensalAssociacaoRow"
+}

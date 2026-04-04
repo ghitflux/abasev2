@@ -5,10 +5,11 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.associados.models import Associado, Documento
+from apps.contratos.soft_delete import soft_delete_contract_tree
 from apps.contratos.models import Contrato
 from apps.refinanciamento.models import Refinanciamento
 
-from .models import DocIssue, EsteiraItem, Pendencia, Transicao
+from .models import DocIssue, DocReupload, EsteiraItem, Pendencia, Transicao
 from .strategies import AnalistaApprovalStrategy, CoordenadorApprovalStrategy
 
 
@@ -22,6 +23,28 @@ class EsteiraService:
         ("coordenacao", "em_andamento"): ["aprovar", "pendenciar", "rejeitar"],
         ("tesouraria", "aguardando"): ["efetivar"],
     }
+
+    @staticmethod
+    def can_delete(esteira_item: EsteiraItem) -> bool:
+        return bool(
+            esteira_item.status == EsteiraItem.Situacao.AGUARDANDO
+            and esteira_item.assumido_em is None
+            and esteira_item.analista_responsavel_id is None
+            and esteira_item.coordenador_responsavel_id is None
+            and esteira_item.tesoureiro_responsavel_id is None
+        )
+
+    @staticmethod
+    def get_available_actions(esteira_item: EsteiraItem) -> list[str]:
+        actions = list(
+            EsteiraService.TRANSICOES_VALIDAS.get(
+                (esteira_item.etapa_atual, esteira_item.status),
+                [],
+            )
+        )
+        if EsteiraService.can_delete(esteira_item):
+            actions.append("excluir")
+        return actions
 
     @staticmethod
     @transaction.atomic
@@ -247,6 +270,35 @@ class EsteiraService:
             "documentacao",
             observacao,
         )
+
+    @staticmethod
+    @transaction.atomic
+    def excluir_solicitacao(esteira_item: EsteiraItem) -> None:
+        if not EsteiraService.can_delete(esteira_item):
+            raise ValidationError(
+                "Somente itens aguardando, sem assunção e sem responsáveis podem ser excluídos."
+            )
+
+        associado = esteira_item.associado
+
+        for pendencia in esteira_item.pendencias.filter(deleted_at__isnull=True):
+            pendencia.soft_delete()
+        for transicao in esteira_item.transicoes.filter(deleted_at__isnull=True):
+            transicao.soft_delete()
+        for documento in associado.documentos.filter(deleted_at__isnull=True):
+            documento.soft_delete()
+        for issue in associado.doc_issues.filter(deleted_at__isnull=True):
+            issue.soft_delete()
+        for reupload in DocReupload.objects.filter(
+            associado=associado,
+            deleted_at__isnull=True,
+        ):
+            reupload.soft_delete()
+        for contrato in associado.contratos.filter(deleted_at__isnull=True).order_by("id"):
+            soft_delete_contract_tree(contrato)
+
+        esteira_item.soft_delete()
+        associado.soft_delete()
 
     @staticmethod
     @transaction.atomic

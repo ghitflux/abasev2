@@ -17,4 +17,5 @@ export const devolucaoContratoListSchema = z.object({
   status_contrato: z.string(),
   data_contrato: z.iso.date(),
   mes_averbacao: z.nullable(z.iso.date()),
+  tipo_sugerido: z.string(),
 });

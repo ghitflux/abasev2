@@ -34,6 +34,7 @@ export const V1TesourariaDevolucoesContratosRegistrarCreateMutationRequestSchema
       status_contrato: true,
       data_contrato: true,
       mes_averbacao: true,
+      tipo_sugerido: true,
     });
 
 export const V1TesourariaDevolucoesContratosRegistrarCreateMutationResponseSchema =

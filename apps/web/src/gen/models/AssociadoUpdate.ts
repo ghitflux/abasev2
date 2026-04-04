@@ -60,7 +60,7 @@ export type AssociadoUpdate = {
    */
   cargo?: string;
   /**
-   * @description * `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente
+   * @description * `cadastrado` - Cadastrado\n* `importado` - Importado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente
    * @type string | undefined
    */
   status?: AssociadoStatusEnum;

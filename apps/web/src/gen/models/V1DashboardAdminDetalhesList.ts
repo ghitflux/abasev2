@@ -44,7 +44,6 @@ export type V1DashboardAdminDetalhesListQueryParams = {
    */
   page_size?: string;
   /**
-   * @description A search term.
    * @type string | undefined
    */
   search?: string;

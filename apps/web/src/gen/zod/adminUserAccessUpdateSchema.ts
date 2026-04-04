@@ -4,8 +4,12 @@
  */
 
 import * as z from "zod";
+import { agentReassignmentSchema } from "./agentReassignmentSchema.ts";
 
 export const adminUserAccessUpdateSchema = z.object({
   roles: z.optional(z.array(z.string().max(30))),
   is_active: z.optional(z.boolean()),
+  get agent_reassignment() {
+    return agentReassignmentSchema.optional();
+  },
 });

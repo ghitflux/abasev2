@@ -90,10 +90,28 @@ export type AssociadoDetail = {
    */
   cargo?: string;
   /**
-   * @description * `cadastrado` - Cadastrado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente
+   * @description * `cadastrado` - Cadastrado\n* `importado` - Importado\n* `em_analise` - Em análise\n* `ativo` - Ativo\n* `pendente` - Pendente\n* `inativo` - Inativo\n* `inadimplente` - Inadimplente
    * @type string | undefined
    */
   status?: AssociadoStatusEnum;
+  /**
+   * @maxLength 255
+   * @type string | undefined
+   */
+  arquivo_retorno_origem?: string;
+  /**
+   * @type string, date
+   */
+  competencia_importacao_retorno?: string | null;
+  /**
+   * @type string, date
+   */
+  data_geracao_importacao_retorno?: string | null;
+  /**
+   * @maxLength 255
+   * @type string | undefined
+   */
+  ultimo_arquivo_retorno?: string;
   /**
    * @type string
    */
@@ -151,4 +169,12 @@ export type AssociadoDetail = {
    * @type array
    */
   readonly admin_history: any[];
+  /**
+   * @type string
+   */
+  readonly origem_cadastro_slug: string;
+  /**
+   * @type string
+   */
+  readonly origem_cadastro_label: string;
 };

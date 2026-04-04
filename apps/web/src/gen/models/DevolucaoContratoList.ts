@@ -48,4 +48,8 @@ export type DevolucaoContratoList = {
    * @type string, date
    */
   readonly mes_averbacao: string | null;
+  /**
+   * @type string
+   */
+  readonly tipo_sugerido: string;
 };

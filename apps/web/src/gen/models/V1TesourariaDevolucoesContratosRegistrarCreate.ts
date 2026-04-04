@@ -30,6 +30,7 @@ export type V1TesourariaDevolucoesContratosRegistrarCreateMutationRequest =
     | "status_contrato"
     | "data_contrato"
     | "mes_averbacao"
+    | "tipo_sugerido"
   >;
 
 export type V1TesourariaDevolucoesContratosRegistrarCreateMutationResponse =

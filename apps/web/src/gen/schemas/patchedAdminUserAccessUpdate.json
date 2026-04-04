@@ -5,7 +5,13 @@
       "type": "array",
       "items": { "type": "string", "maxLength": 30 }
     },
-    "is_active": { "type": "boolean" }
+    "is_active": { "type": "boolean" },
+    "agent_reassignment": {
+      "type": "object",
+      "properties": { "new_agent_id": { "type": "integer", "minimum": 1 } },
+      "required": ["new_agent_id"],
+      "x-readme-ref-name": "AgentReassignment"
+    }
   },
   "x-readme-ref-name": "PatchedAdminUserAccessUpdate"
 }

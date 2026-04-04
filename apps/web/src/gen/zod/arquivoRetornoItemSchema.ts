@@ -32,7 +32,7 @@ export const arquivoRetornoItemSchema = z.object({
   get resultado_processamento() {
     return resultadoProcessamentoEnumSchema
       .describe(
-        "* `baixa_efetuada` - Baixa efetuada\n* `nao_descontado` - Não descontado\n* `pendencia_manual` - Pendência manual\n* `nao_encontrado` - Não encontrado\n* `erro` - Erro\n* `ciclo_aberto` - Ciclo aberto",
+        "* `baixa_efetuada` - Baixa efetuada\n* `nao_descontado` - Não descontado\n* `pendencia_manual` - Pendência manual\n* `duplicidade` - Duplicidade\n* `nao_encontrado` - Não encontrado\n* `erro` - Erro\n* `ciclo_aberto` - Ciclo aberto",
       )
       .optional();
   },

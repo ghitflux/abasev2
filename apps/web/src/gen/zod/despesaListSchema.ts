@@ -8,6 +8,7 @@ import { blankEnumSchema } from "./blankEnumSchema.ts";
 import { despesaAnexoSchema } from "./despesaAnexoSchema.ts";
 import { despesaStatusEnumSchema } from "./despesaStatusEnumSchema.ts";
 import { despesaTipoEnumSchema } from "./despesaTipoEnumSchema.ts";
+import { naturezaEnumSchema } from "./naturezaEnumSchema.ts";
 import { recorrenciaEnumSchema } from "./recorrenciaEnumSchema.ts";
 import { simpleUserSchema } from "./simpleUserSchema.ts";
 import { statusAnexoEnumSchema } from "./statusAnexoEnumSchema.ts";
@@ -15,8 +16,15 @@ import { statusAnexoEnumSchema } from "./statusAnexoEnumSchema.ts";
 export const despesaListSchema = z.object({
   id: z.int(),
   categoria: z.string().max(100),
-  descricao: z.string().max(255),
+  descricao: z.optional(z.string().max(255)),
   valor: z.string().regex(/^-?\d{0,13}(?:\.\d{0,2})?$/),
+  get natureza() {
+    return naturezaEnumSchema
+      .describe(
+        "* `despesa_operacional` - Despesa operacional\n* `complemento_receita` - Complemento de receita",
+      )
+      .optional();
+  },
   data_despesa: z.iso.date(),
   data_pagamento: z.iso.date().nullish(),
   get status() {

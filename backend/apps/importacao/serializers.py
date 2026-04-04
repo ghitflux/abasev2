@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .financeiro import build_financeiro_payload, build_financeiro_resumo
@@ -16,6 +17,7 @@ class ArquivoRetornoResumoSerializer(serializers.Serializer):
     pendencias_manuais = serializers.IntegerField(required=False)
     duplicidades = serializers.IntegerField(required=False)
     nao_encontrado = serializers.IntegerField(required=False)
+    associados_importados = serializers.IntegerField(required=False)
     erro = serializers.IntegerField(required=False)
     ciclo_aberto = serializers.IntegerField(required=False)
     encerramentos = serializers.IntegerField(required=False)
@@ -220,6 +222,7 @@ class ArquivoRetornoListSerializer(serializers.ModelSerializer):
     competencia_display = serializers.SerializerMethodField()
     sistema_origem = serializers.CharField(source="orgao_origem", read_only=True)
     uploaded_by_nome = serializers.CharField(source="uploaded_by.full_name", read_only=True)
+    associados_importados = serializers.SerializerMethodField()
     resumo = serializers.SerializerMethodField()
     financeiro = serializers.SerializerMethodField()
 
@@ -234,6 +237,7 @@ class ArquivoRetornoListSerializer(serializers.ModelSerializer):
             "competencia_display",
             "total_registros",
             "processados",
+            "associados_importados",
             "nao_encontrados",
             "erros",
             "status",
@@ -249,6 +253,11 @@ class ArquivoRetornoListSerializer(serializers.ModelSerializer):
 
     def get_resumo(self, obj: ArquivoRetorno) -> dict:
         return ArquivoRetornoResumoSerializer(obj.resultado_resumo).data
+
+    def get_associados_importados(self, obj: ArquivoRetorno) -> int:
+        if isinstance(obj.resultado_resumo, dict):
+            return int(obj.resultado_resumo.get("associados_importados") or 0)
+        return 0
 
     def get_financeiro(self, obj: ArquivoRetorno) -> dict:
         cache = self.context.setdefault("_financeiro_cache", {})
@@ -283,6 +292,7 @@ class DryRunKpisSerializer(serializers.Serializer):
     baixa_efetuada = serializers.IntegerField()
     nao_descontado = serializers.IntegerField()
     nao_encontrado = serializers.IntegerField()
+    associados_importados = serializers.IntegerField()
     pendencia_manual = serializers.IntegerField()
     ciclo_aberto = serializers.IntegerField()
     valor_previsto = serializers.DecimalField(max_digits=14, decimal_places=2)
@@ -323,6 +333,7 @@ class ArquivoRetornoDetailSerializer(ArquivoRetornoListSerializer):
     class Meta(ArquivoRetornoListSerializer.Meta):
         fields = ArquivoRetornoListSerializer.Meta.fields + ["arquivo_url", "dry_run_resultado"]
 
+    @extend_schema_field(DryRunResultadoSerializer(allow_null=True))
     def get_dry_run_resultado(self, obj: ArquivoRetorno):
         if not obj.dry_run_resultado:
             return None

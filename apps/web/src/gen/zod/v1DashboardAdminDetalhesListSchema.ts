@@ -18,7 +18,7 @@ export const V1DashboardAdminDetalhesListQueryParamsSchema = z.object({
   ),
   page: z.optional(z.coerce.number().int()),
   page_size: z.optional(z.string()),
-  search: z.optional(z.string().describe("A search term.")),
+  search: z.optional(z.string()),
   section: z.string(),
   status: z.optional(z.string()),
 });

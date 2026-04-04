@@ -189,6 +189,7 @@ describe("navigation", () => {
     expect(hrefs).toContain("/configuracoes/usuarios");
     expect(hrefs).toContain("/configuracoes/comissoes");
     expect(hrefs).toContain("/importacao");
+    expect(hrefs).toContain("/analise");
     expect(canAccessPath("/dashboard", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/associados", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/associados/123", ["COORDENADOR"])).toBe(true);
@@ -196,6 +197,7 @@ describe("navigation", () => {
     expect(canAccessPath("/configuracoes/usuarios", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/configuracoes/comissoes", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/importacao", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/analise", ["COORDENADOR"])).toBe(true);
   });
 
   it("renomeia dashboard de ciclos para tesouraria e admin", () => {

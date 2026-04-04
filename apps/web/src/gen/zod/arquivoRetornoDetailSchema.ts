@@ -6,6 +6,7 @@
 import * as z from "zod";
 import { arquivoRetornoFormatoEnumSchema } from "./arquivoRetornoFormatoEnumSchema.ts";
 import { arquivoRetornoStatusEnumSchema } from "./arquivoRetornoStatusEnumSchema.ts";
+import { dryRunResultadoSchema } from "./dryRunResultadoSchema.ts";
 
 export const arquivoRetornoDetailSchema = z.object({
   id: z.int(),
@@ -20,12 +21,13 @@ export const arquivoRetornoDetailSchema = z.object({
   competencia_display: z.string(),
   total_registros: z.optional(z.int().min(0).max(4294967295)),
   processados: z.optional(z.int().min(0).max(4294967295)),
+  associados_importados: z.int(),
   nao_encontrados: z.optional(z.int().min(0).max(4294967295)),
   erros: z.optional(z.int().min(0).max(4294967295)),
   get status() {
     return arquivoRetornoStatusEnumSchema
       .describe(
-        "* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro",
+        "* `aguardando_confirmacao` - Aguardando Confirmação\n* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro",
       )
       .optional();
   },
@@ -35,4 +37,7 @@ export const arquivoRetornoDetailSchema = z.object({
   created_at: z.iso.datetime(),
   processado_em: z.iso.datetime().nullish(),
   arquivo_url: z.string(),
+  get dry_run_resultado() {
+    return dryRunResultadoSchema.nullable();
+  },
 });

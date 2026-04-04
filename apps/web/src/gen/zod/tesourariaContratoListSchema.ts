@@ -4,9 +4,9 @@
  */
 
 import * as z from "zod";
-import { comprovanteResumoSchema } from "./comprovanteResumoSchema.ts";
 import { dadosBancariosSchema } from "./dadosBancariosSchema.ts";
 import { simpleUserSchema } from "./simpleUserSchema.ts";
+import { tesourariaComprovanteResumoSchema } from "./tesourariaComprovanteResumoSchema.ts";
 
 export const tesourariaContratoListSchema = z.object({
   id: z.int(),
@@ -17,6 +17,7 @@ export const tesourariaContratoListSchema = z.object({
   chave_pix: z.string(),
   codigo: z.string(),
   data_assinatura: z.iso.datetime(),
+  data_solicitacao: z.iso.datetime(),
   status: z.string(),
   get agente() {
     return simpleUserSchema;
@@ -26,7 +27,7 @@ export const tesourariaContratoListSchema = z.object({
   comissao_agente: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
   margem_disponivel: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
   get comprovantes() {
-    return z.array(comprovanteResumoSchema);
+    return z.array(tesourariaComprovanteResumoSchema);
   },
   get dados_bancarios() {
     return dadosBancariosSchema.nullable();
@@ -34,4 +35,7 @@ export const tesourariaContratoListSchema = z.object({
   observacao_tesouraria: z.string(),
   etapa_atual: z.string(),
   situacao_esteira: z.string(),
+  cancelamento_tipo: z.string(),
+  cancelamento_motivo: z.string(),
+  cancelado_em: z.iso.datetime(),
 });

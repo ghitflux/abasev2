@@ -1,0 +1,100 @@
+{
+  "type": "object",
+  "properties": {
+    "total_no_arquivo": { "type": "integer" },
+    "atualizados": { "type": "integer" },
+    "baixa_efetuada": { "type": "integer" },
+    "nao_descontado": { "type": "integer" },
+    "nao_encontrado": { "type": "integer" },
+    "associados_importados": { "type": "integer" },
+    "pendencia_manual": { "type": "integer" },
+    "ciclo_aberto": { "type": "integer" },
+    "valor_previsto": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,12}(?:\\.\\d{0,2})?$"
+    },
+    "valor_real": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,12}(?:\\.\\d{0,2})?$"
+    },
+    "aptos_a_renovar": { "type": "integer" },
+    "valores_30_50": {
+      "type": "object",
+      "properties": {
+        "descontaram": {
+          "type": "object",
+          "properties": {
+            "count": { "type": "integer" },
+            "valor_total": {
+              "type": "string",
+              "format": "decimal",
+              "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+            }
+          },
+          "required": ["count", "valor_total"],
+          "x-readme-ref-name": "DryRunValores3050Grupo"
+        },
+        "nao_descontaram": {
+          "type": "object",
+          "properties": {
+            "count": { "type": "integer" },
+            "valor_total": {
+              "type": "string",
+              "format": "decimal",
+              "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+            }
+          },
+          "required": ["count", "valor_total"],
+          "x-readme-ref-name": "DryRunValores3050Grupo"
+        }
+      },
+      "required": ["descontaram", "nao_descontaram"],
+      "x-readme-ref-name": "DryRunValores3050"
+    },
+    "mudancas_status_associado": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "antes": { "type": "string" },
+          "depois": { "type": "string" },
+          "count": { "type": "integer" }
+        },
+        "required": ["antes", "count", "depois"],
+        "x-readme-ref-name": "DryRunMudancaStatus"
+      }
+    },
+    "mudancas_status_ciclo": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "antes": { "type": "string" },
+          "depois": { "type": "string" },
+          "count": { "type": "integer" }
+        },
+        "required": ["antes", "count", "depois"],
+        "x-readme-ref-name": "DryRunMudancaStatus"
+      }
+    }
+  },
+  "required": [
+    "aptos_a_renovar",
+    "associados_importados",
+    "atualizados",
+    "baixa_efetuada",
+    "ciclo_aberto",
+    "mudancas_status_associado",
+    "mudancas_status_ciclo",
+    "nao_descontado",
+    "nao_encontrado",
+    "pendencia_manual",
+    "total_no_arquivo",
+    "valor_previsto",
+    "valor_real",
+    "valores_30_50"
+  ],
+  "x-readme-ref-name": "DryRunKpis"
+}

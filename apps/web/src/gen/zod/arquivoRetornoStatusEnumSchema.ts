@@ -6,10 +6,16 @@
 import * as z from "zod";
 
 /**
- * @description * `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro
+ * @description * `aguardando_confirmacao` - Aguardando Confirmação\n* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro
  */
 export const arquivoRetornoStatusEnumSchema = z
-  .enum(["pendente", "processando", "concluido", "erro"])
+  .enum([
+    "aguardando_confirmacao",
+    "pendente",
+    "processando",
+    "concluido",
+    "erro",
+  ])
   .describe(
-    "* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro",
+    "* `aguardando_confirmacao` - Aguardando Confirmação\n* `pendente` - Pendente\n* `processando` - Processando\n* `concluido` - Concluído\n* `erro` - Erro",
   );

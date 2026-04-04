@@ -6,17 +6,18 @@
 import * as z from "zod";
 
 /**
- * @description * `baixa_efetuada` - Baixa efetuada\n* `nao_descontado` - Não descontado\n* `pendencia_manual` - Pendência manual\n* `nao_encontrado` - Não encontrado\n* `erro` - Erro\n* `ciclo_aberto` - Ciclo aberto
+ * @description * `baixa_efetuada` - Baixa efetuada\n* `nao_descontado` - Não descontado\n* `pendencia_manual` - Pendência manual\n* `duplicidade` - Duplicidade\n* `nao_encontrado` - Não encontrado\n* `erro` - Erro\n* `ciclo_aberto` - Ciclo aberto
  */
 export const resultadoProcessamentoEnumSchema = z
   .enum([
     "baixa_efetuada",
     "nao_descontado",
     "pendencia_manual",
+    "duplicidade",
     "nao_encontrado",
     "erro",
     "ciclo_aberto",
   ])
   .describe(
-    "* `baixa_efetuada` - Baixa efetuada\n* `nao_descontado` - Não descontado\n* `pendencia_manual` - Pendência manual\n* `nao_encontrado` - Não encontrado\n* `erro` - Erro\n* `ciclo_aberto` - Ciclo aberto",
+    "* `baixa_efetuada` - Baixa efetuada\n* `nao_descontado` - Não descontado\n* `pendencia_manual` - Pendência manual\n* `duplicidade` - Duplicidade\n* `nao_encontrado` - Não encontrado\n* `erro` - Erro\n* `ciclo_aberto` - Ciclo aberto",
   );

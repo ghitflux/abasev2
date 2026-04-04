@@ -128,7 +128,7 @@ def _simular_item(raw: dict, competencia: date) -> dict:
             "associado_id": None,
             "associado_nome": raw.get("nome_servidor", ""),
             "associado_status_antes": None,
-            "associado_status_depois": None,
+            "associado_status_depois": Associado.Status.IMPORTADO,
             "ciclo_status_antes": None,
             "ciclo_status_depois": None,
             "ficara_apto_renovar": False,
@@ -206,10 +206,11 @@ def _build_kpis(resultados: list[dict]) -> dict:
 
     return {
         "total_no_arquivo": total,
-        "atualizados": len(baixa) + len(nao_desc) + len(pendencia),
+        "atualizados": len(baixa) + len(nao_desc) + len(pendencia) + len(nao_enc),
         "baixa_efetuada": len(baixa),
         "nao_descontado": len(nao_desc),
         "nao_encontrado": len(nao_enc),
+        "associados_importados": len(nao_enc),
         "pendencia_manual": len(pendencia),
         "ciclo_aberto": len(ciclo_aberto),
         "valor_previsto": str(valor_previsto),
