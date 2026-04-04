@@ -47,6 +47,8 @@ def _active_operational_refis(contrato: Contrato) -> list[Refinanciamento]:
                 Refinanciamento.Status.APTO_A_RENOVAR,
                 Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
                 Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+                Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
                 Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
                 Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
                 Refinanciamento.Status.PENDENTE_APTO,
@@ -471,6 +473,14 @@ def rebuild_contract_cycle_state(
     if extra_reference_by_parcela_id:
         old_reference_by_parcela_id.update(extra_reference_by_parcela_id)
 
+    # Months with an active BaixaManual are managed outside the cycle — skip their parcelas.
+    baixa_manual_refs: set[object] = set(
+        BaixaManual.objects.filter(
+            parcela__associado=contrato.associado,
+            deleted_at__isnull=True,
+        ).values_list("parcela__referencia_mes", flat=True)
+    )
+
     cycle_by_number: dict[int, Ciclo] = {}
     new_parcela_by_reference: dict[object, Parcela] = {}
     for desired_cycle in desired_cycles:
@@ -485,11 +495,19 @@ def rebuild_contract_cycle_state(
             ).order_by("numero", "deleted_at", "id")
         }
         for desired_parcela in desired_cycle["parcelas"]:
+            ref = desired_parcela["referencia_mes"]
+            existing = current_parcelas.pop(desired_parcela["numero"], None)
+            if ref in baixa_manual_refs:
+                # The BaixaManual owns this month; soft-delete the parcela if it exists.
+                if existing is not None and existing.deleted_at is None:
+                    existing.soft_delete()
+                    report.parcelas_invalidas_soft_deleted += 1
+                continue
             parcela = _ensure_parcela(
                 cycle,
                 contrato,
                 desired_parcela,
-                current_parcelas.pop(desired_parcela["numero"], None),
+                existing,
             )
             new_parcela_by_reference[parcela.referencia_mes] = parcela
         _soft_delete_extra_parcelas(list(current_parcelas.values()), report)

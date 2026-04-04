@@ -94,8 +94,19 @@ class LegacyDatabaseSyncAuthTestCase(TestCase):
         return hashed.replace("$2b$", "$2y$", 1)
 
     @classmethod
+    def tearDownClass(cls):
+        with connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS role_user")
+            cursor.execute("DROP TABLE IF EXISTS roles")
+            cursor.execute("DROP TABLE IF EXISTS users")
+        super().tearDownClass()
+
+    @classmethod
     def setUpTestData(cls):
         with connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS role_user")
+            cursor.execute("DROP TABLE IF EXISTS roles")
+            cursor.execute("DROP TABLE IF EXISTS users")
             cursor.execute(
                 """
                 CREATE TABLE users (

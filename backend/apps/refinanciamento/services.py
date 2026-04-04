@@ -10,7 +10,7 @@ from rest_framework.exceptions import ValidationError
 from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.cycle_timeline import get_contract_cycle_size
-from apps.contratos.models import Contrato, Parcela
+from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.models import EsteiraItem, Transicao
 from apps.importacao.models import PagamentoMensalidade
 from apps.tesouraria.models import Pagamento
@@ -241,8 +241,6 @@ class RefinanciamentoService:
         evaluation = RefinanciamentoService.strategy.evaluate(contrato)
         if not evaluation["elegivel"]:
             raise ValidationError(evaluation["motivo"])
-        if not termo_antecipacao:
-            raise ValidationError("O termo de antecipação é obrigatório.")
 
         _, refinanciamento = RefinanciamentoService._sync_contract_and_get_refi(
             contrato
@@ -256,6 +254,14 @@ class RefinanciamentoService:
         reenviado_pelo_agente = (
             refinanciamento.status == Refinanciamento.Status.PENDENTE_TERMO_AGENTE
         )
+        if not termo_antecipacao:
+            comprovantes_contrato = contrato.comprovantes.filter(
+                refinanciamento__isnull=True
+            )
+            if reenviado_pelo_agente or not comprovantes_contrato.exists():
+                raise ValidationError(
+                    {"termo_antecipacao": ["Nenhum arquivo foi submetido."]}
+                )
         if (
             normalized_status != Refinanciamento.Status.APTO_A_RENOVAR
             and not reenviado_pelo_agente
@@ -271,21 +277,31 @@ class RefinanciamentoService:
         if not reenviado_pelo_agente:
             refinanciamento.analista_note = ""
             refinanciamento.coordenador_note = ""
-        refinanciamento.termo_antecipacao_path = getattr(termo_antecipacao, "name", "")
-        refinanciamento.termo_antecipacao_original_name = getattr(
-            termo_antecipacao, "name", ""
+        refinanciamento.termo_antecipacao_path = (
+            getattr(termo_antecipacao, "name", "") if termo_antecipacao else ""
+        )
+        refinanciamento.termo_antecipacao_original_name = (
+            getattr(termo_antecipacao, "name", "") if termo_antecipacao else ""
         )
         refinanciamento.termo_antecipacao_mime = (
-            getattr(termo_antecipacao, "content_type", "") or ""
+            (getattr(termo_antecipacao, "content_type", "") or "")
+            if termo_antecipacao
+            else ""
         )
-        refinanciamento.termo_antecipacao_size_bytes = getattr(
-            termo_antecipacao, "size", None
+        refinanciamento.termo_antecipacao_size_bytes = (
+            getattr(termo_antecipacao, "size", None) if termo_antecipacao else None
         )
-        refinanciamento.termo_antecipacao_uploaded_at = timezone.now()
+        refinanciamento.termo_antecipacao_uploaded_at = (
+            timezone.now() if termo_antecipacao else None
+        )
         refinanciamento.observacao = (
             "Agente reenviou o termo de antecipação para nova análise."
             if reenviado_pelo_agente
-            else "Agente anexou o termo de antecipação e enviou a renovação para análise."
+            else (
+                "Agente anexou o termo de antecipação e enviou a renovação para análise."
+                if termo_antecipacao
+                else "Agente solicitou a renovação para análise."
+            )
         )
         refinanciamento.save(
             update_fields=[
@@ -305,17 +321,18 @@ class RefinanciamentoService:
             ]
         )
 
-        Comprovante.objects.create(
-            refinanciamento=refinanciamento,
-            contrato=contrato,
-            ciclo=refinanciamento.ciclo_origem,
-            tipo=Comprovante.Tipo.TERMO_ANTECIPACAO,
-            papel=Comprovante.Papel.AGENTE,
-            origem=Comprovante.Origem.SOLICITACAO_RENOVACAO,
-            arquivo=termo_antecipacao,
-            nome_original=getattr(termo_antecipacao, "name", ""),
-            enviado_por=user,
-        )
+        if termo_antecipacao is not None:
+            Comprovante.objects.create(
+                refinanciamento=refinanciamento,
+                contrato=contrato,
+                ciclo=refinanciamento.ciclo_origem,
+                tipo=Comprovante.Tipo.TERMO_ANTECIPACAO,
+                papel=Comprovante.Papel.AGENTE,
+                origem=Comprovante.Origem.SOLICITACAO_RENOVACAO,
+                arquivo=termo_antecipacao,
+                nome_original=getattr(termo_antecipacao, "name", ""),
+                enviado_por=user,
+            )
 
         assumption = RefinanciamentoService._assumption_for_refinanciamento(refinanciamento)
         if assumption:
@@ -405,22 +422,50 @@ class RefinanciamentoService:
     @transaction.atomic
     def aprovar(refinanciamento_id: int, user, observacao: str = "") -> Refinanciamento:
         refinanciamento = RefinanciamentoService._get_refinanciamento(refinanciamento_id)
-        if (
-            _normalize_status(refinanciamento.status)
-            != Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO
-        ):
+        normalized = _normalize_status(refinanciamento.status)
+
+        # Fluxo legado sem termo: agente não submeteu termo e a coordenação aprova diretamente.
+        is_legado_sem_termo = (
+            refinanciamento.status == Refinanciamento.Status.EM_ANALISE_RENOVACAO
+            and not refinanciamento.termo_antecipacao_path
+        )
+
+        if not is_legado_sem_termo and normalized != Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO:
             raise ValidationError(
                 "Somente renovações aprovadas pela análise podem seguir para a tesouraria."
             )
 
-        refinanciamento.status = Refinanciamento.Status.APROVADO_PARA_RENOVACAO
-        refinanciamento.aprovado_por = user
-        refinanciamento.coordenador_note = (
-            observacao.strip() or "Renovação validada pela coordenação."
-        )
-        refinanciamento.save(
-            update_fields=["status", "aprovado_por", "coordenador_note", "updated_at"]
-        )
+        if is_legado_sem_termo:
+            # Materializa o próximo ciclo via rebuild e vincula como ciclo_destino.
+            contrato = refinanciamento.contrato_origem
+            rebuild_contract_cycle_state(contrato, execute=True)
+            refinanciamento.refresh_from_db()
+            ciclo_origem_numero = (
+                refinanciamento.ciclo_origem.numero if refinanciamento.ciclo_origem_id else 1
+            )
+            ciclo_destino = (
+                Ciclo.objects.filter(
+                    contrato=contrato,
+                    numero=ciclo_origem_numero + 1,
+                    deleted_at__isnull=True,
+                ).first()
+            )
+            refinanciamento.status = Refinanciamento.Status.CONCLUIDO
+            refinanciamento.aprovado_por = user
+            refinanciamento.coordenador_note = observacao.strip() or "Renovação validada pela coordenação."
+            refinanciamento.ciclo_destino = ciclo_destino
+            refinanciamento.save(
+                update_fields=["status", "aprovado_por", "coordenador_note", "ciclo_destino", "updated_at"]
+            )
+        else:
+            refinanciamento.status = Refinanciamento.Status.APROVADO_PARA_RENOVACAO
+            refinanciamento.aprovado_por = user
+            refinanciamento.coordenador_note = (
+                observacao.strip() or "Renovação validada pela coordenação."
+            )
+            refinanciamento.save(
+                update_fields=["status", "aprovado_por", "coordenador_note", "updated_at"]
+            )
 
         observacao_auditoria = (
             "Coordenação validou os anexos e encaminhou a renovação para a tesouraria."
@@ -747,7 +792,10 @@ class RefinanciamentoService:
         user,
     ) -> Refinanciamento:
         refinanciamento = RefinanciamentoService._get_refinanciamento(refinanciamento_id)
-        if _normalize_status(refinanciamento.status) != Refinanciamento.Status.APROVADO_PARA_RENOVACAO:
+        if (
+            refinanciamento.status != Refinanciamento.Status.CONCLUIDO
+            and _normalize_status(refinanciamento.status) != Refinanciamento.Status.APROVADO_PARA_RENOVACAO
+        ):
             raise ValidationError(
                 "Somente renovações validadas pela coordenação podem ser efetivadas."
             )

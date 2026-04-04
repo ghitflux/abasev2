@@ -130,7 +130,7 @@ class Contrato(BaseModel):
             timestamp = timezone.now().strftime("%Y%m%d%H%M%S")
             self.codigo = f"CTR-{timestamp}-{secrets.token_hex(3).upper()}"
         comissao_agente = self.calculate_comissao_agente()
-        if comissao_agente is not None:
+        if comissao_agente is not None and not self.comissao_agente:
             self.comissao_agente = comissao_agente
         valor_mensalidade = self._to_decimal(self.valor_mensalidade)
         if valor_mensalidade and self.prazo_meses:

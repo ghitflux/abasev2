@@ -561,7 +561,7 @@ class RefinanciamentoPagamentosTestCase(TestCase):
             ).count(),
             2,
         )
-        self.assertEqual(refinanciamento.coordenador_note, "Encaminhado para liquidacao")
+        self.assertEqual(refinanciamento.coordenador_note, "Revisar assinatura do termo.")
 
         fila_coord = self.coord_client.get("/api/v1/coordenacao/refinanciamento/")
         self.assertEqual(fila_coord.status_code, 200, fila_coord.json())

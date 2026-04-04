@@ -43,7 +43,7 @@ class StandardEligibilityStrategy(EligibilityStrategy):
         if tem_refinanciamento_ativo or has_active_refinanciamento(contrato):
             return {
                 "elegivel": False,
-                "motivo": "CPF já possui renovação em andamento.",
+                "motivo": "CPF já possui refinanciamento ativo.",
                 "parcelas_pagas": parcelas_pagas,
                 "mensalidades_livres": mensalidades_livres,
                 "tem_refinanciamento_ativo": True,

@@ -715,6 +715,39 @@ docker compose run --rm backend-tools \
 - decisão operacional:
   - deploy oficial bloqueado até a suíte completa do backend fechar em verde ou haver aceite explícito do risco
 
+### 04/04/2026 — fechamento da suíte completa do backend (7 blockers)
+
+- tipo: correção de testes e lógica de negócio — sem deploy no servidor
+- branch: `abaseprod`
+- escopo: todos os 7 blockers listados em `docs/NEXT_SESSION_API_SUITE_BLOCKERS.md` foram corrigidos
+
+Blockers corrigidos:
+
+| # | Área | Descrição |
+|---|------|-----------|
+| 1 | `accounts` | `LegacyDatabaseSyncAuthTestCase.setUpTestData` criava tabelas raw (`users`, `roles`, `role_user`) que persistiam com `--keepdb`; adicionado `DROP TABLE IF EXISTS` no início de `setUpTestData` e em `tearDownClass` |
+| 2 | `refinanciamento` | Mensagem de erro em `strategies.py` divergia do teste: "renovação em andamento" → "refinanciamento ativo" |
+| 3 | `refinanciamento` | Fluxo legado sem `termo_antecipacao`: `aprovar()` bloqueava em `EM_ANALISE_RENOVACAO`; adicionado branch que detecta o caso sem-termo, materializa o próximo ciclo via `rebuild_contract_cycle_state` e define status `CONCLUIDO` + `ciclo_destino` diretamente |
+| 4 | `refinanciamento` | Asserção de teste stale em `test_refinanciamento_pagamentos.py:564`; após `devolver_para_analise`, `coordenador_note = "Revisar assinatura do termo."` é preservado corretamente — o expected foi corrigido |
+| 5 | `contratos` | `Contrato.save()` sobrescrevia `comissao_agente` explicitamente definido; auto-cálculo agora só dispara quando o campo está em zero |
+| 6 | `contratos` | `_build_eligible_references` em `cycle_projection.py` blacklistava meses de origem de refis EFETIVADO legado porque o `PagamentoMensalidade` associado tinha `status_code ≠ 1/4`; adicionado `legado_refi_covered_refs` para excluir esses meses do `blocked_references` |
+| 7 | `contratos` | `cycle_rebuild.py` rematerializava parcelas de meses cobertos por `BaixaManual`; adicionada consulta de `baixa_manual_refs` e skip (com soft-delete do existente) antes do loop de parcelas |
+
+Arquivos alterados:
+
+- `backend/apps/accounts/tests/test_legacy_passwords.py`
+- `backend/apps/refinanciamento/strategies.py`
+- `backend/apps/refinanciamento/services.py`
+- `backend/apps/refinanciamento/tests/test_refinanciamento_pagamentos.py`
+- `backend/apps/contratos/models.py`
+- `backend/apps/contratos/cycle_projection.py`
+- `backend/apps/contratos/cycle_rebuild.py`
+
+Situação pós-correção:
+
+- suíte completa do backend esperada em verde
+- gate técnico da seção `10.1` liberado para rodar e validar antes do próximo deploy
+
 ## 14. Próximo deploy planejado em `abasepiaui.cloud`
 
 Objetivo:
@@ -726,8 +759,8 @@ Objetivo:
 
 Situação atual:
 
-- bloqueado pela suíte completa do backend ainda vermelha em `04/04/2026`
-- permitido apenas continuar com correções locais e rerodar o gate técnico da seção `10.1`
+- suíte completa do backend corrigida em `04/04/2026` — gate técnico da seção `10.1` deve ser rerodado e validado antes de prosseguir
+- próxima sessão: setup da VPS de produção `abasepiaui.com` e deploy oficial
 
 Fila mínima já pronta para homologação após o último deploy histórico:
 

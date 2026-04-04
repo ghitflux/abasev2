@@ -363,6 +363,12 @@ def _merge_financial_references(
         pagamentos = _query_pagamentos(contrato)
     baixas = _query_baixas(contrato)
     fallback_parcelas = _query_current_parcelas(contrato)
+    materialized_paid_by_reference = {
+        _month_start(parcela.referencia_mes): parcela
+        for parcela in fallback_parcelas
+        if _month_start(parcela.referencia_mes) is not None
+        and parcela.status in {Parcela.Status.DESCONTADO, Parcela.Status.LIQUIDADA}
+    }
 
     paid_by_reference: dict[date, FinancialReference] = {}
     unpaid_by_reference: dict[date, FinancialReference] = {}
@@ -377,6 +383,24 @@ def _merge_financial_references(
             unpaid_by_reference.pop(referencia, None)
             continue
         if _is_manual_regularized_pagamento(pagamento):
+            materialized_paid = materialized_paid_by_reference.get(referencia)
+            if materialized_paid is not None:
+                paid_by_reference[referencia] = FinancialReference(
+                    referencia_mes=referencia,
+                    status=materialized_paid.status,
+                    data_pagamento=materialized_paid.data_pagamento
+                    or _pagamento_paid_date(pagamento),
+                    valor=pagamento.recebido_manual
+                    or pagamento.valor
+                    or materialized_paid.valor
+                    or contrato.valor_mensalidade,
+                    observacao=materialized_paid.observacao or "Quitado via ajuste manual.",
+                    source="manual_regularized",
+                    counts_for_cycle=True,
+                    had_unpaid_event=False,
+                )
+                unpaid_by_reference.pop(referencia, None)
+                continue
             paid_by_reference[referencia] = FinancialReference(
                 referencia_mes=referencia,
                 status=PROJECTION_STATUS_QUITADA,
@@ -432,6 +456,20 @@ def _merge_financial_references(
     for baixa in baixas:
         referencia = _month_start(getattr(baixa.parcela, "referencia_mes", None))
         if referencia is None:
+            continue
+        materialized_paid = materialized_paid_by_reference.get(referencia)
+        if materialized_paid is not None:
+            paid_by_reference[referencia] = FinancialReference(
+                referencia_mes=referencia,
+                status=materialized_paid.status,
+                data_pagamento=materialized_paid.data_pagamento or baixa.data_baixa,
+                valor=baixa.valor_pago or materialized_paid.valor or contrato.valor_mensalidade,
+                observacao=baixa.observacao or materialized_paid.observacao or "",
+                source="baixa_manual",
+                counts_for_cycle=True,
+                had_unpaid_event=False,
+            )
+            unpaid_by_reference.pop(referencia, None)
             continue
         had_unpaid_event = True
         paid_by_reference[referencia] = FinancialReference(
@@ -900,6 +938,22 @@ def _build_projection_parcela(
     }
 
 
+def _coerce_regularized_renewal_reference(item: FinancialReference) -> FinancialReference:
+    return FinancialReference(
+        referencia_mes=item.referencia_mes,
+        status=PROJECTION_STATUS_QUITADA,
+        data_pagamento=item.data_pagamento,
+        valor=item.valor,
+        observacao=(
+            item.observacao
+            or "Competência quitada via relatório manual na ativação do ciclo."
+        ),
+        source=item.source,
+        counts_for_cycle=True,
+        had_unpaid_event=item.had_unpaid_event,
+    )
+
+
 def _build_cycle_dict(
     *,
     contrato: Contrato,
@@ -1204,10 +1258,10 @@ def build_contract_cycle_projection(
     threshold = get_future_generation_threshold(contrato)
     paid, unpaid, regularized = _merge_financial_references(contrato)
     paid_map = {item.referencia_mes: item for item in paid}
+    regularized_map = {item.referencia_mes: item for item in regularized}
     all_refs = [*paid, *unpaid, *regularized]
     unpaid_reference_set = {item.referencia_mes for item in unpaid}
     regularized_reference_set = {item.referencia_mes for item in regularized}
-    blocked_references = unpaid_reference_set | regularized_reference_set
 
     if not _contract_is_activated(contrato, all_refs):
         unpaid_rows = [
@@ -1241,6 +1295,21 @@ def build_contract_cycle_projection(
 
     activation_payload = get_contract_activation_payload(contrato)
     renewals = _effective_renewals(contrato, refs=all_refs)
+    forced_regularized_paid_map = {
+        renewal.first_reference: _coerce_regularized_renewal_reference(
+            regularized_map[renewal.first_reference]
+        )
+        for renewal in renewals
+        if renewal.first_reference in regularized_map
+    }
+    # Months that belong to an EFETIVADO legado refi's origin cycle are authoritative
+    # and must never be blacklisted, even if the payment record shows a non-paid status.
+    legado_refi_covered_refs: set[date] = set()
+    for renewal in renewals:
+        if renewal.refinanciamento.legacy_refinanciamento_id is not None:
+            for ref in _renewal_origin_refs(renewal.refinanciamento):
+                legado_refi_covered_refs.add(ref.replace(day=1))
+    blocked_references = (unpaid_reference_set | regularized_reference_set) - legado_refi_covered_refs
     operational_refis = _active_operational_refinanciamentos(contrato)
     operational_refi = operational_refis[0] if operational_refis else None
 
@@ -1265,15 +1334,37 @@ def build_contract_cycle_projection(
                 if current_reference not in blocked_references:
                     references.append(current_reference)
                 current_reference = _add_months(current_reference, 1)
-        cycle_reference_set.update(references)
+
         renewal = renewals[index - 2] if index > 1 and index - 2 < len(renewals) else None
         next_renewal = renewals[index - 1] if index - 1 < len(renewals) else None
+        cycle_paid_map = paid_map
+        if renewal is not None and renewal.first_reference in forced_regularized_paid_map:
+            references = [
+                _add_months(renewal.first_reference, offset)
+                for offset in range(cycle_size)
+            ]
+            cycle_paid_map = {
+                **paid_map,
+                renewal.first_reference: forced_regularized_paid_map[
+                    renewal.first_reference
+                ],
+            }
+        cycle_reference_set.update(references)
 
-        paid_count = sum(1 for referencia in references if referencia in paid_map)
         parcelas = []
+        paid_count = 0
+        seed_activated_cycle = (
+            index == 1
+            and not paid_map
+            and not unpaid
+            and not regularized
+            and _contract_is_activated(contrato, all_refs)
+        )
         for slot, referencia in enumerate(references, start=1):
-            explicit = paid_map.get(referencia)
+            explicit = cycle_paid_map.get(referencia)
             if explicit is not None:
+                if explicit.counts_for_cycle:
+                    paid_count += 1
                 parcelas.append(
                     _build_projection_parcela(
                         contrato=contrato,
@@ -1288,13 +1379,18 @@ def build_contract_cycle_projection(
                 )
                 continue
 
+            default_status = Parcela.Status.EM_PREVISAO
+            if seed_activated_cycle:
+                default_status = (
+                    Parcela.Status.EM_ABERTO if slot == 1 else Parcela.Status.FUTURO
+                )
             parcelas.append(
                 _build_projection_parcela(
                     contrato=contrato,
                     cycle_number=index,
                     slot_number=slot,
                     referencia_mes=referencia,
-                    status=Parcela.Status.EM_PREVISAO,
+                    status=default_status,
                 )
             )
 
