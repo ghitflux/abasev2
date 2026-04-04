@@ -9,8 +9,9 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.accounts.services import ComissaoService
+from apps.contratos.competencia import create_cycle_with_parcelas
 from apps.contratos.cycle_projection import build_contract_cycle_projection
-from apps.contratos.models import Ciclo, Contrato
+from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.services import EsteiraService
 
 from .factories import AssociadoFactory
@@ -178,6 +179,17 @@ class AssociadoService:
             contato_web=True,
             termos_web=True,
             status=Contrato.Status.EM_ANALISE,
+        )
+        create_cycle_with_parcelas(
+            contrato=contrato,
+            numero=1,
+            competencia_inicial=data_primeira_mensalidade.replace(day=1),
+            parcelas_total=prazo_meses,
+            ciclo_status=Ciclo.Status.ABERTO,
+            parcela_status=Parcela.Status.EM_PREVISAO,
+            data_vencimento_fn=day_of_month,
+            valor_mensalidade=valor_mensalidade,
+            valor_total=contrato.valor_total_antecipacao,
         )
 
         EsteiraService.garantir_item_inicial_cadastro(

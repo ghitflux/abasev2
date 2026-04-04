@@ -7,6 +7,10 @@ from decimal import Decimal
 from django.utils import timezone
 
 from apps.associados.models import Associado
+from apps.importacao.manual_payment_flags import (
+    is_manual_payment_in_cycle,
+    is_manual_payment_outside_cycle,
+)
 from apps.importacao.models import PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante, Refinanciamento
 from apps.tesouraria.models import BaixaManual, Pagamento
@@ -217,6 +221,16 @@ def _is_manual_regularized_pagamento(pagamento: PagamentoMensalidade) -> bool:
     return pagamento.manual_status == PagamentoMensalidade.ManualStatus.PAGO
 
 
+def _manual_regularized_counts_for_cycle(pagamento: PagamentoMensalidade) -> bool | None:
+    if not _is_manual_regularized_pagamento(pagamento):
+        return None
+    if is_manual_payment_in_cycle(pagamento.manual_forma_pagamento):
+        return True
+    if is_manual_payment_outside_cycle(pagamento.manual_forma_pagamento):
+        return False
+    return None
+
+
 def _pagamento_paid_date(pagamento: PagamentoMensalidade) -> date:
     if pagamento.manual_paid_at:
         return pagamento.manual_paid_at.date()
@@ -383,7 +397,57 @@ def _merge_financial_references(
             unpaid_by_reference.pop(referencia, None)
             continue
         if _is_manual_regularized_pagamento(pagamento):
+            manual_counts_for_cycle = _manual_regularized_counts_for_cycle(pagamento)
             materialized_paid = materialized_paid_by_reference.get(referencia)
+            if manual_counts_for_cycle is True:
+                paid_by_reference[referencia] = FinancialReference(
+                    referencia_mes=referencia,
+                    status=(
+                        materialized_paid.status
+                        if materialized_paid is not None
+                        else Parcela.Status.DESCONTADO
+                    ),
+                    data_pagamento=(
+                        materialized_paid.data_pagamento
+                        if materialized_paid is not None and materialized_paid.data_pagamento
+                        else _pagamento_paid_date(pagamento)
+                    ),
+                    valor=pagamento.recebido_manual
+                    or pagamento.valor
+                    or (
+                        materialized_paid.valor if materialized_paid is not None else None
+                    )
+                    or contrato.valor_mensalidade,
+                    observacao=(
+                        materialized_paid.observacao
+                        if materialized_paid is not None and materialized_paid.observacao
+                        else "Competência quitada manualmente e integrada ao ciclo."
+                    ),
+                    source="manual_regularized",
+                    counts_for_cycle=True,
+                    had_unpaid_event=False,
+                )
+                unpaid_by_reference.pop(referencia, None)
+                continue
+            if manual_counts_for_cycle is False:
+                paid_by_reference[referencia] = FinancialReference(
+                    referencia_mes=referencia,
+                    status=PROJECTION_STATUS_QUITADA,
+                    data_pagamento=_pagamento_paid_date(pagamento),
+                    valor=pagamento.recebido_manual
+                    or pagamento.valor
+                    or (
+                        materialized_paid.valor if materialized_paid is not None else None
+                    )
+                    or contrato.valor_mensalidade,
+                    observacao="Competência quitada manualmente fora do ciclo.",
+                    source="manual_regularized",
+                    counts_for_cycle=False,
+                    had_unpaid_event=True,
+                )
+                unpaid_by_reference.pop(referencia, None)
+                references_with_unpaid_history.add(referencia)
+                continue
             if materialized_paid is not None:
                 paid_by_reference[referencia] = FinancialReference(
                     referencia_mes=referencia,

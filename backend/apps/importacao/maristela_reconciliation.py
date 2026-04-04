@@ -20,10 +20,10 @@ from apps.associados.models import Associado, only_digits
 from apps.contratos.competencia import propagate_competencia_status
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Contrato, Parcela
+from apps.importacao.manual_payment_flags import MANUAL_PAYMENT_KIND_MARISTELA_IN_CYCLE
 from apps.importacao.matching import normalize_matricula
 from apps.importacao.models import PagamentoMensalidade
 from apps.tesouraria.models import BaixaManual
-from apps.tesouraria.services import BaixaManualService
 
 PERIOD_REFERENCE_MAP: dict[str, date] = {
     "outubro/25": date(2025, 10, 1),
@@ -775,83 +775,6 @@ class MaristelaReconciliationRunner:
         note = self._build_parcela_note(raw_value=target.descricao, referencia=referencia)
 
         if baixa is not None:
-            if parcela.status == Parcela.Status.LIQUIDADA:
-                return []
-            desired_date = parcela.data_pagamento or baixa.data_baixa or _default_paid_date(referencia)
-            if (
-                parcela.status == Parcela.Status.DESCONTADO
-                and parcela.data_pagamento == desired_date
-            ):
-                return []
-            correction = self._build_correction(
-                row=row,
-                associado=associado,
-                contrato=parcela.ciclo.contrato,
-                referencia=referencia,
-                entity="parcela",
-                entity_id=parcela.id,
-                action="update_status",
-                reason="existing_baixa_manual",
-                before=self._serialize_parcela(parcela),
-                after={
-                    **self._serialize_parcela(parcela),
-                    "status": Parcela.Status.DESCONTADO,
-                    "data_pagamento": _reference_label(desired_date),
-                    "observacao": parcela.observacao,
-                },
-            )
-            if self.execute:
-                parcela.status = Parcela.Status.DESCONTADO
-                parcela.data_pagamento = desired_date
-                parcela.save(
-                    update_fields=["status", "data_pagamento", "updated_at"]
-                )
-                propagate_competencia_status(parcela)
-            corrections.append(correction)
-            return corrections
-
-        if parcela.status in {
-            Parcela.Status.EM_ABERTO,
-            Parcela.Status.EM_PREVISAO,
-            Parcela.Status.NAO_DESCONTADO,
-        }:
-            desired_date = _default_paid_date(referencia)
-            correction = self._build_correction(
-                row=row,
-                associado=associado,
-                contrato=parcela.ciclo.contrato,
-                referencia=referencia,
-                entity="baixa_manual",
-                entity_id=None,
-                action="create_via_service",
-                reason="sheet_manual_paid",
-                before={"parcela_status": parcela.status},
-                after={
-                    "parcela_id": parcela.id,
-                    "valor_pago": str(valor),
-                    "data_baixa": _reference_label(desired_date),
-                    "observacao": note,
-                },
-            )
-            if self.execute:
-                baixa_manual = BaixaManualService.dar_baixa(
-                    parcela_id=parcela.id,
-                    comprovante=self._build_manual_receipt_file(associado, referencia, note),
-                    valor_pago=valor,
-                    observacao=note,
-                    user=self.actor,
-                )
-                baixa_manual.data_baixa = desired_date
-                baixa_manual.save(update_fields=["data_baixa", "updated_at"])
-                parcela.refresh_from_db()
-                if parcela.data_pagamento != desired_date:
-                    parcela.data_pagamento = desired_date
-                    parcela.save(update_fields=["data_pagamento", "updated_at"])
-                    propagate_competencia_status(parcela)
-            return [correction]
-
-        if parcela.status == Parcela.Status.DESCONTADO:
-            desired_date = parcela.data_pagamento or _default_paid_date(referencia)
             corrections.append(
                 self._build_correction(
                     row=row,
@@ -859,38 +782,31 @@ class MaristelaReconciliationRunner:
                     contrato=parcela.ciclo.contrato,
                     referencia=referencia,
                     entity="baixa_manual",
-                    entity_id=None,
-                    action="backfill_manual_record",
-                    reason="sheet_manual_paid",
-                    before={"exists": False},
-                    after={
-                        "parcela_id": parcela.id,
-                        "valor_pago": str(valor),
-                        "data_baixa": _reference_label(desired_date),
-                        "observacao": note,
-                    },
+                    entity_id=baixa.id,
+                    action="soft_delete",
+                    reason="manual_target_counts_for_cycle",
+                    before=self._serialize_baixa(baixa),
+                    after={"deleted_at": self.generated_at.isoformat()},
                 )
             )
             if self.execute:
-                if parcela.data_pagamento != desired_date:
-                    parcela.data_pagamento = desired_date
-                    parcela.save(
-                        update_fields=["data_pagamento", "updated_at"]
-                    )
-                    propagate_competencia_status(parcela)
-                BaixaManual.objects.create(
-                    parcela=parcela,
-                    realizado_por=self.actor,
-                    comprovante=self._build_manual_receipt_file(associado, referencia, note),
-                    nome_comprovante=f"conciliacao_maristela_{associado.cpf_cnpj}_{referencia.strftime('%Y%m')}.txt",
-                    observacao=note,
-                    valor_pago=valor,
-                    data_baixa=desired_date,
-                )
-            return corrections
+                baixa.soft_delete()
 
         if parcela.status == Parcela.Status.LIQUIDADA:
-            return []
+            return corrections
+
+        desired_date = (
+            parcela.data_pagamento
+            or (baixa.data_baixa if baixa is not None else None)
+            or _default_paid_date(referencia)
+        )
+        desired_observacao = _append_note(parcela.observacao, note)
+        if (
+            parcela.status == Parcela.Status.DESCONTADO
+            and parcela.data_pagamento == desired_date
+            and parcela.observacao == desired_observacao
+        ):
+            return corrections
 
         corrections.append(
             self._build_correction(
@@ -900,12 +816,25 @@ class MaristelaReconciliationRunner:
                 referencia=referencia,
                 entity="parcela",
                 entity_id=parcela.id,
-                action="skipped",
-                reason="unsupported_manual_state",
+                action="update_status",
+                reason="sheet_manual_paid_in_cycle",
                 before=self._serialize_parcela(parcela),
-                after={},
+                after={
+                    **self._serialize_parcela(parcela),
+                    "status": Parcela.Status.DESCONTADO,
+                    "data_pagamento": _reference_label(desired_date),
+                    "observacao": desired_observacao,
+                },
             )
         )
+        if self.execute:
+            parcela.status = Parcela.Status.DESCONTADO
+            parcela.data_pagamento = desired_date
+            parcela.observacao = desired_observacao
+            parcela.save(
+                update_fields=["status", "data_pagamento", "observacao", "updated_at"]
+            )
+            propagate_competencia_status(parcela)
         return corrections
 
     def _ensure_unpaid(
@@ -998,7 +927,7 @@ class MaristelaReconciliationRunner:
                     recebido_manual=valor,
                     manual_status=PagamentoMensalidade.ManualStatus.PAGO,
                     manual_paid_at=_default_manual_paid_at(referencia),
-                    manual_forma_pagamento="conciliacao_planilha_maristela",
+                    manual_forma_pagamento=MANUAL_PAYMENT_KIND_MARISTELA_IN_CYCLE,
                     manual_by=self.actor,
                     source_file_path=SHEET_SOURCE_PATH,
                 )
@@ -1026,7 +955,7 @@ class MaristelaReconciliationRunner:
                         "status_code": "M",
                         "manual_status": PagamentoMensalidade.ManualStatus.PAGO,
                         "manual_paid_at": _default_manual_paid_at(referencia),
-                        "manual_forma_pagamento": "conciliacao_planilha_maristela",
+                        "manual_forma_pagamento": MANUAL_PAYMENT_KIND_MARISTELA_IN_CYCLE,
                         "manual_by_id": self.actor.id if self.actor else None,
                         "recebido_manual": valor,
                     }

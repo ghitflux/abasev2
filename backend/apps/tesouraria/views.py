@@ -8,6 +8,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, permissions
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
@@ -746,7 +747,14 @@ class DevolucaoAssociadoViewSet(mixins.ListModelMixin, GenericViewSet):
         return Response({"results": serializer.data, "kpis": kpis})
 
     def partial_update(self, request, pk=None):
-        devolucao = self.get_object()
+        devolucao = (
+            DevolucaoAssociado.all_objects.prefetch_related("anexos")
+            .select_related("contrato", "associado")
+            .filter(pk=pk)
+            .first()
+        )
+        if devolucao is None:
+            raise ValidationError("Registro de devolução não encontrado.")
         payload = self.get_serializer(
             data=request.data,
             context={

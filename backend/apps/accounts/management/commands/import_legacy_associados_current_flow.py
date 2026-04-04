@@ -293,9 +293,6 @@ class Command(BaseCommand):
             schedule_conflicts = self._collect_schedule_conflicts(contrato=contrato, row=row)
             if schedule_conflicts:
                 summary["competencia_conflicts"] += 1
-                if contrato_created and had_existing_contracts and contrato.deleted_at is None:
-                    contrato.soft_delete()
-                    summary["contratos_soft_deleted"] += 1
                 self.stderr.write(
                     (
                         "Agenda ignorada para contrato {codigo} por conflito de competência: "

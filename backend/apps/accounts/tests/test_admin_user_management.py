@@ -108,9 +108,9 @@ class AdminUserManagementTestCase(TestCase):
         self.assertIn(self.agente.email, emails)
         self.assertIn(self.coordenador.email, emails)
         self.assertNotIn(self.associado.email, emails)
-        self.assertEqual(payload["meta"]["total"], 5)
+        self.assertEqual(payload["meta"]["total"], 6)
         self.assertEqual(payload["meta"]["admins"], 1)
-        self.assertEqual(payload["meta"]["ativos"], 5)
+        self.assertEqual(payload["meta"]["ativos"], 6)
 
     def test_agente_nao_pode_listar_gerenciamento_de_usuarios(self):
         response = self.agente_client.get("/api/v1/configuracoes/usuarios/")

@@ -177,14 +177,14 @@ router.register(
     basename="tesouraria-liquidacao",
 )
 router.register(
-    r"tesouraria/devolucoes",
-    DevolucaoAssociadoViewSet,
-    basename="tesouraria-devolucao",
-)
-router.register(
     r"tesouraria/devolucoes/contratos",
     DevolucaoContratoViewSet,
     basename="tesouraria-devolucao-contrato",
+)
+router.register(
+    r"tesouraria/devolucoes",
+    DevolucaoAssociadoViewSet,
+    basename="tesouraria-devolucao",
 )
 router.register(
     r"tesouraria/despesas",

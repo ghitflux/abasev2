@@ -18,7 +18,6 @@ from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Contrato, Parcela
 from apps.esteira.models import EsteiraItem, Transicao
 from apps.financeiro.models import Despesa
-from apps.importacao.financeiro import canonicalize_pagamentos as canonicalize_financeiro_pagamentos
 from apps.importacao.models import PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante, Refinanciamento
 
@@ -695,6 +694,77 @@ class BaixaManualService:
 
 
 class DespesaService:
+    @staticmethod
+    def _pagamento_receita_identity(
+        pagamento: PagamentoMensalidade,
+        origem: str,
+    ) -> tuple[str, object, date]:
+        associado_key = pagamento.associado_id or re.sub(r"\D", "", pagamento.cpf_cnpj or "")
+        return origem, associado_key, pagamento.referencia_month
+
+    @staticmethod
+    def _pagamento_receita_recency_key(
+        pagamento: PagamentoMensalidade,
+    ) -> tuple[object, int]:
+        return (
+            pagamento.manual_paid_at or pagamento.updated_at or pagamento.created_at,
+            pagamento.id,
+        )
+
+    @classmethod
+    def _listar_receitas_pagamentos(
+        cls,
+        *,
+        start: date,
+        end: date,
+        agent_filter: dict[str, object] | None = None,
+    ) -> list[tuple[str, PagamentoMensalidade]]:
+        pagamentos = list(
+            PagamentoMensalidade.objects.filter(
+                referencia_month__gte=start,
+                referencia_month__lt=end,
+            )
+            .select_related("associado", "associado__agente_responsavel")
+            .order_by("referencia_month", "id")
+        )
+        if agent_filter is not None:
+            pagamentos = [
+                pagamento
+                for pagamento in pagamentos
+                if cls._matches_pagamento_mensalidade_agent(
+                    pagamento,
+                    agent_filter,
+                )
+            ]
+
+        eventos: dict[tuple[str, object, date], PagamentoMensalidade] = {}
+        for pagamento in pagamentos:
+            if pagamento.manual_status == PagamentoMensalidade.ManualStatus.PAGO:
+                key = cls._pagamento_receita_identity(pagamento, "inadimplencia_manual")
+                atual = eventos.get(key)
+                if atual is None or cls._pagamento_receita_recency_key(
+                    pagamento
+                ) >= cls._pagamento_receita_recency_key(atual):
+                    eventos[key] = pagamento
+
+            if (pagamento.status_code or "").strip() in {"1", "4"}:
+                key = cls._pagamento_receita_identity(pagamento, "arquivo_retorno")
+                atual = eventos.get(key)
+                if atual is None or cls._pagamento_receita_recency_key(
+                    pagamento
+                ) >= cls._pagamento_receita_recency_key(atual):
+                    eventos[key] = pagamento
+
+        return sorted(
+            ((key[0], pagamento) for key, pagamento in eventos.items()),
+            key=lambda item: (
+                item[1].referencia_month,
+                item[1].nome_relatorio or "",
+                item[1].id,
+                item[0],
+            ),
+        )
+
     _RENEWAL_ID_PATTERN = re.compile(r"refi\s*#(\d+)", re.IGNORECASE)
 
     @staticmethod
@@ -1024,25 +1094,11 @@ class DespesaService:
         zero = Decimal("0.00")
         agent_filter = DespesaService._build_agent_filter(agente)
 
-        pagamentos = canonicalize_financeiro_pagamentos(
-            list(
-                PagamentoMensalidade.objects.filter(
-                    referencia_month__gte=start_month,
-                    referencia_month__lt=end_month,
-                )
-                .select_related("associado", "associado__agente_responsavel")
-                .order_by("referencia_month", "id")
-            )
+        pagamentos = DespesaService._listar_receitas_pagamentos(
+            start=start_month,
+            end=end_month,
+            agent_filter=agent_filter,
         )
-        if agent_filter is not None:
-            pagamentos = [
-                pagamento
-                for pagamento in pagamentos
-                if DespesaService._matches_pagamento_mensalidade_agent(
-                    pagamento,
-                    agent_filter,
-                )
-            ]
         despesas = list(
             Despesa.objects.filter(
                 Q(data_despesa__gte=start_month, data_despesa__lt=end_month)
@@ -1080,15 +1136,15 @@ class DespesaService:
         devolucoes_por_mes = {month: zero for month in months}
         pagamentos_operacionais_por_mes = {month: zero for month in months}
 
-        for pagamento in pagamentos:
+        for origem, pagamento in pagamentos:
             month_key = pagamento.referencia_month.replace(day=1)
             if month_key not in receitas_inadimplencia_por_mes:
                 continue
-            if pagamento.manual_status == PagamentoMensalidade.ManualStatus.PAGO:
+            if origem == "inadimplencia_manual":
                 receitas_inadimplencia_por_mes[month_key] += Decimal(
                     str(pagamento.recebido_manual or pagamento.valor or zero)
                 )
-            elif (pagamento.status_code or "").strip() in {"1", "4"}:
+            elif origem == "arquivo_retorno":
                 receitas_retorno_por_mes[month_key] += Decimal(
                     str(pagamento.valor or zero)
                 )
@@ -1166,25 +1222,11 @@ class DespesaService:
         zero = Decimal("0.00")
         agent_filter = DespesaService._build_agent_filter(agente)
 
-        pagamentos = canonicalize_financeiro_pagamentos(
-            list(
-                PagamentoMensalidade.objects.filter(
-                    referencia_month__gte=month_start,
-                    referencia_month__lt=next_month,
-                )
-                .select_related("associado", "associado__agente_responsavel")
-                .order_by("referencia_month", "id")
-            )
+        pagamentos = DespesaService._listar_receitas_pagamentos(
+            start=month_start,
+            end=next_month,
+            agent_filter=agent_filter,
         )
-        if agent_filter is not None:
-            pagamentos = [
-                pagamento
-                for pagamento in pagamentos
-                if DespesaService._matches_pagamento_mensalidade_agent(
-                    pagamento,
-                    agent_filter,
-                )
-            ]
         despesas = list(
             Despesa.objects.filter(
                 Q(data_despesa__gte=month_start, data_despesa__lt=next_month)
@@ -1225,7 +1267,7 @@ class DespesaService:
         receitas_retorno = zero
         complementos_receita = zero
 
-        for pagamento in pagamentos:
+        for origem, pagamento in pagamentos:
             associado = pagamento.associado
             associado_nome = (
                 associado.nome_completo
@@ -1239,7 +1281,7 @@ class DespesaService:
                 if associado.agente_responsavel:
                     agente_nome = associado.agente_responsavel.full_name
 
-            if pagamento.manual_status == PagamentoMensalidade.ManualStatus.PAGO:
+            if origem == "inadimplencia_manual":
                 valor = Decimal(str(pagamento.recebido_manual or pagamento.valor or zero))
                 receitas_inadimplencia += valor
                 receitas_itens.append(
@@ -1261,7 +1303,7 @@ class DespesaService:
                         "valor": valor,
                     }
                 )
-            elif (pagamento.status_code or "").strip() in {"1", "4"}:
+            elif origem == "arquivo_retorno":
                 valor = Decimal(str(pagamento.valor or zero))
                 receitas_retorno += valor
                 receitas_itens.append(

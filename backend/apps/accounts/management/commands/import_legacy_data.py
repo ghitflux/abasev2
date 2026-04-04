@@ -216,11 +216,12 @@ class Command(BaseCommand):
         self._ensure_runtime_state()
         from apps.accounts.models import Role
         created = 0
+        ignored_role_codes = {"ASSOCIADO", "ASSOCIADODOIS", "USER"}
         for r in rows:
             name = _str(r.get("name"))
             legacy_role_id = _int(r.get("id"))
             codigo = _map_legacy_role_code(name)
-            if legacy_role_id is None or not codigo:
+            if legacy_role_id is None or not codigo or codigo in ignored_role_codes:
                 continue
 
             metadata = ROLE_METADATA.get(codigo, {"nome": name[:100], "descricao": ""})

@@ -174,6 +174,16 @@ class RenovacaoCicloService:
             proximo_ciclo,
             parcelas_ciclo,
         )
+        if import_item and (
+            import_item.resultado_processamento
+            == ArquivoRetornoItem.ResultadoProcessamento.NAO_DESCONTADO
+            or import_item.status_codigo in {"2", "3", "S"}
+        ):
+            status_visual = "inadimplente"
+        elif import_item and (
+            import_item.gerou_encerramento or import_item.gerou_novo_ciclo
+        ):
+            status_visual = "ciclo_renovado"
         status_explicacao = RenovacaoCicloService._build_status_explicacao(
             contrato=contrato,
             status_visual=status_visual,
@@ -319,6 +329,46 @@ class RenovacaoCicloService:
             if status and row["status_visual"] != status:
                 continue
             rows.append(row)
+
+        seen_associado_ids = {row["associado_id"] for row in rows}
+        itens_suplementares = (
+            ArquivoRetornoItem.objects.select_related(
+                "associado",
+                "parcela",
+                "parcela__ciclo",
+                "parcela__ciclo__contrato",
+                "parcela__ciclo__contrato__agente",
+                "parcela__ciclo__contrato__associado",
+                "parcela__ciclo__contrato__associado__agente_responsavel",
+            )
+            .filter(
+                arquivo_retorno__competencia=competencia,
+                arquivo_retorno__status=ArquivoRetorno.Status.CONCLUIDO,
+                associado_id__isnull=False,
+                parcela_id__isnull=False,
+            )
+            .order_by(
+                "-arquivo_retorno__processado_em",
+                "-arquivo_retorno__created_at",
+                "-created_at",
+                "-id",
+            )
+        )
+        for import_item in itens_suplementares:
+            if import_item.associado_id in seen_associado_ids:
+                continue
+            contrato = import_item.parcela.ciclo.contrato
+            if contrato.status not in [Contrato.Status.ATIVO, Contrato.Status.ENCERRADO]:
+                continue
+            row = RenovacaoCicloService._build_row(
+                import_item.parcela,
+                competencia.strftime("%m/%Y"),
+                import_item,
+            )
+            if status and row["status_visual"] != status:
+                continue
+            rows.append(row)
+            seen_associado_ids.add(import_item.associado_id)
         return rows
 
     @staticmethod
@@ -370,7 +420,8 @@ class RenovacaoCicloService:
 
         if not (search or "").strip() and not (status or "").strip():
             financeiro = build_financeiro_resumo(competencia=competencia)
-            if financeiro.get("total"):
+            financeiro_total = int(financeiro.get("total") or 0)
+            if financeiro_total and financeiro_total >= resumo["total_associados"]:
                 resumo["total_associados"] = int(financeiro["total"])
                 resumo["esperado_total"] = Decimal(str(financeiro["esperado"]))
                 resumo["arrecadado_total"] = Decimal(str(financeiro["recebido"]))

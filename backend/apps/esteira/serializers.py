@@ -18,6 +18,14 @@ class EsteiraSimpleUserSerializer(serializers.Serializer):
     full_name = serializers.CharField(read_only=True)
 
 
+class EsteiraAssociadoCompatSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    nome_completo = serializers.CharField(read_only=True)
+    cpf_cnpj = serializers.CharField(read_only=True)
+    matricula = serializers.CharField(read_only=True)
+    matricula_display = serializers.CharField(read_only=True)
+
+
 class ContratoEsteiraSerializer(serializers.Serializer):
     codigo = serializers.CharField(read_only=True)
     associado_nome = serializers.CharField(read_only=True)
@@ -145,6 +153,7 @@ class TransicaoSerializer(serializers.ModelSerializer):
 
 class EsteiraListSerializer(serializers.ModelSerializer):
     associado_id = serializers.IntegerField(source="associado.id", read_only=True)
+    associado = EsteiraAssociadoCompatSerializer(read_only=True)
     ordem = serializers.IntegerField(source="prioridade", read_only=True)
     contrato = serializers.SerializerMethodField()
     data_assinatura = serializers.SerializerMethodField()
@@ -170,6 +179,7 @@ class EsteiraListSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "associado_id",
+            "associado",
             "ordem",
             "contrato",
             "data_assinatura",

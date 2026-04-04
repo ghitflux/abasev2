@@ -272,11 +272,14 @@ class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser, FormParser])
     def solicitar(self, request, pk=None):
-        payload = SolicitarRefinanciamentoSerializer(data=request.data)
-        payload.is_valid(raise_exception=True)
+        termo_antecipacao = request.FILES.get("termo_antecipacao")
+        if termo_antecipacao is None and "termo_antecipacao" in request.data:
+            payload = SolicitarRefinanciamentoSerializer(data=request.data)
+            payload.is_valid(raise_exception=True)
+            termo_antecipacao = payload.validated_data["termo_antecipacao"]
         refinanciamento = RefinanciamentoService.solicitar(
             int(pk),
-            payload.validated_data["termo_antecipacao"],
+            termo_antecipacao,
             request.user,
         )
         serializer = RefinanciamentoDetailSerializer(
