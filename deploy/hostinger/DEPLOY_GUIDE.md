@@ -789,6 +789,29 @@ Lições permanentes:
 - o diretório temporário `/tmp/staged_return_files_*` deve ser removido ao fim da operação
 - a promoção para servidor deve repetir a mesma ordem: repair pass 1 → reimportação Out→Fev → repair pass 2 → dry-run final
 
+### 04/04/2026 — hardening do importador de arquivo retorno
+
+- tipo: correção de estabilidade operacional em produção
+- incidente observado:
+  - a prévia do arquivo retorno abria corretamente
+  - após confirmar, a UI entrava em polling
+  - a rota `GET /api/v1/importacao/arquivo-retorno/` podia saturar o backend e responder `502 Bad Gateway`
+  - quando o Celery ficava indisponível, a importação podia permanecer presa em `pendente/processando`
+
+Correções aplicadas no código:
+
+- a listagem de `ArquivoRetorno` deixou de recalcular o resumo financeiro pesado no polling do histórico
+- o resumo financeiro passou a ser cacheado em `resultado_resumo["financeiro"]` ao final do processamento
+- a tela de importação passou a buscar o financeiro detalhado em endpoint dedicado, sob demanda
+- o histórico deixou de fazer polling agressivo
+- a confirmação agora faz fallback inline quando nenhum worker Celery responde ao ping
+
+Efeito esperado:
+
+- queda forte de carga no backend durante a importação
+- redução de `502` na tela `/importacao`
+- fim do estado “pendente infinito” quando o worker estiver fora do ar
+
 ### 04/04/2026 — validação final local do pacote importação + análise
 
 - tipo: validação pré-release local
@@ -925,6 +948,9 @@ docker compose -p abase --env-file /opt/ABASE/env/.env.production \
 
 docker compose -p abase --env-file /opt/ABASE/env/.env.production \
   -f deploy/hostinger/docker-compose.prod.yml exec -T backend python manage.py check
+
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml exec -T celery celery -A config inspect ping
 ```
 
 Regra de limpeza:
@@ -1021,6 +1047,7 @@ Validar no relatório final e por amostra na UI:
 - nenhum ciclo 1 contendo novembro/2025
 - nenhum ciclo 1 com parcela “em previsão” incoerente herdada do rebuild anterior
 - associados `ativo` e `inadimplente` coerentes após o recálculo
+- `celery -A config inspect ping` respondendo antes de qualquer importação
 - login, anexos, comprovantes e importação dry-run funcionando
 
 Aceite do saldo residual:

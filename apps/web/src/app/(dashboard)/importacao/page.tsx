@@ -18,6 +18,7 @@ import DryRunModal from "@/components/importacao/dry-run-modal";
 import {
   useV1ImportacaoArquivoRetornoDescontadosList,
   useV1ImportacaoArquivoRetornoEncerramentosList,
+  useV1ImportacaoArquivoRetornoFinanceiroRetrieve,
   useV1ImportacaoArquivoRetornoList,
   useV1ImportacaoArquivoRetornoNaoDescontadosList,
   useV1ImportacaoArquivoRetornoNovosCiclosList,
@@ -163,7 +164,6 @@ export default function ImportacaoPage() {
     { page: historyPage, page_size: 5 },
     {
       query: {
-        refetchInterval: isPolling ? 3000 : false,
         staleTime: 30 * 1000,
         placeholderData: (previousData) => previousData,
       },
@@ -180,8 +180,16 @@ export default function ImportacaoPage() {
 
   const latestImport = latestQuery.data ?? historyQuery.data?.results?.[0];
   const latestImportWithFinanceiro = latestImport as ArquivoRetornoWithFinanceiro | undefined;
-  const latestFinanceiro = getArquivoFinanceiroResumo(latestImportWithFinanceiro);
   const latestId = latestImport?.id ?? 0;
+  const latestFinanceiroQuery = useV1ImportacaoArquivoRetornoFinanceiroRetrieve(latestId, {
+    query: {
+      enabled: !!latestId && latestImport?.status === "concluido",
+      staleTime: 5 * 60 * 1000,
+      placeholderData: (previousData) => previousData,
+    },
+  });
+  const latestFinanceiro =
+    latestFinanceiroQuery.data?.resumo ?? getArquivoFinanceiroResumo(latestImportWithFinanceiro);
 
   React.useEffect(() => {
     setIsPolling(statusIsPending(latestImport?.status));
@@ -366,6 +374,10 @@ export default function ImportacaoPage() {
   const isInitialLatestLoading = latestQuery.isLoading && !latestImport;
   const isInitialHistoryLoading = historyQuery.isLoading && !historyQuery.data;
   const isInitialItemsLoading = activeItemsQuery.isLoading && !activeItemsQuery.data;
+  const isLatestFinanceiroLoading =
+    latestImport?.status === "concluido" &&
+    latestFinanceiroQuery.isLoading &&
+    !latestFinanceiro;
   const historyColumns: DataTableColumn<ArquivoRetornoList>[] = [
     {
       id: "created_at",
@@ -502,7 +514,9 @@ export default function ImportacaoPage() {
                   <div className="rounded-2xl border border-border/60 bg-background/40 p-4">
                     <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Quitados</p>
                     <p className="mt-2 text-3xl font-semibold">
-                      {latestFinanceiro?.ok ?? 0}/{latestFinanceiro?.total ?? latestImport?.total_registros ?? 0}
+                      {isLatestFinanceiroLoading
+                        ? "..."
+                        : `${latestFinanceiro?.ok ?? 0}/${latestFinanceiro?.total ?? latestImport?.total_registros ?? 0}`}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Registros concluídos no resumo financeiro do arquivo.
@@ -510,14 +524,18 @@ export default function ImportacaoPage() {
                   </div>
                   <div className="rounded-2xl border border-border/60 bg-background/40 p-4">
                     <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Faltando</p>
-                    <p className="mt-2 text-3xl font-semibold">{latestFinanceiro?.faltando ?? 0}</p>
+                    <p className="mt-2 text-3xl font-semibold">
+                      {isLatestFinanceiroLoading ? "..." : (latestFinanceiro?.faltando ?? 0)}
+                    </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {formatCurrency(latestFinanceiro?.pendente)} ainda pendentes.
                     </p>
                   </div>
                   <div className="rounded-2xl border border-border/60 bg-background/40 p-4">
                     <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Recebido</p>
-                    <p className="mt-2 text-3xl font-semibold">{formatCurrency(latestFinanceiro?.recebido)}</p>
+                    <p className="mt-2 text-3xl font-semibold">
+                      {isLatestFinanceiroLoading ? "..." : formatCurrency(latestFinanceiro?.recebido)}
+                    </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       de {formatCurrency(latestFinanceiro?.esperado)} esperados.
                     </p>
@@ -525,7 +543,9 @@ export default function ImportacaoPage() {
                   <div className="rounded-2xl border border-border/60 bg-background/40 p-4">
                     <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Percentual recebido</p>
                     <p className="mt-2 text-3xl font-semibold">
-                      {(latestFinanceiro?.percentual ?? 0).toFixed(1)}%
+                      {isLatestFinanceiroLoading
+                        ? "..."
+                        : `${(latestFinanceiro?.percentual ?? 0).toFixed(1)}%`}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       Proporção financeira consolidada a partir de `PagamentoMensalidade`.

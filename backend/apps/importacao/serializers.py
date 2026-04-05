@@ -260,6 +260,32 @@ class ArquivoRetornoListSerializer(serializers.ModelSerializer):
         return 0
 
     def get_financeiro(self, obj: ArquivoRetorno) -> dict:
+        cached = None
+        if isinstance(obj.resultado_resumo, dict):
+            maybe_cached = obj.resultado_resumo.get("financeiro")
+            if isinstance(maybe_cached, dict):
+                cached = maybe_cached
+
+        view = self.context.get("view")
+        action = getattr(view, "action", None)
+
+        # A listagem/histórico da importação entra em polling frequente. Nessa rota,
+        # o resumo financeiro deve vir apenas do cache gravado no processamento,
+        # sem recalcular leituras pesadas do domínio financeiro.
+        if action == "list":
+            return cached
+
+        # Durante o polling da importação, recalcular o resumo financeiro completo
+        # a cada refresh aumenta muito a carga do backend e pode derrubar o upstream
+        # em VPS menores. Enquanto o arquivo não estiver concluído, a UI já mostra
+        # progresso pelo próprio ArquivoRetorno; o financeiro detalhado só precisa
+        # ser calculado após a conclusão.
+        if obj.status != ArquivoRetorno.Status.CONCLUIDO:
+            return None
+
+        if cached is not None:
+            return cached
+
         cache = self.context.setdefault("_financeiro_cache", {})
         if obj.competencia not in cache:
             cache[obj.competencia] = build_financeiro_resumo(competencia=obj.competencia)

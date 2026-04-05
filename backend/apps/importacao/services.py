@@ -22,6 +22,7 @@ from apps.contratos.models import Contrato
 
 from .dry_run import simular_dry_run
 from .duplicidade import DuplicidadeFinanceiraService
+from .financeiro import build_financeiro_resumo
 from .imported_associados import (
     RETORNO_IMPORTED_FLAG,
     upsert_imported_associado_from_retorno,
@@ -356,6 +357,9 @@ class ArquivoRetornoService:
             resumo_pm["pm_cpfs_duplicados_arquivo"] = len(duplicate_cpfs)
             resumo_pm["pm_linhas_duplicadas_ignoradas"] = resumo["linhas_duplicadas_ignoradas"]
             resumo.update(resumo_pm)
+            resumo["financeiro"] = build_financeiro_resumo(
+                competencia=arquivo_retorno.competencia
+            )
 
             arquivo_retorno.total_registros = len(items)
             arquivo_retorno.processados = arquivo_retorno.itens.filter(processado=True).count()
@@ -722,7 +726,32 @@ class ArquivoRetornoService:
             self.processar(arquivo_retorno_id)
             return
 
+        if not self._has_active_celery_worker():
+            logger.warning(
+                "Nenhum worker Celery ativo respondeu ao ping. "
+                "Processando arquivo retorno %s inline.",
+                arquivo_retorno_id,
+            )
+            self.processar(arquivo_retorno_id)
+            return
+
         try:
             processar_arquivo_retorno.delay(arquivo_retorno_id)
         except Exception:
+            logger.exception(
+                "Falha ao enfileirar processamento Celery do arquivo retorno %s. "
+                "Executando inline.",
+                arquivo_retorno_id,
+            )
             self.processar(arquivo_retorno_id)
+
+    def _has_active_celery_worker(self, timeout: float = 1.0) -> bool:
+        try:
+            from config.celery import app as celery_app
+
+            inspector = celery_app.control.inspect(timeout=timeout)
+            ping_result = inspector.ping() or {}
+            return bool(ping_result)
+        except Exception:
+            logger.exception("Falha ao verificar disponibilidade do worker Celery.")
+            return False

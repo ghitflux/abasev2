@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api/client";
 
 const useV1ImportacaoArquivoRetornoList = jest.fn();
 const useV1ImportacaoArquivoRetornoUltimaRetrieve = jest.fn();
+const useV1ImportacaoArquivoRetornoFinanceiroRetrieve = jest.fn();
 const useV1ImportacaoArquivoRetornoDescontadosList = jest.fn();
 const useV1ImportacaoArquivoRetornoNaoDescontadosList = jest.fn();
 const useV1ImportacaoArquivoRetornoPendenciasManuaisList = jest.fn();
@@ -18,6 +19,8 @@ jest.mock("@/gen", () => ({
     useV1ImportacaoArquivoRetornoList(...args),
   useV1ImportacaoArquivoRetornoUltimaRetrieve: (...args: unknown[]) =>
     useV1ImportacaoArquivoRetornoUltimaRetrieve(...args),
+  useV1ImportacaoArquivoRetornoFinanceiroRetrieve: (...args: unknown[]) =>
+    useV1ImportacaoArquivoRetornoFinanceiroRetrieve(...args),
   useV1ImportacaoArquivoRetornoDescontadosList: (...args: unknown[]) =>
     useV1ImportacaoArquivoRetornoDescontadosList(...args),
   useV1ImportacaoArquivoRetornoNaoDescontadosList: (...args: unknown[]) =>
@@ -187,6 +190,10 @@ describe("ImportacaoPage", () => {
 
     useV1ImportacaoArquivoRetornoList.mockReturnValue({ data: historyPayload });
     useV1ImportacaoArquivoRetornoUltimaRetrieve.mockReturnValue({ data: latestImport });
+    useV1ImportacaoArquivoRetornoFinanceiroRetrieve.mockReturnValue({
+      data: { resumo: latestImport.financeiro, rows: [] },
+      isLoading: false,
+    });
     useV1ImportacaoArquivoRetornoDescontadosList.mockReturnValue({ data: itemPayload });
     useV1ImportacaoArquivoRetornoNaoDescontadosList.mockReturnValue({ data: itemPayload });
     useV1ImportacaoArquivoRetornoPendenciasManuaisList.mockReturnValue({ data: itemPayload });

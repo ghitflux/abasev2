@@ -225,6 +225,43 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
         self.assertEqual(contrato.ciclos.count(), 1)
         self.assertEqual(contrato.ciclos.get(numero=1).parcelas.count(), 3)
 
+    @override_settings(CELERY_TASK_ALWAYS_EAGER=False)
+    def test_confirmar_faz_fallback_inline_quando_nao_ha_worker_celery(self):
+        self.create_associado_com_contrato(
+            cpf="23993596315",
+            nome="Maria de Jesus Santana Costa",
+        )
+        self.create_associado_com_contrato(
+            cpf="21819424391",
+            nome="Francisco Crisostomo Batista",
+        )
+        self.create_associado_com_contrato(
+            cpf="48204773315",
+            nome="Maria de Jesus Araujo Goncalves",
+        )
+
+        service = ArquivoRetornoService()
+        arquivo = service.upload(
+            SimpleUploadedFile(
+                "retorno_etipi_052025.txt",
+                self.fixture_bytes(),
+                content_type="text/plain",
+            ),
+            self.coordenador,
+        )
+
+        with patch.object(
+            ArquivoRetornoService,
+            "_has_active_celery_worker",
+            return_value=False,
+        ), patch("apps.importacao.tasks.processar_arquivo_retorno.delay") as delay_mock:
+            arquivo = service.confirmar(arquivo.id)
+
+        delay_mock.assert_not_called()
+        self.assertEqual(arquivo.status, ArquivoRetorno.Status.CONCLUIDO)
+        self.assertEqual(arquivo.resultado_resumo["baixa_efetuada"], 2)
+        self.assertIn("financeiro", arquivo.resultado_resumo)
+
     def test_processar_registra_warning_de_parse_e_continua(self):
         self.create_associado_com_contrato(
             cpf="12345678901",
