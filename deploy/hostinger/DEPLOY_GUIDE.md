@@ -1,6 +1,7 @@
 # Runbook Único de Setup, Hardening, Backup, Restore e Deploy
 
-> Arquivo autoritativo para `abasepiaui.com` (produção) e `abasepiaui.cloud` (homologação/teste).
+> Arquivo autoritativo para `abasepiaui.com` (produção).
+> Referências a `abasepiaui.cloud` neste documento ficam apenas como histórico operacional.
 > Este documento substitui os demais `.md` removidos de `deploy/`.
 
 ## 1. Escopo e regra operacional
@@ -11,16 +12,15 @@ Este runbook cobre:
 - hardening do host e protocolo mínimo anti-invasão
 - deploy incremental de código
 - restore completo de banco + mídia
-- promoção completa de base para homologação
+- promoção completa de base para produção
 - histórico do último deploy validado
-- plano do próximo deploy em `abasepiaui.cloud`
+- plano do próximo deploy em `abasepiaui.com`
 - ajuste do app mobile para a API final em `abasepiaui.com`
 - preparo do build iOS via Expo EAS
 
 Regras fixas:
 
 - produção oficial: `https://abasepiaui.com`
-- homologação/teste: `https://abasepiaui.cloud`
 - branch operacional: `abaseprod`
 - stack pública: `nginx`, `frontend`, `backend`, `celery`, `mysql`, `redis`
 - nenhum dump, tarball, backup, `media/`, `anexos_legado/` ou `dumps_legado/` fica dentro de `/opt/ABASE/repo`
@@ -35,11 +35,11 @@ Regras fixas:
 - uso: tráfego real, web oficial, API oficial, app mobile oficial
 - política: deploy controlado, sem auto-rebuild cego
 
-### Homologação
+### Homologação histórica
 
 - domínio: `abasepiaui.cloud`
-- uso: ensaio de deploy, restore completo, validação de anexos, testes de reconciliação e importações
-- política: recebe backup e importação completa antes de releases maiores
+- uso: referência histórica de ensaio de deploy, restore completo e validações
+- política atual: não é mais alvo operacional deste runbook
 
 ## 3. Layout obrigatório na VPS
 
@@ -173,7 +173,7 @@ Política:
 - host: atualização automática de segurança habilitada
 - certbot: renovação automática habilitada
 - assinaturas antimalware: atualização automática habilitada
-- imagens Docker: atualizar primeiro em `abasepiaui.cloud`, validar e só então promover para produção
+- imagens Docker: validar primeiro em ambiente local controlado e só então promover para produção
 - não usar `watchtower` ou equivalente em produção
 
 ### 5.2 Antimalware e integridade
@@ -301,7 +301,7 @@ Trocas mínimas para produção:
 - `www.abasepiaui.cloud` → `www.abasepiaui.com`
 - `https://abasepiaui.cloud/api/v1` → `https://abasepiaui.com/api/v1`
 
-Homologação continua com `.cloud`.
+`abasepiaui.cloud` permanece apenas como referência histórica.
 
 ## 8. TLS e renovação automática
 
@@ -397,7 +397,7 @@ Pós-deploy manual obrigatório:
 
 ### 10.1 Gate técnico antes do deploy oficial
 
-Antes de qualquer promoção para `abasepiaui.cloud` ou `abasepiaui.com`, executar e registrar:
+Antes de qualquer promoção para `abasepiaui.com`, executar e registrar:
 
 ```bash
 docker compose run --rm backend-tools \
@@ -456,9 +456,9 @@ bash /opt/ABASE/repo/deploy/hostinger/scripts/restore_files.sh \
   /opt/ABASE/data/backups/daily/media_<timestamp>.tar.gz
 ```
 
-## 12. Protocolo de promoção completa para homologação `abasepiaui.cloud`
+## 12. Protocolo legado de promoção completa para homologação `abasepiaui.cloud`
 
-Use este fluxo quando a homologação precisar receber uma base completa com todos os anexos e comprovantes.
+Use este fluxo apenas como referência histórica quando for necessário consultar a antiga promoção completa para `.cloud`.
 
 ### 12.1 Fonte de verdade
 
@@ -664,6 +664,131 @@ Observações permanentes:
 - a reversão preserva histórico bruto e neutraliza abril/2026 por cancelamento/soft-delete controlado
 - após a execução, validar contratos de amostra na UI para garantir que abril voltou para previsão e não permaneceu contado como pago
 
+### 04/04/2026 — saneamento Mar/Nov + reimportação cronológica Out→Fev
+
+- tipo: saneamento estrutural de ciclos após rebuild incorreto
+- escopo:
+  - março/2026 pago voltou a contar para ciclo
+  - novembro/2025 saiu dos ciclos e ficou quitado fora do ciclo
+  - reimportação cronológica dos arquivos retorno de outubro/2025 a fevereiro/2026
+- staging usado localmente:
+  - host: `backups/legacy_restore_20260401T083933/staged_return_files`
+  - dentro do container backend: `/tmp/staged_return_files_20260404`
+
+Arquivos e comandos introduzidos:
+
+- comando novo:
+
+```bash
+docker compose exec -T backend python manage.py repair_maristela_cycle_membership --dry-run
+docker compose exec -T backend python manage.py repair_maristela_cycle_membership --execute
+```
+
+- regra técnica incorporada:
+  - `manual_forma_pagamento=conciliacao_maristela_em_ciclo` conta para ciclo
+  - `manual_forma_pagamento=conciliacao_maristela_fora_ciclo` fica quitado fora do ciclo
+
+Execução local realizada:
+
+```bash
+docker compose exec -T backend \
+  python manage.py repair_maristela_cycle_membership --dry-run \
+  --report-json /app/backend/media/relatorios/legacy_import/repair_maristela_cycle_membership_dry_run_20260404.json
+
+docker compose exec -T backend \
+  python manage.py repair_maristela_cycle_membership --execute \
+  --report-json /app/backend/media/relatorios/legacy_import/repair_maristela_cycle_membership_execute_pass1_20260404.json
+
+docker compose exec -T backend mkdir -p /tmp/staged_return_files_20260404
+docker cp backups/legacy_restore_20260401T083933/staged_return_files/. \
+  <backend_container_id>:/tmp/staged_return_files_20260404/
+
+docker compose exec -T backend \
+  python manage.py reimport_staged_return_files --dry-run \
+  --staging-dir /tmp/staged_return_files_20260404 \
+  --report-json /app/backend/media/relatorios/legacy_import/reimport_staged_return_files_dry_run_20260404.json
+
+docker compose exec -T backend \
+  python manage.py reimport_staged_return_files --execute \
+  --staging-dir /tmp/staged_return_files_20260404 \
+  --report-json /app/backend/media/relatorios/legacy_import/reimport_staged_return_files_execute_20260404.json
+
+docker compose exec -T backend \
+  python manage.py repair_maristela_cycle_membership --execute \
+  --report-json /app/backend/media/relatorios/legacy_import/repair_maristela_cycle_membership_execute_pass2_20260404.json
+
+docker compose exec -T backend \
+  python manage.py repair_maristela_cycle_membership --dry-run \
+  --report-json /app/backend/media/relatorios/legacy_import/repair_maristela_cycle_membership_final_dry_run_20260404.json
+
+docker compose exec -T backend rm -rf /tmp/staged_return_files_20260404
+```
+
+Resultados locais da auditoria e da execução:
+
+- dry-run inicial:
+  - `associados_auditados`: `530`
+  - `repairable`: `432`
+  - `manual_review`: `29`
+- execução pass 1:
+  - `repaired`: `432`
+  - `manual_review`: `29`
+- reimportação cronológica concluída:
+  - `2025-10-01`
+  - `2025-11-01`
+  - `2025-12-01`
+  - `2026-01-01`
+  - `2026-02-01`
+- execução pass 2:
+  - `repaired`: `9`
+  - `manual_review`: `20`
+- dry-run final:
+  - `repairable`: `0`
+  - `manual_review`: `20`
+
+Métricas finais observadas na base local:
+
+- `march_in_cycle`: `450`
+- `march_outside`: `21`
+- `nov_in_cycle`: `4`
+- `nov_outside`: `253`
+- `associados_ativos`: `239`
+- `associados_inadimplentes`: `332`
+- `associados_inativos`: `10`
+
+Leitura correta dessas métricas:
+
+- a fila automática foi zerada (`repairable=0`)
+- os resíduos `march_outside=21` e `nov_in_cycle=4` pertencem aos `20` casos classificados como `manual_review`
+- homologação/produção só devem seguir com revisão amostral desses `20` casos e aceite explícito do saldo manual
+
+Relatórios gerados localmente:
+
+- `/app/backend/media/relatorios/legacy_import/repair_maristela_cycle_membership_dry_run_20260404.json`
+- `/app/backend/media/relatorios/legacy_import/repair_maristela_cycle_membership_execute_pass1_20260404.json`
+- `/app/backend/media/relatorios/legacy_import/reimport_staged_return_files_dry_run_20260404.json`
+- `/app/backend/media/relatorios/legacy_import/reimport_staged_return_files_execute_20260404.json`
+- `/app/backend/media/relatorios/legacy_import/repair_maristela_cycle_membership_execute_pass2_20260404.json`
+- `/app/backend/media/relatorios/legacy_import/repair_maristela_cycle_membership_final_dry_run_20260404.json`
+
+Exemplos do saldo `manual_review` que exigem decisão manual:
+
+- `71339477300` JEAN DOUGLAS RODRIGUES REIS
+  - março continuou aparecendo como movimento financeiro fora do ciclo
+- `05855647366` RAIMUNDO NONATO MOREIRA FILHO
+  - valores conflitantes para a mesma competência: `191.17` e `200.00`
+- `32784066304` FRANCISCO JORGE DA SILVA
+  - valores conflitantes para a mesma competência: `275.00`, `275.46` e `300.00`
+- `41233875353` MARIA DE LOURDES PEREIRA DOS SANTOS
+  - valores conflitantes para a mesma competência: `150.00` e `200.00`
+
+Lições permanentes:
+
+- março/2026 e novembro/2025 não podem compartilhar a mesma semântica de pagamento manual
+- o staging de retorno deve ser copiado para dentro do container em `/tmp/` quando o compose não monta `backups/`
+- o diretório temporário `/tmp/staged_return_files_*` deve ser removido ao fim da operação
+- a promoção para servidor deve repetir a mesma ordem: repair pass 1 → reimportação Out→Fev → repair pass 2 → dry-run final
+
 ### 04/04/2026 — validação final local do pacote importação + análise
 
 - tipo: validação pré-release local
@@ -748,61 +873,182 @@ Situação pós-correção:
 - suíte completa do backend esperada em verde
 - gate técnico da seção `10.1` liberado para rodar e validar antes do próximo deploy
 
-## 14. Próximo deploy planejado em `abasepiaui.cloud`
+## 14. Próximo deploy planejado em `abasepiaui.com`
 
-Objetivo:
+Objetivo do próximo deploy:
 
-- backup completo do estado atual da homologação
-- importação completa da fonte de verdade mais recente
-- promoção do código atual do branch `abaseprod`
-- validação de anexos, comprovantes e fluxo de importação de retorno
+- promover o código atual do branch `abaseprod`
+- atualizar a produção com backup preventivo completo
+- executar o protocolo Mar/Nov + reimportação Out→Fev no servidor oficial
+- validar o saldo residual de `20` casos `manual_review`
 
-Situação atual:
+Pré-condições:
 
-- suíte completa do backend corrigida em `04/04/2026` — gate técnico da seção `10.1` deve ser rerodado e validado antes de prosseguir
-- próxima sessão: setup da VPS de produção `abasepiaui.com` e deploy oficial
+- rerodar o gate técnico da seção `10.1`
+- registrar o commit alvo com `git rev-parse HEAD`
+- preparar artefatos fora do repositório:
+  - dump SQL da origem escolhida
+  - pacote de `media/`
+  - staging `backups/legacy_restore_20260401T083933/staged_return_files`
 
-Fila mínima já pronta para homologação após o último deploy histórico:
+### 14.1 Backup preventivo antes da atualização
 
-- login/auth revisado com sessão de 48h e recuperação manual para agente
-- redistribuição obrigatória de carteira ao remover/desativar agente
-- dry-run com confirmação antes da importação do arquivo retorno
-- modal de prévia da importação refeito em layout largo com scroll real
-- reversão operacional de abril/2026 para previsão com rebuild por contrato
-- saneamento operacional de comprovantes/anexos legados
-- ajuste da listagem de contratos para exibir valor disponível
+Na VPS `.com`:
 
-Checklist operacional do próximo deploy em `.cloud`:
+```bash
+cd /opt/ABASE/repo
+bash deploy/hostinger/scripts/backup_now.sh
+```
 
-1. `git rev-parse HEAD` local e registrar commit alvo.
-2. Gerar dump completo e `media.tar.gz` da origem escolhida.
-3. Copiar artefatos para `/opt/ABASE/import/release_<timestamp>`.
-4. Rodar `backup_now.sh` na homologação.
-5. Parar `frontend`, `backend` e `celery`.
-6. Importar banco.
-7. Restaurar mídia completa.
-8. Rodar `git pull origin abaseprod`.
-9. Rebuildar `backend`, `frontend` e `celery`.
-10. Subir stack e rodar `migrate` + `check`.
-11. Rodar a auditoria de abril/2026:
+Além do backup padrão, preservar:
+
+- dump atual da produção
+- cópia de `/opt/ABASE/data/media`
+- cópia do staging usado para a reimportação em `/opt/ABASE/import/<release>/staged_return_files`
+
+### 14.2 Deploy de código sem lixo extra na VPS
+
+```bash
+cd /opt/ABASE/repo
+git fetch origin
+git checkout abaseprod
+git pull --ff-only origin abaseprod
+
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml build backend frontend celery
+
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml up -d backend frontend celery
+
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml exec -T backend python manage.py migrate
+
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml exec -T backend python manage.py check
+```
+
+Regra de limpeza:
+
+- não copiar dump, `media.tar.gz` ou relatórios para dentro de `/opt/ABASE/repo`
+- usar apenas `/opt/ABASE/import/<release>` para staging externo
+
+### 14.3 Protocolo de produção Mar/Nov + reimportação Out→Fev
+
+1. Dry-run do saneamento:
 
 ```bash
 docker compose -p abase --env-file /opt/ABASE/env/.env.production \
   -f deploy/hostinger/docker-compose.prod.yml exec -T backend \
-  python manage.py revert_discounted_reference_to_forecast --target-ref 2026-04 --dry-run
+  python manage.py repair_maristela_cycle_membership --dry-run \
+  --report-json /app/backend/media/relatorios/legacy_import/repair_maristela_cycle_membership_dry_run_server.json
 ```
 
-12. Se o dry-run confirmar casos reparáveis sem revisão manual, aplicar:
+2. Execução do pass 1:
 
 ```bash
 docker compose -p abase --env-file /opt/ABASE/env/.env.production \
   -f deploy/hostinger/docker-compose.prod.yml exec -T backend \
-  python manage.py revert_discounted_reference_to_forecast --target-ref 2026-04 --execute
+  python manage.py repair_maristela_cycle_membership --execute \
+  --report-json /app/backend/media/relatorios/legacy_import/repair_maristela_cycle_membership_execute_pass1_server.json
 ```
 
-13. Rerodar o `--dry-run` para confirmar saldo `0`.
-14. Validar login, anexos, comprovantes, contratos, importação dry-run, redistribuição de agente e amostra de associados afetados por abril/2026.
-15. Remover staging e fazer prune controlado.
+3. Copiar o staging de retorno para dentro do container backend:
+
+```bash
+BACKEND_CID=$(docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml ps -q backend)
+
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml exec -T backend \
+  mkdir -p /tmp/staged_return_files_server
+
+docker cp /opt/ABASE/import/<release>/staged_return_files/. \
+  "${BACKEND_CID}:/tmp/staged_return_files_server/"
+```
+
+4. Dry-run da reimportação cronológica:
+
+```bash
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml exec -T backend \
+  python manage.py reimport_staged_return_files --dry-run \
+  --staging-dir /tmp/staged_return_files_server \
+  --report-json /app/backend/media/relatorios/legacy_import/reimport_staged_return_files_dry_run_server.json
+```
+
+5. Execução da reimportação cronológica:
+
+```bash
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml exec -T backend \
+  python manage.py reimport_staged_return_files --execute \
+  --staging-dir /tmp/staged_return_files_server \
+  --report-json /app/backend/media/relatorios/legacy_import/reimport_staged_return_files_execute_server.json
+```
+
+6. Execução do pass 2:
+
+```bash
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml exec -T backend \
+  python manage.py repair_maristela_cycle_membership --execute \
+  --report-json /app/backend/media/relatorios/legacy_import/repair_maristela_cycle_membership_execute_pass2_server.json
+```
+
+7. Dry-run final obrigatório:
+
+```bash
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml exec -T backend \
+  python manage.py repair_maristela_cycle_membership --dry-run \
+  --report-json /app/backend/media/relatorios/legacy_import/repair_maristela_cycle_membership_final_dry_run_server.json
+```
+
+8. Limpeza do staging temporário dentro do container:
+
+```bash
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml exec -T backend \
+  rm -rf /tmp/staged_return_files_server
+```
+
+### 14.4 Checklist pós-execução em `.com`
+
+Validar no relatório final e por amostra na UI:
+
+- março dentro do ciclo correspondente
+- novembro fora do ciclo
+- nenhum ciclo 1 contendo novembro/2025
+- nenhum ciclo 1 com parcela “em previsão” incoerente herdada do rebuild anterior
+- associados `ativo` e `inadimplente` coerentes após o recálculo
+- login, anexos, comprovantes e importação dry-run funcionando
+
+Aceite do saldo residual:
+
+- o protocolo automático deve terminar com `repairable=0`
+- se permanecer saldo `manual_review`, registrar quantidade, CPFs afetados e o arquivo de relatório
+- a promoção para produção só deve ocorrer com aceite explícito desse saldo manual
+
+### 14.5 Rollback específico desta operação
+
+Se o saneamento ou a reimportação no servidor produzir resultado inválido:
+
+1. parar `backend`, `frontend` e `celery`
+2. restaurar o dump preventivo da produção
+3. restaurar `/opt/ABASE/data/media`
+4. subir novamente a stack
+5. recarregar o Nginx
+
+Comandos-base:
+
+```bash
+cd /opt/ABASE/repo
+bash deploy/hostinger/scripts/restore_db.sh /opt/ABASE/data/backups/<dump.sql.gz>
+bash deploy/hostinger/scripts/restore_files.sh /opt/ABASE/data/backups/<media.tar.gz>
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml up -d
+docker exec abase-nginx-prod nginx -s reload
+```
 
 ## 15. Ajuste do app mobile após entrada da produção oficial
 

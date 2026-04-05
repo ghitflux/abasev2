@@ -104,6 +104,7 @@ class FinancialReference:
     source: str = ""
     counts_for_cycle: bool = True
     had_unpaid_event: bool = False
+    force_outside_cycle: bool = False
 
 
 @dataclass(frozen=True)
@@ -444,6 +445,7 @@ def _merge_financial_references(
                     source="manual_regularized",
                     counts_for_cycle=False,
                     had_unpaid_event=True,
+                    force_outside_cycle=True,
                 )
                 unpaid_by_reference.pop(referencia, None)
                 references_with_unpaid_history.add(referencia)
@@ -476,6 +478,7 @@ def _merge_financial_references(
                 source="manual_regularized",
                 counts_for_cycle=False,
                 had_unpaid_event=True,
+                force_outside_cycle=False,
             )
             unpaid_by_reference.pop(referencia, None)
             references_with_unpaid_history.add(referencia)
@@ -1373,7 +1376,15 @@ def build_contract_cycle_projection(
         if renewal.refinanciamento.legacy_refinanciamento_id is not None:
             for ref in _renewal_origin_refs(renewal.refinanciamento):
                 legado_refi_covered_refs.add(ref.replace(day=1))
-    blocked_references = (unpaid_reference_set | regularized_reference_set) - legado_refi_covered_refs
+    forced_outside_references = {
+        item.referencia_mes
+        for item in regularized
+        if item.force_outside_cycle
+    }
+    blocked_references = (
+        ((unpaid_reference_set | regularized_reference_set) - legado_refi_covered_refs)
+        | forced_outside_references
+    )
     operational_refis = _active_operational_refinanciamentos(contrato)
     operational_refi = operational_refis[0] if operational_refis else None
 

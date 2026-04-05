@@ -11,6 +11,7 @@ from openpyxl import Workbook
 
 from apps.associados.models import Associado
 from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.importacao.manual_payment_flags import MANUAL_PAYMENT_KIND_MARISTELA_IN_CYCLE
 from apps.importacao.models import PagamentoMensalidade
 from apps.tesouraria.models import BaixaManual
 
@@ -198,7 +199,7 @@ class ReconcileMaristelaSheetCommandTestCase(ImportacaoBaseTestCase):
         self.assertTrue(any(row["associado_id"] == outside.id for row in system_only))
         self.assertEqual(unmatched[0]["reason"], "no_match")
 
-    def test_execute_reconciles_paid_months_and_creates_manual_march_baixa(self):
+    def test_execute_reconciles_paid_months_and_keeps_manual_march_inside_cycle(self):
         associado, _ = self._create_contract_fixture(
             cpf="22233344455",
             nome="Associado Pago",
@@ -266,18 +267,29 @@ class ReconcileMaristelaSheetCommandTestCase(ImportacaoBaseTestCase):
         self.assertEqual(parcelas[date(2025, 12, 1)].status, Parcela.Status.DESCONTADO)
         self.assertEqual(parcelas[date(2026, 1, 1)].status, Parcela.Status.DESCONTADO)
         self.assertEqual(parcelas[date(2026, 2, 1)].status, Parcela.Status.DESCONTADO)
-        self.assertNotIn(date(2026, 3, 1), parcelas)
-        self.assertTrue(
+        self.assertEqual(parcelas[date(2026, 3, 1)].status, Parcela.Status.DESCONTADO)
+        self.assertFalse(
             BaixaManual.objects.filter(
                 parcela__associado=associado,
-                data_baixa=date(2026, 3, 1),
+                parcela__referencia_mes=date(2026, 3, 1),
+                deleted_at__isnull=True,
             ).exists()
         )
         self.assertEqual(pagamento_dez.status_code, "1")
         self.assertEqual(pagamento_mar.status_code, "M")
         self.assertEqual(pagamento_mar.manual_status, PagamentoMensalidade.ManualStatus.PAGO)
+        self.assertEqual(
+            pagamento_mar.manual_forma_pagamento,
+            MANUAL_PAYMENT_KIND_MARISTELA_IN_CYCLE,
+        )
         self.assertEqual(summary["mode"], "execute")
-        self.assertTrue(any(row["entity"] == "baixa_manual" for row in corrections))
+        self.assertTrue(
+            any(
+                row["entity"] == "parcela"
+                and row["reason"] == "sheet_manual_paid_in_cycle"
+                for row in corrections
+            )
+        )
 
     def test_execute_marks_associado_inactive_for_falecimento(self):
         associado, _ = self._create_contract_fixture(
