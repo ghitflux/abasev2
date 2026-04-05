@@ -83,10 +83,35 @@ services:
     image: abase-backend-prod:latest
     container_name: abase-backend-prod
     restart: unless-stopped
-    mem_limit: 2g
-    memswap_limit: 2g
+    mem_limit: ${BACKEND_MEM_LIMIT:-768m}
+    memswap_limit: ${BACKEND_MEM_LIMIT:-768m}
     networks:
       - abase-net
+    command:
+      - gunicorn
+      - config.wsgi:application
+      - --bind
+      - 0.0.0.0:8000
+      - --workers
+      - ${GUNICORN_WORKERS:-3}
+      - --threads
+      - ${GUNICORN_THREADS:-2}
+      - --timeout
+      - ${GUNICORN_TIMEOUT:-180}
+      - --keep-alive
+      - ${GUNICORN_KEEPALIVE:-10}
+      - --max-requests
+      - ${GUNICORN_MAX_REQUESTS:-800}
+      - --max-requests-jitter
+      - ${GUNICORN_MAX_REQUESTS_JITTER:-80}
+      - --worker-tmp-dir
+      - /dev/shm
+      - --access-logfile
+      - "-"
+      - --error-logfile
+      - "-"
+      - --log-level
+      - info
     environment:
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.production}
       SECRET_KEY: ${SECRET_KEY}
@@ -130,11 +155,23 @@ services:
     image: abase-backend-prod:latest
     container_name: abase-celery-prod
     restart: unless-stopped
-    mem_limit: 1g
-    memswap_limit: 1g
+    mem_limit: ${CELERY_MEM_LIMIT:-1280m}
+    memswap_limit: ${CELERY_MEM_LIMIT:-1280m}
     networks:
       - abase-net
-    command: ["celery", "-A", "config", "worker", "-l", "info", "--concurrency", "1"]
+    command:
+      - celery
+      - -A
+      - config
+      - worker
+      - -l
+      - info
+      - --concurrency
+      - ${CELERY_CONCURRENCY:-1}
+      - --prefetch-multiplier
+      - ${CELERY_PREFETCH_MULTIPLIER:-1}
+      - --max-tasks-per-child
+      - ${CELERY_MAX_TASKS_PER_CHILD:-20}
     environment:
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.production}
       SECRET_KEY: ${SECRET_KEY}
@@ -173,10 +210,13 @@ services:
     image: abase-frontend-prod:latest
     container_name: abase-frontend-prod
     restart: unless-stopped
+    mem_limit: ${FRONTEND_MEM_LIMIT:-384m}
+    memswap_limit: ${FRONTEND_MEM_LIMIT:-384m}
     networks:
       - abase-net
     environment:
       NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=${FRONTEND_NODE_MAX_OLD_SPACE_MB:-256}
       INTERNAL_API_URL: ${INTERNAL_API_URL:-http://backend:8000/api/v1}
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://abasepiaui.com/api/v1}
     depends_on:
@@ -195,6 +235,8 @@ services:
     image: nginx:1.27-alpine
     container_name: abase-nginx-prod
     restart: unless-stopped
+    mem_limit: ${NGINX_MEM_LIMIT:-128m}
+    memswap_limit: ${NGINX_MEM_LIMIT:-128m}
     networks:
       - abase-net
     ports:

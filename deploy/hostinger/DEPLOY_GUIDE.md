@@ -287,6 +287,41 @@ DOMAIN=abasepiaui.com
 CERTBOT_EMAIL=<email_operacional>
 ```
 
+### 6.1 Distribuição recomendada de memória e workers
+
+Baseline operacional recomendado para `abasepiaui.com`:
+
+- `backend`: `768m`
+- `celery`: `1280m`
+- `frontend`: `384m`
+- `nginx`: `128m`
+
+Runtime recomendado:
+
+- `GUNICORN_WORKERS=3`
+- `GUNICORN_THREADS=2`
+- `GUNICORN_TIMEOUT=180`
+- `GUNICORN_KEEPALIVE=10`
+- `GUNICORN_MAX_REQUESTS=800`
+- `GUNICORN_MAX_REQUESTS_JITTER=80`
+- `CELERY_CONCURRENCY=1`
+- `CELERY_PREFETCH_MULTIPLIER=1`
+- `CELERY_MAX_TASKS_PER_CHILD=20`
+- `FRONTEND_NODE_MAX_OLD_SPACE_MB=256`
+
+Objetivo dessa distribuição:
+
+- manter o backend responsivo nas rotas mais lentas sem voltar ao consumo antigo dos 4 workers
+- reservar mais memória real para o `celery`, que absorve importações e saneamentos pesados
+- impedir crescimento descontrolado do frontend Node
+- manter o `nginx` previsível e pequeno
+
+Ajuste fino recomendado:
+
+- se a VPS pressionar memória, reduzir primeiro `GUNICORN_WORKERS` de `3` para `2`
+- não subir `CELERY_CONCURRENCY` sem medir RAM real durante importação pesada
+- manter `CELERY_MAX_TASKS_PER_CHILD` para reciclar processos longos
+
 ## 7. Ajustes de domínio antes do primeiro deploy de produção
 
 Arquivos que precisam refletir o domínio final:
