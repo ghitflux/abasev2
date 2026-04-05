@@ -24,7 +24,9 @@ from .duplicidade import DuplicidadeFinanceiraService
 from .financeiro import build_financeiro_resumo
 from .legacy import LegacyPagamentoSnapshot, list_legacy_pagamento_snapshots
 from .manual_return_conflicts import (
+    promote_pagamento_to_return,
     should_skip_legacy_manual_snapshot,
+    should_promote_manual_pagamento_to_return,
 )
 from .matching import find_associado
 from .models import (
@@ -162,6 +164,54 @@ def _apply_legacy_snapshot_to_pagamento(
     if snapshot.has_manual_context() and not pagamento.source_file_path:
         pagamento.source_file_path = "legacy/pagamentos_mensalidades"
         updated_fields.append("source_file_path")
+
+    return updated_fields
+
+
+def _sync_pagamento_from_return(
+    pagamento: PagamentoMensalidade,
+    *,
+    associado,
+    import_uuid: str,
+    source_file_path: str,
+    status_code: str | None,
+    matricula: str | None,
+    orgao_pagto: str | None,
+    nome_relatorio: str | None,
+    valor: Decimal | int | float | str | None,
+) -> list[str]:
+    updated_fields: list[str] = []
+    normalized_status = (status_code or "").strip()
+    normalized_matricula = matricula or ""
+    normalized_orgao = orgao_pagto or ""
+    normalized_nome = nome_relatorio or ""
+
+    if pagamento.import_uuid != import_uuid:
+        pagamento.import_uuid = import_uuid
+        updated_fields.append("import_uuid")
+    if pagamento.status_code != normalized_status:
+        pagamento.status_code = normalized_status
+        updated_fields.append("status_code")
+    if pagamento.matricula != normalized_matricula:
+        pagamento.matricula = normalized_matricula
+        updated_fields.append("matricula")
+    if pagamento.orgao_pagto != normalized_orgao:
+        pagamento.orgao_pagto = normalized_orgao
+        updated_fields.append("orgao_pagto")
+    if pagamento.nome_relatorio != normalized_nome:
+        pagamento.nome_relatorio = normalized_nome
+        updated_fields.append("nome_relatorio")
+    if valor is not None:
+        normalized_valor = Decimal(str(valor))
+        if pagamento.valor != normalized_valor:
+            pagamento.valor = normalized_valor
+            updated_fields.append("valor")
+    if pagamento.source_file_path != source_file_path:
+        pagamento.source_file_path = source_file_path
+        updated_fields.append("source_file_path")
+    if associado and pagamento.associado_id != associado.id:
+        pagamento.associado = associado
+        updated_fields.append("associado")
 
     return updated_fields
 
@@ -421,7 +471,7 @@ class ArquivoRetornoService:
 
         Regras:
         - Upsert por (cpf_cnpj, referencia_month)
-        - Duplicado: mantém registro; backfill de associado se não tiver vínculo
+        - Duplicado: reutiliza o registro e sincroniza os campos do retorno mais recente
         - Novo: cria com todos os campos
         - Se cadastro tiver 3+ pagamentos com status_code in ['1','4'] → campo não existe aqui
           (lógica de conclusão de contrato é responsabilidade da reconciliação)
@@ -486,40 +536,86 @@ class ArquivoRetornoService:
                     item_obj.save(update_fields=["associado", "updated_at"])
 
                 if existing:
-                    # Duplicado: backfill do vínculo se não tiver
+                    # Duplicado: reaproveita o lançamento do mês e sincroniza o retorno atual.
                     duplicados += 1
                     update_fields: list[str] = []
                     if not existing.associado_id and assoc:
                         existing.associado = assoc
                         update_fields.append("associado")
                         vinculados += 1
-                    duplicidade = None
-                    if item_obj is not None:
-                        duplicidade, _pagamento_conflict = (
-                            DuplicidadeFinanceiraService.detect_existing_conflict(
-                                item=item_obj,
-                                cpf_cnpj=cpf,
-                                competencia=ref_date,
-                                valor=Decimal(str(valor)) if valor is not None else None,
+                    return_valor = Decimal(str(valor)) if valor is not None else None
+
+                    if should_promote_manual_pagamento_to_return(
+                        existing,
+                        return_status_code=status,
+                        return_valor=return_valor,
+                    ):
+                        update_fields.extend(
+                            promote_pagamento_to_return(
+                                existing,
+                                return_item=item_obj,
+                                source_file_path=source_path,
+                                import_uuid=import_uuid,
                             )
                         )
-                    if duplicidade is not None:
-                        duplicidades_abertas += 1
-                        if existing.associado_id:
-                            contract_ids_to_rebuild.update(
-                                Contrato.objects.filter(associado_id=existing.associado_id).values_list(
-                                    "id", flat=True
+                        update_fields.extend(
+                            _sync_pagamento_from_return(
+                                existing,
+                                associado=assoc,
+                                import_uuid=import_uuid,
+                                source_file_path=source_path,
+                                status_code=status,
+                                matricula=matricula,
+                                orgao_pagto=orgao,
+                                nome_relatorio=nome,
+                                valor=return_valor,
+                            )
+                        )
+                    else:
+                        duplicidade = None
+                        if item_obj is not None:
+                            duplicidade, _pagamento_conflict = (
+                                DuplicidadeFinanceiraService.detect_existing_conflict(
+                                    item=item_obj,
+                                    cpf_cnpj=cpf,
+                                    competencia=ref_date,
+                                    valor=return_valor,
                                 )
                             )
-                    elif not should_skip_legacy_manual_snapshot(return_status_code=status):
-                        update_fields.extend(
-                            _apply_legacy_snapshot_to_pagamento(
-                                existing,
-                                legacy_snapshots.get(cpf),
+                        if duplicidade is not None:
+                            duplicidades_abertas += 1
+                            if existing.associado_id:
+                                contract_ids_to_rebuild.update(
+                                    Contrato.objects.filter(
+                                        associado_id=existing.associado_id
+                                    ).values_list("id", flat=True)
+                                )
+                        else:
+                            update_fields.extend(
+                                _sync_pagamento_from_return(
+                                    existing,
+                                    associado=assoc,
+                                    import_uuid=import_uuid,
+                                    source_file_path=source_path,
+                                    status_code=status,
+                                    matricula=matricula,
+                                    orgao_pagto=orgao,
+                                    nome_relatorio=nome,
+                                    valor=return_valor,
+                                )
                             )
-                        )
+                            if not should_skip_legacy_manual_snapshot(return_status_code=status):
+                                update_fields.extend(
+                                    _apply_legacy_snapshot_to_pagamento(
+                                        existing,
+                                        legacy_snapshots.get(cpf),
+                                    )
+                                )
                     if update_fields:
                         existing.save(update_fields=[*sorted(set(update_fields)), "updated_at"])
+                    if item_obj is not None and item_obj.associado_id != getattr(existing.associado, "id", None) and getattr(existing.associado, "id", None):
+                        item_obj.associado = existing.associado
+                        item_obj.save(update_fields=["associado", "updated_at"])
                     continue
 
                 # Novo lançamento
@@ -533,13 +629,14 @@ class ArquivoRetornoService:
                         )
                     )
                     if duplicidade is not None:
-                        duplicados += 1
+                        duplicidades_abertas += 1
                         if conflito_pagamento and conflito_pagamento.associado_id:
                             contract_ids_to_rebuild.update(
                                 Contrato.objects.filter(
                                     associado_id=conflito_pagamento.associado_id
                                 ).values_list("id", flat=True)
                             )
+                        duplicados += 1
                         continue
 
                 pagamento = PagamentoMensalidade(

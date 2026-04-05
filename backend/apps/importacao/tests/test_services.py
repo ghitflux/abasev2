@@ -691,6 +691,142 @@ STATUS MATRICULA NOME                           CARGO                          F
         self.assertEqual(resumo_um["pm_associados_importados"], 1)
         self.assertEqual(resumo_dois["pm_associados_importados"], 0)
 
+    def test_reimportacao_mesmo_mes_atualiza_pagamento_existente_com_dados_do_retorno(self):
+        associado, _contrato, _ciclo = self.create_associado_com_contrato(
+            cpf="18084974300",
+            nome="MIGUEL ALVES NASCIMENTO",
+        )
+        pagamento = PagamentoMensalidade.objects.create(
+            created_by=self.coordenador,
+            import_uuid="import-antigo",
+            referencia_month=date(2025, 12, 1),
+            status_code="2",
+            matricula="021293-8",
+            orgao_pagto="SEAD ANTIGA",
+            nome_relatorio="MIGUEL ALVES DO NASCIMENTO",
+            cpf_cnpj=associado.cpf_cnpj,
+            associado=None,
+            valor=Decimal("30.00"),
+            source_file_path="arquivos_retorno/retorno_antigo.txt",
+        )
+
+        arquivo = self.create_arquivo_retorno(nome="retorno_dezembro_corrigido.txt")
+        arquivo.competencia = date(2025, 12, 1)
+        arquivo.resultado_resumo = {
+            "competencia": "12/2025",
+            "data_geracao": "26/12/2025",
+        }
+        arquivo.save(update_fields=["competencia", "resultado_resumo", "updated_at"])
+
+        service = ArquivoRetornoService()
+        resumo = service._upsert_pagamentos_mensalidade(
+            arquivo_retorno=arquivo,
+            items=[
+                {
+                    "linha_numero": 1,
+                    "cpf_cnpj": associado.cpf_cnpj,
+                    "matricula_servidor": "021293-9",
+                    "nome_servidor": "MIGUEL ALVES NASCIMENTO",
+                    "cargo": "AGENTE OPERACIONAL SR",
+                    "orgao_pagto_nome": "SEAD NOVA",
+                    "status_codigo": "1",
+                    "valor_descontado": "45.00",
+                }
+            ],
+            import_uuid="import-corrigido",
+            user=self.coordenador,
+        )
+
+        pagamento.refresh_from_db()
+        self.assertEqual(
+            PagamentoMensalidade.objects.filter(
+                cpf_cnpj=associado.cpf_cnpj,
+                referencia_month=date(2025, 12, 1),
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            PagamentoMensalidade.objects.get(
+                cpf_cnpj=associado.cpf_cnpj,
+                referencia_month=date(2025, 12, 1),
+            ).id,
+            pagamento.id,
+        )
+        self.assertEqual(pagamento.status_code, "1")
+        self.assertEqual(pagamento.matricula, "021293-9")
+        self.assertEqual(pagamento.orgao_pagto, "SEAD NOVA")
+        self.assertEqual(pagamento.nome_relatorio, "MIGUEL ALVES NASCIMENTO")
+        self.assertEqual(pagamento.valor, Decimal("45.00"))
+        self.assertEqual(pagamento.import_uuid, "import-corrigido")
+        self.assertEqual(pagamento.source_file_path, arquivo.arquivo_url)
+        self.assertEqual(pagamento.associado_id, associado.id)
+        self.assertEqual(resumo["pm_criados"], 0)
+        self.assertEqual(resumo["pm_duplicados"], 1)
+        self.assertEqual(resumo["pm_vinculados"], 1)
+
+    def test_reimportacao_mesmo_mes_promove_baixa_manual_legada_para_retorno_efetivado(self):
+        associado, _contrato, _ciclo = self.create_associado_com_contrato(
+            cpf="77852621368",
+            nome="ACACIO LUSTOSA DANTAS",
+            matricula_orgao="362602-4",
+            orgao_publico="SECRETARIA DA EDUCACAO",
+        )
+        pagamento = PagamentoMensalidade.objects.create(
+            created_by=self.coordenador,
+            import_uuid="manual-fev",
+            referencia_month=date(2026, 2, 1),
+            status_code="M",
+            matricula="362602-4",
+            orgao_pagto="918",
+            nome_relatorio="ACACIO LUSTOSA DANTAS",
+            cpf_cnpj=associado.cpf_cnpj,
+            associado=associado,
+            valor=Decimal("100.00"),
+            manual_status=PagamentoMensalidade.ManualStatus.PAGO,
+            manual_paid_at=timezone.make_aware(datetime(2026, 2, 5, 0, 0, 0)),
+            recebido_manual=Decimal("100.00"),
+            source_file_path="legacy/pagamentos_mensalidades",
+        )
+
+        arquivo = self.create_arquivo_retorno(nome="retorno_fev_corrigido.txt")
+        arquivo.competencia = date(2026, 2, 1)
+        arquivo.resultado_resumo = {
+            "competencia": "02/2026",
+            "data_geracao": "04/03/2026",
+        }
+        arquivo.save(update_fields=["competencia", "resultado_resumo", "updated_at"])
+
+        service = ArquivoRetornoService()
+        resumo = service._upsert_pagamentos_mensalidade(
+            arquivo_retorno=arquivo,
+            items=[
+                {
+                    "linha_numero": 710,
+                    "cpf_cnpj": associado.cpf_cnpj,
+                    "matricula_servidor": "362602-4",
+                    "nome_servidor": "ACACIO LUSTOSA DANTAS",
+                    "cargo": "-SEM PLANO",
+                    "orgao_pagto_nome": "SECRETARIA DA EDUCACAO",
+                    "status_codigo": "1",
+                    "valor_descontado": "100.00",
+                }
+            ],
+            import_uuid="import-fev-retorno",
+            user=self.coordenador,
+        )
+
+        pagamento.refresh_from_db()
+        self.assertEqual(pagamento.status_code, "1")
+        self.assertIsNone(pagamento.manual_status)
+        self.assertIsNone(pagamento.manual_paid_at)
+        self.assertIsNone(pagamento.recebido_manual)
+        self.assertEqual(pagamento.import_uuid, "import-fev-retorno")
+        self.assertEqual(pagamento.source_file_path, arquivo.arquivo_url)
+        self.assertEqual(resumo["pm_criados"], 0)
+        self.assertEqual(resumo["pm_duplicados"], 1)
+        self.assertEqual(resumo["pm_duplicidades_abertas"], 0)
+        self.assertEqual(DuplicidadeFinanceira.objects.count(), 0)
+
     def test_upload_aplica_snapshot_manual_do_legado_na_tabela_atual_e_no_resumo(self):
         self.create_associado_com_contrato(
             cpf="23993596315",
@@ -752,7 +888,7 @@ STATUS MATRICULA NOME                           CARGO                          F
             self.assertEqual(payload["resumo"]["ok"], 3)
             self.assertEqual(payload["resumo"]["recebido"], "90.00")
 
-    def test_processar_envia_conflito_manual_para_esteira_de_duplicidade(self):
+    def test_processar_envia_conflito_manual_para_esteira_de_duplicidade_quando_valor_diverge(self):
         associado = Associado.objects.create(
             nome_completo="ACACIO LUSTOSA DANTAS",
             cpf_cnpj="77852621368",
@@ -861,7 +997,7 @@ STATUS MATRICULA NOME                           CARGO                          F
                     "nome_servidor": "ACACIO LUSTOSA DANTAS",
                     "cargo": "-SEM PLANO",
                     "competencia": "02/2026",
-                    "valor_descontado": Decimal("100.00"),
+                    "valor_descontado": Decimal("120.00"),
                     "status_codigo": "1",
                     "status_desconto": ArquivoRetornoItem.StatusDesconto.EFETIVADO,
                     "status_descricao": "Lançado e Efetivado",
@@ -912,7 +1048,7 @@ STATUS MATRICULA NOME                           CARGO                          F
         self.assertEqual(duplicidade.status, DuplicidadeFinanceira.Status.ABERTA)
         self.assertEqual(
             duplicidade.motivo,
-            DuplicidadeFinanceira.Motivo.BAIXA_MANUAL_DUPLICADA,
+            DuplicidadeFinanceira.Motivo.DIVERGENCIA_VALOR,
         )
         self.assertEqual(contrato.ciclos.count(), 1)
         self.assertEqual(
