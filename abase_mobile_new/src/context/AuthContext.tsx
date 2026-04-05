@@ -7,6 +7,7 @@ import {
   persistTokens,
   readValidStoredTokens,
 } from '@/services/api/session';
+import { setApiAccessToken } from '@/services/api/client';
 
 type AuthState = {
   user: User | null;
@@ -49,6 +50,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ]);
 
         if (accessToken && refreshToken) {
+          setApiAccessToken(accessToken);
           const session = sessionRaw ? (JSON.parse(sessionRaw) as { user: User; roles: Roles }) : null;
           setState({
             token: accessToken,
@@ -67,6 +69,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (data: AuthPayload) => {
+    setApiAccessToken(data.token);
     const next: AuthState = {
       user: data.user,
       token: data.token,
@@ -86,6 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    setApiAccessToken(null);
     setState({ user: null, token: null, refreshToken: null, roles: [], bootstrap: null });
     await Promise.all([
       clearStoredTokens(),

@@ -17,6 +17,8 @@ type RetriableConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
 export { TOKEN_KEY, REFRESH_TOKEN_KEY };
 
+let volatileAccessToken: string | null = null;
+
 export const apiClient = axios.create({
   baseURL: BASE_URL,
   timeout: 30_000,
@@ -37,9 +39,18 @@ const refreshClient = axios.create({
 
 let refreshPromise: Promise<string | null> | null = null;
 
+export function setApiAccessToken(token?: string | null) {
+  volatileAccessToken = token ?? null;
+}
+
 function isAuthUrl(url?: string) {
   const value = String(url || '');
-  return value.includes('/auth/login/') || value.includes('/auth/refresh/');
+  return (
+    value.includes('/auth/login/') ||
+    value.includes('/auth/login') ||
+    value.includes('/auth/refresh/') ||
+    value.includes('/auth/refresh')
+  );
 }
 
 async function refreshAccessToken() {
@@ -56,12 +67,15 @@ async function refreshAccessToken() {
       );
       const accessToken = response.data?.access ?? null;
       if (!accessToken) {
+        setApiAccessToken(null);
         await clearStoredTokens();
         return null;
       }
       await persistTokens(accessToken, response.data?.refresh ?? refreshToken);
+      setApiAccessToken(accessToken);
       return accessToken;
     } catch {
+      setApiAccessToken(null);
       await clearStoredTokens();
       return null;
     } finally {
@@ -74,7 +88,7 @@ async function refreshAccessToken() {
 
 apiClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   try {
-    const token = await getStoredAccessToken();
+    const token = volatileAccessToken ?? (await getStoredAccessToken());
     if (token) {
       config.headers = config.headers ?? {};
       (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;

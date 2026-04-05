@@ -1,4 +1,4 @@
-import { get, post } from './client';
+import { get, post, setApiAccessToken } from './client';
 import { ENDPOINTS } from './constants';
 import { clearStoredTokens, getStoredRefreshToken, persistTokens } from './session';
 import type {
@@ -102,6 +102,7 @@ export async function loginApi(params: {
 
   const r = await post<LoginResponse>(ENDPOINTS.authLogin, payload);
   await persistTokens(r.access, r.refresh);
+  setApiAccessToken(r.access);
 
   try {
     const home = await fetchBootstrap();
@@ -113,6 +114,7 @@ export async function loginApi(params: {
       bootstrap: normalizeBootstrap(home),
     };
   } catch (error) {
+    setApiAccessToken(null);
     await clearStoredTokens();
     throw error;
   }

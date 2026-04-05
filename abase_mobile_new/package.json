@@ -1,6 +1,6 @@
 {
   "name": "abase-mobile",
-  "version": "1.0.0",
+  "version": "2.1.3",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
@@ -10,6 +10,7 @@
     "eas:build:android:test": "eas build --platform android --profile test-apk",
     "eas:build:android:preview": "eas build --platform android --profile preview",
     "eas:build:android:production": "eas build --platform android --profile production",
+    "eas:build:ios:test": "eas build --platform ios --profile test-ios",
     "eas:build:ios:preview": "eas build --platform ios --profile preview",
     "eas:build:ios:production": "eas build --platform ios --profile production",
     "eas:submit:ios:production": "eas submit --platform ios --profile production"
