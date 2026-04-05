@@ -9,6 +9,6 @@ def processar_arquivo_retorno(self, arquivo_retorno_id: int):
 
     service = ArquivoRetornoService()
     try:
-        return service.processar(arquivo_retorno_id)
+        service.processar(arquivo_retorno_id)
     except Exception as exc:
         raise self.retry(exc=exc)

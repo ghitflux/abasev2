@@ -5,7 +5,7 @@ from datetime import datetime
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, permissions
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
@@ -168,7 +168,10 @@ class ArquivoRetornoViewSet(
     @extend_schema(responses=ArquivoRetornoDetailSerializer)
     @action(detail=True, methods=["post"])
     def reprocessar(self, request, pk=None):
-        arquivo = ArquivoRetornoService().reprocessar(int(pk))
+        try:
+            arquivo = ArquivoRetornoService().reprocessar(int(pk))
+        except ArquivoRetorno.DoesNotExist:
+            raise NotFound("Arquivo retorno não encontrado.")
         return Response(ArquivoRetornoDetailSerializer(arquivo).data)
 
     @extend_schema(
@@ -181,7 +184,10 @@ class ArquivoRetornoViewSet(
     )
     @action(detail=True, methods=["post"])
     def confirmar(self, request, pk=None):
-        arquivo = ArquivoRetornoService().confirmar(int(pk))
+        try:
+            arquivo = ArquivoRetornoService().confirmar(int(pk))
+        except ArquivoRetorno.DoesNotExist:
+            raise NotFound("Arquivo retorno não encontrado.")
         return Response(ArquivoRetornoDetailSerializer(arquivo).data)
 
     @extend_schema(
@@ -193,7 +199,10 @@ class ArquivoRetornoViewSet(
     )
     @action(detail=True, methods=["post"])
     def cancelar(self, request, pk=None):
-        ArquivoRetornoService().cancelar(int(pk))
+        try:
+            ArquivoRetornoService().cancelar(int(pk))
+        except ArquivoRetorno.DoesNotExist:
+            raise NotFound("Arquivo retorno não encontrado.")
         return Response(status=204)
 
     @extend_schema(responses=ArquivoRetornoItemSerializer(many=True))
