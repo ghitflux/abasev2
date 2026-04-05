@@ -252,6 +252,9 @@ class ArquivoRetornoListSerializer(serializers.ModelSerializer):
         return obj.competencia.strftime("%m/%Y")
 
     def get_resumo(self, obj: ArquivoRetorno) -> dict:
+        view = self.context.get("view")
+        if getattr(view, "action", None) == "list":
+            return {}
         return ArquivoRetornoResumoSerializer(obj.resultado_resumo).data
 
     def get_associados_importados(self, obj: ArquivoRetorno) -> int:
@@ -270,10 +273,10 @@ class ArquivoRetornoListSerializer(serializers.ModelSerializer):
         action = getattr(view, "action", None)
 
         # A listagem/histórico da importação entra em polling frequente. Nessa rota,
-        # o resumo financeiro deve vir apenas do cache gravado no processamento,
-        # sem recalcular leituras pesadas do domínio financeiro.
+        # o resumo financeiro não é consumido pela UI e não deve recalcular nem
+        # serializar payloads pesados do domínio financeiro.
         if action == "list":
-            return cached
+            return None
 
         # Durante o polling da importação, recalcular o resumo financeiro completo
         # a cada refresh aumenta muito a carga do backend e pode derrubar o upstream
@@ -284,7 +287,7 @@ class ArquivoRetornoListSerializer(serializers.ModelSerializer):
             return None
 
         if cached is not None:
-            return cached
+            return ArquivoRetornoFinanceiroResumoSerializer(cached).data
 
         cache = self.context.setdefault("_financeiro_cache", {})
         if obj.competencia not in cache:

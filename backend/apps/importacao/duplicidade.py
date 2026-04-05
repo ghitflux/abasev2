@@ -5,7 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -163,6 +163,46 @@ class DuplicidadeFinanceiraService:
         )
 
     @classmethod
+    def filtered_queryset(
+        cls,
+        *,
+        search: str | None = None,
+        status: str | None = None,
+        motivo: str | None = None,
+        competencia: date | None = None,
+        agente: str | None = None,
+        arquivo_retorno_id: int | None = None,
+    ):
+        queryset = cls._queryset()
+        if search:
+            queryset = queryset.filter(
+                Q(arquivo_retorno_item__nome_servidor__icontains=search)
+                | Q(arquivo_retorno_item__cpf_cnpj__icontains=search)
+                | Q(associado__nome_completo__icontains=search)
+                | Q(contrato__codigo__icontains=search)
+            )
+        if status in {choice[0] for choice in DuplicidadeFinanceira.Status.choices}:
+            queryset = queryset.filter(status=status)
+        if motivo in {choice[0] for choice in DuplicidadeFinanceira.Motivo.choices}:
+            queryset = queryset.filter(motivo=motivo)
+        if competencia:
+            queryset = queryset.filter(
+                competencia_retorno__year=competencia.year,
+                competencia_retorno__month=competencia.month,
+            )
+        if agente:
+            queryset = queryset.filter(
+                Q(associado__agente_responsavel__first_name__icontains=agente)
+                | Q(associado__agente_responsavel__last_name__icontains=agente)
+                | Q(associado__agente_responsavel__email__icontains=agente)
+            )
+        if arquivo_retorno_id:
+            queryset = queryset.filter(
+                arquivo_retorno_item__arquivo_retorno_id=arquivo_retorno_id
+            )
+        return queryset
+
+    @classmethod
     def _serialize(cls, item: DuplicidadeFinanceira) -> dict[str, object]:
         associado = item.associado
         agente = getattr(associado, "agente_responsavel", None)
@@ -198,20 +238,21 @@ class DuplicidadeFinanceiraService:
         }
 
     @classmethod
-    def _build_kpis(cls, rows: list[dict[str, object]]) -> dict[str, object]:
-        return {
-            "total": len(rows),
-            "abertas": sum(1 for row in rows if row["status"] == DuplicidadeFinanceira.Status.ABERTA),
-            "em_tratamento": sum(
-                1 for row in rows if row["status"] == DuplicidadeFinanceira.Status.EM_TRATAMENTO
+    def _build_kpis_from_queryset(cls, queryset) -> dict[str, object]:
+        return queryset.aggregate(
+            total=Count("id"),
+            abertas=Count("id", filter=Q(status=DuplicidadeFinanceira.Status.ABERTA)),
+            em_tratamento=Count(
+                "id",
+                filter=Q(status=DuplicidadeFinanceira.Status.EM_TRATAMENTO),
             ),
-            "resolvidas": sum(
-                1 for row in rows if row["status"] == DuplicidadeFinanceira.Status.RESOLVIDA
-            ),
-            "descartadas": sum(
-                1 for row in rows if row["status"] == DuplicidadeFinanceira.Status.DESCARTADA
-            ),
-        }
+            resolvidas=Count("id", filter=Q(status=DuplicidadeFinanceira.Status.RESOLVIDA)),
+            descartadas=Count("id", filter=Q(status=DuplicidadeFinanceira.Status.DESCARTADA)),
+        )
+
+    @classmethod
+    def serialize_many(cls, items) -> list[dict[str, object]]:
+        return [cls._serialize(item) for item in items]
 
     @classmethod
     def listar(
@@ -224,36 +265,19 @@ class DuplicidadeFinanceiraService:
         agente: str | None = None,
         arquivo_retorno_id: int | None = None,
     ) -> DuplicidadeListPayload:
-        queryset = cls._queryset()
-        if search:
-            queryset = queryset.filter(
-                Q(arquivo_retorno_item__nome_servidor__icontains=search)
-                | Q(arquivo_retorno_item__cpf_cnpj__icontains=search)
-                | Q(associado__nome_completo__icontains=search)
-                | Q(contrato__codigo__icontains=search)
-            )
-        if status in {choice[0] for choice in DuplicidadeFinanceira.Status.choices}:
-            queryset = queryset.filter(status=status)
-        if motivo in {choice[0] for choice in DuplicidadeFinanceira.Motivo.choices}:
-            queryset = queryset.filter(motivo=motivo)
-        if competencia:
-            queryset = queryset.filter(
-                competencia_retorno__year=competencia.year,
-                competencia_retorno__month=competencia.month,
-            )
-        if agente:
-            queryset = queryset.filter(
-                Q(associado__agente_responsavel__first_name__icontains=agente)
-                | Q(associado__agente_responsavel__last_name__icontains=agente)
-                | Q(associado__agente_responsavel__email__icontains=agente)
-            )
-        if arquivo_retorno_id:
-            queryset = queryset.filter(
-                arquivo_retorno_item__arquivo_retorno_id=arquivo_retorno_id
-            )
-
-        rows = [cls._serialize(item) for item in queryset]
-        return DuplicidadeListPayload(rows=rows, kpis=cls._build_kpis(rows))
+        queryset = cls.filtered_queryset(
+            search=search,
+            status=status,
+            motivo=motivo,
+            competencia=competencia,
+            agente=agente,
+            arquivo_retorno_id=arquivo_retorno_id,
+        )
+        rows = cls.serialize_many(queryset)
+        return DuplicidadeListPayload(
+            rows=rows,
+            kpis=cls._build_kpis_from_queryset(queryset),
+        )
 
     @classmethod
     @transaction.atomic

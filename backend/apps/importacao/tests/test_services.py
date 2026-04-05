@@ -191,6 +191,33 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
             [arquivo_mar.id, arquivo_fev.id, arquivo_jan.id],
         )
 
+    def test_list_historico_nao_retorna_financeiro_pesado(self):
+        arquivo = self.create_arquivo_retorno(nome="retorno_hist.txt")
+        arquivo.status = ArquivoRetorno.Status.CONCLUIDO
+        arquivo.resultado_resumo = {
+            "competencia": "03/2026",
+            "financeiro": {
+                "esperado": "100.00",
+                "recebido": "100.00",
+                "ok": 1,
+                "total": 1,
+                "faltando": 0,
+                "pendente": "0.00",
+                "percentual": 100.0,
+            },
+        }
+        arquivo.save(update_fields=["status", "resultado_resumo", "updated_at"])
+
+        response = self.coord_client.get(
+            "/api/v1/importacao/arquivo-retorno/",
+            {"page_size": 10},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["results"][0]["id"], arquivo.id)
+        self.assertEqual(payload["results"][0]["resumo"], {})
+        self.assertIsNone(payload["results"][0]["financeiro"])
+
     def test_processar_reprocessamento_idempotente_nao_duplica_ciclo(self):
         self.create_associado_com_contrato(
             cpf="23993596315",
@@ -830,6 +857,15 @@ STATUS MATRICULA NOME                           CARGO                          F
         self.assertEqual(response.status_code, 200, response.json())
         self.assertEqual(response.json()["count"], 1)
         self.assertEqual(response.json()["kpis"]["abertas"], 1)
+
+        sidebar_response = self.coord_client.get(
+            "/api/v1/importacao/duplicidades-financeiras/",
+            {"status": "aberta", "summary_only": "1"},
+        )
+        self.assertEqual(sidebar_response.status_code, 200, sidebar_response.json())
+        self.assertEqual(sidebar_response.json()["count"], 1)
+        self.assertEqual(sidebar_response.json()["kpis"]["abertas"], 1)
+        self.assertEqual(sidebar_response.json()["results"], [])
 
     def test_resolver_duplicidade_com_devolucao(self):
         associado, contrato, _ciclo = self.create_associado_com_contrato(

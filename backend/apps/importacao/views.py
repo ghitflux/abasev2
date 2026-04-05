@@ -58,6 +58,12 @@ def parse_periodo_query(value: str | None):
     raise ValidationError("Período inválido. Use 'mes' ou 'trimestre'.")
 
 
+def parse_boolean_query(value: str | None) -> bool:
+    if value is None:
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 class ArquivoRetornoViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
@@ -300,7 +306,7 @@ class DuplicidadeFinanceiraViewSet(mixins.ListModelMixin, GenericViewSet):
     def list(self, request, *args, **kwargs):  # noqa: A003
         competencia = parse_competencia_query(request.query_params.get("competencia"))
         arquivo_retorno_id = request.query_params.get("arquivo_retorno_id")
-        payload = DuplicidadeFinanceiraService.listar(
+        queryset = DuplicidadeFinanceiraService.filtered_queryset(
             search=(request.query_params.get("search") or "").strip() or None,
             status=(request.query_params.get("status") or "").strip() or None,
             motivo=(request.query_params.get("motivo") or "").strip() or None,
@@ -308,9 +314,15 @@ class DuplicidadeFinanceiraViewSet(mixins.ListModelMixin, GenericViewSet):
             agente=(request.query_params.get("agente") or "").strip() or None,
             arquivo_retorno_id=int(arquivo_retorno_id) if (arquivo_retorno_id or "").isdigit() else None,
         )
-        page = self.paginate_queryset(payload.rows)
-        serializer = self.get_serializer(page if page is not None else payload.rows, many=True)
-        kpis = DuplicidadeFinanceiraKpisSerializer(payload.kpis).data
+        kpis = DuplicidadeFinanceiraKpisSerializer(
+            DuplicidadeFinanceiraService._build_kpis_from_queryset(queryset)
+        ).data
+        if parse_boolean_query(request.query_params.get("summary_only")):
+            return Response({"count": kpis["total"], "results": [], "kpis": kpis})
+
+        page = self.paginate_queryset(queryset)
+        rows = DuplicidadeFinanceiraService.serialize_many(page if page is not None else queryset)
+        serializer = self.get_serializer(rows, many=True)
         if page is not None:
             response = self.get_paginated_response(serializer.data)
             response.data["kpis"] = kpis
@@ -332,9 +344,10 @@ class DuplicidadeFinanceiraViewSet(mixins.ListModelMixin, GenericViewSet):
             comprovantes=serializer.validated_data["comprovantes"],
             user=request.user,
         )
-        payload = DuplicidadeFinanceiraService.listar().rows
-        row = [item for item in payload if item["id"] == duplicidade.id]
-        data = self.get_serializer(row[:1], many=True).data
+        data = self.get_serializer(
+            [DuplicidadeFinanceiraService._serialize(duplicidade)],
+            many=True,
+        ).data
         return Response(data[0] if data else {"id": duplicidade.id})
 
     @action(detail=True, methods=["post"], url_path="descartar")
@@ -346,7 +359,8 @@ class DuplicidadeFinanceiraViewSet(mixins.ListModelMixin, GenericViewSet):
             motivo=serializer.validated_data["motivo"],
             user=request.user,
         )
-        payload = DuplicidadeFinanceiraService.listar().rows
-        row = [item for item in payload if item["id"] == duplicidade.id]
-        data = self.get_serializer(row[:1], many=True).data
+        data = self.get_serializer(
+            [DuplicidadeFinanceiraService._serialize(duplicidade)],
+            many=True,
+        ).data
         return Response(data[0] if data else {"id": duplicidade.id})

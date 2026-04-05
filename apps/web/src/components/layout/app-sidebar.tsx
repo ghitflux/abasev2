@@ -13,7 +13,6 @@ import type {
   DuplicidadeFinanceiraItem,
   DuplicidadeFinanceiraKpis,
   PagamentoAgenteNotificacoes,
-  PaginatedResponse,
   PendenciaResumo,
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
@@ -82,7 +81,9 @@ function collectNavigationHrefs(
   return [...hrefs];
 }
 
-type DuplicidadeSidebarResponse = PaginatedResponse<DuplicidadeFinanceiraItem> & {
+type DuplicidadeSidebarResponse = {
+  count: number;
+  results: DuplicidadeFinanceiraItem[];
   kpis: DuplicidadeFinanceiraKpis;
 };
 
@@ -116,14 +117,13 @@ export default function AppSidebar() {
   const duplicidadesResumoQuery = useQuery({
     queryKey: ["tesouraria-duplicidades-sidebar"],
     enabled: ["ADMIN", "COORDENADOR", "TESOUREIRO"].includes(role ?? ""),
-    refetchInterval: 30000,
-    staleTime: 30 * 1000,
+    refetchInterval: 60000,
+    staleTime: 60 * 1000,
     queryFn: () =>
       apiFetch<DuplicidadeSidebarResponse>("importacao/duplicidades-financeiras", {
         query: {
           status: "aberta",
-          page: 1,
-          page_size: 1,
+          summary_only: 1,
         },
       }),
   });

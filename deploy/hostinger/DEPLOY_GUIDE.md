@@ -836,15 +836,20 @@ Lições permanentes:
 Correções aplicadas no código:
 
 - a listagem de `ArquivoRetorno` deixou de recalcular o resumo financeiro pesado no polling do histórico
+- a listagem de `ArquivoRetorno` agora devolve `resumo={}` e `financeiro=null` no histórico, porque a UI não consome esses blocos nessa rota
 - o resumo financeiro passou a ser cacheado em `resultado_resumo["financeiro"]` ao final do processamento
 - a tela de importação passou a buscar o financeiro detalhado em endpoint dedicado, sob demanda
 - o histórico deixou de fazer polling agressivo
 - a confirmação agora faz fallback inline quando nenhum worker Celery responde ao ping
+- a rota `GET /api/v1/importacao/duplicidades-financeiras/` deixou de materializar toda a base em memória antes de paginar
+- o badge lateral de duplicidades passou a usar `summary_only=1`, retornando apenas `count` + `kpis`, sem serializar linhas desnecessárias
+- `resolver-devolucao` e `descartar` deixaram de refazer a listagem inteira de duplicidades só para retornar a linha atualizada
 
 Efeito esperado:
 
 - queda forte de carga no backend durante a importação
 - redução de `502` na tela `/importacao`
+- redução de `500` no badge lateral de duplicidades e na sidebar da tesouraria
 - fim do estado “pendente infinito” quando o worker estiver fora do ar
 
 ### 04/04/2026 — validação final local do pacote importação + análise
