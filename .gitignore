@@ -15,6 +15,7 @@ backend/__pycache__
 backend/**/__pycache__
 backend/**/*.pyc
 backend/media
+backend/backend/
 backend/staticfiles
 apps/web/.next
 apps/web/node_modules
