@@ -284,15 +284,16 @@ class ArquivoRetornoService:
         self._dispatch_processamento(arquivo_retorno.id)
         return arquivo_retorno
 
-    @transaction.atomic
     def processar(self, arquivo_retorno_id: int) -> ArquivoRetorno:
-        arquivo_retorno = ArquivoRetorno.objects.select_for_update().get(pk=arquivo_retorno_id)
-        if arquivo_retorno.status == ArquivoRetorno.Status.PROCESSANDO:
-            raise ValidationError("O arquivo já está em processamento.")
-
-        arquivo_retorno.status = ArquivoRetorno.Status.PROCESSANDO
-        arquivo_retorno.processado_em = None
-        arquivo_retorno.save(update_fields=["status", "processado_em", "updated_at"])
+        # Adquire lock apenas para a transição de status (evitar processamento duplo)
+        with transaction.atomic():
+            arquivo_retorno = ArquivoRetorno.objects.select_for_update().get(pk=arquivo_retorno_id)
+            if arquivo_retorno.status == ArquivoRetorno.Status.PROCESSANDO:
+                raise ValidationError("O arquivo já está em processamento.")
+            arquivo_retorno.status = ArquivoRetorno.Status.PROCESSANDO
+            arquivo_retorno.processado_em = None
+            arquivo_retorno.save(update_fields=["status", "processado_em", "updated_at"])
+        # Processamento pesado sem lock — permite queries de leitura paralelas
 
         try:
             if arquivo_retorno.itens.exists():
