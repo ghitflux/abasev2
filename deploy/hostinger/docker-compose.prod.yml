@@ -83,6 +83,8 @@ services:
     image: abase-backend-prod:latest
     container_name: abase-backend-prod
     restart: unless-stopped
+    mem_limit: 2g
+    memswap_limit: 2g
     networks:
       - abase-net
     environment:
@@ -128,9 +130,11 @@ services:
     image: abase-backend-prod:latest
     container_name: abase-celery-prod
     restart: unless-stopped
+    mem_limit: 1g
+    memswap_limit: 1g
     networks:
       - abase-net
-    command: ["celery", "-A", "config", "worker", "-l", "info", "--concurrency", "2"]
+    command: ["celery", "-A", "config", "worker", "-l", "info", "--concurrency", "1"]
     environment:
       DJANGO_SETTINGS_MODULE: ${DJANGO_SETTINGS_MODULE:-config.settings.production}
       SECRET_KEY: ${SECRET_KEY}
