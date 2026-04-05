@@ -95,7 +95,7 @@ function detailTitle(key: DetailKey): string {
     const map: Record<string, string> = {
       descontados: "Descontados (baixa efetuada)",
       nao_descontados: "Não descontados",
-      nao_encontrados: "Associados importados a partir do retorno",
+      nao_encontrados: "CPFs não encontrados no cadastro",
       pendencias: "Pendências manuais",
       ciclo_aberto: "Sem parcela elegível (ciclo aberto)",
       aptos_renovar: "Ficarão aptos a renovar",
@@ -263,10 +263,10 @@ export default function DryRunModal({
                     onClick={() => setActiveDetail("nao_descontados")}
                   />
                   <KpiCard
-                    label="Associados importados"
+                    label="CPFs não encontrados"
                     value={kpis.associados_importados}
                     icon={<SearchXIcon className="size-4" />}
-                    sub="Cadastros mínimos criados a partir do arquivo retorno."
+                    sub="CPFs no arquivo sem correspondência no cadastro de associados."
                     colorClass={
                       kpis.associados_importados > 0 ? "text-amber-300" : "text-muted-foreground"
                     }
@@ -413,9 +413,9 @@ export default function DryRunModal({
                 <div className="flex items-start gap-2 rounded-2xl border border-amber-400/25 bg-amber-400/5 px-4 py-3 text-sm text-amber-200">
                   <AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />
                   <span>
-                    <strong>{kpis.associados_importados}</strong> linha
-                    {kpis.associados_importados !== 1 ? "s" : ""} do arquivo não tinham cadastro
-                    prévio e serão importadas com status associado importado.
+                    <strong>{kpis.associados_importados}</strong> CPF
+                    {kpis.associados_importados !== 1 ? "s" : ""} do arquivo não têm correspondência
+                    no cadastro e serão ignorados na importação.
                   </span>
                 </div>
               )}
