@@ -36,6 +36,18 @@ def _normalize_money(value: Decimal | None) -> Decimal:
     return value if value is not None else Decimal("0")
 
 
+def _to_decimal(value: Decimal | int | float | str | None) -> Decimal:
+    if value in {None, ""}:
+        return Decimal("0")
+    if isinstance(value, Decimal):
+        return value
+    return Decimal(str(value))
+
+
+def _money_as_string(value: Decimal | None) -> str:
+    return f"{_normalize_money(value):.2f}"
+
+
 def pagamento_identity(item: PagamentoMensalidade) -> tuple[object, date]:
     associado_key = item.associado_id or re.sub(r"\D", "", item.cpf_cnpj or "")
     return associado_key, item.referencia_month
@@ -164,9 +176,9 @@ def _build_row(
         "agente_responsavel": agente_responsavel,
         "matricula": associado_matricula or item.matricula,
         "cpf_cnpj": item.cpf_cnpj,
-        "valor": float(esperado),
-        "esperado": float(esperado),
-        "recebido": float(recebido),
+        "valor": _money_as_string(esperado),
+        "esperado": _money_as_string(esperado),
+        "recebido": _money_as_string(recebido),
         "status_code": status_code,
         "status_label": status_label,
         "ok": ok,
@@ -175,7 +187,7 @@ def _build_row(
         "orgao_pagto": item.orgao_pagto,
         "relatorio": item.nome_relatorio,
         "manual_status": manual_status,
-        "manual_valor": float(recebido_manual) if recebido_manual is not None else None,
+        "manual_valor": _money_as_string(recebido_manual) if recebido_manual is not None else None,
         "manual_forma_pagamento": manual_forma_pagamento or None,
         "manual_paid_at": manual_paid_at,
         "manual_comprovante_path": manual_comprovante_path or None,
@@ -185,20 +197,20 @@ def _build_row(
 
 
 def _build_totals(rows: list[dict]) -> dict:
-    esperado = sum((row["esperado"] for row in rows), Decimal("0"))
-    recebido = sum((row["recebido"] for row in rows), Decimal("0"))
+    esperado = sum((_to_decimal(row.get("esperado")) for row in rows), Decimal("0"))
+    recebido = sum((_to_decimal(row.get("recebido")) for row in rows), Decimal("0"))
     ok = sum(1 for row in rows if row["ok"])
     total = len(rows)
     faltando = max(total - ok, 0)
     pendente = esperado - recebido
-    percentual = float((recebido / esperado) * Decimal("100")) if esperado > 0 else 0.0
+    percentual = round(float((recebido / esperado) * Decimal("100")), 1) if esperado > 0 else 0.0
     return {
-        "esperado": float(esperado),
-        "recebido": float(recebido),
+        "esperado": _money_as_string(esperado),
+        "recebido": _money_as_string(recebido),
         "ok": ok,
         "total": total,
         "faltando": faltando,
-        "pendente": float(pendente),
+        "pendente": _money_as_string(pendente),
         "percentual": round(percentual, 1),
     }
 

@@ -208,7 +208,7 @@ class ArquivoRetornoViewSet(
         try:
             ArquivoRetornoService().cancelar(int(pk))
         except ArquivoRetorno.DoesNotExist:
-            raise NotFound("Arquivo retorno não encontrado.")
+            return Response(status=204)
         return Response(status=204)
 
     @extend_schema(responses=ArquivoRetornoItemSerializer(many=True))

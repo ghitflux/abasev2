@@ -19,6 +19,7 @@ from apps.tesouraria.models import DevolucaoAssociado
 
 from .base import ImportacaoBaseTestCase
 from ..legacy import LegacyPagamentoSnapshot
+from ..financeiro import build_financeiro_payload
 from ..models import (
     ArquivoRetorno,
     ArquivoRetornoItem,
@@ -358,6 +359,37 @@ STATUS MATRICULA NOME                           CARGO                          F
             ).exists()
         )
 
+    def test_cancelar_endpoint_e_idempotente_para_preview_ja_removido(self):
+        self.create_associado_com_contrato(
+            cpf="23993596315",
+            nome="Maria de Jesus Santana Costa",
+        )
+
+        response = self.coord_client.post(
+            "/api/v1/importacao/arquivo-retorno/upload/",
+            {
+                "arquivo": SimpleUploadedFile(
+                    "retorno_etipi_052025.txt",
+                    self.fixture_bytes(),
+                    content_type="text/plain",
+                )
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+        arquivo_id = response.json()["id"]
+
+        primeira = self.coord_client.post(
+            f"/api/v1/importacao/arquivo-retorno/{arquivo_id}/cancelar/"
+        )
+        self.assertEqual(primeira.status_code, 204)
+        self.assertFalse(ArquivoRetorno.objects.filter(pk=arquivo_id).exists())
+
+        segunda = self.coord_client.post(
+            f"/api/v1/importacao/arquivo-retorno/{arquivo_id}/cancelar/"
+        )
+        self.assertEqual(segunda.status_code, 204)
+
     def test_processar_consolida_cpf_duplicado_no_padrao_legado(self):
         self.create_associado_com_contrato(
             cpf="12345678901",
@@ -513,6 +545,48 @@ STATUS MATRICULA NOME                           CARGO                          F
         self.assertEqual(payload["resumo"]["ok"], 217)
         self.assertEqual(payload["resumo"]["recebido"], "45491.38")
         self.assertEqual(len(payload["rows"]), 238)
+
+    def test_build_financeiro_payload_serializa_valores_monetarios_como_string(self):
+        self.create_associado_com_contrato(
+            cpf="23993596315",
+            nome="Maria de Jesus Santana Costa",
+        )
+        self.create_associado_com_contrato(
+            cpf="21819424391",
+            nome="Francisco Crisostomo Batista",
+        )
+        self.create_associado_com_contrato(
+            cpf="48204773315",
+            nome="Maria de Jesus Araujo Goncalves",
+        )
+
+        response = self.coord_client.post(
+            "/api/v1/importacao/arquivo-retorno/upload/",
+            {
+                "arquivo": SimpleUploadedFile(
+                    "retorno_etipi_052025.txt",
+                    self.fixture_bytes(),
+                    content_type="text/plain",
+                )
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+
+        confirmacao = self.coord_client.post(
+            f"/api/v1/importacao/arquivo-retorno/{response.json()['id']}/confirmar/"
+        )
+        self.assertEqual(confirmacao.status_code, 200, confirmacao.json())
+
+        payload = build_financeiro_payload(competencia=date(2025, 5, 1))
+        self.assertIsInstance(payload["resumo"]["esperado"], str)
+        self.assertIsInstance(payload["resumo"]["recebido"], str)
+        self.assertEqual(payload["resumo"]["esperado"], "120.00")
+        self.assertEqual(payload["resumo"]["recebido"], "60.00")
+        self.assertTrue(payload["rows"])
+        self.assertIsInstance(payload["rows"][0]["valor"], str)
+        self.assertIsInstance(payload["rows"][0]["esperado"], str)
+        self.assertIsInstance(payload["rows"][0]["recebido"], str)
 
     def test_upload_preenche_dry_run_com_associados_importados(self):
         self.create_associado_com_contrato(
