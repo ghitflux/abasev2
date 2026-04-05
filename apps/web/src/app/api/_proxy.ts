@@ -51,6 +51,7 @@ async function resolveAuthState(forceRefresh = false): Promise<AuthState> {
 
 function buildProxyHeaders(request: Request, body: ProxyBody, accessToken?: string) {
   const headers = new Headers(request.headers);
+  const incomingAuthorization = request.headers.get("authorization");
   headers.delete("host");
   headers.delete("connection");
   headers.delete("content-length");
@@ -61,6 +62,8 @@ function buildProxyHeaders(request: Request, body: ProxyBody, accessToken?: stri
 
   if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
+  } else if (incomingAuthorization) {
+    headers.set("Authorization", incomingAuthorization);
   } else {
     headers.delete("Authorization");
   }
