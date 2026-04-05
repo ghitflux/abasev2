@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import logging
 import re
 from datetime import datetime, timedelta, timezone as dt_timezone
@@ -324,14 +325,20 @@ class ArquivoRetornoService:
                 import_uuid=import_uuid,
                 user=arquivo_retorno.uploaded_by,
             )
-            contract_ids_to_rebuild = resumo_pm.pop("pm_contract_ids_to_rebuild", [])
+            contract_ids_to_rebuild = list(set(resumo_pm.pop("pm_contract_ids_to_rebuild", [])))
             if contract_ids_to_rebuild:
-                for contrato in (
-                    Contrato.objects.select_related("associado")
-                    .filter(id__in=sorted(set(contract_ids_to_rebuild)))
-                    .order_by("id")
-                ):
-                    rebuild_contract_cycle_state(contrato, execute=True)
+                chunk_size = 50
+                for i in range(0, len(contract_ids_to_rebuild), chunk_size):
+                    chunk_ids = contract_ids_to_rebuild[i : i + chunk_size]
+                    contratos = list(
+                        Contrato.objects.select_related("associado")
+                        .filter(id__in=chunk_ids)
+                        .order_by("id")
+                    )
+                    for contrato in contratos:
+                        rebuild_contract_cycle_state(contrato, execute=True)
+                    del contratos
+                    gc.collect()
 
             resumo = MotorReconciliacao(arquivo_retorno).reconciliar()
             resumo.update(
