@@ -164,9 +164,9 @@ def _build_row(
         "agente_responsavel": agente_responsavel,
         "matricula": associado_matricula or item.matricula,
         "cpf_cnpj": item.cpf_cnpj,
-        "valor": esperado,
-        "esperado": esperado,
-        "recebido": recebido,
+        "valor": float(esperado),
+        "esperado": float(esperado),
+        "recebido": float(recebido),
         "status_code": status_code,
         "status_label": status_label,
         "ok": ok,
@@ -175,7 +175,7 @@ def _build_row(
         "orgao_pagto": item.orgao_pagto,
         "relatorio": item.nome_relatorio,
         "manual_status": manual_status,
-        "manual_valor": recebido_manual,
+        "manual_valor": float(recebido_manual) if recebido_manual is not None else None,
         "manual_forma_pagamento": manual_forma_pagamento or None,
         "manual_paid_at": manual_paid_at,
         "manual_comprovante_path": manual_comprovante_path or None,
@@ -193,12 +193,12 @@ def _build_totals(rows: list[dict]) -> dict:
     pendente = esperado - recebido
     percentual = float((recebido / esperado) * Decimal("100")) if esperado > 0 else 0.0
     return {
-        "esperado": esperado,
-        "recebido": recebido,
+        "esperado": float(esperado),
+        "recebido": float(recebido),
         "ok": ok,
         "total": total,
         "faltando": faltando,
-        "pendente": pendente,
+        "pendente": float(pendente),
         "percentual": round(percentual, 1),
     }
 
