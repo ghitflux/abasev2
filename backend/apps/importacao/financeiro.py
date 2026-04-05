@@ -81,8 +81,12 @@ def _build_row(
     status_code = (item.status_code or "").strip()
     status_label = STATUS_LABELS.get(status_code, status_code or "-")
 
+    # Only fall back to legacy manual_status when the arquivo retorno has no status for
+    # this record (status_code empty). When the arquivo retorno has an explicit result,
+    # it is authoritative — manual overrides must come from user actions (item.manual_status).
+    use_legacy_manual = not status_code
     manual_status = (item.manual_status or "").strip() or (
-        (legacy_snapshot.manual_status or "").strip() if legacy_snapshot else ""
+        (legacy_snapshot.manual_status or "").strip() if (legacy_snapshot and use_legacy_manual) else ""
     )
     manual_status = manual_status or None
     manual_status_lc = _normalize_text(manual_status)
@@ -101,6 +105,16 @@ def _build_row(
 
     ok_arquivo = status_code in {"1", "4"}
     ok_manual = manual_status_lc in MANUAL_STATUS_OK
+
+    # When the arquivo retorno explicitly rejected payment (status present but not 1 or 4),
+    # a "pago" manual_status is only valid if backed by concrete evidence: an explicit
+    # received amount or a payment proof (comprovante). A legacy manual_status alone —
+    # without recebido_manual or manual_comprovante_path — is insufficient to override
+    # the arquivo retorno result and must not inflate the received total.
+    if ok_manual and not ok_arquivo and status_code:
+        has_manual_evidence = recebido_manual is not None or bool(manual_comprovante_path)
+        ok_manual = has_manual_evidence
+
     cancelado_manual = manual_status_lc in MANUAL_STATUS_CANCELADO
     ok = ok_manual or ok_arquivo
 
