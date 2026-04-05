@@ -13,7 +13,10 @@ from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from apps.accounts.mobile_legacy_auth import ensure_self_service_roles, resolve_associado_for_user
-from apps.contratos.cycle_projection import get_associado_visual_status_payload
+from apps.contratos.cycle_projection import (
+    build_contract_cycle_projection,
+    get_associado_visual_status_payload,
+)
 from apps.contratos.models import Contrato, Parcela
 from apps.esteira.models import DocIssue, DocReupload
 from apps.importacao.models import PagamentoMensalidade
@@ -776,9 +779,192 @@ def _parse_ref_month(value: str | None) -> tuple[int, int] | None:
         return None
 
 
+def _reference_in_range(
+    reference: date | None,
+    *,
+    ref_from_parts: tuple[int, int] | None,
+    ref_to_parts: tuple[int, int] | None,
+) -> bool:
+    if reference is None:
+        return False
+    year_month = (reference.year, reference.month)
+    if ref_from_parts and year_month < ref_from_parts:
+        return False
+    if ref_to_parts and year_month > ref_to_parts:
+        return False
+    return True
+
+
+def _serialize_mobile_parcela_model(parcela: Parcela) -> dict[str, object]:
+    return {
+        "id": parcela.id,
+        "numero": parcela.numero,
+        "ref_ano": parcela.referencia_mes.year,
+        "ref_mes": parcela.referencia_mes.month,
+        "referencia_mes": format_date_iso(parcela.referencia_mes),
+        "valor": decimal_to_number(parcela.valor),
+        "previsao_data": format_date_iso(parcela.data_vencimento),
+        "pago_em": format_date_iso(parcela.data_pagamento),
+        "status": parcela.status,
+        "status_code": PARCELA_STATUS_CODE_MAP.get(parcela.status, "0"),
+        "parcela_valor": decimal_to_number(parcela.valor),
+        "observacao": parcela.observacao or "",
+    }
+
+
+def _serialize_mobile_projected_parcela(parcela: dict[str, object]) -> dict[str, object]:
+    referencia = parcela.get("referencia_mes")
+    referencia_date = referencia if isinstance(referencia, date) else None
+    status = str(parcela.get("status") or "")
+    valor = parcela.get("valor")
+    return {
+        "id": parcela.get("id"),
+        "numero": parcela.get("numero"),
+        "ref_ano": referencia_date.year if referencia_date else None,
+        "ref_mes": referencia_date.month if referencia_date else None,
+        "referencia_mes": format_date_iso(referencia_date),
+        "valor": decimal_to_number(valor),
+        "previsao_data": format_date_iso(parcela.get("data_vencimento")),
+        "pago_em": format_date_iso(parcela.get("data_pagamento")),
+        "status": status,
+        "status_code": PARCELA_STATUS_CODE_MAP.get(status, "0"),
+        "parcela_valor": decimal_to_number(valor),
+        "observacao": str(parcela.get("observacao") or ""),
+    }
+
+
+def _serialize_mobile_unpaid_month(item: dict[str, object]) -> dict[str, object]:
+    referencia = item.get("referencia_mes")
+    referencia_date = referencia if isinstance(referencia, date) else None
+    status = str(item.get("status") or "")
+    valor = item.get("valor")
+    return {
+        "id": item.get("id"),
+        "contrato_id": item.get("contrato_id"),
+        "contrato_codigo": item.get("contrato_codigo"),
+        "referencia_mes": format_date_iso(referencia_date),
+        "ref_ano": referencia_date.year if referencia_date else None,
+        "ref_mes": referencia_date.month if referencia_date else None,
+        "valor": decimal_to_number(valor),
+        "previsao_data": None,
+        "pago_em": format_date_iso(item.get("data_pagamento")),
+        "status": status,
+        "status_code": PARCELA_STATUS_CODE_MAP.get(status, "0"),
+        "parcela_valor": decimal_to_number(valor),
+        "observacao": str(item.get("observacao") or ""),
+        "source": str(item.get("source") or ""),
+    }
+
+
+def _serialize_mobile_cycle(
+    cycle: dict[str, object],
+    *,
+    ref_from_parts: tuple[int, int] | None,
+    ref_to_parts: tuple[int, int] | None,
+) -> dict[str, object] | None:
+    raw_parcelas = [
+        parcela
+        for parcela in cycle.get("parcelas", [])
+        if isinstance(parcela, dict)
+        and _reference_in_range(
+            parcela.get("referencia_mes"),
+            ref_from_parts=ref_from_parts,
+            ref_to_parts=ref_to_parts,
+        )
+    ]
+    if not raw_parcelas:
+        return None
+
+    referencias = [
+        parcela["referencia_mes"]
+        for parcela in raw_parcelas
+        if isinstance(parcela.get("referencia_mes"), date)
+    ]
+    primeira_referencia = referencias[0] if referencias else None
+    ultima_referencia = referencias[-1] if referencias else None
+
+    return {
+        "id": cycle.get("id"),
+        "contrato_id": cycle.get("contrato_id"),
+        "contrato_codigo": cycle.get("contrato_codigo"),
+        "numero": cycle.get("numero"),
+        "status": str(cycle.get("status") or ""),
+        "status_visual_slug": str(cycle.get("status_visual_slug") or ""),
+        "status_visual_label": str(cycle.get("status_visual_label") or ""),
+        "valor_total": decimal_to_number(cycle.get("valor_total")),
+        "data_inicio": format_date_iso(cycle.get("data_inicio")),
+        "data_fim": format_date_iso(cycle.get("data_fim")),
+        "primeira_competencia_ciclo": format_date_iso(primeira_referencia),
+        "ultima_competencia_ciclo": format_date_iso(ultima_referencia),
+        "resumo_referencias": ", ".join(
+            referencia.strftime("%m/%Y") for referencia in referencias
+        ),
+        "parcelas": [
+            _serialize_mobile_projected_parcela(parcela) for parcela in raw_parcelas
+        ],
+    }
+
+
+def _build_mobile_cycles_payload(
+    associado: Associado,
+    *,
+    ref_from_parts: tuple[int, int] | None,
+    ref_to_parts: tuple[int, int] | None,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    cycles: list[dict[str, object]] = []
+    unpaid_months: list[dict[str, object]] = []
+
+    for contrato in _active_contratos_qs(associado):
+        projection = build_contract_cycle_projection(contrato)
+        for cycle in projection.get("cycles", []):
+            if not isinstance(cycle, dict):
+                continue
+            serialized = _serialize_mobile_cycle(
+                cycle,
+                ref_from_parts=ref_from_parts,
+                ref_to_parts=ref_to_parts,
+            )
+            if serialized is not None:
+                cycles.append(serialized)
+        for item in projection.get("unpaid_months", []):
+            if not isinstance(item, dict):
+                continue
+            if not _reference_in_range(
+                item.get("referencia_mes"),
+                ref_from_parts=ref_from_parts,
+                ref_to_parts=ref_to_parts,
+            ):
+                continue
+            unpaid_months.append(_serialize_mobile_unpaid_month(item))
+
+    cycles.sort(
+        key=lambda item: (
+            str(item.get("ultima_competencia_ciclo") or ""),
+            int(item.get("numero") or 0),
+            int(item.get("contrato_id") or 0),
+        ),
+        reverse=True,
+    )
+    unpaid_months.sort(
+        key=lambda item: (
+            str(item.get("referencia_mes") or ""),
+            int(item.get("contrato_id") or 0),
+        ),
+        reverse=True,
+    )
+    return cycles, unpaid_months
+
+
 def build_mensalidades_payload(associado: Associado | None, *, ref_from: str | None = None, ref_to: str | None = None) -> dict[str, object]:
     if associado is None:
-        return {"parcelas": [], "resumo": build_resumo_payload(None), "proximo_ciclo": None}
+        return {
+            "parcelas": [],
+            "resumo": build_resumo_payload(None),
+            "proximo_ciclo": None,
+            "refinanciamento": None,
+            "ciclos": [],
+            "meses_nao_pagos": [],
+        }
 
     ref_from_parts = _parse_ref_month(ref_from)
     ref_to_parts = _parse_ref_month(ref_to)
@@ -799,21 +985,12 @@ def build_mensalidades_payload(associado: Associado | None, *, ref_from: str | N
             | Q(referencia_mes__year=ref_to_parts[0], referencia_mes__month__lte=ref_to_parts[1])
         )
 
-    parcelas = [
-        {
-            "id": parcela.id,
-            "numero": parcela.numero,
-            "ref_ano": parcela.referencia_mes.year,
-            "ref_mes": parcela.referencia_mes.month,
-            "valor": decimal_to_number(parcela.valor),
-            "previsao_data": format_date_iso(parcela.data_vencimento),
-            "pago_em": format_date_iso(parcela.data_pagamento),
-            "status": parcela.status,
-            "status_code": PARCELA_STATUS_CODE_MAP.get(parcela.status, "0"),
-            "parcela_valor": decimal_to_number(parcela.valor),
-        }
-        for parcela in parcelas_qs
-    ]
+    parcelas = [_serialize_mobile_parcela_model(parcela) for parcela in parcelas_qs]
+    ciclos, meses_nao_pagos = _build_mobile_cycles_payload(
+        associado,
+        ref_from_parts=ref_from_parts,
+        ref_to_parts=ref_to_parts,
+    )
 
     resumo = build_resumo_payload(associado)
     return {
@@ -821,6 +998,8 @@ def build_mensalidades_payload(associado: Associado | None, *, ref_from: str | N
         "resumo": resumo,
         "proximo_ciclo": None,
         "refinanciamento": None,
+        "ciclos": ciclos,
+        "meses_nao_pagos": meses_nao_pagos,
     }
 
 

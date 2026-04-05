@@ -266,10 +266,15 @@ class MobileLegacyCompatibilityTestCase(TestCase):
         mensalidades = self.client.get("/api/app/mensalidades")
         self.assertEqual(mensalidades.status_code, 200, mensalidades.json())
         self.assertEqual(len(mensalidades.json()["parcelas"]), 3)
+        self.assertIn("ciclos", mensalidades.json())
+        self.assertIn("meses_nao_pagos", mensalidades.json())
+        self.assertEqual(len(mensalidades.json()["ciclos"]), 1)
 
         mensalidades_ciclo = self.client.get("/api/app/mensalidades/ciclo")
         self.assertEqual(mensalidades_ciclo.status_code, 200, mensalidades_ciclo.json())
         self.assertEqual(len(mensalidades_ciclo.json()["parcelas"]), 3)
+        self.assertIn("ciclos", mensalidades_ciclo.json())
+        self.assertIn("meses_nao_pagos", mensalidades_ciclo.json())
 
         antecipacao = self.client.get("/api/app/antecipacao/historico")
         self.assertEqual(antecipacao.status_code, 200, antecipacao.json())
@@ -455,10 +460,93 @@ class MobileLegacyCompatibilityTestCase(TestCase):
         mensalidades = self.client.get("/api/v1/app/mensalidades/")
         self.assertEqual(mensalidades.status_code, 200, mensalidades.json())
         self.assertEqual(len(mensalidades.json()["parcelas"]), 3)
+        self.assertIn("ciclos", mensalidades.json())
+        self.assertIn("meses_nao_pagos", mensalidades.json())
+        self.assertEqual(len(mensalidades.json()["ciclos"]), 1)
 
         antecipacao = self.client.get("/api/v1/app/antecipacao/")
         self.assertEqual(antecipacao.status_code, 200, antecipacao.json())
         self.assertEqual(antecipacao.json()["historico"][0]["valor"], 500)
+
+    def test_v1_mensalidades_expoe_multiplos_ciclos_e_meses_nao_pagos(self):
+        for index, parcela in enumerate(self.ciclo.parcelas.order_by("numero"), start=1):
+            parcela.status = Parcela.Status.DESCONTADO
+            parcela.data_pagamento = date(2026, 2 + index - 1, 5)
+            parcela.save(update_fields=["status", "data_pagamento", "updated_at"])
+        self.ciclo.status = Ciclo.Status.CICLO_RENOVADO
+        self.ciclo.save(update_fields=["status", "updated_at"])
+
+        contrato_dois = Contrato.objects.create(
+            associado=self.associado,
+            codigo="CTR-LEG-002",
+            valor_bruto=Decimal("17082.33"),
+            valor_liquido=Decimal("7958.46"),
+            valor_mensalidade=Decimal("500.00"),
+            prazo_meses=3,
+            taxa_antecipacao=Decimal("30.00"),
+            margem_disponivel=Decimal("1050.00"),
+            valor_total_antecipacao=Decimal("1500.00"),
+            doacao_associado=Decimal("450.00"),
+            status=Contrato.Status.ATIVO,
+            data_aprovacao=date(2026, 4, 10),
+            data_primeira_mensalidade=date(2026, 5, 5),
+            mes_averbacao=date(2026, 4, 1),
+        )
+        novo_ciclo = Ciclo.objects.create(
+            contrato=contrato_dois,
+            numero=1,
+            data_inicio=date(2026, 5, 1),
+            data_fim=date(2026, 7, 31),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("1500.00"),
+        )
+        Parcela.objects.create(
+            ciclo=novo_ciclo,
+            associado=self.associado,
+            numero=1,
+            referencia_mes=date(2026, 5, 1),
+            valor=Decimal("500.00"),
+            data_vencimento=date.today() - timedelta(days=5),
+            status=Parcela.Status.NAO_DESCONTADO,
+        )
+        Parcela.objects.create(
+            ciclo=novo_ciclo,
+            associado=self.associado,
+            numero=2,
+            referencia_mes=date(2026, 6, 1),
+            valor=Decimal("500.00"),
+            data_vencimento=date.today() + timedelta(days=15),
+            status=Parcela.Status.EM_PREVISAO,
+        )
+        Parcela.objects.create(
+            ciclo=novo_ciclo,
+            associado=self.associado,
+            numero=3,
+            referencia_mes=date(2026, 7, 1),
+            valor=Decimal("500.00"),
+            data_vencimento=date.today() + timedelta(days=45),
+            status=Parcela.Status.EM_PREVISAO,
+        )
+
+        self.login_v1()
+        mensalidades = self.client.get("/api/v1/app/mensalidades/")
+        self.assertEqual(mensalidades.status_code, 200, mensalidades.json())
+        payload = mensalidades.json()
+
+        self.assertEqual(len(payload["parcelas"]), 6)
+        self.assertEqual(len(payload["ciclos"]), 2)
+        self.assertEqual(payload["ciclos"][0]["contrato_codigo"], "CTR-LEG-002")
+        self.assertEqual(payload["ciclos"][1]["contrato_codigo"], "CTR-LEG-001")
+        self.assertNotEqual(
+            payload["ciclos"][0]["resumo_referencias"],
+            payload["ciclos"][1]["resumo_referencias"],
+        )
+        self.assertIn("/2026", payload["ciclos"][0]["resumo_referencias"])
+        self.assertIn("/2026", payload["ciclos"][1]["resumo_referencias"])
+        self.assertEqual(len(payload["ciclos"][0]["parcelas"]), 3)
+        self.assertEqual(len(payload["ciclos"][1]["parcelas"]), 3)
+        self.assertGreaterEqual(len(payload["meses_nao_pagos"]), 1)
+        self.assertEqual(payload["meses_nao_pagos"][0]["contrato_codigo"], "CTR-LEG-002")
 
     def test_v1_issue_reupload_terms_contact_auxilio2_and_logout(self):
         _access, payload = self.login_v1(login=self.user.email, password="Senha@123")
