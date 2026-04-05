@@ -14,10 +14,6 @@ from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Ciclo, Parcela
 from apps.refinanciamento.models import Refinanciamento
 
-from .imported_associados import (
-    RETORNO_IMPORTED_FLAG,
-    upsert_imported_associado_from_retorno,
-)
 from .matching import find_associado
 from .models import ArquivoRetorno, ArquivoRetornoItem, ImportacaoLog
 
@@ -89,20 +85,13 @@ class MotorReconciliacao:
             "resultado": item.resultado_processamento,
             "gerou_encerramento": item.gerou_encerramento,
             "gerou_novo_ciclo": item.gerou_novo_ciclo,
-            "associado_importado": bool(
-                (item.payload_bruto or {}).get(RETORNO_IMPORTED_FLAG)
-                and item.resultado_processamento
-                == ArquivoRetornoItem.ResultadoProcessamento.NAO_ENCONTRADO
-            ),
+            "associado_importado": False,
         }
 
     @transaction.atomic
     def reconciliar_item(self, item: ArquivoRetornoItem) -> dict[str, object]:
         cpf = only_digits(item.cpf_cnpj)
         competencia = parse_competencia(item.competencia)
-        imported_from_current_return = bool(
-            (item.payload_bruto or {}).get(RETORNO_IMPORTED_FLAG)
-        )
         associado = item.associado or find_associado(
             cpf=cpf,
             matricula=item.matricula_servidor,
@@ -111,79 +100,12 @@ class MotorReconciliacao:
             orgao_alternativo=item.orgao_pagto_codigo,
             orgao_codigo=item.orgao_codigo,
         )
-        if associado is None:
-            associado = upsert_imported_associado_from_retorno(
-                arquivo_nome=self.arquivo_retorno.arquivo_nome,
-                competencia=competencia,
-                data_geracao=self.arquivo_retorno.resultado_resumo.get("data_geracao"),
-                cpf_cnpj=cpf,
-                nome_completo=item.nome_servidor,
-                matricula_orgao=item.matricula_servidor,
-                orgao_publico=item.orgao_pagto_nome,
-                cargo=item.cargo,
-            )
-            imported_from_current_return = associado is not None
-        elif associado.status == Associado.Status.IMPORTADO:
-            associado = upsert_imported_associado_from_retorno(
-                arquivo_nome=self.arquivo_retorno.arquivo_nome,
-                competencia=competencia,
-                data_geracao=self.arquivo_retorno.resultado_resumo.get("data_geracao"),
-                cpf_cnpj=cpf,
-                nome_completo=item.nome_servidor,
-                matricula_orgao=item.matricula_servidor,
-                orgao_publico=item.orgao_pagto_nome,
-                cargo=item.cargo,
-                existing=associado,
-            )
-
-        if imported_from_current_return and associado is not None:
-            payload_bruto = dict(item.payload_bruto or {})
-            payload_bruto[RETORNO_IMPORTED_FLAG] = True
-            item.associado = associado
-            item.parcela = None
-            item.payload_bruto = payload_bruto
-            item.processado = True
-            item.resultado_processamento = ArquivoRetornoItem.ResultadoProcessamento.NAO_ENCONTRADO
-            item.observacao = (
-                "Associado não encontrado no cadastro atual. "
-                "Cadastro mínimo importado a partir do arquivo retorno."
-            )
-            item.save(
-                update_fields=[
-                    "associado",
-                    "parcela",
-                    "payload_bruto",
-                    "processado",
-                    "resultado_processamento",
-                    "observacao",
-                    "updated_at",
-                ]
-            )
-            ImportacaoLog.objects.create(
-                arquivo_retorno=self.arquivo_retorno,
-                tipo=ImportacaoLog.Tipo.RECONCILIACAO,
-                mensagem="Associado ausente no cadastro e importado a partir do retorno.",
-                dados={
-                    "linha_numero": item.linha_numero,
-                    "cpf_cnpj": cpf,
-                    "matricula": item.matricula_servidor,
-                    "nome": item.nome_servidor,
-                    "associado_id": associado.id,
-                },
-            )
-            return {
-                "resultado": ArquivoRetornoItem.ResultadoProcessamento.NAO_ENCONTRADO,
-                "gerou_encerramento": False,
-                "gerou_novo_ciclo": False,
-                "associado_importado": True,
-            }
-
         if not associado:
             item.associado = None
             item.parcela = None
             item.processado = True
             item.resultado_processamento = ArquivoRetornoItem.ResultadoProcessamento.NAO_ENCONTRADO
-            item.observacao = "Associado não encontrado por CPF, matrícula ou nome/órgão."
+            item.observacao = "CPF não encontrado no cadastro de associados."
             item.save(
                 update_fields=[
                     "associado",
@@ -197,7 +119,7 @@ class MotorReconciliacao:
             ImportacaoLog.objects.create(
                 arquivo_retorno=self.arquivo_retorno,
                 tipo=ImportacaoLog.Tipo.RECONCILIACAO,
-                mensagem="Associado não encontrado durante a reconciliação.",
+                mensagem="CPF não encontrado no cadastro de associados.",
                 dados={
                     "linha_numero": item.linha_numero,
                     "cpf_cnpj": cpf,
