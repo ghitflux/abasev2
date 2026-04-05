@@ -207,8 +207,8 @@ class ArquivoRetornoViewSet(
     def cancelar(self, request, pk=None):
         try:
             ArquivoRetornoService().cancelar(int(pk))
-        except ArquivoRetorno.DoesNotExist:
-            return Response(status=204)
+        except (ArquivoRetorno.DoesNotExist, ValidationError):
+            pass
         return Response(status=204)
 
     @extend_schema(responses=ArquivoRetornoItemSerializer(many=True))
