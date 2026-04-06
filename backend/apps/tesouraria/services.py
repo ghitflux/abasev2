@@ -775,6 +775,7 @@ class BaixaManualService:
             em_aberto=Count("id", filter=Q(status=Parcela.Status.EM_ABERTO)),
             nao_descontado=Count("id", filter=Q(status=Parcela.Status.NAO_DESCONTADO)),
             valor_total=Sum("valor"),
+            total_associados=Count("ciclo__contrato__associado_id", distinct=True),
         )
 
         baixas_mes = BaixaManual.objects.filter(
@@ -788,6 +789,7 @@ class BaixaManualService:
             "nao_descontado": totals["nao_descontado"] or 0,
             "valor_total_pendente": str(totals["valor_total"] or Decimal("0")),
             "baixas_realizadas_mes": baixas_mes,
+            "total_associados": totals["total_associados"] or 0,
         }
 
     @staticmethod

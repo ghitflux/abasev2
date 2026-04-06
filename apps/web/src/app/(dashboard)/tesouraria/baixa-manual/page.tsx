@@ -15,6 +15,7 @@ import {
   SlidersHorizontalIcon,
   TrendingDownIcon,
   UploadIcon,
+  UsersIcon,
   WalletCardsIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -97,6 +98,7 @@ type BaixaManualKpis = {
   nao_descontado?: number;
   valor_total_pendente?: string;
   baixas_realizadas_mes?: number;
+  total_associados?: number;
   total_quitados?: number;
   valor_total_quitado?: string;
   quitados_este_mes?: number;
@@ -649,10 +651,17 @@ export default function BaixaManualPage() {
         ) : (
           <>
             <StatsCard
-              title="Total Pendentes"
+              title="Total de Parcelas"
               value={String(kpis?.total_pendentes ?? "-")}
               delta="em aberto + não descontadas"
               icon={ClipboardListIcon}
+              tone="warning"
+            />
+            <StatsCard
+              title="Associados Pendentes"
+              value={String(kpis?.total_associados ?? "-")}
+              delta="associados com parcela em aberto"
+              icon={UsersIcon}
               tone="warning"
             />
             <StatsCard
