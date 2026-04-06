@@ -5,7 +5,6 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertCircleIcon,
   CheckCircleIcon,
   ChevronRightIcon,
   ClipboardCheckIcon,
@@ -15,7 +14,6 @@ import {
   SlidersHorizontalIcon,
   TrendingDownIcon,
   UploadIcon,
-  UsersIcon,
   WalletCardsIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -653,37 +651,30 @@ export default function BaixaManualPage() {
             <StatsCard
               title="Total de Parcelas"
               value={String(kpis?.total_pendentes ?? "-")}
-              delta="em aberto + não descontadas"
+              delta="parcelas pendentes no total"
               icon={ClipboardListIcon}
               tone="warning"
             />
             <StatsCard
-              title="Associados Pendentes"
-              value={String(kpis?.total_associados ?? "-")}
-              delta="associados com parcela em aberto"
-              icon={UsersIcon}
-              tone="warning"
-            />
-            <StatsCard
-              title="Em Aberto"
-              value={String(kpis?.em_aberto ?? "-")}
-              delta="parcelas em aberto"
-              icon={AlertCircleIcon}
-              tone="warning"
-            />
-            <StatsCard
-              title="Não Descontadas"
+              title="Parcelas Inadimplentes"
               value={String(kpis?.nao_descontado ?? "-")}
-              delta="retornaram rejeitadas"
+              delta="retornaram não descontadas"
               icon={TrendingDownIcon}
               tone="warning"
+            />
+            <StatsCard
+              title="Parcelas Quitadas"
+              value={String(kpis?.total_quitados ?? "-")}
+              delta={`Baixas este mês: ${kpis?.baixas_realizadas_mes ?? 0}`}
+              icon={CheckCircleIcon}
+              tone="positive"
             />
             <StatsCard
               title="Valor Total Pendente"
               value={
                 kpis?.valor_total_pendente ? formatCurrency(kpis.valor_total_pendente) : "-"
               }
-              delta={`Baixas este mês: ${kpis?.baixas_realizadas_mes ?? 0}`}
+              delta="saldo inadimplente em aberto"
               icon={HandCoinsIcon}
               tone="neutral"
             />

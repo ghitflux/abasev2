@@ -783,6 +783,10 @@ class BaixaManualService:
             created_at__month=hoje.month,
         ).count()
 
+        total_quitados = BaixaManual.objects.filter(
+            parcela__ciclo__contrato__contrato_canonico__isnull=True,
+        ).count()
+
         return {
             "total_pendentes": totals["total"] or 0,
             "em_aberto": totals["em_aberto"] or 0,
@@ -790,6 +794,7 @@ class BaixaManualService:
             "valor_total_pendente": str(totals["valor_total"] or Decimal("0")),
             "baixas_realizadas_mes": baixas_mes,
             "total_associados": totals["total_associados"] or 0,
+            "total_quitados": total_quitados,
         }
 
     @staticmethod
