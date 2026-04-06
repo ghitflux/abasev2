@@ -116,6 +116,8 @@ const documentFields = [
   { key: "contracheque", label: "Contracheque atual" },
   { key: "termo_adesao", label: "Termo de adesão" },
   { key: "termo_antecipacao", label: "Termo de antecipação" },
+  { key: "anexo_extra_1", label: "Anexo extra 1" },
+  { key: "anexo_extra_2", label: "Anexo extra 2" },
 ] as const;
 
 const PRAZO_ANTECIPACAO_PADRAO = 3;
@@ -442,7 +444,7 @@ export default function AssociadoForm({
   const contratoAtual = initialData?.contratos?.[0];
   const currentDocumentsByType = React.useMemo(
     () =>
-      new Map(
+      new Map<string, NonNullable<AssociadoDetail["documentos"]>[number]>(
         (initialData?.documentos ?? []).map((documento) => [
           documento.tipo,
           documento,

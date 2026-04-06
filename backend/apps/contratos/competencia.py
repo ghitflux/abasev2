@@ -15,6 +15,7 @@ from rest_framework.exceptions import ValidationError
 from apps.importacao.models import ArquivoRetornoItem
 from apps.tesouraria.models import BaixaManual
 
+from .canonicalization import is_shadow_duplicate_contract
 from .cycle_timeline import (
     CICLO_TOTAL_PARCELAS,
     count_discounted_parcelas,
@@ -189,6 +190,7 @@ def parcela_has_financial_evidence(parcela: Parcela) -> bool:
 def _fallback_parcela_resolution_key(parcela: Parcela) -> tuple[object, ...]:
     contrato = parcela.ciclo.contrato
     return (
+        not is_shadow_duplicate_contract(contrato),
         contrato.data_aprovacao or contrato.data_contrato or date.min,
         contrato.created_at,
         -CONTRACT_STATUS_PRIORITY.get(contrato.status, 99),
@@ -222,6 +224,7 @@ def _cycle_resolution_key(cycle: Ciclo) -> tuple[object, ...]:
         default=0,
     )
     return (
+        0 if not is_shadow_duplicate_contract(cycle.contrato) else 1,
         CONTRACT_STATUS_PRIORITY.get(cycle.contrato.status, 99),
         CYCLE_STATUS_PRIORITY.get(cycle.status, 99),
         -parcelas_pagas,
@@ -302,7 +305,13 @@ def resolve_processing_competencia_parcela(
     )
     if not candidates:
         return None
-    return max(candidates, key=_latest_status_parcela_key)
+    canonical_candidates = [
+        parcela
+        for parcela in candidates
+        if not is_shadow_duplicate_contract(parcela.ciclo.contrato)
+    ]
+    pool = canonical_candidates or candidates
+    return max(pool, key=_latest_status_parcela_key)
 
 
 def _build_group_id(

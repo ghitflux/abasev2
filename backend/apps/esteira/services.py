@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.associados.models import Associado, Documento
+from apps.contratos.canonicalization import resolve_operational_contract_for_associado
 from apps.contratos.soft_delete import soft_delete_contract_tree
 from apps.contratos.models import Contrato
 from apps.refinanciamento.models import Refinanciamento
@@ -196,7 +197,7 @@ class EsteiraService:
             esteira_item.etapa_atual = EsteiraItem.Etapa.TESOURARIA
             esteira_item.status = EsteiraItem.Situacao.AGUARDANDO
         else:
-            contrato = esteira_item.associado.contratos.order_by("-created_at").first()
+            contrato = resolve_operational_contract_for_associado(esteira_item.associado)
             if contrato:
                 contrato.status = Contrato.Status.ATIVO
                 contrato.auxilio_liberado_em = timezone.localdate()

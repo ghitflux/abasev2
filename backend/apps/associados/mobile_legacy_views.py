@@ -20,6 +20,7 @@ from apps.accounts.mobile_legacy_auth import (
     ensure_associado_user,
     only_digits,
 )
+from apps.contratos.canonicalization import resolve_operational_contract_for_associado
 from apps.contratos.models import Contrato
 from apps.esteira.models import DocIssue, DocReupload
 from apps.esteira.services import EsteiraService
@@ -513,7 +514,7 @@ class LegacyAssociadoDoisAceiteTermosView(LegacyMobileAPIView):
 
         associado.aceite_termos = True
         associado.save(update_fields=["aceite_termos", "updated_at"])
-        contrato = associado.contratos.exclude(status=Contrato.Status.CANCELADO).order_by("-created_at").first()
+        contrato = resolve_operational_contract_for_associado(associado)
         if contrato is not None:
             contrato.termos_web = True
             contrato.save(update_fields=["termos_web", "updated_at"])
@@ -545,7 +546,7 @@ class LegacyAssociadoDoisContatoView(LegacyMobileAPIView):
         associado.contato_status = "solicitado"
         associado.contato_updated_at = timezone.now()
         associado.save(update_fields=["contato_status", "contato_updated_at", "updated_at"])
-        contrato = associado.contratos.exclude(status=Contrato.Status.CANCELADO).order_by("-created_at").first()
+        contrato = resolve_operational_contract_for_associado(associado)
         if contrato is not None:
             contrato.contato_web = True
             contrato.save(update_fields=["contato_web", "updated_at"])

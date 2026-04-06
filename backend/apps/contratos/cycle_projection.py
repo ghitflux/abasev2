@@ -15,6 +15,7 @@ from apps.importacao.models import PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante, Refinanciamento
 from apps.tesouraria.models import BaixaManual, Pagamento
 
+from .canonicalization import get_operational_contracts_for_associado
 from .cycle_timeline import (
     get_contract_activation_payload,
     get_contract_cycle_size,
@@ -1618,7 +1619,7 @@ def get_contract_visual_status_payload(
 
 
 def get_associado_visual_status_payload(associado: Associado) -> dict[str, object]:
-    contratos = list(associado.contratos.exclude(status=Contrato.Status.CANCELADO))
+    contratos = get_operational_contracts_for_associado(associado)
     candidates: list[dict[str, object]] = []
 
     for contrato in contratos:

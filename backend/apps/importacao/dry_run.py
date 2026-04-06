@@ -13,9 +13,13 @@ from decimal import Decimal
 
 from apps.associados.models import Associado, only_digits
 from apps.contratos.competencia import resolve_processing_competencia_parcela
-from apps.contratos.models import Ciclo, Parcela
+from apps.contratos.models import Parcela
 
 from .matching import find_associado
+from .return_auto_enrollment import (
+    is_synthetic_return_contract_code,
+    should_align_parcela_value_from_return,
+)
 
 VALORES_3050 = {Decimal("30.00"), Decimal("50.00")}
 MENSALIDADE_MIN = Decimal("100.00")
@@ -49,7 +53,10 @@ def _determine_resultado(raw: dict, parcela: Parcela) -> str:
     if cod == "1":
         if parcela.status == Parcela.Status.LIQUIDADA:
             return "pendencia_manual"
-        if valor != parcela.valor:
+        if valor != parcela.valor and not should_align_parcela_value_from_return(
+            parcela=parcela,
+            return_value=valor,
+        ):
             return "pendencia_manual"
         return "baixa_efetuada"
 
@@ -67,39 +74,34 @@ def _determine_resultado(raw: dict, parcela: Parcela) -> str:
 
 
 def _simular_apto_renovar(parcela: Parcela, resultado: str) -> bool:
-    if resultado != "baixa_efetuada":
-        return False
-
-    ciclo = parcela.ciclo
-    parcelas_ciclo = list(ciclo.parcelas.only("id", "status").all())
-    total = len(parcelas_ciclo)
-    if total == 0:
-        return False
-
-    threshold = max(total - 1, 1)
-    pagas = sum(1 for p in parcelas_ciclo if p.status == Parcela.Status.DESCONTADO)
-
-    # Simula: esta parcela seria DESCONTADA depois
-    pagas_depois = pagas if parcela.status == Parcela.Status.DESCONTADO else pagas + 1
-    return pagas_depois >= threshold
+    del parcela, resultado
+    # O processamento oficial do retorno não altera ciclos.
+    return False
 
 
 def _simular_status_associado(status_atual: str | None, resultado: str) -> str | None:
     if resultado == "nao_descontado":
         return Associado.Status.INADIMPLENTE
+    if resultado == "baixa_efetuada" and status_atual in {
+        Associado.Status.IMPORTADO,
+        Associado.Status.CADASTRADO,
+        Associado.Status.EM_ANALISE,
+        Associado.Status.PENDENTE,
+        Associado.Status.INADIMPLENTE,
+    }:
+        return Associado.Status.ATIVO
     return status_atual
 
 
 def _simular_status_ciclo(status_atual: str | None, resultado: str, apto: bool) -> str | None:
-    if resultado != "baixa_efetuada":
-        return status_atual
-    if apto:
-        return Ciclo.Status.APTO_A_RENOVAR
+    del resultado, apto
     return status_atual
 
 
 def _simular_item(raw: dict, competencia: date) -> dict:
     cpf = only_digits(raw.get("cpf_cnpj", ""))
+    status_codigo = raw.get("status_codigo", "")
+    associado_importado = False
 
     base = {
         "linha_numero": raw.get("linha_numero"),
@@ -108,7 +110,7 @@ def _simular_item(raw: dict, competencia: date) -> dict:
         "matricula_servidor": raw.get("matricula_servidor", ""),
         "orgao_pagto_nome": raw.get("orgao_pagto_nome", ""),
         "valor_descontado": str(_to_decimal(raw.get("valor_descontado", "0"))),
-        "status_codigo": raw.get("status_codigo", ""),
+        "status_codigo": status_codigo,
         "categoria": _categorizar_valor(raw.get("valor_descontado")),
     }
 
@@ -122,16 +124,34 @@ def _simular_item(raw: dict, competencia: date) -> dict:
     )
 
     if not associado:
+        associado_importado = True
+        resultado = _determine_resultado(
+            raw,
+            Parcela(
+                numero=1,
+                referencia_mes=competencia,
+                valor=_to_decimal(raw.get("valor_descontado", "0")),
+                data_vencimento=competencia,
+                status=Parcela.Status.EM_ABERTO,
+            ),
+        )
         return {
             **base,
-            "resultado": "nao_encontrado",
+            "resultado": resultado,
             "associado_id": None,
             "associado_nome": raw.get("nome_servidor", ""),
             "associado_status_antes": None,
-            "associado_status_depois": Associado.Status.IMPORTADO,
+            "associado_status_depois": (
+                Associado.Status.ATIVO
+                if status_codigo in ("1", "4")
+                else Associado.Status.INADIMPLENTE
+                if status_codigo in ("2", "3", "S")
+                else Associado.Status.IMPORTADO
+            ),
             "ciclo_status_antes": None,
             "ciclo_status_depois": None,
             "ficara_apto_renovar": False,
+            "associado_importado": associado_importado,
         }
 
     parcela = resolve_processing_competencia_parcela(
@@ -139,18 +159,33 @@ def _simular_item(raw: dict, competencia: date) -> dict:
         referencia_mes=competencia,
         for_update=False,
     )
+    if parcela is not None and is_synthetic_return_contract_code(
+        getattr(parcela.ciclo.contrato, "codigo", "")
+    ):
+        parcela = None
 
     if not parcela:
+        resultado = _determine_resultado(
+            raw,
+            Parcela(
+                numero=1,
+                referencia_mes=competencia,
+                valor=_to_decimal(raw.get("valor_descontado", "0")),
+                data_vencimento=competencia,
+                status=Parcela.Status.EM_ABERTO,
+            ),
+        )
         return {
             **base,
-            "resultado": "ciclo_aberto",
+            "resultado": resultado,
             "associado_id": associado.id,
             "associado_nome": associado.nome_completo,
             "associado_status_antes": associado.status,
-            "associado_status_depois": associado.status,
+            "associado_status_depois": _simular_status_associado(associado.status, resultado),
             "ciclo_status_antes": None,
             "ciclo_status_depois": None,
             "ficara_apto_renovar": False,
+            "associado_importado": False,
         }
 
     resultado = _determine_resultado(raw, parcela)
@@ -169,6 +204,7 @@ def _simular_item(raw: dict, competencia: date) -> dict:
         "ciclo_status_antes": ciclo_antes,
         "ciclo_status_depois": ciclo_depois,
         "ficara_apto_renovar": apto,
+        "associado_importado": associado_importado,
     }
 
 
@@ -180,6 +216,7 @@ def _build_kpis(resultados: list[dict]) -> dict:
     pendencia = [r for r in resultados if r["resultado"] == "pendencia_manual"]
     ciclo_aberto = [r for r in resultados if r["resultado"] == "ciclo_aberto"]
     aptos = [r for r in resultados if r["ficara_apto_renovar"]]
+    associados_importados = [r for r in resultados if r.get("associado_importado")]
 
     valor_previsto = sum((_to_decimal(r["valor_descontado"]) for r in resultados), Decimal("0"))
     valor_real = sum((_to_decimal(r["valor_descontado"]) for r in baixa), Decimal("0"))
@@ -210,7 +247,7 @@ def _build_kpis(resultados: list[dict]) -> dict:
         "baixa_efetuada": len(baixa),
         "nao_descontado": len(nao_desc),
         "nao_encontrado": len(nao_enc),
-        "associados_importados": len(nao_enc),
+        "associados_importados": len(associados_importados),
         "pendencia_manual": len(pendencia),
         "ciclo_aberto": len(ciclo_aberto),
         "valor_previsto": str(valor_previsto),

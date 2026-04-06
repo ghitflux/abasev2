@@ -572,7 +572,7 @@ class RefinanciamentoPagamentosTestCase(TestCase):
             {"status": "solicitado_para_liquidacao"},
         )
         self.assertEqual(fila_liquidacao.status_code, 200, fila_liquidacao.json())
-        self.assertEqual(fila_liquidacao.json()["count"], 1)
+        self.assertEqual(fila_liquidacao.json()["count"], 0)
 
     def test_analise_lista_filtra_por_atribuicao(self):
         contrato = self._create_contrato("82345678901")
@@ -979,6 +979,96 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         ids = {item["id"] for item in response.json()["results"]}
         self.assertIn(contrato_apto.id, ids)
         self.assertNotIn(contrato_sem_apto.id, ids)
+
+    def test_admin_coordenador_e_analista_veem_todos_os_aptos(self):
+        contrato_agente = self._create_contrato("90345678911", agente=self.agente)
+        self._create_pagamento(contrato_agente, date(2026, 1, 1))
+        self._create_pagamento(contrato_agente, date(2026, 2, 1))
+        self._create_pagamento(contrato_agente, date(2026, 5, 1))
+
+        contrato_outro_agente = self._create_contrato(
+            "90345678912",
+            agente=self.outro_agente,
+        )
+        self._create_pagamento(contrato_outro_agente, date(2026, 1, 1))
+        self._create_pagamento(contrato_outro_agente, date(2026, 2, 1))
+        self._create_pagamento(contrato_outro_agente, date(2026, 5, 1))
+
+        expected_ids = {contrato_agente.id, contrato_outro_agente.id}
+        for client in (self.admin_client, self.coord_client, self.analyst_client):
+            response = client.get(
+                "/api/v1/contratos/",
+                {"status_renovacao": Refinanciamento.Status.APTO_A_RENOVAR},
+            )
+            self.assertEqual(response.status_code, 200, response.json())
+            ids = {item["id"] for item in response.json()["results"]}
+            self.assertTrue(expected_ids.issubset(ids))
+
+    def test_agente_continua_vendo_apenas_os_proprios_aptos_mesmo_com_filtro_de_agente(self):
+        contrato_agente = self._create_contrato("90345678921", agente=self.agente)
+        self._create_pagamento(contrato_agente, date(2026, 1, 1))
+        self._create_pagamento(contrato_agente, date(2026, 2, 1))
+        self._create_pagamento(contrato_agente, date(2026, 5, 1))
+
+        contrato_outro_agente = self._create_contrato(
+            "90345678922",
+            agente=self.outro_agente,
+        )
+        self._create_pagamento(contrato_outro_agente, date(2026, 1, 1))
+        self._create_pagamento(contrato_outro_agente, date(2026, 2, 1))
+        self._create_pagamento(contrato_outro_agente, date(2026, 5, 1))
+
+        response = self.agent_client.get(
+            "/api/v1/contratos/",
+            {
+                "status_renovacao": Refinanciamento.Status.APTO_A_RENOVAR,
+                "agente": str(self.outro_agente.id),
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        ids = {item["id"] for item in response.json()["results"]}
+        self.assertIn(contrato_agente.id, ids)
+        self.assertNotIn(contrato_outro_agente.id, ids)
+
+    def test_coordenador_e_analista_podem_filtrar_aptos_por_agente(self):
+        contrato_agente = self._create_contrato("90345678931", agente=self.agente)
+        self._create_pagamento(contrato_agente, date(2026, 1, 1))
+        self._create_pagamento(contrato_agente, date(2026, 2, 1))
+        self._create_pagamento(contrato_agente, date(2026, 5, 1))
+
+        contrato_outro_agente = self._create_contrato(
+            "90345678932",
+            agente=self.outro_agente,
+        )
+        self._create_pagamento(contrato_outro_agente, date(2026, 1, 1))
+        self._create_pagamento(contrato_outro_agente, date(2026, 2, 1))
+        self._create_pagamento(contrato_outro_agente, date(2026, 5, 1))
+
+        for client in (self.coord_client, self.analyst_client):
+            response = client.get(
+                "/api/v1/contratos/",
+                {
+                    "status_renovacao": Refinanciamento.Status.APTO_A_RENOVAR,
+                    "agente": str(self.outro_agente.id),
+                },
+            )
+            self.assertEqual(response.status_code, 200, response.json())
+            ids = {item["id"] for item in response.json()["results"]}
+            self.assertIn(contrato_outro_agente.id, ids)
+            self.assertNotIn(contrato_agente.id, ids)
+
+    def test_coordenador_e_analista_podem_solicitar_renovacao_pela_tab_de_aptos(self):
+        for cpf, client in (
+            ("90345678941", self.coord_client),
+            ("90345678942", self.analyst_client),
+        ):
+            contrato = self._create_contrato(cpf)
+            self._create_pagamento(contrato, date(2026, 1, 1))
+            self._create_pagamento(contrato, date(2026, 2, 1))
+            self._create_pagamento(contrato, date(2026, 5, 1))
+
+            response = self._solicitar_refinanciamento(contrato, client=client)
+            self.assertEqual(response.status_code, 201, response.json())
 
     def test_contrato_manual_totalmente_quitado_aparece_na_tab_de_aptos(self):
         contrato = self._create_contrato(

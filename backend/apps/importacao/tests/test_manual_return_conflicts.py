@@ -87,7 +87,7 @@ class RepairManualReturnConflictsCommandTestCase(ImportacaoBaseTestCase):
             manual_status=PagamentoMensalidade.ManualStatus.PAGO,
             manual_paid_at=timezone.make_aware(datetime(2026, 2, 5, 0, 0, 0)),
             recebido_manual=Decimal("100.00"),
-            source_file_path="legacy/pagamentos_mensalidades",
+            source_file_path="tesouraria/baixa_manual_fev.pdf",
         )
         with patch("apps.contratos.cycle_projection.timezone.localdate", return_value=date(2026, 3, 21)):
             rebuild_contract_cycle_state(contrato, execute=True)

@@ -24,6 +24,10 @@ class Contrato(BaseModel):
         ENCERRADO = "encerrado", "Encerrado"
         CANCELADO = "cancelado", "Cancelado"
 
+    class TipoUnificacao(models.TextChoices):
+        RETIMP_SHADOW = "retimp_shadow", "Contrato RETIMP sombra"
+        DUPLICATE_CTR_SHADOW = "duplicate_ctr_shadow", "Contrato CTR duplicado sombra"
+
     class CancelamentoTipo(models.TextChoices):
         CANCELADO = "cancelado", "Cancelado"
         DESISTENTE = "desistente", "Desistente"
@@ -83,6 +87,20 @@ class Contrato(BaseModel):
     )
     cancelamento_motivo = models.TextField(blank=True)
     cancelado_em = models.DateTimeField(null=True, blank=True)
+    contrato_canonico = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="contratos_sombra",
+    )
+    tipo_unificacao = models.CharField(
+        max_length=30,
+        choices=TipoUnificacao.choices,
+        blank=True,
+        default="",
+    )
+    unificado_em = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
@@ -140,6 +158,10 @@ class Contrato(BaseModel):
         super().save(*args, **kwargs)
         if self.associado_id:
             self.associado.sync_contrato_snapshot(self)
+
+    @property
+    def is_shadow_duplicate(self) -> bool:
+        return self.contrato_canonico_id is not None
 
 
 class Ciclo(BaseModel):

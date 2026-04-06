@@ -9,6 +9,7 @@ from core.file_references import build_storage_reference
 
 from .legacy import LegacyPagamentoSnapshot, list_legacy_pagamento_snapshots
 from .models import ArquivoRetorno, PagamentoMensalidade
+from .return_auto_enrollment import build_payment_identity
 
 RETORNO_MENSALIDADE_MIN = Decimal("100.00")
 RETORNO_VALORES_3050 = {Decimal("30.00"), Decimal("50.00")}
@@ -48,9 +49,22 @@ def _money_as_string(value: Decimal | None) -> str:
     return f"{_normalize_money(value):.2f}"
 
 
-def pagamento_identity(item: PagamentoMensalidade) -> tuple[object, date]:
+def pagamento_identity(item: PagamentoMensalidade) -> tuple[object, date, str]:
     associado_key = item.associado_id or re.sub(r"\D", "", item.cpf_cnpj or "")
-    return associado_key, item.referencia_month
+    _cpf, referencia_month, matricula_key = build_payment_identity(
+        cpf_cnpj=item.cpf_cnpj,
+        referencia_month=item.referencia_month,
+        matricula=item.matricula,
+    )
+    return associado_key, referencia_month, matricula_key
+
+
+def pagamento_return_identity(item: PagamentoMensalidade) -> tuple[str, date, str]:
+    return build_payment_identity(
+        cpf_cnpj=item.cpf_cnpj,
+        referencia_month=item.referencia_month,
+        matricula=item.matricula,
+    )
 
 
 def pagamento_recency_key(item: PagamentoMensalidade) -> tuple[object, int]:
@@ -70,6 +84,33 @@ def canonicalize_pagamentos(
         if current is None or pagamento_recency_key(item) >= pagamento_recency_key(current):
             canonical[key] = item
     return sorted(canonical.values(), key=lambda item: (item.nome_relatorio or "", item.id))
+
+
+def resolve_retorno_identity_scope(*, competencia: date) -> set[tuple[object, date, str]] | None:
+    arquivo = (
+        ArquivoRetorno.objects.filter(
+            competencia=competencia,
+            status=ArquivoRetorno.Status.CONCLUIDO,
+        )
+        .exclude(formato=ArquivoRetorno.Formato.MANUAL)
+        .order_by("-processado_em", "-created_at", "-id")
+        .first()
+    )
+    if arquivo is None:
+        return None
+
+    identities = {
+        build_payment_identity(
+            cpf_cnpj=cpf_cnpj,
+            referencia_month=competencia,
+            matricula=matricula_servidor or "",
+        )
+        for cpf_cnpj, matricula_servidor in arquivo.itens.values_list(
+            "cpf_cnpj",
+            "matricula_servidor",
+        )
+    }
+    return identities or None
 
 
 def _build_row(
@@ -259,6 +300,12 @@ def build_financeiro_payload(*, competencia) -> dict:
             .order_by("nome_relatorio", "id")
         )
     )
+    identity_scope = resolve_retorno_identity_scope(competencia=competencia)
+    if identity_scope is not None:
+        pagamentos = [
+            item for item in pagamentos if pagamento_return_identity(item) in identity_scope
+        ]
+
     rows = [
         _build_row(
             item,

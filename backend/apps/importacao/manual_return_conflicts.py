@@ -5,9 +5,15 @@ from decimal import Decimal, InvalidOperation
 
 from .models import ArquivoRetornoItem, PagamentoMensalidade
 
+LEGACY_MANUAL_SOURCE_FILE_PATH = "legacy/pagamentos_mensalidades"
+
 
 def competencia_item_label(competencia: date) -> str:
     return competencia.strftime("%m/%Y")
+
+
+def pagamento_comes_from_legacy_snapshot(pagamento: PagamentoMensalidade) -> bool:
+    return (pagamento.source_file_path or "").strip() == LEGACY_MANUAL_SOURCE_FILE_PATH
 
 
 def pagamento_has_manual_context(pagamento: PagamentoMensalidade) -> bool:
@@ -24,7 +30,7 @@ def pagamento_has_manual_context(pagamento: PagamentoMensalidade) -> bool:
 
 
 def should_skip_legacy_manual_snapshot(*, return_status_code: str | None) -> bool:
-    return (return_status_code or "").strip() == "1"
+    return bool((return_status_code or "").strip())
 
 
 def should_promote_manual_pagamento_to_return(
@@ -33,7 +39,12 @@ def should_promote_manual_pagamento_to_return(
     return_status_code: str | None,
     return_valor: Decimal | None,
 ) -> bool:
-    if (return_status_code or "").strip() != "1":
+    normalized_status = (return_status_code or "").strip()
+    if not normalized_status:
+        return False
+    if pagamento_comes_from_legacy_snapshot(pagamento):
+        return True
+    if normalized_status != "1":
         return False
     if not pagamento_has_manual_context(pagamento):
         return False

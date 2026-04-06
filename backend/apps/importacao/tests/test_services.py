@@ -129,15 +129,15 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
 
         self.assertEqual(payload["status"], ArquivoRetorno.Status.CONCLUIDO)
         self.assertEqual(payload["resumo"]["baixa_efetuada"], 2)
-        self.assertEqual(payload["resumo"]["nao_descontado"], 1)
+        self.assertEqual(payload["resumo"]["nao_descontado"], 2)
         self.assertEqual(payload["resumo"]["pendencias_manuais"], 0)
-        self.assertEqual(payload["resumo"]["nao_encontrado"], 1)
+        self.assertEqual(payload["resumo"]["nao_encontrado"], 0)
         self.assertEqual(payload["resumo"]["associados_importados"], 1)
         self.assertEqual(payload["financeiro"]["total"], 4)
         self.assertEqual(payload["financeiro"]["ok"], 2)
         self.assertEqual(payload["financeiro"]["recebido"], "60.00")
         associado_importado = Associado.objects.get(cpf_cnpj="18084974300")
-        self.assertEqual(associado_importado.status, Associado.Status.IMPORTADO)
+        self.assertEqual(associado_importado.status, Associado.Status.INADIMPLENTE)
         self.assertEqual(associado_importado.arquivo_retorno_origem, "retorno_etipi_052025.txt")
         self.assertEqual(associado_importado.ultimo_arquivo_retorno, "retorno_etipi_052025.txt")
         self.assertEqual(associado_importado.competencia_importacao_retorno, date(2025, 5, 1))
@@ -429,7 +429,7 @@ STATUS MATRICULA NOME                           CARGO                          F
             ),
             linha_duplicada_2=build_detail_line(
                 "1",
-                "RET1002",
+                "RET1001",
                 "SERVIDOR DUPLICADO",
                 "CARGO TESTE",
                 "6580",
@@ -515,15 +515,15 @@ STATUS MATRICULA NOME                           CARGO                          F
         self.assertEqual(confirmacao.status_code, 200, confirmacao.json())
 
         arquivo = ArquivoRetorno.objects.get(pk=response.json()["id"])
-        self.assertEqual(arquivo.total_registros, 238)
+        self.assertEqual(arquivo.total_registros, 239)
         self.assertEqual(arquivo.resultado_resumo["cpfs_duplicados_arquivo"], 1)
-        self.assertEqual(arquivo.resultado_resumo["linhas_duplicadas_ignoradas"], 1)
+        self.assertEqual(arquivo.resultado_resumo["linhas_duplicadas_ignoradas"], 0)
 
         pagamentos = PagamentoMensalidade.objects.filter(referencia_month=date(2025, 10, 1))
-        self.assertEqual(pagamentos.count(), 238)
+        self.assertEqual(pagamentos.count(), 239)
         self.assertEqual(
             pagamentos.aggregate(total=Sum("valor"))["total"],
-            Decimal("47364.38"),
+            Decimal("47961.38"),
         )
         self.assertEqual(pagamentos.filter(status_code__in=["1", "4"]).count(), 217)
         self.assertEqual(
@@ -532,19 +532,22 @@ STATUS MATRICULA NOME                           CARGO                          F
         )
 
         alceanira = pagamentos.filter(cpf_cnpj="67556906353")
-        self.assertEqual(alceanira.count(), 1)
-        self.assertEqual(alceanira.first().valor, Decimal("1.00"))
+        self.assertEqual(alceanira.count(), 2)
+        self.assertEqual(
+            alceanira.aggregate(total=Sum("valor"))["total"],
+            Decimal("60.00"),
+        )
 
         financeiro = self.coord_client.get(
             f"/api/v1/importacao/arquivo-retorno/{arquivo.id}/financeiro/"
         )
         self.assertEqual(financeiro.status_code, 200, financeiro.json())
         payload = financeiro.json()
-        self.assertEqual(payload["resumo"]["total"], 238)
-        self.assertEqual(payload["resumo"]["esperado"], "47364.38")
+        self.assertEqual(payload["resumo"]["total"], 239)
+        self.assertEqual(payload["resumo"]["esperado"], "47961.38")
         self.assertEqual(payload["resumo"]["ok"], 217)
         self.assertEqual(payload["resumo"]["recebido"], "45491.38")
-        self.assertEqual(len(payload["rows"]), 238)
+        self.assertEqual(len(payload["rows"]), 239)
 
     def test_build_financeiro_payload_serializa_valores_monetarios_como_string(self):
         self.create_associado_com_contrato(
@@ -617,9 +620,10 @@ STATUS MATRICULA NOME                           CARGO                          F
         item_importado = next(
             item
             for item in arquivo.dry_run_resultado["items"]
-            if item["resultado"] == "nao_encontrado"
+            if item["associado_importado"]
         )
-        self.assertEqual(item_importado["associado_status_depois"], Associado.Status.IMPORTADO)
+        self.assertEqual(item_importado["resultado"], "nao_descontado")
+        self.assertEqual(item_importado["associado_status_depois"], Associado.Status.INADIMPLENTE)
 
     def test_importacao_futura_atualiza_mesmo_associado_importado(self):
         service = ArquivoRetornoService()
@@ -691,7 +695,7 @@ STATUS MATRICULA NOME                           CARGO                          F
         self.assertEqual(resumo_um["pm_associados_importados"], 1)
         self.assertEqual(resumo_dois["pm_associados_importados"], 0)
 
-    def test_reimportacao_mesmo_mes_atualiza_pagamento_existente_com_dados_do_retorno(self):
+    def test_reimportacao_mesmo_mes_cria_novo_pagamento_quando_matricula_diverge(self):
         associado, _contrato, _ciclo = self.create_associado_com_contrato(
             cpf="18084974300",
             nome="MIGUEL ALVES NASCIMENTO",
@@ -743,25 +747,31 @@ STATUS MATRICULA NOME                           CARGO                          F
                 cpf_cnpj=associado.cpf_cnpj,
                 referencia_month=date(2025, 12, 1),
             ).count(),
-            1,
+            2,
         )
-        self.assertEqual(
-            PagamentoMensalidade.objects.get(
-                cpf_cnpj=associado.cpf_cnpj,
-                referencia_month=date(2025, 12, 1),
-            ).id,
-            pagamento.id,
+        self.assertEqual(pagamento.status_code, "2")
+        self.assertEqual(pagamento.matricula, "021293-8")
+        self.assertEqual(pagamento.orgao_pagto, "SEAD ANTIGA")
+        self.assertEqual(pagamento.nome_relatorio, "MIGUEL ALVES DO NASCIMENTO")
+        self.assertEqual(pagamento.valor, Decimal("30.00"))
+        self.assertEqual(pagamento.import_uuid, "import-antigo")
+        self.assertEqual(pagamento.source_file_path, "arquivos_retorno/retorno_antigo.txt")
+        self.assertIsNone(pagamento.associado_id)
+
+        pagamento_novo = PagamentoMensalidade.objects.get(
+            cpf_cnpj=associado.cpf_cnpj,
+            referencia_month=date(2025, 12, 1),
+            matricula="021293-9",
         )
-        self.assertEqual(pagamento.status_code, "1")
-        self.assertEqual(pagamento.matricula, "021293-9")
-        self.assertEqual(pagamento.orgao_pagto, "SEAD NOVA")
-        self.assertEqual(pagamento.nome_relatorio, "MIGUEL ALVES NASCIMENTO")
-        self.assertEqual(pagamento.valor, Decimal("45.00"))
-        self.assertEqual(pagamento.import_uuid, "import-corrigido")
-        self.assertEqual(pagamento.source_file_path, arquivo.arquivo_url)
-        self.assertEqual(pagamento.associado_id, associado.id)
-        self.assertEqual(resumo["pm_criados"], 0)
-        self.assertEqual(resumo["pm_duplicados"], 1)
+        self.assertEqual(pagamento_novo.status_code, "1")
+        self.assertEqual(pagamento_novo.orgao_pagto, "SEAD NOVA")
+        self.assertEqual(pagamento_novo.nome_relatorio, "MIGUEL ALVES NASCIMENTO")
+        self.assertEqual(pagamento_novo.valor, Decimal("45.00"))
+        self.assertEqual(pagamento_novo.import_uuid, "import-corrigido")
+        self.assertEqual(pagamento_novo.source_file_path, arquivo.arquivo_url)
+        self.assertEqual(pagamento_novo.associado_id, associado.id)
+        self.assertEqual(resumo["pm_criados"], 1)
+        self.assertEqual(resumo["pm_duplicados"], 0)
         self.assertEqual(resumo["pm_vinculados"], 1)
 
     def test_reimportacao_mesmo_mes_promove_baixa_manual_legada_para_retorno_efetivado(self):
@@ -785,7 +795,7 @@ STATUS MATRICULA NOME                           CARGO                          F
             manual_status=PagamentoMensalidade.ManualStatus.PAGO,
             manual_paid_at=timezone.make_aware(datetime(2026, 2, 5, 0, 0, 0)),
             recebido_manual=Decimal("100.00"),
-            source_file_path="legacy/pagamentos_mensalidades",
+            source_file_path="tesouraria/baixa_manual_fev.pdf",
         )
 
         arquivo = self.create_arquivo_retorno(nome="retorno_fev_corrigido.txt")
@@ -827,7 +837,70 @@ STATUS MATRICULA NOME                           CARGO                          F
         self.assertEqual(resumo["pm_duplicidades_abertas"], 0)
         self.assertEqual(DuplicidadeFinanceira.objects.count(), 0)
 
-    def test_upload_aplica_snapshot_manual_do_legado_na_tabela_atual_e_no_resumo(self):
+    def test_reimportacao_mesmo_mes_sobrescreve_snapshot_legado_quando_retorno_rejeita(self):
+        associado, _contrato, _ciclo = self.create_associado_com_contrato(
+            cpf="77852621369",
+            nome="ACACIO LUSTOSA RETORNO REJEITADO",
+            matricula_orgao="362602-5",
+            orgao_publico="SECRETARIA DA EDUCACAO",
+        )
+        pagamento = PagamentoMensalidade.objects.create(
+            created_by=self.coordenador,
+            import_uuid="manual-fev",
+            referencia_month=date(2026, 2, 1),
+            status_code="M",
+            matricula="362602-5",
+            orgao_pagto="918",
+            nome_relatorio="ACACIO LUSTOSA RETORNO REJEITADO",
+            cpf_cnpj=associado.cpf_cnpj,
+            associado=associado,
+            valor=Decimal("100.00"),
+            manual_status=PagamentoMensalidade.ManualStatus.PAGO,
+            manual_paid_at=timezone.make_aware(datetime(2026, 2, 5, 0, 0, 0)),
+            recebido_manual=Decimal("100.00"),
+            source_file_path="legacy/pagamentos_mensalidades",
+        )
+
+        arquivo = self.create_arquivo_retorno(nome="retorno_fev_rejeitado.txt")
+        arquivo.competencia = date(2026, 2, 1)
+        arquivo.resultado_resumo = {
+            "competencia": "02/2026",
+            "data_geracao": "04/03/2026",
+        }
+        arquivo.save(update_fields=["competencia", "resultado_resumo", "updated_at"])
+
+        service = ArquivoRetornoService()
+        resumo = service._upsert_pagamentos_mensalidade(
+            arquivo_retorno=arquivo,
+            items=[
+                {
+                    "linha_numero": 711,
+                    "cpf_cnpj": associado.cpf_cnpj,
+                    "matricula_servidor": "362602-5",
+                    "nome_servidor": "ACACIO LUSTOSA RETORNO REJEITADO",
+                    "cargo": "-SEM PLANO",
+                    "orgao_pagto_nome": "SECRETARIA DA EDUCACAO",
+                    "status_codigo": "2",
+                    "valor_descontado": "100.00",
+                }
+            ],
+            import_uuid="import-fev-retorno-rejeitado",
+            user=self.coordenador,
+        )
+
+        pagamento.refresh_from_db()
+        self.assertEqual(pagamento.status_code, "2")
+        self.assertIsNone(pagamento.manual_status)
+        self.assertIsNone(pagamento.manual_paid_at)
+        self.assertIsNone(pagamento.recebido_manual)
+        self.assertEqual(pagamento.import_uuid, "import-fev-retorno-rejeitado")
+        self.assertEqual(pagamento.source_file_path, arquivo.arquivo_url)
+        self.assertEqual(resumo["pm_criados"], 0)
+        self.assertEqual(resumo["pm_duplicados"], 1)
+        self.assertEqual(resumo["pm_duplicidades_abertas"], 0)
+        self.assertEqual(DuplicidadeFinanceira.objects.count(), 0)
+
+    def test_upload_retorno_oficial_nao_reaplica_snapshot_legado_quando_ha_status_explicito(self):
         self.create_associado_com_contrato(
             cpf="23993596315",
             nome="Maria de Jesus Santana Costa",
@@ -875,18 +948,19 @@ STATUS MATRICULA NOME                           CARGO                          F
                 cpf_cnpj="21819424391",
                 referencia_month=date(2025, 5, 1),
             )
-            self.assertEqual(pagamento.manual_status, PagamentoMensalidade.ManualStatus.PAGO)
-            self.assertEqual(pagamento.recebido_manual, Decimal("30.00"))
-            self.assertEqual(pagamento.manual_forma_pagamento, "PIX")
-            self.assertTrue(pagamento.agente_refi_solicitado)
+            self.assertEqual(pagamento.status_code, "2")
+            self.assertIsNone(pagamento.manual_status)
+            self.assertIsNone(pagamento.recebido_manual)
+            self.assertEqual(pagamento.manual_forma_pagamento, "")
+            self.assertFalse(pagamento.agente_refi_solicitado)
 
             financeiro = self.coord_client.get(
                 f"/api/v1/importacao/arquivo-retorno/{response.json()['id']}/financeiro/"
             )
             self.assertEqual(financeiro.status_code, 200, financeiro.json())
             payload = financeiro.json()
-            self.assertEqual(payload["resumo"]["ok"], 3)
-            self.assertEqual(payload["resumo"]["recebido"], "90.00")
+            self.assertEqual(payload["resumo"]["ok"], 2)
+            self.assertEqual(payload["resumo"]["recebido"], "60.00")
 
     def test_processar_envia_conflito_manual_para_esteira_de_duplicidade_quando_valor_diverge(self):
         associado = Associado.objects.create(
@@ -958,7 +1032,7 @@ STATUS MATRICULA NOME                           CARGO                          F
             manual_status=PagamentoMensalidade.ManualStatus.PAGO,
             manual_paid_at=timezone.make_aware(datetime(2026, 2, 5, 0, 0, 0)),
             recebido_manual=Decimal("100.00"),
-            source_file_path="legacy/pagamentos_mensalidades",
+            source_file_path="tesouraria/baixa_manual_fev.pdf",
         )
 
         with patch(
@@ -1033,23 +1107,21 @@ STATUS MATRICULA NOME                           CARGO                          F
             arquivo_retorno=arquivo,
             cpf_cnpj=associado.cpf_cnpj,
         )
-        duplicidade = DuplicidadeFinanceira.objects.get(arquivo_retorno_item=item)
         contrato.refresh_from_db()
 
-        self.assertEqual(pagamento.status_code, "M")
-        self.assertEqual(pagamento.manual_status, PagamentoMensalidade.ManualStatus.PAGO)
-        self.assertIsNotNone(pagamento.manual_paid_at)
-        self.assertEqual(pagamento.source_file_path, "legacy/pagamentos_mensalidades")
+        self.assertEqual(pagamento.status_code, "1")
+        self.assertIsNone(pagamento.manual_status)
+        self.assertIsNone(pagamento.manual_paid_at)
+        self.assertIsNone(pagamento.recebido_manual)
+        self.assertEqual(pagamento.source_file_path, arquivo.arquivo_url)
         self.assertEqual(
             item.resultado_processamento,
-            ArquivoRetornoItem.ResultadoProcessamento.DUPLICIDADE,
+            ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA,
         )
         self.assertIsNone(item.parcela_id)
-        self.assertEqual(duplicidade.status, DuplicidadeFinanceira.Status.ABERTA)
-        self.assertEqual(
-            duplicidade.motivo,
-            DuplicidadeFinanceira.Motivo.DIVERGENCIA_VALOR,
-        )
+        self.assertEqual(item.associado_id, associado.id)
+        self.assertIn("sem parcela local", item.observacao.lower())
+        self.assertEqual(DuplicidadeFinanceira.objects.count(), 0)
         self.assertEqual(contrato.ciclos.count(), 1)
         self.assertEqual(
             list(
@@ -1065,16 +1137,16 @@ STATUS MATRICULA NOME                           CARGO                          F
             {"page_size": 10},
         )
         self.assertEqual(response.status_code, 200, response.json())
-        self.assertEqual(response.json()["count"], 1)
-        self.assertEqual(response.json()["kpis"]["abertas"], 1)
+        self.assertEqual(response.json()["count"], 0)
+        self.assertEqual(response.json()["kpis"]["abertas"], 0)
 
         sidebar_response = self.coord_client.get(
             "/api/v1/importacao/duplicidades-financeiras/",
             {"status": "aberta", "summary_only": "1"},
         )
         self.assertEqual(sidebar_response.status_code, 200, sidebar_response.json())
-        self.assertEqual(sidebar_response.json()["count"], 1)
-        self.assertEqual(sidebar_response.json()["kpis"]["abertas"], 1)
+        self.assertEqual(sidebar_response.json()["count"], 0)
+        self.assertEqual(sidebar_response.json()["kpis"]["abertas"], 0)
         self.assertEqual(sidebar_response.json()["results"], [])
 
     def test_resolver_duplicidade_com_devolucao(self):
@@ -1097,7 +1169,7 @@ STATUS MATRICULA NOME                           CARGO                          F
             manual_status=PagamentoMensalidade.ManualStatus.PAGO,
             manual_paid_at=timezone.now(),
             recebido_manual=Decimal("30.00"),
-            source_file_path="legacy/pagamentos_mensalidades",
+            source_file_path="tesouraria/baixa_manual_mar.pdf",
         )
         arquivo = self.create_arquivo_retorno(nome="retorno_dup.txt")
         item = ArquivoRetornoItem.objects.create(

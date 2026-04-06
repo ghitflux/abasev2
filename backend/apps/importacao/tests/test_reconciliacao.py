@@ -13,7 +13,7 @@ from ..reconciliacao import MotorReconciliacao
 
 
 class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
-    def test_status_1_baixa_automatica_mantem_ciclo_apto_sem_gerar_futuro(self):
+    def test_status_1_baixa_automatica_nao_altera_status_do_ciclo(self):
         _, contrato, ciclo = self.create_associado_com_contrato(
             cpf="23993596315",
             nome="Maria de Jesus Santana Costa",
@@ -46,10 +46,10 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
         self.assertFalse(outcome["gerou_encerramento"])
         self.assertFalse(outcome["gerou_novo_ciclo"])
         self.assertEqual(ultima_parcela.status, Parcela.Status.DESCONTADO)
-        self.assertEqual(ciclo.status, Ciclo.Status.APTO_A_RENOVAR)
+        self.assertEqual(ciclo.status, Ciclo.Status.ABERTO)
         self.assertEqual(contrato.ciclos.count(), 1)
 
-    def test_status_1_mantem_ciclo_apto_mesmo_quando_proxima_janela_ja_esta_ocupada(self):
+    def test_status_1_preserva_ciclo_mesmo_quando_proxima_janela_ja_esta_ocupada(self):
         associado, contrato, ciclo = self.create_associado_com_contrato(
             cpf="23993596316",
             nome="Maria Competencia Ocupada",
@@ -127,7 +127,7 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
         self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA)
         self.assertFalse(outcome["gerou_encerramento"])
         self.assertFalse(outcome["gerou_novo_ciclo"])
-        self.assertEqual(ciclo.status, Ciclo.Status.APTO_A_RENOVAR)
+        self.assertEqual(ciclo.status, Ciclo.Status.ABERTO)
         self.assertEqual(contrato.ciclos.count(), 1)
         self.assertFalse(
             ImportacaoLog.objects.filter(
@@ -164,7 +164,7 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
 
         associado.refresh_from_db()
         self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.NAO_DESCONTADO)
-        self.assertEqual(ciclo.parcelas.get(numero=3).status, Parcela.Status.EM_PREVISAO)
+        self.assertEqual(ciclo.parcelas.get(numero=3).status, Parcela.Status.NAO_DESCONTADO)
         self.assertEqual(associado.status, Associado.Status.INADIMPLENTE)
 
     def test_status_4_baixa_automatica_com_diferenca(self):
@@ -225,7 +225,7 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
 
         associado.refresh_from_db()
         self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.NAO_DESCONTADO)
-        self.assertEqual(ciclo.parcelas.get(numero=3).status, Parcela.Status.EM_PREVISAO)
+        self.assertEqual(ciclo.parcelas.get(numero=3).status, Parcela.Status.NAO_DESCONTADO)
         self.assertEqual(associado.status, Associado.Status.INADIMPLENTE)
 
     def test_divergencia_de_valor_vai_para_pendencia_manual(self):
@@ -256,6 +256,48 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
         self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.PENDENCIA_MANUAL)
         self.assertEqual(ciclo.parcelas.get(numero=3).status, Parcela.Status.EM_ABERTO)
 
+    def test_status_1_alinha_parcela_quando_contrato_ja_tem_valor_do_retorno(self):
+        associado, contrato, ciclo = self.create_associado_com_contrato(
+            cpf="09945431315",
+            nome="Divaldo de Teste",
+            valor_mensalidade=Decimal("500.00"),
+        )
+        associado.status = Associado.Status.INADIMPLENTE
+        associado.save(update_fields=["status", "updated_at"])
+        parcela = ciclo.parcelas.get(numero=3)
+        parcela.valor = Decimal("30.00")
+        parcela.status = Parcela.Status.EM_ABERTO
+        parcela.save(update_fields=["valor", "status", "updated_at"])
+
+        arquivo = self.create_arquivo_retorno(nome="retorno_alinha_valor.txt")
+        item = ArquivoRetornoItem.objects.create(
+            arquivo_retorno=arquivo,
+            linha_numero=20,
+            cpf_cnpj=associado.cpf_cnpj,
+            matricula_servidor="002795-2",
+            nome_servidor="DIVALDO DE TESTE",
+            cargo="-",
+            competencia="05/2025",
+            valor_descontado=Decimal("500.00"),
+            status_codigo="1",
+            status_desconto=ArquivoRetornoItem.StatusDesconto.EFETIVADO,
+            status_descricao="Lançado e Efetivado",
+            orgao_codigo="002",
+            orgao_pagto_codigo="002",
+            orgao_pagto_nome="SECRETARIA TESTE",
+        )
+
+        outcome = MotorReconciliacao(arquivo).reconciliar_item(item)
+
+        parcela.refresh_from_db()
+        associado.refresh_from_db()
+        contrato.refresh_from_db()
+        self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA)
+        self.assertEqual(parcela.valor, Decimal("500.00"))
+        self.assertEqual(parcela.status, Parcela.Status.DESCONTADO)
+        self.assertEqual(associado.status, Associado.Status.ATIVO)
+        self.assertEqual(item.parcela_id, parcela.id)
+
     def test_cpf_nao_encontrado(self):
         arquivo = self.create_arquivo_retorno(nome="retorno_nao_encontrado.txt")
         item = ArquivoRetornoItem.objects.create(
@@ -276,14 +318,136 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
 
         item.refresh_from_db()
         associado = item.associado
-        self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.NAO_ENCONTRADO)
-        self.assertEqual(item.resultado_processamento, ArquivoRetornoItem.ResultadoProcessamento.NAO_ENCONTRADO)
+        self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.NAO_DESCONTADO)
+        self.assertEqual(item.resultado_processamento, ArquivoRetornoItem.ResultadoProcessamento.NAO_DESCONTADO)
         self.assertTrue(outcome["associado_importado"])
         self.assertIsNotNone(associado)
-        self.assertEqual(associado.status, Associado.Status.IMPORTADO)
+        self.assertEqual(associado.status, Associado.Status.INADIMPLENTE)
         self.assertEqual(associado.arquivo_retorno_origem, "retorno_nao_encontrado.txt")
         self.assertEqual(associado.ultimo_arquivo_retorno, "retorno_nao_encontrado.txt")
         self.assertEqual(associado.competencia_importacao_retorno, date(2025, 5, 1))
+        self.assertIsNone(item.parcela_id)
+
+    def test_associado_existente_sem_parcela_processa_sem_criar_contrato_ou_ciclo(self):
+        associado = Associado.objects.create(
+            nome_completo="ASSOCIADO SEM PARCELA",
+            cpf_cnpj="11122233344",
+            status=Associado.Status.ATIVO,
+        )
+        arquivo = self.create_arquivo_retorno(nome="retorno_sem_parcela.txt")
+        item = ArquivoRetornoItem.objects.create(
+            arquivo_retorno=arquivo,
+            linha_numero=9,
+            cpf_cnpj=associado.cpf_cnpj,
+            matricula_servidor="RET-9001",
+            nome_servidor=associado.nome_completo,
+            cargo="-",
+            competencia="05/2025",
+            valor_descontado=Decimal("30.00"),
+            status_codigo="1",
+            status_desconto=ArquivoRetornoItem.StatusDesconto.EFETIVADO,
+            status_descricao="Lançado e Efetivado",
+            orgao_codigo="002",
+            orgao_pagto_codigo="002",
+            orgao_pagto_nome="Órgão Teste",
+        )
+
+        outcome = MotorReconciliacao(arquivo).reconciliar_item(item)
+
+        item.refresh_from_db()
+        self.assertEqual(Contrato.objects.filter(associado=associado).count(), 0)
+        self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA)
+        self.assertIsNone(item.parcela_id)
+        self.assertIn("sem parcela local", item.observacao.lower())
+
+    def test_contrato_sem_parcela_na_competencia_nao_ganha_novo_ciclo(self):
+        associado = Associado.objects.create(
+            nome_completo="ASSOCIADO RETIMP INCOMPLETO",
+            cpf_cnpj="11122233355",
+            status=Associado.Status.ATIVO,
+        )
+        contrato = Contrato.objects.create(
+            associado=associado,
+            agente=self.tesoureiro,
+            codigo="CTR-RET-9002",
+            valor_bruto=Decimal("90.00"),
+            valor_liquido=Decimal("90.00"),
+            valor_mensalidade=Decimal("30.00"),
+            prazo_meses=3,
+            status=Contrato.Status.ATIVO,
+            data_primeira_mensalidade=date(2025, 2, 1),
+            data_aprovacao=date(2025, 1, 20),
+        )
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2025, 2, 1),
+            data_fim=date(2025, 4, 1),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("90.00"),
+        )
+        Parcela.objects.bulk_create(
+            [
+                Parcela(
+                    ciclo=ciclo,
+                    associado=associado,
+                    numero=1,
+                    referencia_mes=date(2025, 2, 1),
+                    valor=Decimal("30.00"),
+                    data_vencimento=date(2025, 2, 1),
+                    status=Parcela.Status.DESCONTADO,
+                    data_pagamento=date(2025, 2, 15),
+                ),
+                Parcela(
+                    ciclo=ciclo,
+                    associado=associado,
+                    numero=2,
+                    referencia_mes=date(2025, 3, 1),
+                    valor=Decimal("30.00"),
+                    data_vencimento=date(2025, 3, 1),
+                    status=Parcela.Status.DESCONTADO,
+                    data_pagamento=date(2025, 3, 15),
+                ),
+                Parcela(
+                    ciclo=ciclo,
+                    associado=associado,
+                    numero=3,
+                    referencia_mes=date(2025, 4, 1),
+                    valor=Decimal("30.00"),
+                    data_vencimento=date(2025, 4, 1),
+                    status=Parcela.Status.DESCONTADO,
+                    data_pagamento=date(2025, 4, 15),
+                ),
+            ]
+        )
+        arquivo = self.create_arquivo_retorno(nome="retorno_retimp_incompleto.txt")
+        item = ArquivoRetornoItem.objects.create(
+            arquivo_retorno=arquivo,
+            linha_numero=10,
+            cpf_cnpj=associado.cpf_cnpj,
+            matricula_servidor="RET-9002",
+            nome_servidor=associado.nome_completo,
+            cargo="-",
+            competencia="05/2025",
+            valor_descontado=Decimal("30.00"),
+            status_codigo="1",
+            status_desconto=ArquivoRetornoItem.StatusDesconto.EFETIVADO,
+            status_descricao="Lançado e Efetivado",
+            orgao_codigo="002",
+            orgao_pagto_codigo="002",
+            orgao_pagto_nome="Órgão Teste",
+        )
+
+        outcome = MotorReconciliacao(arquivo).reconciliar_item(item)
+
+        contrato.refresh_from_db()
+        item.refresh_from_db()
+        self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA)
+        self.assertIsNone(item.parcela_id)
+        self.assertEqual(contrato.ciclos.count(), 1)
+        self.assertFalse(
+            contrato.ciclos.filter(parcelas__referencia_mes=date(2025, 5, 1)).exists()
+        )
 
     def test_casamento_por_matricula_faz_baixa_quando_cpf_nao_bate(self):
         _, _, ciclo = self.create_associado_com_contrato(
@@ -518,8 +682,8 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
         ciclo_futuro.refresh_from_db()
         self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA)
         self.assertFalse(item.gerou_encerramento)
-        self.assertTrue(item.gerou_novo_ciclo)
-        self.assertEqual(ciclo_atual.status, Ciclo.Status.APTO_A_RENOVAR)
+        self.assertFalse(item.gerou_novo_ciclo)
+        self.assertEqual(ciclo_atual.status, Ciclo.Status.ABERTO)
         self.assertEqual(ciclo_futuro.status, Ciclo.Status.FUTURO)
         self.assertFalse(
             ciclo_futuro.parcelas.exclude(status=Parcela.Status.FUTURO).exists()

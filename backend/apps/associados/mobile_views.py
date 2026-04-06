@@ -19,6 +19,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsAssociadoOrAdmin
 from apps.accounts.serializers import get_user_role_codes
+from apps.contratos.canonicalization import resolve_operational_contract_for_associado
 from apps.contratos.models import Contrato
 from apps.esteira.models import DocIssue, DocReupload
 
@@ -335,11 +336,7 @@ class AppTermosAceiteView(APIView):
 
         associado.aceite_termos = True
         associado.save(update_fields=["aceite_termos", "updated_at"])
-        contrato = (
-            associado.contratos.exclude(status=Contrato.Status.CANCELADO)
-            .order_by("-created_at")
-            .first()
-        )
+        contrato = resolve_operational_contract_for_associado(associado)
         if contrato is not None:
             contrato.termos_web = True
             contrato.save(update_fields=["termos_web", "updated_at"])
@@ -373,11 +370,7 @@ class AppContatoView(APIView):
         associado.contato_status = "solicitado"
         associado.contato_updated_at = timezone.now()
         associado.save(update_fields=["contato_status", "contato_updated_at", "updated_at"])
-        contrato = (
-            associado.contratos.exclude(status=Contrato.Status.CANCELADO)
-            .order_by("-created_at")
-            .first()
-        )
+        contrato = resolve_operational_contract_for_associado(associado)
         if contrato is not None:
             contrato.contato_web = True
             contrato.save(update_fields=["contato_web", "updated_at"])

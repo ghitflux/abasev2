@@ -30,3 +30,8 @@ redis_data
 /dumps_legado/
 /backend/legacy_reports/
 /fundo (1).webp
+/.local/
+*.jks
+*.keystore
+key.properties
+AuthKey_*.p8

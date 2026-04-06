@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import gc
 import logging
 import re
+from collections import Counter
 from datetime import datetime, timedelta, timezone as dt_timezone
 from decimal import Decimal
 from pathlib import Path
@@ -16,17 +16,14 @@ from django.utils import timezone
 from django.utils.text import get_valid_filename
 from rest_framework.exceptions import ValidationError
 
-from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
-from apps.contratos.models import Contrato
+from apps.associados.models import Associado
 
 from .dry_run import simular_dry_run
-from .duplicidade import DuplicidadeFinanceiraService
 from .financeiro import build_financeiro_resumo
 from .legacy import LegacyPagamentoSnapshot, list_legacy_pagamento_snapshots
 from .manual_return_conflicts import (
     promote_pagamento_to_return,
     should_skip_legacy_manual_snapshot,
-    should_promote_manual_pagamento_to_return,
 )
 from .matching import find_associado
 from .models import (
@@ -38,6 +35,7 @@ from .models import (
 )
 from .parsers import ETIPITxtRetornoParser, normalize_lines
 from .reconciliacao import MotorReconciliacao
+from .return_auto_enrollment import build_payment_identity
 from .validators import ArquivoRetornoValidator
 
 logger = logging.getLogger(__name__)
@@ -371,20 +369,6 @@ class ArquivoRetornoService:
                 import_uuid=import_uuid,
                 user=arquivo_retorno.uploaded_by,
             )
-            contract_ids_to_rebuild = list(set(resumo_pm.pop("pm_contract_ids_to_rebuild", [])))
-            if contract_ids_to_rebuild:
-                chunk_size = 50
-                for i in range(0, len(contract_ids_to_rebuild), chunk_size):
-                    chunk_ids = contract_ids_to_rebuild[i : i + chunk_size]
-                    contratos = list(
-                        Contrato.objects.select_related("associado")
-                        .filter(id__in=chunk_ids)
-                        .order_by("id")
-                    )
-                    for contrato in contratos:
-                        rebuild_contract_cycle_state(contrato, execute=True)
-                    del contratos
-                    gc.collect()
 
             resumo = MotorReconciliacao(arquivo_retorno).reconciliar()
             resumo.update(
@@ -482,8 +466,8 @@ class ArquivoRetornoService:
         duplicados = 0
         vinculados = 0
         nao_encontrados = 0
+        associados_importados = 0
         duplicidades_abertas = 0
-        contract_ids_to_rebuild: set[int] = set()
         erros_list: list[dict] = []
 
         # referencia_month vem da competencia do arquivo (MM/YYYY → YYYY-MM-01)
@@ -495,7 +479,6 @@ class ArquivoRetornoService:
 
         source_path = arquivo_retorno.arquivo_url
         legacy_snapshots = list_legacy_pagamento_snapshots(competencia=ref_date)
-
         for i, item in enumerate(items):
             cpf = re.sub(r"\D", "", item.get("cpf_cnpj", ""))
             if not cpf:
@@ -523,13 +506,64 @@ class ArquivoRetornoService:
                     orgao_alternativo=orgao_codigo,
                     orgao_codigo=orgao_interno,
                 )
+                if assoc is not None and assoc.status == Associado.Status.IMPORTADO:
+                    from .return_auto_enrollment import resolve_or_create_imported_associado
 
-                existing = PagamentoMensalidade.objects.filter(
-                    cpf_cnpj=cpf,
-                    referencia_month=ref_date,
-                ).first()
+                    assoc, _updated_existing_imported = resolve_or_create_imported_associado(
+                        arquivo_nome=arquivo_retorno.arquivo_nome,
+                        competencia=ref_date,
+                        data_geracao=arquivo_retorno.resultado_resumo.get("data_geracao"),
+                        cpf_cnpj=cpf,
+                        nome_completo=nome,
+                        matricula_orgao=matricula,
+                        orgao_publico=orgao,
+                        cargo=item.get("cargo", ""),
+                        existing=assoc,
+                    )
+
+                associated_imported = False
+                if assoc is None:
+                    from .return_auto_enrollment import resolve_or_create_imported_associado
+
+                    assoc, associated_imported = resolve_or_create_imported_associado(
+                        arquivo_nome=arquivo_retorno.arquivo_nome,
+                        competencia=ref_date,
+                        data_geracao=arquivo_retorno.resultado_resumo.get("data_geracao"),
+                        cpf_cnpj=cpf,
+                        nome_completo=nome,
+                        matricula_orgao=matricula,
+                        orgao_publico=orgao,
+                        cargo=item.get("cargo", ""),
+                    )
                 if assoc is None:
                     nao_encontrados += 1
+                elif associated_imported:
+                    associados_importados += 1
+                    vinculados += 1
+                candidates = list(
+                    PagamentoMensalidade.objects.filter(
+                        cpf_cnpj=cpf,
+                        referencia_month=ref_date,
+                    ).order_by("id")
+                )
+                target_identity = build_payment_identity(
+                    cpf_cnpj=cpf,
+                    referencia_month=ref_date,
+                    matricula=matricula or "",
+                )
+                existing = next(
+                    (
+                        candidate
+                        for candidate in candidates
+                        if build_payment_identity(
+                            cpf_cnpj=candidate.cpf_cnpj,
+                            referencia_month=candidate.referencia_month,
+                            matricula=candidate.matricula or "",
+                        )
+                        == target_identity
+                    ),
+                    None,
+                )
                 item_obj = arquivo_retorno.itens.filter(linha_numero=linha).first()
                 if item_obj is not None and assoc and item_obj.associado_id != assoc.id:
                     item_obj.associado = assoc
@@ -544,73 +578,27 @@ class ArquivoRetornoService:
                         update_fields.append("associado")
                         vinculados += 1
                     return_valor = Decimal(str(valor)) if valor is not None else None
-
-                    if should_promote_manual_pagamento_to_return(
-                        existing,
-                        return_status_code=status,
-                        return_valor=return_valor,
-                    ):
-                        update_fields.extend(
-                            promote_pagamento_to_return(
-                                existing,
-                                return_item=item_obj,
-                                source_file_path=source_path,
-                                import_uuid=import_uuid,
-                            )
+                    update_fields.extend(
+                        promote_pagamento_to_return(
+                            existing,
+                            return_item=item_obj,
+                            source_file_path=source_path,
+                            import_uuid=import_uuid,
                         )
-                        update_fields.extend(
-                            _sync_pagamento_from_return(
-                                existing,
-                                associado=assoc,
-                                import_uuid=import_uuid,
-                                source_file_path=source_path,
-                                status_code=status,
-                                matricula=matricula,
-                                orgao_pagto=orgao,
-                                nome_relatorio=nome,
-                                valor=return_valor,
-                            )
+                    )
+                    update_fields.extend(
+                        _sync_pagamento_from_return(
+                            existing,
+                            associado=assoc,
+                            import_uuid=import_uuid,
+                            source_file_path=source_path,
+                            status_code=status,
+                            matricula=matricula,
+                            orgao_pagto=orgao,
+                            nome_relatorio=nome,
+                            valor=return_valor,
                         )
-                    else:
-                        duplicidade = None
-                        if item_obj is not None:
-                            duplicidade, _pagamento_conflict = (
-                                DuplicidadeFinanceiraService.detect_existing_conflict(
-                                    item=item_obj,
-                                    cpf_cnpj=cpf,
-                                    competencia=ref_date,
-                                    valor=return_valor,
-                                )
-                            )
-                        if duplicidade is not None:
-                            duplicidades_abertas += 1
-                            if existing.associado_id:
-                                contract_ids_to_rebuild.update(
-                                    Contrato.objects.filter(
-                                        associado_id=existing.associado_id
-                                    ).values_list("id", flat=True)
-                                )
-                        else:
-                            update_fields.extend(
-                                _sync_pagamento_from_return(
-                                    existing,
-                                    associado=assoc,
-                                    import_uuid=import_uuid,
-                                    source_file_path=source_path,
-                                    status_code=status,
-                                    matricula=matricula,
-                                    orgao_pagto=orgao,
-                                    nome_relatorio=nome,
-                                    valor=return_valor,
-                                )
-                            )
-                            if not should_skip_legacy_manual_snapshot(return_status_code=status):
-                                update_fields.extend(
-                                    _apply_legacy_snapshot_to_pagamento(
-                                        existing,
-                                        legacy_snapshots.get(cpf),
-                                    )
-                                )
+                    )
                     if update_fields:
                         existing.save(update_fields=[*sorted(set(update_fields)), "updated_at"])
                     if item_obj is not None and item_obj.associado_id != getattr(existing.associado, "id", None) and getattr(existing.associado, "id", None):
@@ -619,26 +607,6 @@ class ArquivoRetornoService:
                     continue
 
                 # Novo lançamento
-                if item_obj is not None:
-                    duplicidade, conflito_pagamento = (
-                        DuplicidadeFinanceiraService.detect_existing_conflict(
-                            item=item_obj,
-                            cpf_cnpj=cpf,
-                            competencia=ref_date,
-                            valor=Decimal(str(valor)) if valor is not None else None,
-                        )
-                    )
-                    if duplicidade is not None:
-                        duplicidades_abertas += 1
-                        if conflito_pagamento and conflito_pagamento.associado_id:
-                            contract_ids_to_rebuild.update(
-                                Contrato.objects.filter(
-                                    associado_id=conflito_pagamento.associado_id
-                                ).values_list("id", flat=True)
-                            )
-                        duplicados += 1
-                        continue
-
                 pagamento = PagamentoMensalidade(
                     created_by=user,
                     import_uuid=import_uuid,
@@ -674,11 +642,10 @@ class ArquivoRetornoService:
             "pm_vinculados": vinculados,
             "pm_duplicidades_abertas": duplicidades_abertas,
             "pm_nao_encontrados": nao_encontrados,
-            "pm_associados_importados": 0,
+            "pm_associados_importados": associados_importados,
             "pm_erros": len(erros_list),
             "pm_cpfs_duplicados_arquivo": 0,
             "pm_linhas_duplicadas_ignoradas": 0,
-            "pm_contract_ids_to_rebuild": sorted(contract_ids_to_rebuild),
         }
         logger.info(
             "[RETORNO] upsert PagamentoMensalidade concluído: %s",
@@ -690,7 +657,7 @@ class ArquivoRetornoService:
         self, items: list[dict]
     ) -> tuple[list[dict], dict[str, dict[str, list[dict] | dict]]]:
         itens_unicos: list[dict] = []
-        itens_por_cpf: dict[str, dict] = {}
+        itens_por_cpf: dict[str, list[dict]] = {}
         duplicados: dict[str, dict[str, list[dict] | dict]] = {}
 
         for item in items:
@@ -700,20 +667,38 @@ class ArquivoRetornoService:
                 continue
 
             if cpf not in itens_por_cpf:
-                itens_por_cpf[cpf] = item
+                itens_por_cpf[cpf] = [item]
                 itens_unicos.append(item)
                 continue
 
             bucket = duplicados.setdefault(
                 cpf,
                 {
-                    "mantida": itens_por_cpf[cpf],
+                    "mantida": itens_por_cpf[cpf][0],
                     "ignoradas": [],
+                    "repetidas": [],
                 },
             )
-            bucket["ignoradas"].append(item)
+            item_key = self._item_identity_key(item)
+            if any(self._item_identity_key(existing) == item_key for existing in itens_por_cpf[cpf]):
+                bucket["ignoradas"].append(item)
+                continue
+            bucket["repetidas"].append(item)
+            itens_por_cpf[cpf].append(item)
+            itens_unicos.append(item)
 
         return itens_unicos, duplicados
+
+    @staticmethod
+    def _item_identity_key(item: dict) -> tuple[str, str, str, str, str, str]:
+        return (
+            re.sub(r"\D", "", str(item.get("cpf_cnpj", ""))),
+            str(item.get("competencia", "")).strip(),
+            str(item.get("status_codigo", "")).strip(),
+            str(item.get("valor_descontado", "")).strip(),
+            str(item.get("matricula_servidor", "")).strip().upper(),
+            str(item.get("orgao_pagto_codigo", "")).strip().upper(),
+        )
 
     def _registrar_cpfs_duplicados_consolidados(
         self,
@@ -723,7 +708,9 @@ class ArquivoRetornoService:
         for cpf, payload in duplicate_cpfs.items():
             mantida = payload["mantida"]
             ignoradas = payload["ignoradas"]
+            repetidas = payload.get("repetidas", [])
             linhas_ignoradas = [item.get("linha_numero") for item in ignoradas]
+            linhas_mantidas_adicionais = [item.get("linha_numero") for item in repetidas]
             ImportacaoLog.objects.create(
                 arquivo_retorno=arquivo_retorno,
                 tipo=ImportacaoLog.Tipo.VALIDACAO,
@@ -732,6 +719,7 @@ class ArquivoRetornoService:
                     "cpf_cnpj": cpf,
                     "linha_mantida": mantida.get("linha_numero"),
                     "linhas_ignoradas": linhas_ignoradas,
+                    "linhas_mantidas_adicionais": linhas_mantidas_adicionais,
                 },
             )
 

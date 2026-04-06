@@ -13,6 +13,7 @@ from django.db.models import Prefetch, Q
 from django.utils import timezone
 
 from apps.accounts.mobile_legacy_auth import ensure_self_service_roles, resolve_associado_for_user
+from apps.contratos.canonicalization import operational_contracts_queryset
 from apps.contratos.cycle_projection import (
     build_contract_cycle_projection,
     get_associado_visual_status_payload,
@@ -119,7 +120,7 @@ def resolve_mobile_associado(user) -> Associado | None:
 
 
 def _active_contratos_qs(associado: Associado):
-    return (
+    return operational_contracts_queryset(
         associado.contratos.exclude(status=Contrato.Status.CANCELADO)
         .prefetch_related(
             Prefetch(

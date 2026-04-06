@@ -10,6 +10,7 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.associados.models import Associado
+from apps.contratos.canonicalization import get_operational_contracts_for_associado
 from apps.contratos.cycle_projection import (
     build_contract_cycle_projection,
     get_associado_visual_status_payload,
@@ -161,7 +162,7 @@ class LiquidacaoContratoService:
     def _contracts_for_associado(cls, associado: Associado) -> list[Contrato]:
         prefetched = getattr(associado, "_prefetched_objects_cache", {}).get("contratos")
         if prefetched is None:
-            return list(
+            contracts = list(
                 Contrato.objects.select_related("agente")
                 .prefetch_related(
                     Prefetch(
@@ -175,8 +176,16 @@ class LiquidacaoContratoService:
                 .filter(associado=associado)
                 .order_by("-updated_at", "-id")
             )
-
-        contratos = list(prefetched)
+        else:
+            contracts = list(prefetched)
+        contracts = [contrato for contrato in contracts if not contrato.is_shadow_duplicate]
+        if contracts:
+            contracts.sort(
+                key=lambda contrato: (contrato.updated_at, contrato.id),
+                reverse=True,
+            )
+            return contracts
+        contratos = get_operational_contracts_for_associado(associado)
         contratos.sort(
             key=lambda contrato: (contrato.updated_at, contrato.id),
             reverse=True,

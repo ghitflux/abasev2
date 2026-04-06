@@ -509,12 +509,19 @@ class Documento(BaseModel):
         CONTRACHEQUE = "contracheque", "Contracheque"
         TERMO_ADESAO = "termo_adesao", "Termo de adesão"
         TERMO_ANTECIPACAO = "termo_antecipacao", "Termo de antecipação"
+        ANEXO_EXTRA_1 = "anexo_extra_1", "Anexo extra 1"
+        ANEXO_EXTRA_2 = "anexo_extra_2", "Anexo extra 2"
         OUTRO = "outro", "Outro"
 
     class Status(models.TextChoices):
         PENDENTE = "pendente", "Pendente"
         APROVADO = "aprovado", "Aprovado"
         REJEITADO = "rejeitado", "Rejeitado"
+
+    FREE_ATTACHMENT_TYPES = {
+        Tipo.ANEXO_EXTRA_1,
+        Tipo.ANEXO_EXTRA_2,
+    }
 
     associado = models.ForeignKey(
         Associado, on_delete=models.CASCADE, related_name="documentos"
@@ -538,6 +545,14 @@ class Documento(BaseModel):
 
     def __str__(self) -> str:
         return f"{self.associado.nome_completo} - {self.tipo}"
+
+    @classmethod
+    def free_attachment_types(cls) -> tuple[str, ...]:
+        return tuple(cls.FREE_ATTACHMENT_TYPES)
+
+    @classmethod
+    def is_free_attachment_type(cls, tipo: str | None) -> bool:
+        return (tipo or "") in cls.FREE_ATTACHMENT_TYPES
 
     def save(self, *args, **kwargs):
         if self.arquivo and not self.arquivo_referencia_path:

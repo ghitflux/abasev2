@@ -17,7 +17,7 @@ export type Documento = {
    */
   associado: number;
   /**
-   * @description * `rg` - RG\n* `cpf` - CPF\n* `documento_frente` - Documento (frente)\n* `documento_verso` - Documento (verso)\n* `comprovante_residencia` - Comprovante de residência\n* `divulgacao` - Divulgação\n* `contracheque` - Contracheque\n* `termo_adesao` - Termo de adesão\n* `termo_antecipacao` - Termo de antecipação\n* `outro` - Outro
+   * @description * `rg` - RG\n* `cpf` - CPF\n* `documento_frente` - Documento (frente)\n* `documento_verso` - Documento (verso)\n* `comprovante_residencia` - Comprovante de residência\n* `divulgacao` - Divulgação\n* `contracheque` - Contracheque\n* `termo_adesao` - Termo de adesão\n* `termo_antecipacao` - Termo de antecipação\n* `anexo_extra_1` - Anexo extra 1\n* `anexo_extra_2` - Anexo extra 2\n* `outro` - Outro
    * @type string
    */
   tipo: DocumentoTipoEnum;

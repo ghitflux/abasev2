@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "br.org.abase.mobile",
+      "bundleIdentifier": "com.abase.abasepi",
       "buildNumber": "213",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false

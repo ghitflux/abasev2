@@ -41,6 +41,34 @@ class DocumentoStatusBackfillTestCase(TestCase):
         self.assertEqual(payload["origem_cadastro_slug"], "web")
         self.assertEqual(payload["origem_cadastro_label"], "Web")
 
+    def test_associado_detail_serializer_oculta_contrato_sombra(self):
+        associado = self._create_associado(cpf="12345678909")
+        contrato_canonico = associado.contratos.model.objects.create(
+            associado=associado,
+            codigo="CTR-TESTE-0001",
+            valor_bruto="900.00",
+            valor_liquido="900.00",
+            valor_mensalidade="300.00",
+            prazo_meses=3,
+            status="ativo",
+        )
+        associado.contratos.model.objects.create(
+            associado=associado,
+            codigo="RETIMP-202604-TESTE",
+            valor_bruto="900.00",
+            valor_liquido="900.00",
+            valor_mensalidade="300.00",
+            prazo_meses=3,
+            status="ativo",
+            contrato_canonico=contrato_canonico,
+            tipo_unificacao="retimp_shadow",
+        )
+
+        payload = AssociadoDetailSerializer(associado).data
+
+        self.assertEqual(len(payload["contratos"]), 1)
+        self.assertEqual(payload["contratos"][0]["id"], contrato_canonico.id)
+
     def test_associado_detail_serializer_expoe_origem_mobile(self):
         role_mobile = Role.objects.create(codigo="ASSOCIADODOIS", nome="Associado 2")
         user = User.objects.create_user(

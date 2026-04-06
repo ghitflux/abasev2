@@ -11,7 +11,10 @@ from rest_framework.exceptions import ValidationError
 
 from apps.contratos.models import Contrato
 
-from .manual_return_conflicts import pagamento_has_manual_context
+from .manual_return_conflicts import (
+    pagamento_comes_from_legacy_snapshot,
+    pagamento_has_manual_context,
+)
 from .models import ArquivoRetornoItem, DuplicidadeFinanceira, PagamentoMensalidade
 
 
@@ -93,38 +96,6 @@ class DuplicidadeFinanceiraService:
         competencia: date,
         valor: Decimal | None,
     ) -> tuple[DuplicidadeFinanceira | None, PagamentoMensalidade | None]:
-        exact = (
-            PagamentoMensalidade.objects.filter(
-                cpf_cnpj=cpf_cnpj,
-                referencia_month=competencia,
-            )
-            .order_by("-updated_at", "-created_at", "-id")
-            .first()
-        )
-        if exact and pagamento_has_manual_context(exact):
-            same_value = (
-                valor is not None
-                and exact.valor is not None
-                and Decimal(str(exact.valor)) == Decimal(str(valor))
-            )
-            motivo = (
-                DuplicidadeFinanceira.Motivo.BAIXA_MANUAL_DUPLICADA
-                if same_value
-                else DuplicidadeFinanceira.Motivo.DIVERGENCIA_VALOR
-            )
-            observacao = (
-                "Competência já baixada manualmente e reenviada no arquivo retorno."
-                if same_value
-                else "Competência já baixada manualmente com divergência de valor no arquivo retorno."
-            )
-            return cls.register_conflict(
-                item=item,
-                pagamento=exact,
-                motivo=motivo,
-                observacao=observacao,
-                competencia_manual=exact.referencia_month,
-            ), exact
-
         wrong_month_qs = PagamentoMensalidade.objects.filter(
             cpf_cnpj=cpf_cnpj,
             manual_status=PagamentoMensalidade.ManualStatus.PAGO,
@@ -134,7 +105,11 @@ class DuplicidadeFinanceiraService:
                 Q(recebido_manual=valor) | Q(valor=valor)
             )
         wrong_month = wrong_month_qs.order_by("-manual_paid_at", "-updated_at", "-id").first()
-        if wrong_month is not None and pagamento_has_manual_context(wrong_month):
+        if (
+            wrong_month is not None
+            and pagamento_has_manual_context(wrong_month)
+            and not pagamento_comes_from_legacy_snapshot(wrong_month)
+        ):
             return cls.register_conflict(
                 item=item,
                 pagamento=wrong_month,

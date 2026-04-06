@@ -88,6 +88,27 @@ describe("navigation", () => {
     expect(canAccessPath("/dashboard", ["AGENTE"])).toBe(false);
   });
 
+  it("libera a rota de renovacoes do agente para analista e coordenador em modo global", () => {
+    const coordinatorSections = getNavigationForRole("COORDENADOR");
+    const analystSections = getNavigationForRole("ANALISTA");
+
+    const coordinatorHrefs = coordinatorSections.flatMap((section) =>
+      section.items.flatMap(
+        (item) => item.children?.map((child) => child.href) ?? item.href ?? [],
+      ),
+    );
+    const analystHrefs = analystSections.flatMap((section) =>
+      section.items.flatMap(
+        (item) => item.children?.map((child) => child.href) ?? item.href ?? [],
+      ),
+    );
+
+    expect(coordinatorHrefs).toContain("/agentes/refinanciados");
+    expect(analystHrefs).toContain("/agentes/refinanciados");
+    expect(canAccessPath("/agentes/refinanciados", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/agentes/refinanciados", ["ANALISTA"])).toBe(true);
+  });
+
   it("gera entradas de busca apenas para rotas acessiveis do papel", () => {
     const agentEntries = getNavigationRouteSearchEntries(["AGENTE"]);
     const adminEntries = getNavigationRouteSearchEntries(["ADMIN"]);

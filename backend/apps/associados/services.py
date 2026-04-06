@@ -9,6 +9,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.accounts.services import ComissaoService
+from apps.contratos.canonicalization import get_operational_contracts_for_associado
 from apps.contratos.competencia import create_cycle_with_parcelas
 from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.models import Ciclo, Contrato, Parcela
@@ -220,21 +221,7 @@ class AssociadoService:
 
     @staticmethod
     def contar_ciclos_logicos(associado: Associado) -> dict[str, int]:
-        contratos_cache = getattr(associado, "_prefetched_objects_cache", {}).get(
-            "contratos"
-        )
-        if contratos_cache is None:
-            contratos = (
-                associado.contratos.exclude(status=Contrato.Status.CANCELADO)
-                .prefetch_related("ciclos__parcelas")
-            )
-        else:
-            contratos = [
-                contrato
-                for contrato in contratos_cache
-                if contrato.status != Contrato.Status.CANCELADO
-            ]
-
+        contratos = get_operational_contracts_for_associado(associado)
         logical_cycles = []
         for contrato in contratos:
             logical_cycles.extend(build_contract_cycle_projection(contrato)["cycles"])
@@ -264,21 +251,7 @@ class AssociadoService:
 
     @staticmethod
     def associado_eh_renovado(associado: Associado) -> bool:
-        contratos_cache = getattr(associado, "_prefetched_objects_cache", {}).get(
-            "contratos"
-        )
-        if contratos_cache is None:
-            contratos = (
-                associado.contratos.exclude(status=Contrato.Status.CANCELADO)
-                .prefetch_related("ciclos__parcelas")
-            )
-        else:
-            contratos = [
-                contrato
-                for contrato in contratos_cache
-                if contrato.status != Contrato.Status.CANCELADO
-            ]
-
+        contratos = get_operational_contracts_for_associado(associado)
         for contrato in contratos:
             projection = build_contract_cycle_projection(contrato)
             if projection.get("refinanciamento_id"):

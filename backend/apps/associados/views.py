@@ -15,6 +15,10 @@ from apps.accounts.permissions import (
     IsCoordenadorOrAdmin,
     IsOperacionalOrAdmin,
 )
+from apps.contratos.canonicalization import (
+    get_operational_contracts_for_associado,
+    operational_contracts_queryset,
+)
 from apps.contratos.parcela_detail import build_parcela_detail_payload
 from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.models import Contrato
@@ -49,6 +53,26 @@ class AssociadoViewSet(ModelViewSet):
     ordering_fields = ["nome_completo", "matricula", "created_at", "status"]
     ordering = ["nome_completo"]
 
+    @staticmethod
+    def _operational_contracts_prefetch():
+        return Prefetch(
+            "contratos",
+            queryset=operational_contracts_queryset(
+                Contrato.objects.exclude(status=Contrato.Status.CANCELADO)
+                .select_related("agente")
+                .prefetch_related(
+                    "ciclos__parcelas",
+                    Prefetch(
+                        "comprovantes",
+                        queryset=Comprovante.objects.filter(
+                            refinanciamento__isnull=True
+                        ).select_related("enviado_por"),
+                    ),
+                )
+                .order_by("-created_at", "-id")
+            ),
+        )
+
     def get_serializer_class(self):
         if self.action == "list":
             return AssociadoListSerializer
@@ -63,7 +87,7 @@ class AssociadoViewSet(ModelViewSet):
 
     def _list_queryset(self):
         return self._base_queryset().prefetch_related(
-            Prefetch("contratos__ciclos__parcelas"),
+            self._operational_contracts_prefetch(),
         )
 
     def _detail_queryset(self):
@@ -79,13 +103,7 @@ class AssociadoViewSet(ModelViewSet):
                 "esteira_item__tesoureiro_responsavel",
             )
             .prefetch_related(
-                Prefetch("contratos__ciclos__parcelas"),
-                Prefetch(
-                    "contratos__comprovantes",
-                    queryset=Comprovante.objects.filter(
-                        refinanciamento__isnull=True
-                    ).select_related("enviado_por"),
-                ),
+                self._operational_contracts_prefetch(),
                 Prefetch("documentos"),
                 Prefetch("esteira_item__pendencias"),
                 Prefetch("esteira_item__transicoes"),
@@ -214,11 +232,7 @@ class AssociadoViewSet(ModelViewSet):
     @action(detail=True, methods=["get"])
     def ciclos(self, request, pk=None):
         associado = self.get_object()
-        contratos = list(
-            associado.contratos.exclude(status=Contrato.Status.CANCELADO)
-            .prefetch_related("ciclos__parcelas")
-            .order_by("-created_at")
-        )
+        contratos = get_operational_contracts_for_associado(associado)
         payload = {"ciclos": [], "meses_nao_pagos": []}
         for contrato in contratos:
             projection = build_contract_cycle_projection(

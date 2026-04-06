@@ -6,6 +6,8 @@ from decimal import Decimal
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
+from apps.associados.models import Documento
+from apps.contratos.canonicalization import resolve_operational_contract_for_associado
 from apps.contratos.cycle_projection import get_contract_visual_status_payload
 from core.file_references import build_storage_reference
 
@@ -119,11 +121,7 @@ class PendenciaSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.CharField(allow_null=True))
     def get_contrato_codigo(self, obj: Pendencia):
-        cached = getattr(obj.esteira_item.associado, "_prefetched_objects_cache", {}).get("contratos")
-        if cached is not None:
-            contrato = max(cached, key=lambda item: (item.created_at, item.id), default=None)
-        else:
-            contrato = obj.esteira_item.associado.contratos.order_by("-created_at").first()
+        contrato = resolve_operational_contract_for_associado(obj.esteira_item.associado)
         return contrato.codigo if contrato else None
 
     def get_matricula(self, obj: Pendencia) -> str:
@@ -202,10 +200,7 @@ class EsteiraListSerializer(serializers.ModelSerializer):
         ]
 
     def _get_contrato(self, obj: EsteiraItem):
-        cached = getattr(obj.associado, "_prefetched_objects_cache", {}).get("contratos")
-        if cached is not None:
-            return max(cached, key=lambda item: (item.created_at, item.id), default=None)
-        return obj.associado.contratos.order_by("-created_at").first()
+        return resolve_operational_contract_for_associado(obj.associado)
 
     @extend_schema_field(ContratoEsteiraSerializer(allow_null=True))
     def get_contrato(self, obj: EsteiraItem):
@@ -263,7 +258,11 @@ class EsteiraListSerializer(serializers.ModelSerializer):
         return get_contract_visual_status_payload(contrato)["status_visual_label"]
 
     def get_status_documentacao(self, obj: EsteiraItem) -> str:
-        documentos = list(obj.associado.documentos.all())
+        documentos = [
+            documento
+            for documento in obj.associado.documentos.all()
+            if not Documento.is_free_attachment_type(documento.tipo)
+        ]
         if any(pendencia.status == Pendencia.Status.ABERTA for pendencia in obj.pendencias.all()):
             return "reenvio_pendente"
         if any(

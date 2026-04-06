@@ -13,6 +13,10 @@ from rest_framework.exceptions import ValidationError
 from apps.accounts.models import User
 from apps.associados.models import Associado
 from apps.associados.services import add_months
+from apps.contratos.canonicalization import (
+    operational_contracts_queryset,
+    resolve_operational_contract_for_associado,
+)
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.contratos.renovacao import RenovacaoCicloService
 from apps.esteira.models import EsteiraItem
@@ -134,7 +138,9 @@ class AdminDashboardService:
             .prefetch_related(
                 Prefetch(
                     "contratos",
-                    queryset=Contrato.objects.exclude(status=Contrato.Status.CANCELADO)
+                    queryset=operational_contracts_queryset(
+                        Contrato.objects.exclude(status=Contrato.Status.CANCELADO)
+                    )
                     .select_related("agente")
                     .order_by("-created_at"),
                 )
@@ -149,12 +155,14 @@ class AdminDashboardService:
 
     @staticmethod
     def _contracts_base(agent_id: int | None = None) -> QuerySet[Contrato]:
-        queryset = Contrato.objects.select_related(
-            "agente",
-            "associado",
-            "associado__agente_responsavel",
-            "associado__esteira_item",
-        ).exclude(status=Contrato.Status.CANCELADO)
+        queryset = operational_contracts_queryset(
+            Contrato.objects.select_related(
+                "agente",
+                "associado",
+                "associado__agente_responsavel",
+                "associado__esteira_item",
+            ).exclude(status=Contrato.Status.CANCELADO)
+        )
         if agent_id:
             queryset = queryset.filter(
                 Q(agente_id=agent_id)
@@ -285,10 +293,7 @@ class AdminDashboardService:
 
     @staticmethod
     def _resolve_contract_for_associado(associado: Associado) -> Contrato | None:
-        contracts = getattr(associado, "_prefetched_objects_cache", {}).get("contratos")
-        if contracts:
-            return contracts[0]
-        return associado.contratos.exclude(status=Contrato.Status.CANCELADO).select_related("agente").order_by("-created_at").first()
+        return resolve_operational_contract_for_associado(associado)
 
     @staticmethod
     def _resolve_agent_name(associado: Associado | None = None, contrato: Contrato | None = None) -> str:

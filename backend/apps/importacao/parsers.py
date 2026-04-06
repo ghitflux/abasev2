@@ -49,6 +49,13 @@ _LINHA_CPF_RE = re.compile(r"^\d{11}$")
 _LINHA_MONEY_RE = re.compile(r"[^\d,.\-]+")
 
 
+def _looks_like_money_token(value: str) -> bool:
+    token = (value or "").strip()
+    if not token:
+        return False
+    return "," in token or "." in token
+
+
 def parse_linha_spacesplit(line: str) -> dict | None:
     """Interpreta uma linha usando split por 2+ espaços.
     Equivalente ao parseAbaseLinha do PHP AdminController.
@@ -69,7 +76,7 @@ def parse_linha_spacesplit(line: str) -> dict | None:
 
     parts = re.split(r"\s{2,}", line)
     parts = [p for p in parts if p]
-    if len(parts) < 6:
+    if len(parts) < 5:
         return None
 
     cpf_tok = parts[-1]
@@ -77,8 +84,15 @@ def parse_linha_spacesplit(line: str) -> dict | None:
         return None
     cpf = re.sub(r"\D", "", cpf_tok)
 
-    orgao_tok = parts[-2]
-    valor_tok = parts[-3]
+    right_before_cpf = parts[-2]
+    if _looks_like_money_token(right_before_cpf):
+        orgao_tok = ""
+        valor_tok = right_before_cpf
+    else:
+        if len(parts) < 6:
+            return None
+        orgao_tok = right_before_cpf
+        valor_tok = parts[-3]
     status_tok = parts[0].strip().upper()
     if not _LINHA_STATUS_RE.match(status_tok):
         return None

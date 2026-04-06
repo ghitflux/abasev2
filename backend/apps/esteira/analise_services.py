@@ -103,12 +103,14 @@ class AnaliseService:
             )
             .annotate(
                 has_documents=Exists(
-                    Documento.objects.filter(associado_id=OuterRef("associado_id"))
+                    Documento.objects.filter(associado_id=OuterRef("associado_id")).exclude(
+                        tipo__in=Documento.free_attachment_types()
+                    )
                 ),
                 has_pending_document=Exists(
-                    Documento.objects.filter(associado_id=OuterRef("associado_id")).exclude(
-                        status=Documento.Status.APROVADO
-                    )
+                    Documento.objects.filter(associado_id=OuterRef("associado_id"))
+                    .exclude(tipo__in=Documento.free_attachment_types())
+                    .exclude(status=Documento.Status.APROVADO)
                 ),
                 has_open_pendencia=Exists(
                     Pendencia.objects.filter(

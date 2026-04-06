@@ -537,6 +537,7 @@ class AgentePagamentoContratoSerializer(serializers.ModelSerializer):
 
 class BaixaManualItemSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
+    parcela_id = serializers.SerializerMethodField()
     associado_id = serializers.SerializerMethodField()
     nome = serializers.SerializerMethodField()
     cpf_cnpj = serializers.SerializerMethodField()
@@ -544,14 +545,28 @@ class BaixaManualItemSerializer(serializers.Serializer):
     agente_nome = serializers.SerializerMethodField()
     contrato_id = serializers.SerializerMethodField()
     contrato_codigo = serializers.SerializerMethodField()
-    referencia_mes = serializers.DateField(read_only=True)
-    valor = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    status = serializers.CharField(read_only=True)
-    data_vencimento = serializers.DateField(read_only=True)
-    observacao = serializers.CharField(read_only=True)
+    referencia_mes = serializers.SerializerMethodField()
+    valor = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
+    data_vencimento = serializers.SerializerMethodField()
+    observacao = serializers.SerializerMethodField()
+    data_baixa = serializers.SerializerMethodField()
+    valor_pago = serializers.SerializerMethodField()
+    realizado_por_nome = serializers.SerializerMethodField()
+    nome_comprovante = serializers.SerializerMethodField()
 
     def _contrato(self, obj):
+        if hasattr(obj, "parcela"):
+            return obj.parcela.ciclo.contrato
         return obj.ciclo.contrato
+
+    def _parcela(self, obj):
+        if hasattr(obj, "parcela"):
+            return obj.parcela
+        return obj
+
+    def get_parcela_id(self, obj) -> int:
+        return self._parcela(obj).id
 
     def get_associado_id(self, obj) -> int:
         return self._contrato(obj).associado.id
@@ -575,6 +590,41 @@ class BaixaManualItemSerializer(serializers.Serializer):
 
     def get_contrato_codigo(self, obj) -> str:
         return self._contrato(obj).codigo
+
+    def get_referencia_mes(self, obj):
+        return self._parcela(obj).referencia_mes
+
+    def get_valor(self, obj) -> str:
+        return f"{self._parcela(obj).valor:.2f}"
+
+    def get_status(self, obj) -> str:
+        return self._parcela(obj).status
+
+    def get_data_vencimento(self, obj):
+        return self._parcela(obj).data_vencimento
+
+    def get_observacao(self, obj) -> str:
+        return self._parcela(obj).observacao
+
+    def get_data_baixa(self, obj):
+        if hasattr(obj, "data_baixa"):
+            return obj.data_baixa
+        return None
+
+    def get_valor_pago(self, obj):
+        if hasattr(obj, "valor_pago"):
+            return f"{obj.valor_pago:.2f}"
+        return None
+
+    def get_realizado_por_nome(self, obj) -> str:
+        if hasattr(obj, "realizado_por") and obj.realizado_por:
+            return obj.realizado_por.full_name or obj.realizado_por.email
+        return ""
+
+    def get_nome_comprovante(self, obj) -> str:
+        if hasattr(obj, "nome_comprovante"):
+            return obj.nome_comprovante
+        return ""
 
 
 class DarBaixaManualSerializer(serializers.Serializer):

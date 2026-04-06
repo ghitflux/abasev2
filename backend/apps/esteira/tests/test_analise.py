@@ -335,6 +335,43 @@ class AnaliseViewSetTestCase(TestCase):
         )
         self.assertEqual(row["status_documentacao"], "completa")
 
+    def test_anexos_extras_livres_nao_satisfazem_documentacao_obrigatoria(self):
+        item = self._create_item(suffix="2501", documentos=0)
+        Documento.objects.create(
+            associado=item.associado,
+            tipo=Documento.Tipo.ANEXO_EXTRA_1,
+            arquivo=SimpleUploadedFile(
+                "anexo-extra-1.pdf",
+                b"conteudo",
+                content_type="application/pdf",
+            ),
+            status=Documento.Status.PENDENTE,
+        )
+        Documento.objects.create(
+            associado=item.associado,
+            tipo=Documento.Tipo.ANEXO_EXTRA_2,
+            arquivo=SimpleUploadedFile(
+                "anexo-extra-2.pdf",
+                b"conteudo",
+                content_type="application/pdf",
+            ),
+            status=Documento.Status.PENDENTE,
+        )
+
+        response = self.analyst_client.get("/api/v1/analise/filas/?secao=ver_todos")
+        self.assertEqual(response.status_code, 200, response.json())
+        row = next(
+            registro
+            for registro in response.json()["results"]
+            if registro["id"] == item.id
+        )
+        self.assertEqual(row["status_documentacao"], "incompleta")
+
+        pendencias = self.analyst_client.get("/api/v1/analise/filas/?secao=pendencias")
+        self.assertEqual(pendencias.status_code, 200, pendencias.json())
+        ids = {registro["id"] for registro in pendencias.json()["results"]}
+        self.assertIn(item.id, ids)
+
     def test_pendencias_inclui_doc_issue_aberta(self):
         item = self._create_item(suffix="251", documentos=1)
         DocIssue.objects.create(

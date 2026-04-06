@@ -4,6 +4,10 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.accounts.models import MobileAccessToken, User
+from apps.contratos.canonicalization import (
+    get_operational_contracts_for_associado,
+    resolve_operational_contract_for_associado,
+)
 from apps.contratos.cycle_projection import (
     build_contract_cycle_projection,
     get_associado_visual_status_payload,
@@ -291,16 +295,7 @@ class AssociadoListSerializer(serializers.ModelSerializer):
         ]
 
     def _get_active_contracts(self, obj: Associado):
-        cached = getattr(obj, "_prefetched_objects_cache", {}).get("contratos")
-        if cached is not None:
-            return sorted(
-                [contrato for contrato in cached if contrato.status != "cancelado"],
-                key=lambda contrato: (contrato.created_at, contrato.id),
-                reverse=True,
-            )
-        return list(
-            obj.contratos.exclude(status="cancelado").order_by("-created_at")
-        )
+        return get_operational_contracts_for_associado(obj)
 
     def _contagens_ciclos(self, obj: Associado) -> dict[str, int]:
         cache = self.context.setdefault("_ciclos_cache", {})
@@ -348,7 +343,7 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
     endereco = serializers.SerializerMethodField()
     dados_bancarios = serializers.SerializerMethodField()
     contato = serializers.SerializerMethodField()
-    contratos = ContratoResumoSerializer(many=True, read_only=True)
+    contratos = serializers.SerializerMethodField()
     documentos = DocumentoSerializer(many=True, read_only=True)
     esteira = EsteiraItemResumoSerializer(source="esteira_item", read_only=True)
     status_renovacao = serializers.SerializerMethodField()
@@ -435,14 +430,16 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
                 self.fields.pop(field_name, None)
 
     def _get_active_contracts(self, obj: Associado):
-        cached = getattr(obj, "_prefetched_objects_cache", {}).get("contratos")
-        if cached is not None:
-            return sorted(
-                [contrato for contrato in cached if contrato.status != "cancelado"],
-                key=lambda contrato: (contrato.created_at, contrato.id),
-                reverse=True,
-            )
-        return list(obj.contratos.exclude(status="cancelado").order_by("-created_at"))
+        return get_operational_contracts_for_associado(obj)
+
+    @extend_schema_field(ContratoResumoSerializer(many=True))
+    def get_contratos(self, obj: Associado):
+        contratos = self._get_active_contracts(obj)
+        return ContratoResumoSerializer(
+            contratos,
+            many=True,
+            context=self.context,
+        ).data
 
     def get_status_renovacao(self, obj: Associado) -> str:
         for contrato in self._get_active_contracts(obj):
@@ -811,7 +808,7 @@ class AssociadoUpdateSerializer(serializers.ModelSerializer):
         instance.save()
 
         if contrato_data:
-            contrato = instance.contratos.order_by("-created_at").first()
+            contrato = resolve_operational_contract_for_associado(instance)
             if contrato:
                 for field, value in contrato_data.items():
                     setattr(contrato, field, value)
@@ -819,7 +816,7 @@ class AssociadoUpdateSerializer(serializers.ModelSerializer):
                     contrato.agente_id = agente_responsavel_id
                 contrato.save()
         elif agente_responsavel_id is not None:
-            contrato = instance.contratos.order_by("-created_at").first()
+            contrato = resolve_operational_contract_for_associado(instance)
             if contrato:
                 if agente_responsavel_id is not None:
                     contrato.agente_id = agente_responsavel_id

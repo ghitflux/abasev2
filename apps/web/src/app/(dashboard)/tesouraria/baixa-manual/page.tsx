@@ -8,11 +8,14 @@ import {
   AlertCircleIcon,
   CheckCircleIcon,
   ChevronRightIcon,
+  ClipboardCheckIcon,
   ClipboardListIcon,
   ExternalLinkIcon,
   HandCoinsIcon,
+  SlidersHorizontalIcon,
   TrendingDownIcon,
   UploadIcon,
+  WalletCardsIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -20,7 +23,9 @@ import { toast } from "sonner";
 import { apiFetch } from "@/lib/api/client";
 import { formatCurrency, formatDate } from "@/lib/formatters";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
+import DatePicker from "@/components/custom/date-picker";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
+import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
@@ -44,12 +49,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+
+type ListingTab = "pendentes" | "quitados";
+
+type SimpleUser = {
+  id: number;
+  full_name: string;
+};
 
 type BaixaManualItem = {
   id: number;
+  parcela_id: number;
   associado_id: number;
   nome: string;
   cpf_cnpj: string;
@@ -62,14 +85,22 @@ type BaixaManualItem = {
   status: string;
   data_vencimento: string;
   observacao: string;
+  data_baixa: string | null;
+  valor_pago: string | null;
+  realizado_por_nome: string;
+  nome_comprovante: string;
 };
 
 type BaixaManualKpis = {
-  total_pendentes: number;
-  em_aberto: number;
-  nao_descontado: number;
-  valor_total_pendente: string;
-  baixas_realizadas_mes: number;
+  total_pendentes?: number;
+  em_aberto?: number;
+  nao_descontado?: number;
+  valor_total_pendente?: string;
+  baixas_realizadas_mes?: number;
+  total_quitados?: number;
+  valor_total_quitado?: string;
+  quitados_este_mes?: number;
+  valor_quitado_este_mes?: string;
 };
 
 type BaixaManualResponse = {
@@ -88,6 +119,7 @@ type AssociadoGroup = {
   parcelas: BaixaManualItem[];
   total_parcelas: number;
   valor_total: number;
+  ultima_baixa: string | null;
 };
 
 type DarBaixaState = {
@@ -95,6 +127,12 @@ type DarBaixaState = {
   comprovante: File | null;
   valorPago: string;
   observacao: string;
+};
+
+type AdvancedFilters = {
+  agente: string;
+  dataInicio?: Date;
+  dataFim?: Date;
 };
 
 const comprovanteAccept = {
@@ -112,65 +150,140 @@ function formatMonthYear(value: string) {
   }
 }
 
-function groupByAssociado(items: BaixaManualItem[]): AssociadoGroup[] {
+function parseCurrencyValue(value?: string | null) {
+  return Number.parseFloat(value ?? "") || 0;
+}
+
+function resolveItemAmount(item: BaixaManualItem, listing: ListingTab) {
+  if (listing === "quitados") {
+    return parseCurrencyValue(item.valor_pago ?? item.valor);
+  }
+  return parseCurrencyValue(item.valor);
+}
+
+function groupByAssociado(items: BaixaManualItem[], listing: ListingTab): AssociadoGroup[] {
   const map = new Map<number, AssociadoGroup>();
+
   for (const item of items) {
+    const value = resolveItemAmount(item, listing);
     const existing = map.get(item.associado_id);
+
     if (existing) {
       existing.parcelas.push(item);
       existing.total_parcelas += 1;
-      existing.valor_total += parseFloat(item.valor) || 0;
-    } else {
-      map.set(item.associado_id, {
-        id: item.associado_id,
-        associado_id: item.associado_id,
-        nome: item.nome,
-        cpf_cnpj: item.cpf_cnpj,
-        matricula: item.matricula,
-        agente_nome: item.agente_nome,
-        parcelas: [item],
-        total_parcelas: 1,
-        valor_total: parseFloat(item.valor) || 0,
-      });
+      existing.valor_total += value;
+      if (listing === "quitados" && item.data_baixa) {
+        existing.ultima_baixa =
+          !existing.ultima_baixa || item.data_baixa > existing.ultima_baixa
+            ? item.data_baixa
+            : existing.ultima_baixa;
+      }
+      continue;
     }
+
+    map.set(item.associado_id, {
+      id: item.associado_id,
+      associado_id: item.associado_id,
+      nome: item.nome,
+      cpf_cnpj: item.cpf_cnpj,
+      matricula: item.matricula,
+      agente_nome: item.agente_nome,
+      parcelas: [item],
+      total_parcelas: 1,
+      valor_total: value,
+      ultima_baixa: listing === "quitados" ? item.data_baixa : null,
+    });
   }
+
   return Array.from(map.values());
+}
+
+function countActiveAdvancedFilters(filters: AdvancedFilters) {
+  return [filters.agente, filters.dataInicio, filters.dataFim].filter(Boolean).length;
 }
 
 export default function BaixaManualPage() {
   const queryClient = useQueryClient();
   const router = useRouter();
+  const [listing, setListing] = React.useState<ListingTab>("pendentes");
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState("todos");
   const [competencia, setCompetencia] = React.useState<Date | undefined>();
+  const [agente, setAgente] = React.useState("");
+  const [dataInicio, setDataInicio] = React.useState<Date | undefined>();
+  const [dataFim, setDataFim] = React.useState<Date | undefined>();
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
+  const [draftFilters, setDraftFilters] = React.useState<AdvancedFilters>({
+    agente: "",
+    dataInicio: undefined,
+    dataFim: undefined,
+  });
   const [darBaixaState, setDarBaixaState] = React.useState<DarBaixaState | null>(null);
   const [navigatingId, setNavigatingId] = React.useState<number | null>(null);
 
   const competenciaParam = competencia ? format(competencia, "yyyy-MM") : undefined;
+  const activeAdvancedFiltersCount = countActiveAdvancedFilters({
+    agente,
+    dataInicio,
+    dataFim,
+  });
+
+  const agentesQuery = useQuery({
+    queryKey: ["baixa-manual-agentes"],
+    queryFn: () => apiFetch<SimpleUser[]>("associados/agentes"),
+  });
+
+  const agentOptions = React.useMemo(
+    () =>
+      (agentesQuery.data ?? []).map((item) => ({
+        value: String(item.id),
+        label: item.full_name,
+      })),
+    [agentesQuery.data],
+  );
+
+  React.useEffect(() => {
+    setPage(1);
+  }, [listing, search, statusFilter, competenciaParam, agente, dataInicio, dataFim]);
 
   const query = useQuery({
-    queryKey: ["tesouraria-baixa-manual", page, search, statusFilter, competenciaParam],
+    queryKey: [
+      "tesouraria-baixa-manual",
+      listing,
+      page,
+      search,
+      statusFilter,
+      competenciaParam,
+      agente,
+      dataInicio?.toISOString(),
+      dataFim?.toISOString(),
+    ],
     queryFn: () =>
       apiFetch<BaixaManualResponse>("tesouraria/baixa-manual", {
         query: {
           page,
           page_size: 50,
+          listing,
           search: search || undefined,
-          status: statusFilter !== "todos" ? statusFilter : undefined,
+          status:
+            listing === "pendentes" && statusFilter !== "todos" ? statusFilter : undefined,
           competencia: competenciaParam,
+          agente: agente || undefined,
+          data_inicio: dataInicio ? format(dataInicio, "yyyy-MM-dd") : undefined,
+          data_fim: dataFim ? format(dataFim, "yyyy-MM-dd") : undefined,
         },
       }),
   });
 
   const darBaixaMutation = useMutation({
     mutationFn: async ({
-      id,
+      parcelaId,
       comprovante,
       valorPago,
       observacao,
     }: {
-      id: number;
+      parcelaId: number;
       comprovante: File;
       valorPago: string;
       observacao: string;
@@ -178,8 +291,10 @@ export default function BaixaManualPage() {
       const fd = new FormData();
       fd.append("comprovante", comprovante);
       fd.append("valor_pago", valorPago);
-      if (observacao) fd.append("observacao", observacao);
-      return apiFetch(`tesouraria/baixa-manual/${id}/dar-baixa`, {
+      if (observacao) {
+        fd.append("observacao", observacao);
+      }
+      return apiFetch(`tesouraria/baixa-manual/${parcelaId}/dar-baixa`, {
         method: "POST",
         formData: fd,
       });
@@ -200,13 +315,28 @@ export default function BaixaManualPage() {
     router.push(`/associados/${associadoId}`);
   }
 
+  function resetFilters() {
+    setSearch("");
+    setStatusFilter("todos");
+    setCompetencia(undefined);
+    setAgente("");
+    setDataInicio(undefined);
+    setDataFim(undefined);
+    setDraftFilters({
+      agente: "",
+      dataInicio: undefined,
+      dataFim: undefined,
+    });
+    setPage(1);
+  }
+
   const kpis = query.data?.kpis;
   const rows = query.data?.results ?? [];
   const totalCount = query.data?.count ?? 0;
-  const groups = React.useMemo(() => groupByAssociado(rows), [rows]);
+  const groups = React.useMemo(() => groupByAssociado(rows, listing), [listing, rows]);
 
-  const columns = React.useMemo<DataTableColumn<AssociadoGroup>[]>(
-    () => [
+  const columns = React.useMemo<DataTableColumn<AssociadoGroup>[]>(() => {
+    const baseColumns: DataTableColumn<AssociadoGroup>[] = [
       {
         id: "expand",
         header: "",
@@ -253,15 +383,30 @@ export default function BaixaManualPage() {
         id: "agente",
         header: "Agente",
         cell: (row) => (
-          <span className="text-sm text-muted-foreground">{row.agente_nome || "—"}</span>
+          <span className="text-sm text-muted-foreground">{row.agente_nome || "-"}</span>
         ),
       },
+    ];
+
+    if (listing === "quitados") {
+      baseColumns.push({
+        id: "ultima_baixa",
+        header: "Última baixa",
+        cell: (row) => (
+          <span className="text-sm text-muted-foreground">
+            {row.ultima_baixa ? formatDate(row.ultima_baixa) : "-"}
+          </span>
+        ),
+      });
+    }
+
+    baseColumns.push(
       {
         id: "parcelas",
-        header: "Parcelas",
+        header: listing === "quitados" ? "Quitações" : "Parcelas",
         cell: (row) => (
           <Badge variant="secondary" className="font-mono text-xs">
-            {row.total_parcelas} parcela{row.total_parcelas !== 1 ? "s" : ""}
+            {row.total_parcelas} item{row.total_parcelas !== 1 ? "s" : ""}
           </Badge>
         ),
       },
@@ -283,8 +428,8 @@ export default function BaixaManualPage() {
             variant="outline"
             className="shrink-0"
             disabled={navigatingId === row.associado_id}
-            onClick={(e) => {
-              e.stopPropagation();
+            onClick={(event) => {
+              event.stopPropagation();
               handleVerDetalhes(row.associado_id);
             }}
           >
@@ -297,186 +442,393 @@ export default function BaixaManualPage() {
           </Button>
         ),
       },
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [navigatingId],
-  );
+    );
+
+    return baseColumns;
+  }, [listing, navigatingId]);
 
   const renderExpanded = React.useCallback(
-    (group: AssociadoGroup) => (
-      <div className="space-y-3">
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-          Parcelas Pendentes — {group.nome}
-        </p>
-        <div className="overflow-hidden rounded-xl border border-border/60">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border/60 bg-muted/20">
-                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Contrato
-                </th>
-                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Referência do Ciclo
-                </th>
-                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Vencimento
-                </th>
-                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Valor
-                </th>
-                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Status
-                </th>
-                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Ação
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {group.parcelas.map((parcela) => (
-                <tr
-                  key={parcela.id}
-                  className="border-b border-border/40 transition-colors last:border-0 hover:bg-white/3"
-                >
-                  <td className="px-4 py-3">
-                    <CopySnippet label="Contrato" value={parcela.contrato_codigo} mono inline />
-                  </td>
-                  <td className="px-4 py-3 font-medium">
-                    {formatMonthYear(parcela.referencia_mes)}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {formatDate(parcela.data_vencimento)}
-                  </td>
-                  <td className="px-4 py-3 font-semibold tabular-nums">
-                    {formatCurrency(parcela.valor)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={parcela.status} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <Button
-                      size="sm"
-                      variant="success"
-                      onClick={() =>
-                        setDarBaixaState({
-                          item: parcela,
-                          comprovante: null,
-                          valorPago: parcela.valor,
-                          observacao: "",
-                        })
-                      }
-                    >
-                      <UploadIcon className="mr-1.5 size-3.5" />
-                      Dar Baixa
-                    </Button>
-                  </td>
+    (group: AssociadoGroup) =>
+      listing === "quitados" ? (
+        <div className="space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Inadimplentes Quitados - {group.nome}
+          </p>
+          <div className="overflow-hidden rounded-xl border border-border/60">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/60 bg-muted/20">
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Contrato
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Referência do Ciclo
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Baixado em
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Valor Pago
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Status
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Registrado por
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {group.parcelas.map((parcela) => (
+                  <tr
+                    key={parcela.id}
+                    className="border-b border-border/40 transition-colors last:border-0 hover:bg-white/3"
+                  >
+                    <td className="px-4 py-3">
+                      <CopySnippet label="Contrato" value={parcela.contrato_codigo} mono inline />
+                    </td>
+                    <td className="px-4 py-3 font-medium">
+                      {formatMonthYear(parcela.referencia_mes)}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {parcela.data_baixa ? formatDate(parcela.data_baixa) : "-"}
+                    </td>
+                    <td className="px-4 py-3 font-semibold tabular-nums">
+                      {formatCurrency(parcela.valor_pago ?? parcela.valor)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status="descontado" />
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {parcela.realizado_por_nome || "-"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
-    ),
-    [],
+      ) : (
+        <div className="space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            Parcelas Pendentes - {group.nome}
+          </p>
+          <div className="overflow-hidden rounded-xl border border-border/60">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border/60 bg-muted/20">
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Contrato
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Referência do Ciclo
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Vencimento
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Valor
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Status
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Ação
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {group.parcelas.map((parcela) => (
+                  <tr
+                    key={parcela.id}
+                    className="border-b border-border/40 transition-colors last:border-0 hover:bg-white/3"
+                  >
+                    <td className="px-4 py-3">
+                      <CopySnippet label="Contrato" value={parcela.contrato_codigo} mono inline />
+                    </td>
+                    <td className="px-4 py-3 font-medium">
+                      {formatMonthYear(parcela.referencia_mes)}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {formatDate(parcela.data_vencimento)}
+                    </td>
+                    <td className="px-4 py-3 font-semibold tabular-nums">
+                      {formatCurrency(parcela.valor)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={parcela.status} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button
+                        size="sm"
+                        variant="success"
+                        onClick={() =>
+                          setDarBaixaState({
+                            item: parcela,
+                            comprovante: null,
+                            valorPago: parcela.valor,
+                            observacao: "",
+                          })
+                        }
+                      >
+                        <UploadIcon className="mr-1.5 size-3.5" />
+                        Dar Baixa
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ),
+    [listing],
   );
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <section className="rounded-[1.75rem] border border-border/60 bg-card/70 p-6">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-semibold">Inadimplentes</h1>
-          <p className="text-sm text-muted-foreground">
-            Parcelas de meses anteriores pendentes ou não descontadas — registre a baixa com comprovante.
-          </p>
+        <div className="space-y-4">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-semibold">Inadimplentes</h1>
+            <p className="text-sm text-muted-foreground">
+              {listing === "quitados"
+                ? "Histórico das parcelas inadimplentes que já receberam baixa manual."
+                : "Parcelas de meses anteriores pendentes ou não descontadas - registre a baixa com comprovante."}
+            </p>
+          </div>
+          <Tabs
+            value={listing}
+            onValueChange={(value) => setListing(value as ListingTab)}
+            className="w-full"
+          >
+            <TabsList variant="line" className="w-fit">
+              <TabsTrigger value="pendentes">Pendentes</TabsTrigger>
+              <TabsTrigger value="quitados">Quitados</TabsTrigger>
+            </TabsList>
+          </Tabs>
         </div>
       </section>
 
-      {/* KPI cards */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatsCard
-          title="Total Pendentes"
-          value={String(kpis?.total_pendentes ?? "—")}
-          delta="em aberto + não descontadas"
-          icon={ClipboardListIcon}
-          tone="warning"
-        />
-        <StatsCard
-          title="Em Aberto"
-          value={String(kpis?.em_aberto ?? "—")}
-          delta="parcelas em aberto"
-          icon={AlertCircleIcon}
-          tone="warning"
-        />
-        <StatsCard
-          title="Não Descontadas"
-          value={String(kpis?.nao_descontado ?? "—")}
-          delta="retornaram rejeitadas"
-          icon={TrendingDownIcon}
-          tone="warning"
-        />
-        <StatsCard
-          title="Valor Total Pendente"
-          value={kpis ? formatCurrency(kpis.valor_total_pendente) : "—"}
-          delta={`Baixas este mês: ${kpis?.baixas_realizadas_mes ?? 0}`}
-          icon={HandCoinsIcon}
-          tone="neutral"
-        />
+        {listing === "quitados" ? (
+          <>
+            <StatsCard
+              title="Total Quitados"
+              value={String(kpis?.total_quitados ?? "-")}
+              delta="inadimplências com baixa manual"
+              icon={ClipboardCheckIcon}
+              tone="positive"
+            />
+            <StatsCard
+              title="Valor Total Quitado"
+              value={kpis?.valor_total_quitado ? formatCurrency(kpis.valor_total_quitado) : "-"}
+              delta="somatório do recorte atual"
+              icon={WalletCardsIcon}
+              tone="neutral"
+            />
+            <StatsCard
+              title="Quitados Este Mês"
+              value={String(kpis?.quitados_este_mes ?? "-")}
+              delta="baixas registradas no mês corrente"
+              icon={CheckCircleIcon}
+              tone="positive"
+            />
+            <StatsCard
+              title="Valor Quitado Este Mês"
+              value={
+                kpis?.valor_quitado_este_mes
+                  ? formatCurrency(kpis.valor_quitado_este_mes)
+                  : "-"
+              }
+              delta="inadimplência já regularizada"
+              icon={HandCoinsIcon}
+              tone="neutral"
+            />
+          </>
+        ) : (
+          <>
+            <StatsCard
+              title="Total Pendentes"
+              value={String(kpis?.total_pendentes ?? "-")}
+              delta="em aberto + não descontadas"
+              icon={ClipboardListIcon}
+              tone="warning"
+            />
+            <StatsCard
+              title="Em Aberto"
+              value={String(kpis?.em_aberto ?? "-")}
+              delta="parcelas em aberto"
+              icon={AlertCircleIcon}
+              tone="warning"
+            />
+            <StatsCard
+              title="Não Descontadas"
+              value={String(kpis?.nao_descontado ?? "-")}
+              delta="retornaram rejeitadas"
+              icon={TrendingDownIcon}
+              tone="warning"
+            />
+            <StatsCard
+              title="Valor Total Pendente"
+              value={
+                kpis?.valor_total_pendente ? formatCurrency(kpis.valor_total_pendente) : "-"
+              }
+              delta={`Baixas este mês: ${kpis?.baixas_realizadas_mes ?? 0}`}
+              icon={HandCoinsIcon}
+              tone="neutral"
+            />
+          </>
+        )}
       </section>
 
-      {/* Filters */}
-      <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 sm:grid-cols-2 lg:grid-cols-[1fr_180px_180px_auto]">
-        <Input
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-          placeholder="Buscar por associado, CPF, matrícula ou contrato"
-          className="rounded-2xl border-border/60 bg-card/60"
-        />
-        <Select
-          value={statusFilter}
-          onValueChange={(v) => {
-            setStatusFilter(v);
-            setPage(1);
-          }}
-        >
-          <SelectTrigger className="rounded-2xl border-border/60 bg-card/60">
-            <SelectValue placeholder="Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos</SelectItem>
-            <SelectItem value="em_aberto">Em aberto</SelectItem>
-            <SelectItem value="nao_descontado">Não descontado</SelectItem>
-          </SelectContent>
-        </Select>
-        <CalendarCompetencia
-          value={competencia}
-          onChange={(d) => {
-            setCompetencia(d);
-            setPage(1);
-          }}
-        />
-        <Button
-          variant="outline"
-          onClick={() => {
-            setCompetencia(undefined);
-            setStatusFilter("todos");
-            setSearch("");
-            setPage(1);
-          }}
-        >
-          Limpar
-        </Button>
+      <section className="rounded-[1.75rem] border border-border/60 bg-card/50 p-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+          <div className="flex-1">
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Buscar por nome, CPF, matrícula ou contrato..."
+              className="rounded-2xl border-border/60 bg-card/60"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {listing === "pendentes" ? (
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[180px] rounded-2xl border-border/60 bg-card/60">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  <SelectItem value="em_aberto">Em aberto</SelectItem>
+                  <SelectItem value="nao_descontado">Não descontado</SelectItem>
+                </SelectContent>
+              </Select>
+            ) : null}
+            <div className="min-w-[180px]">
+              <CalendarCompetencia
+                value={competencia}
+                onChange={(dateValue) => setCompetencia(dateValue)}
+              />
+            </div>
+            <Sheet
+              open={filtersOpen}
+              onOpenChange={(open) => {
+                if (open) {
+                  setDraftFilters({ agente, dataInicio, dataFim });
+                }
+                setFiltersOpen(open);
+              }}
+            >
+              <SheetTrigger asChild>
+                <Button variant="outline" className="rounded-2xl">
+                  <SlidersHorizontalIcon className="size-4" />
+                  Filtros avançados
+                  {activeAdvancedFiltersCount ? (
+                    <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-primary">
+                      {activeAdvancedFiltersCount}
+                    </Badge>
+                  ) : null}
+                </Button>
+              </SheetTrigger>
+              <SheetContent className="w-full border-l border-border/60 sm:max-w-xl">
+                <SheetHeader>
+                  <SheetTitle>Filtros avançados</SheetTitle>
+                  <SheetDescription>
+                    {listing === "quitados"
+                      ? "Refine o histórico de baixas por agente responsável e intervalo de datas."
+                      : "Refine a fila por agente responsável e intervalo de vencimento."}
+                  </SheetDescription>
+                </SheetHeader>
+
+                <div className="space-y-5 overflow-y-auto px-4 pb-4">
+                  <div className="space-y-2">
+                    <Label>Agente</Label>
+                    <SearchableSelect
+                      options={agentOptions}
+                      value={draftFilters.agente}
+                      onChange={(value) =>
+                        setDraftFilters((current) => ({
+                          ...current,
+                          agente: value,
+                        }))
+                      }
+                      placeholder="Todos os agentes"
+                      searchPlaceholder="Buscar agente"
+                      clearLabel="Todos os agentes"
+                      className="rounded-2xl border-border/60 bg-background/60"
+                    />
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>{listing === "quitados" ? "Baixado de" : "Vencimento de"}</Label>
+                      <DatePicker
+                        value={draftFilters.dataInicio}
+                        onChange={(value) =>
+                          setDraftFilters((current) => ({
+                            ...current,
+                            dataInicio: value,
+                          }))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{listing === "quitados" ? "Baixado até" : "Vencimento até"}</Label>
+                      <DatePicker
+                        value={draftFilters.dataFim}
+                        onChange={(value) =>
+                          setDraftFilters((current) => ({
+                            ...current,
+                            dataFim: value,
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <SheetFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setDraftFilters({
+                        agente: "",
+                        dataInicio: undefined,
+                        dataFim: undefined,
+                      });
+                      setAgente("");
+                      setDataInicio(undefined);
+                      setDataFim(undefined);
+                      setFiltersOpen(false);
+                    }}
+                  >
+                    Limpar
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setAgente(draftFilters.agente);
+                      setDataInicio(draftFilters.dataInicio);
+                      setDataFim(draftFilters.dataFim);
+                      setFiltersOpen(false);
+                    }}
+                  >
+                    Aplicar
+                  </Button>
+                </SheetFooter>
+              </SheetContent>
+            </Sheet>
+            <Button variant="outline" onClick={resetFilters}>
+              Limpar
+            </Button>
+          </div>
+        </div>
       </section>
 
-      {/* Table */}
-      {query.isLoading ? (
+      {query.isLoading && !query.data ? (
         <div className="overflow-hidden rounded-[1.75rem] border border-border/60 bg-card/70">
           <div className="space-y-0 divide-y divide-border/40">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="flex items-center gap-4 px-5 py-4">
+            {Array.from({ length: 6 }).map((_, index) => (
+              <div key={index} className="flex items-center gap-4 px-5 py-4">
                 <Skeleton className="size-4 shrink-0" />
                 <div className="flex-1 space-y-2">
                   <Skeleton className="h-4 w-48" />
@@ -499,15 +851,20 @@ export default function BaixaManualPage() {
           currentPage={page}
           totalPages={Math.max(1, Math.ceil(totalCount / 50))}
           onPageChange={setPage}
-          emptyMessage="Nenhuma parcela pendente de meses anteriores."
+          emptyMessage={
+            listing === "quitados"
+              ? "Nenhuma baixa manual encontrada para os filtros aplicados."
+              : "Nenhuma parcela pendente de meses anteriores."
+          }
         />
       )}
 
-      {/* Dar Baixa Dialog */}
       <Dialog
         open={!!darBaixaState}
         onOpenChange={(open) => {
-          if (!open) setDarBaixaState(null);
+          if (!open) {
+            setDarBaixaState(null);
+          }
         }}
       >
         <DialogContent className="max-w-lg">
@@ -516,8 +873,8 @@ export default function BaixaManualPage() {
             <DialogDescription>
               {darBaixaState ? (
                 <>
-                  <strong>{darBaixaState.item.nome}</strong> —{" "}
-                  {formatMonthYear(darBaixaState.item.referencia_mes)} —{" "}
+                  <strong>{darBaixaState.item.nome}</strong> -{" "}
+                  {formatMonthYear(darBaixaState.item.referencia_mes)} -{" "}
                   {formatCurrency(darBaixaState.item.valor)}
                 </>
               ) : null}
@@ -532,8 +889,8 @@ export default function BaixaManualPage() {
                   accept={comprovanteAccept}
                   maxSize={10 * 1024 * 1024}
                   onUpload={(file) =>
-                    setDarBaixaState((prev) =>
-                      prev ? { ...prev, comprovante: file ?? null } : prev,
+                    setDarBaixaState((current) =>
+                      current ? { ...current, comprovante: file ?? null } : current,
                     )
                   }
                   isProcessing={false}
@@ -550,9 +907,9 @@ export default function BaixaManualPage() {
                 <Label>Valor pago (R$) *</Label>
                 <Input
                   value={darBaixaState.valorPago}
-                  onChange={(e) =>
-                    setDarBaixaState((prev) =>
-                      prev ? { ...prev, valorPago: e.target.value } : prev,
+                  onChange={(event) =>
+                    setDarBaixaState((current) =>
+                      current ? { ...current, valorPago: event.target.value } : current,
                     )
                   }
                   placeholder="0.00"
@@ -567,9 +924,9 @@ export default function BaixaManualPage() {
                 <Label>Observação</Label>
                 <Textarea
                   value={darBaixaState.observacao}
-                  onChange={(e) =>
-                    setDarBaixaState((prev) =>
-                      prev ? { ...prev, observacao: e.target.value } : prev,
+                  onChange={(event) =>
+                    setDarBaixaState((current) =>
+                      current ? { ...current, observacao: event.target.value } : current,
                     )
                   }
                   placeholder="Informações adicionais sobre o pagamento..."
@@ -588,12 +945,14 @@ export default function BaixaManualPage() {
               disabled={
                 darBaixaMutation.isPending ||
                 !darBaixaState?.comprovante ||
-                !darBaixaState?.valorPago
+                !darBaixaState.valorPago
               }
               onClick={() => {
-                if (!darBaixaState?.comprovante || !darBaixaState.valorPago) return;
+                if (!darBaixaState?.comprovante || !darBaixaState.valorPago) {
+                  return;
+                }
                 darBaixaMutation.mutate({
-                  id: darBaixaState.item.id,
+                  parcelaId: darBaixaState.item.parcela_id,
                   comprovante: darBaixaState.comprovante,
                   valorPago: darBaixaState.valorPago,
                   observacao: darBaixaState.observacao,

@@ -18,20 +18,30 @@ import type {
   PaginatedResponse,
   RefinanciamentoItem,
   RefinanciamentoResumo,
+  SimpleUser,
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
-import { formatMonthValue, parseMonthValue } from "@/lib/date-value";
+import {
+  formatDateValue,
+  formatMonthValue,
+  parseDateValue,
+  parseMonthValue,
+} from "@/lib/date-value";
 import {
   formatCurrency,
+  formatDate,
   formatDateTime,
   formatMonthYear,
 } from "@/lib/formatters";
 import { maskCPFCNPJ } from "@/lib/masks";
 import { exportPaginatedRouteReport } from "@/lib/reports";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { usePermissions } from "@/hooks/use-permissions";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
+import DatePicker from "@/components/custom/date-picker";
+import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
@@ -71,6 +81,11 @@ type HistoryAdvancedFilters = {
   status: string;
   competenciaStart: string;
   competenciaEnd: string;
+};
+type AptosAdvancedFilters = {
+  dataInicio: string;
+  dataFim: string;
+  agente: string;
 };
 
 const HISTORY_STATUS_OPTIONS = [
@@ -113,6 +128,12 @@ const INITIAL_HISTORY_FILTERS: HistoryAdvancedFilters = {
   competenciaStart: "",
   competenciaEnd: "",
 };
+const INITIAL_APTOS_FILTERS: AptosAdvancedFilters = {
+  dataInicio: "",
+  dataFim: "",
+  agente: "",
+};
+const APTOS_STATUS_RENOVACAO = ["apto_a_renovar", "pendente_termo_agente"];
 
 function toCompetenciaDate(value: string) {
   return value ? `${value}-01` : undefined;
@@ -126,7 +147,19 @@ function countActiveHistoryFilters(filters: HistoryAdvancedFilters) {
   ].filter(Boolean).length;
 }
 
+function countActiveAptosFilters(
+  filters: AptosAdvancedFilters,
+  includeAgentFilter: boolean,
+) {
+  return [
+    filters.dataInicio,
+    filters.dataFim,
+    includeAgentFilter ? filters.agente : "",
+  ].filter(Boolean).length;
+}
+
 export default function AgenteRefinanciadosPage() {
+  const { hasAnyRole } = usePermissions();
   const queryClient = useQueryClient();
   const [tab, setTab] = React.useState<RefinanciadosTab>("historico");
   const [search, setSearch] = React.useState("");
@@ -135,13 +168,24 @@ export default function AgenteRefinanciadosPage() {
     React.useState<HistoryAdvancedFilters>(INITIAL_HISTORY_FILTERS);
   const [draftHistoryFilters, setDraftHistoryFilters] =
     React.useState<HistoryAdvancedFilters>(INITIAL_HISTORY_FILTERS);
+  const [aptosFilters, setAptosFilters] =
+    React.useState<AptosAdvancedFilters>(INITIAL_APTOS_FILTERS);
+  const [draftAptosFilters, setDraftAptosFilters] =
+    React.useState<AptosAdvancedFilters>(INITIAL_APTOS_FILTERS);
   const [historySheetOpen, setHistorySheetOpen] = React.useState(false);
+  const [aptosSheetOpen, setAptosSheetOpen] = React.useState(false);
   const [pageSize, setPageSize] = React.useState("15");
   const [page, setPage] = React.useState(1);
   const [sendTarget, setSendTarget] = React.useState<ContratoListItem | null>(null);
   const [liquidacaoTarget, setLiquidacaoTarget] = React.useState<ContratoListItem | null>(null);
   const [termo, setTermo] = React.useState<File | null>(null);
   const debouncedSearch = useDebouncedValue(search, 300);
+  const canViewGlobalAptos = hasAnyRole(["ADMIN", "COORDENADOR", "ANALISTA"]);
+  const canStartRenewal = hasAnyRole(["ADMIN", "COORDENADOR", "ANALISTA", "AGENTE"]);
+  const canRequestLiquidation = hasAnyRole(["ADMIN", "AGENTE"]);
+  const aptosDescription = canViewGlobalAptos
+    ? "Esta aba mostra todos os contratos do sistema que já podem receber o termo de antecipação e seguir para a análise."
+    : "Esta aba mostra somente os contratos do agente que já podem receber o termo de antecipação e seguir para a análise.";
 
   const resolvedHistoryStatus =
     historyFilters.status === "todos"
@@ -160,6 +204,45 @@ export default function AgenteRefinanciadosPage() {
         ].join(",")
       : historyFilters.status;
   const activeHistoryFiltersCount = countActiveHistoryFilters(historyFilters);
+  const activeAptosFiltersCount = countActiveAptosFilters(
+    aptosFilters,
+    canViewGlobalAptos,
+  );
+
+  const aptosAgentQuery = useQuery({
+    queryKey: ["agente-refinanciados", "aptos", "agentes"],
+    enabled: canViewGlobalAptos,
+    queryFn: () => apiFetch<SimpleUser[]>("associados/agentes"),
+  });
+
+  const aptosAgentOptions = React.useMemo(
+    () =>
+      (aptosAgentQuery.data ?? []).map((agent) => ({
+        value: String(agent.id),
+        label: agent.full_name,
+      })),
+    [aptosAgentQuery.data],
+  );
+
+  const aptosQueryFilters = React.useMemo(
+    () => ({
+      associado: debouncedSearch || undefined,
+      status_renovacao: APTOS_STATUS_RENOVACAO,
+      data_inicio: aptosFilters.dataInicio || undefined,
+      data_fim: aptosFilters.dataFim || undefined,
+      agente:
+        canViewGlobalAptos && aptosFilters.agente
+          ? aptosFilters.agente
+          : undefined,
+    }),
+    [
+      aptosFilters.agente,
+      aptosFilters.dataFim,
+      aptosFilters.dataInicio,
+      canViewGlobalAptos,
+      debouncedSearch,
+    ],
+  );
 
   const refinanciamentosQuery = useQuery({
     queryKey: [
@@ -208,15 +291,14 @@ export default function AgenteRefinanciadosPage() {
   });
 
   const aptosQuery = useQuery({
-    queryKey: ["agente-refinanciados", "aptos", debouncedSearch, pageSize, page],
+    queryKey: ["agente-refinanciados", "aptos", aptosQueryFilters, pageSize, page],
     enabled: tab === "aptos",
     queryFn: () =>
       apiFetch<PaginatedResponse<ContratoListItem>>("contratos", {
         query: {
           page,
           page_size: Number(pageSize),
-          associado: debouncedSearch || undefined,
-          status_renovacao: ["apto_a_renovar", "pendente_termo_agente"],
+          ...aptosQueryFilters,
         },
       }),
   });
@@ -364,121 +446,151 @@ export default function AgenteRefinanciadosPage() {
   );
 
   const aptosColumns = React.useMemo<DataTableColumn<ContratoListItem>[]>(
-    () => [
-      {
-        id: "nome",
-        header: "Nome",
-        cellClassName: "min-w-[16rem]",
-        cell: (row) => (
-          <CopySnippet
-            label="Nome"
-            value={row.associado.nome_completo}
-            inline
-            className="max-w-full"
-          />
-        ),
-      },
-      {
-        id: "cpf",
-        header: "CPF",
-        cellClassName: "min-w-[11rem]",
-        cell: (row) => <CopySnippet label="CPF" value={row.associado.cpf_cnpj} mono inline />,
-      },
-      {
-        id: "matricula",
-        header: "Matrícula do Servidor",
-        cellClassName: "min-w-[12rem]",
-        cell: (row) => (
-          <CopySnippet
-            label="Matrícula do Servidor"
-            value={row.associado.matricula_display || row.associado.matricula || "N/I"}
-            mono
-            inline
-          />
-        ),
-      },
-      {
-        id: "contrato",
-        header: "Contrato atual",
-        cellClassName: "min-w-[15rem]",
-        cell: (row) => (
-          <div className="space-y-2">
-            <p className="font-mono text-xs text-foreground">{row.codigo}</p>
-            <StatusBadge
-              status={row.status_renovacao || "apto_a_renovar"}
-              label={
-                row.status_renovacao === "pendente_termo_agente"
-                  ? "Aguardando novo termo"
-                  : "Apto a renovar"
-              }
+    () => {
+      const columns: DataTableColumn<ContratoListItem>[] = [
+        {
+          id: "nome",
+          header: "Nome",
+          cellClassName: "min-w-[16rem]",
+          cell: (row) => (
+            <CopySnippet
+              label="Nome"
+              value={row.associado.nome_completo}
+              inline
+              className="max-w-full"
             />
-          </div>
-        ),
-      },
-      {
-        id: "ciclo_apto",
-        header: "Ciclo que gerou o apto",
-        cellClassName: "min-w-[15rem]",
-        cell: (row) => (
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="font-medium">
-                Ciclo {row.ciclo_apto?.numero ?? "N/I"}
+          ),
+        },
+        {
+          id: "cpf",
+          header: "CPF",
+          cellClassName: "min-w-[11rem]",
+          cell: (row) => <CopySnippet label="CPF" value={row.associado.cpf_cnpj} mono inline />,
+        },
+        {
+          id: "matricula",
+          header: "Matrícula do Servidor",
+          cellClassName: "min-w-[12rem]",
+          cell: (row) => (
+            <CopySnippet
+              label="Matrícula do Servidor"
+              value={row.associado.matricula_display || row.associado.matricula || "N/I"}
+              mono
+              inline
+            />
+          ),
+        },
+      ];
+
+      if (canViewGlobalAptos) {
+        columns.push({
+          id: "agente",
+          header: "Agente responsável",
+          cellClassName: "min-w-[14rem]",
+          cell: (row) => (
+            <div className="space-y-1">
+              <p className="font-medium">{row.agente?.full_name || "Sem agente"}</p>
+              <p className="text-xs text-muted-foreground">
+                Data do contrato: {formatDate(row.data_contrato)}
               </p>
-              {row.ciclo_apto ? (
-                <StatusBadge
-                  status={row.ciclo_apto.status_visual_slug}
-                  label={row.ciclo_apto.status_visual_label}
-                />
+            </div>
+          ),
+        });
+      }
+
+      columns.push(
+        {
+          id: "contrato",
+          header: "Contrato atual",
+          cellClassName: "min-w-[15rem]",
+          cell: (row) => (
+            <div className="space-y-2">
+              <p className="font-mono text-xs text-foreground">{row.codigo}</p>
+              <StatusBadge
+                status={row.status_renovacao || "apto_a_renovar"}
+                label={
+                  row.status_renovacao === "pendente_termo_agente"
+                    ? "Aguardando novo termo"
+                    : "Apto a renovar"
+                }
+              />
+            </div>
+          ),
+        },
+        {
+          id: "ciclo_apto",
+          header: "Ciclo que gerou o apto",
+          cellClassName: "min-w-[15rem]",
+          cell: (row) => (
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-medium">
+                  Ciclo {row.ciclo_apto?.numero ?? "N/I"}
+                </p>
+                {row.ciclo_apto ? (
+                  <StatusBadge
+                    status={row.ciclo_apto.status_visual_slug}
+                    label={row.ciclo_apto.status_visual_label}
+                  />
+                ) : null}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {row.ciclo_apto?.resumo_referencias || row.mensalidades.descricao}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {row.ciclo_apto
+                  ? `${row.ciclo_apto.parcelas_pagas}/${row.ciclo_apto.parcelas_total} parcela(s) quitadas`
+                  : `${row.mensalidades.pagas}/${row.mensalidades.total} parcela(s) quitadas`}
+              </p>
+            </div>
+          ),
+        },
+        {
+          id: "financeiro",
+          header: "Auxílio liberado / Repasse",
+          cellClassName: "min-w-[15rem]",
+          cell: (row) => (
+            <div className="space-y-1">
+              <p className="font-medium">
+                Auxílio liberado: {formatCurrency(row.valor_auxilio_liberado)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Repasse: {formatCurrency(row.comissao_agente)} · {row.percentual_repasse}%
+              </p>
+            </div>
+          ),
+        },
+      );
+
+      if (canStartRenewal || canRequestLiquidation) {
+        columns.push({
+          id: "acoes",
+          header: "Ações",
+          cellClassName: "min-w-[280px]",
+          cell: (row) => (
+            <div className="flex flex-wrap gap-2">
+              {canStartRenewal ? (
+                <Button size="sm" onClick={() => setSendTarget(row)}>
+                  <ClipboardCheckIcon className="size-4" />
+                  {row.status_renovacao === "pendente_termo_agente"
+                    ? "Reenviar termo"
+                    : "Enviar para renovação"}
+                </Button>
+              ) : null}
+              {canRequestLiquidation ? (
+                <Button size="sm" variant="outline" onClick={() => setLiquidacaoTarget(row)}>
+                  <HandCoinsIcon className="size-4" />
+                  Enviar para liquidação
+                </Button>
               ) : null}
             </div>
-            <p className="text-xs text-muted-foreground">
-              {row.ciclo_apto?.resumo_referencias || row.mensalidades.descricao}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {row.ciclo_apto
-                ? `${row.ciclo_apto.parcelas_pagas}/${row.ciclo_apto.parcelas_total} parcela(s) quitadas`
-                : `${row.mensalidades.pagas}/${row.mensalidades.total} parcela(s) quitadas`}
-            </p>
-          </div>
-        ),
-      },
-      {
-        id: "financeiro",
-        header: "Auxílio liberado / Repasse",
-        cellClassName: "min-w-[15rem]",
-        cell: (row) => (
-          <div className="space-y-1">
-            <p className="font-medium">
-              Auxílio liberado: {formatCurrency(row.valor_auxilio_liberado)}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Repasse: {formatCurrency(row.comissao_agente)} · {row.percentual_repasse}%
-            </p>
-          </div>
-        ),
-      },
-      {
-        id: "acoes",
-        header: "Ações",
-        cellClassName: "min-w-[280px]",
-        cell: (row) => (
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" onClick={() => setSendTarget(row)}>
-              <ClipboardCheckIcon className="size-4" />
-              {row.status_renovacao === "pendente_termo_agente"
-                ? "Reenviar termo"
-                : "Enviar para renovação"}
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => setLiquidacaoTarget(row)}>
-              <HandCoinsIcon className="size-4" />
-              Enviar para liquidação
-            </Button>
-          </div>
-        ),
-      },
-    ],
-    [],
+          ),
+        });
+      }
+
+      return columns;
+    },
+    [canRequestLiquidation, canStartRenewal, canViewGlobalAptos],
   );
 
   const handleExport = React.useCallback(
@@ -516,19 +628,25 @@ export default function AgenteRefinanciadosPage() {
             route: "/agentes/refinanciados",
             format,
             sourcePath: "contratos",
-            sourceQuery: {
-              associado: debouncedSearch || undefined,
-              status_renovacao: ["apto_a_renovar", "pendente_termo_agente"],
+            sourceQuery: aptosQueryFilters,
+            filters: {
+              ...aptosQueryFilters,
+              agente_label:
+                aptosAgentOptions.find((agent) => agent.value === aptosFilters.agente)?.label ||
+                undefined,
             },
             mapRow: (row) => ({
               contrato_codigo: row.codigo,
               associado_nome: row.associado.nome_completo,
+              cpf_cnpj: row.associado.cpf_cnpj,
+              matricula: row.associado.matricula_display || row.associado.matricula || "",
+              agente_nome: row.agente?.full_name || "",
               status: row.status_renovacao,
-              data_solicitacao: row.data_contrato,
+              data_contrato: row.data_contrato,
+              ciclo_apto: row.ciclo_apto?.numero ?? "",
+              referencias_ciclo: row.ciclo_apto?.resumo_referencias || row.mensalidades.descricao,
               valor_refinanciamento: row.valor_auxilio_liberado,
               repasse_agente: row.comissao_agente,
-              analista_note: "",
-              coordenador_note: "",
             }),
           });
         }
@@ -539,6 +657,9 @@ export default function AgenteRefinanciadosPage() {
       }
     },
     [
+      aptosAgentOptions,
+      aptosFilters.agente,
+      aptosQueryFilters,
       debouncedSearch,
       historyFilters.competenciaEnd,
       historyFilters.competenciaStart,
@@ -563,8 +684,9 @@ export default function AgenteRefinanciadosPage() {
               Renovações
             </h1>
             <p className="max-w-3xl text-sm text-muted-foreground">
-              O agente envia o termo de antecipação dos próprios contratos aptos
-              para a fila do analista e acompanha o andamento até a tesouraria.
+              {canViewGlobalAptos
+                ? "Acompanhe as renovações do sistema e monitore os contratos aptos a renovar por toda a operação."
+                : "O agente envia o termo de antecipação dos próprios contratos aptos para a fila do analista e acompanha o andamento até a tesouraria."}
             </p>
             <TabsList variant="line" className="w-fit">
               <TabsTrigger value="historico">Solicitações e histórico</TabsTrigger>
@@ -768,8 +890,7 @@ export default function AgenteRefinanciadosPage() {
                 Contratos aptos a renovar
               </p>
               <p className="text-sm text-muted-foreground">
-                Esta aba mostra somente os contratos do agente que já podem
-                receber o termo de antecipação e seguir para a análise.
+                {aptosDescription}
               </p>
             </div>
             <StatsCard
@@ -799,11 +920,108 @@ export default function AgenteRefinanciadosPage() {
               setPage(1);
             }}
           />
-          <Button onClick={() => setPage(1)}>Aplicar</Button>
+          <Sheet open={aptosSheetOpen} onOpenChange={setAptosSheetOpen}>
+            <SheetTrigger asChild>
+              <Button variant="outline" className="rounded-2xl">
+                <SlidersHorizontalIcon className="size-4" />
+                Filtros avançados
+                {activeAptosFiltersCount > 0 ? (
+                  <Badge className="ml-1 rounded-full bg-primary/15 px-2 py-0 text-[11px] text-primary">
+                    {activeAptosFiltersCount}
+                  </Badge>
+                ) : null}
+              </Button>
+            </SheetTrigger>
+            <SheetContent className="w-full border-l border-border/60 bg-background/95 sm:max-w-lg">
+              <SheetHeader>
+                <SheetTitle>Filtros avançados</SheetTitle>
+              </SheetHeader>
+              <div className="mt-8 space-y-6">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">
+                      Data inicial do contrato
+                    </p>
+                    <DatePicker
+                      value={parseDateValue(draftAptosFilters.dataInicio)}
+                      onChange={(value) =>
+                        setDraftAptosFilters((current) => ({
+                          ...current,
+                          dataInicio: formatDateValue(value),
+                        }))
+                      }
+                      className="rounded-2xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">
+                      Data final do contrato
+                    </p>
+                    <DatePicker
+                      value={parseDateValue(draftAptosFilters.dataFim)}
+                      onChange={(value) =>
+                        setDraftAptosFilters((current) => ({
+                          ...current,
+                          dataFim: formatDateValue(value),
+                        }))
+                      }
+                      className="rounded-2xl"
+                    />
+                  </div>
+                </div>
+
+                {canViewGlobalAptos ? (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">
+                      Agente responsável
+                    </p>
+                    <SearchableSelect
+                      options={aptosAgentOptions}
+                      value={draftAptosFilters.agente}
+                      onChange={(value) =>
+                        setDraftAptosFilters((current) => ({
+                          ...current,
+                          agente: value,
+                        }))
+                      }
+                      placeholder={
+                        aptosAgentQuery.isLoading
+                          ? "Carregando agentes..."
+                          : "Todos os agentes"
+                      }
+                      searchPlaceholder="Buscar agente..."
+                      clearLabel="Todos os agentes"
+                    />
+                  </div>
+                ) : null}
+              </div>
+              <SheetFooter className="mt-8 gap-3 sm:flex-col">
+                <Button
+                  variant="outline"
+                  className="w-full rounded-2xl"
+                  onClick={() => setDraftAptosFilters(INITIAL_APTOS_FILTERS)}
+                >
+                  Limpar filtros avançados
+                </Button>
+                <Button
+                  className="w-full rounded-2xl"
+                  onClick={() => {
+                    setAptosFilters(draftAptosFilters);
+                    setPage(1);
+                    setAptosSheetOpen(false);
+                  }}
+                >
+                  Aplicar filtros
+                </Button>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
           <Button
             variant="outline"
             onClick={() => {
               setSearch("");
+              setAptosFilters(INITIAL_APTOS_FILTERS);
+              setDraftAptosFilters(INITIAL_APTOS_FILTERS);
               setPageSize("15");
               setPage(1);
             }}

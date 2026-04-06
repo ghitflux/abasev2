@@ -14,6 +14,7 @@ from rest_framework.viewsets import GenericViewSet, ReadOnlyModelViewSet
 
 from apps.associados.models import Associado
 from apps.accounts.permissions import IsTesoureiroOrAdmin
+from apps.contratos.canonicalization import operational_contracts_queryset
 from apps.contratos.cycle_projection import (
     build_contract_cycle_projection,
     get_contract_visual_status_payload,
@@ -174,6 +175,8 @@ class ContratoViewSet(ReadOnlyModelViewSet):
                 ),
             )
         )
+        if self.action != "retrieve":
+            queryset = operational_contracts_queryset(queryset)
 
         user = self.request.user
         if user.has_role("AGENTE") and not user.has_role("ADMIN"):
@@ -190,7 +193,7 @@ class ContratoViewSet(ReadOnlyModelViewSet):
             )
 
         agente_filter = self.request.query_params.get("agente")
-        if agente_filter and user.has_role("ADMIN"):
+        if agente_filter and user.has_role("ADMIN", "COORDENADOR", "ANALISTA"):
             if agente_filter.isdigit():
                 queryset = queryset.filter(agente_id=int(agente_filter))
             else:

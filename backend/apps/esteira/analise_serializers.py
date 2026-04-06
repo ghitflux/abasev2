@@ -4,6 +4,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.associados.models import Associado
+from apps.contratos.canonicalization import resolve_operational_contract_for_associado
 from apps.contratos.models import Contrato
 
 from .serializers import EsteiraSimpleUserSerializer
@@ -118,7 +119,7 @@ class AnaliseDadosSerializer(serializers.ModelSerializer):
         ]
 
     def get_contrato_codigo(self, obj: Associado) -> str | None:
-        contrato = next(iter(obj.contratos.all()), None)
+        contrato = resolve_operational_contract_for_associado(obj)
         return contrato.codigo if contrato else None
 
     def get_matricula_display(self, obj: Associado) -> str:

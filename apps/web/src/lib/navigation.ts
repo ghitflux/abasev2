@@ -248,7 +248,7 @@ export const navigationSections: NavigationSection[] = [
             title: "Renovações",
             href: "/agentes/refinanciados",
             icon: HandCoins,
-            roles: ["AGENTE", "ADMIN"],
+            roles: ["AGENTE", "ADMIN", "COORDENADOR", "ANALISTA"],
           },
           {
             title: "Pagamentos",
@@ -536,6 +536,13 @@ export function canAccessPath(path: string, roles: Role[] = []) {
 
   if (
     pathname === "/associados/novo" &&
+    (roles.includes("ANALISTA") || roles.includes("COORDENADOR"))
+  ) {
+    return true;
+  }
+
+  if (
+    pathname === "/agentes/refinanciados" &&
     (roles.includes("ANALISTA") || roles.includes("COORDENADOR"))
   ) {
     return true;

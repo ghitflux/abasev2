@@ -90,7 +90,7 @@ export async function proxyRequestForPath(request: Request, path: string[]) {
   const target = new URL(`${API_BASE_URL}/${path.join("/")}/`);
   const incomingUrl = new URL(request.url);
   incomingUrl.searchParams.forEach((value, key) => {
-    target.searchParams.set(key, value);
+    target.searchParams.append(key, value);
   });
 
   const body = await buildBody(request);

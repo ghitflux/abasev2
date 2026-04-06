@@ -10,6 +10,7 @@ from rest_framework.exceptions import ValidationError
 from apps.importacao.financeiro import build_financeiro_resumo
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem
 
+from .canonicalization import get_operational_contracts_for_associado
 from .cycle_projection import build_contract_cycle_projection
 from .cycle_timeline import (
     get_contract_activation_payload,
@@ -59,11 +60,7 @@ class RenovacaoCicloService:
 
     @staticmethod
     def _resolve_associado_contratos(contrato: Contrato) -> list[Contrato]:
-        associado = contrato.associado
-        cached = getattr(associado, "contratos_contexto_prefetched", None)
-        if cached is not None:
-            return list(cached)
-        return list(associado.contratos.exclude(status=Contrato.Status.CANCELADO))
+        return get_operational_contracts_for_associado(contrato.associado)
 
     @staticmethod
     def _resolve_agente_responsavel(contrato: Contrato) -> str:

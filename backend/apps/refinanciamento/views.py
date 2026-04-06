@@ -13,6 +13,7 @@ from rest_framework.viewsets import GenericViewSet
 
 from apps.accounts.permissions import (
     IsAgenteOrAdmin,
+    IsAgenteOrAnalistaOrCoordenadorOrAdmin,
     IsAnalistaOrAdmin,
     IsCoordenadorOrAdmin,
     IsTesoureiroOrAdmin,
@@ -248,7 +249,12 @@ class BaseRefinanciamentoViewSet(
 
 class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
     def get_permissions(self):
-        if self.action in {"solicitar", "solicitar_liquidacao", "eligibilidade"}:
+        if self.action in {"solicitar", "eligibilidade"}:
+            return [
+                permissions.IsAuthenticated(),
+                IsAgenteOrAnalistaOrCoordenadorOrAdmin(),
+            ]
+        if self.action == "solicitar_liquidacao":
             return [permissions.IsAuthenticated(), IsAgenteOrAdmin()]
         if self.action in [
             "aprovar",

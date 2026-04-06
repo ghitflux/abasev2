@@ -472,17 +472,54 @@ class BaixaManualViewSet(mixins.ListModelMixin, GenericViewSet):
     permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrTesoureiroOrAdmin]
     pagination_class = StandardResultsSetPagination
 
+    def _listing(self) -> str:
+        listing = (self.request.query_params.get("listing") or "pendentes").strip()
+        return "quitados" if listing == "quitados" else "pendentes"
+
     def get_queryset(self):
         competencia = parse_month_filter(self.request.query_params.get("competencia"))
+        data_inicio = parse_date_filter(self.request.query_params.get("data_inicio"))
+        data_fim = parse_date_filter(self.request.query_params.get("data_fim"))
+        common_filters = {
+            "search": self.request.query_params.get("search"),
+            "competencia": competencia,
+            "data_inicio": data_inicio,
+            "data_fim": data_fim,
+            "agente": self.request.query_params.get("agente"),
+        }
+        if self._listing() == "quitados":
+            return BaixaManualService.listar_parcelas_quitadas(**common_filters)
         return BaixaManualService.listar_parcelas_pendentes(
-            search=self.request.query_params.get("search"),
+            **common_filters,
             status_filter=self.request.query_params.get("status"),
-            competencia=competencia,
         )
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter(name="listing", type=OpenApiTypes.STR),
+            OpenApiParameter(name="status", type=OpenApiTypes.STR),
+            OpenApiParameter(name="search", type=OpenApiTypes.STR),
+            OpenApiParameter(name="competencia", type=OpenApiTypes.DATE),
+            OpenApiParameter(name="agente", type=OpenApiTypes.STR),
+            OpenApiParameter(name="data_inicio", type=OpenApiTypes.DATE),
+            OpenApiParameter(name="data_fim", type=OpenApiTypes.DATE),
+        ]
+    )
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
-        kpis = BaixaManualService.kpis()
+        competencia = parse_month_filter(self.request.query_params.get("competencia"))
+        data_inicio = parse_date_filter(self.request.query_params.get("data_inicio"))
+        data_fim = parse_date_filter(self.request.query_params.get("data_fim"))
+        kpis_filters = {
+            "competencia": competencia,
+            "data_inicio": data_inicio,
+            "data_fim": data_fim,
+            "agente": self.request.query_params.get("agente"),
+        }
+        if self._listing() == "quitados":
+            kpis = BaixaManualService.kpis_quitados(**kpis_filters)
+        else:
+            kpis = BaixaManualService.kpis_pendentes(**kpis_filters)
         page = self.paginate_queryset(queryset)
         serializer = self.get_serializer(page if page is not None else queryset, many=True)
         if page is not None:

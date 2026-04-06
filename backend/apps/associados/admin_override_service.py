@@ -11,6 +11,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 
+from apps.contratos.canonicalization import resolve_operational_contract_for_associado
 from apps.contratos.cycle_projection import (
     ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES,
     STATUS_VISUAL_FINANCIAL_LABELS,
@@ -902,11 +903,7 @@ class AdminOverrideService:
     ) -> Associado:
         with transaction.atomic():
             _assert_version(associado, payload.get("updated_at"))
-            contrato = (
-                associado.contratos.exclude(status=Contrato.Status.CANCELADO)
-                .order_by("-created_at")
-                .first()
-            )
+            contrato = resolve_operational_contract_for_associado(associado)
             if contrato is not None:
                 _assert_version(contrato, payload.get("contrato_updated_at"))
             motivo = str(payload.get("motivo") or "").strip()

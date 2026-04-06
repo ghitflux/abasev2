@@ -13,6 +13,7 @@ from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import User
 from apps.associados.models import Associado
+from apps.contratos.canonicalization import operational_contracts_queryset
 from apps.contratos.competencia import propagate_competencia_status
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Contrato, Parcela
@@ -130,6 +131,7 @@ class TesourariaService:
             .distinct()
             .order_by(ordering_map.get(ordering or "", "-created_at"))
         )
+        queryset = operational_contracts_queryset(queryset)
 
         if pagamento == "pendente":
             queryset = queryset.filter(
@@ -580,10 +582,94 @@ class ConfirmacaoService:
 
 class BaixaManualService:
     @staticmethod
+    def _apply_parcela_search(queryset, search: str | None):
+        if not search:
+            return queryset
+        return queryset.filter(
+            Q(ciclo__contrato__associado__nome_completo__icontains=search)
+            | Q(ciclo__contrato__associado__cpf_cnpj__icontains=search)
+            | Q(ciclo__contrato__associado__matricula__icontains=search)
+            | Q(ciclo__contrato__associado__matricula_orgao__icontains=search)
+            | Q(ciclo__contrato__codigo__icontains=search)
+        )
+
+    @staticmethod
+    def _apply_baixa_search(queryset, search: str | None):
+        if not search:
+            return queryset
+        return queryset.filter(
+            Q(parcela__ciclo__contrato__associado__nome_completo__icontains=search)
+            | Q(parcela__ciclo__contrato__associado__cpf_cnpj__icontains=search)
+            | Q(parcela__ciclo__contrato__associado__matricula__icontains=search)
+            | Q(
+                parcela__ciclo__contrato__associado__matricula_orgao__icontains=search
+            )
+            | Q(parcela__ciclo__contrato__codigo__icontains=search)
+        )
+
+    @staticmethod
+    def _apply_parcela_agent_filter(queryset, agente: str | None):
+        agente_term = (agente or "").strip()
+        if not agente_term:
+            return queryset
+        if agente_term.isdigit():
+            agente_id = int(agente_term)
+            return queryset.filter(
+                Q(ciclo__contrato__agente_id=agente_id)
+                | Q(ciclo__contrato__associado__agente_responsavel_id=agente_id)
+            )
+        return queryset.filter(
+            Q(ciclo__contrato__agente__first_name__icontains=agente_term)
+            | Q(ciclo__contrato__agente__last_name__icontains=agente_term)
+            | Q(ciclo__contrato__agente__email__icontains=agente_term)
+            | Q(
+                ciclo__contrato__associado__agente_responsavel__first_name__icontains=agente_term
+            )
+            | Q(
+                ciclo__contrato__associado__agente_responsavel__last_name__icontains=agente_term
+            )
+            | Q(
+                ciclo__contrato__associado__agente_responsavel__email__icontains=agente_term
+            )
+        )
+
+    @staticmethod
+    def _apply_baixa_agent_filter(queryset, agente: str | None):
+        agente_term = (agente or "").strip()
+        if not agente_term:
+            return queryset
+        if agente_term.isdigit():
+            agente_id = int(agente_term)
+            return queryset.filter(
+                Q(parcela__ciclo__contrato__agente_id=agente_id)
+                | Q(
+                    parcela__ciclo__contrato__associado__agente_responsavel_id=agente_id
+                )
+            )
+        return queryset.filter(
+            Q(parcela__ciclo__contrato__agente__first_name__icontains=agente_term)
+            | Q(parcela__ciclo__contrato__agente__last_name__icontains=agente_term)
+            | Q(parcela__ciclo__contrato__agente__email__icontains=agente_term)
+            | Q(
+                parcela__ciclo__contrato__associado__agente_responsavel__first_name__icontains=agente_term
+            )
+            | Q(
+                parcela__ciclo__contrato__associado__agente_responsavel__last_name__icontains=agente_term
+            )
+            | Q(
+                parcela__ciclo__contrato__associado__agente_responsavel__email__icontains=agente_term
+            )
+        )
+
+    @classmethod
     def listar_parcelas_pendentes(
+        cls,
         search: str | None = None,
         status_filter: str | None = None,
         competencia: date | None = None,
+        data_inicio: date | None = None,
+        data_fim: date | None = None,
+        agente: str | None = None,
     ):
         hoje = timezone.localdate()
         mes_atual = hoje.replace(day=1)
@@ -594,6 +680,7 @@ class BaixaManualService:
                 "ciclo__contrato__agente",
             )
             .filter(
+                ciclo__contrato__contrato_canonico__isnull=True,
                 status__in=[
                     Parcela.Status.EM_ABERTO,
                     Parcela.Status.EM_PREVISAO,
@@ -613,25 +700,76 @@ class BaixaManualService:
         if status_filter in {"em_aberto", "nao_descontado"}:
             queryset = queryset.filter(status=status_filter)
 
-        if search:
-            queryset = queryset.filter(
-                Q(ciclo__contrato__associado__nome_completo__icontains=search)
-                | Q(ciclo__contrato__associado__cpf_cnpj__icontains=search)
-                | Q(ciclo__contrato__associado__matricula__icontains=search)
-                | Q(ciclo__contrato__codigo__icontains=search)
-            )
+        if data_inicio:
+            queryset = queryset.filter(data_vencimento__gte=data_inicio)
 
-        return queryset
+        if data_fim:
+            queryset = queryset.filter(data_vencimento__lte=data_fim)
+
+        queryset = cls._apply_parcela_agent_filter(queryset, agente)
+        return cls._apply_parcela_search(queryset, search)
 
     @staticmethod
-    def kpis() -> dict:
+    def listar_parcelas_quitadas(
+        search: str | None = None,
+        competencia: date | None = None,
+        data_inicio: date | None = None,
+        data_fim: date | None = None,
+        agente: str | None = None,
+    ):
+        queryset = (
+            BaixaManual.objects.select_related(
+                "realizado_por",
+                "parcela__ciclo__contrato__associado",
+                "parcela__ciclo__contrato__agente",
+            )
+            .filter(
+                parcela__ciclo__contrato__contrato_canonico__isnull=True,
+            )
+            .order_by("-data_baixa", "-created_at", "-id")
+        )
+
+        if competencia:
+            queryset = queryset.filter(
+                parcela__referencia_mes__year=competencia.year,
+                parcela__referencia_mes__month=competencia.month,
+            )
+
+        if data_inicio:
+            queryset = queryset.filter(data_baixa__gte=data_inicio)
+
+        if data_fim:
+            queryset = queryset.filter(data_baixa__lte=data_fim)
+
+        queryset = BaixaManualService._apply_baixa_agent_filter(queryset, agente)
+        return BaixaManualService._apply_baixa_search(queryset, search)
+
+    @staticmethod
+    def kpis_pendentes(
+        *,
+        competencia: date | None = None,
+        data_inicio: date | None = None,
+        data_fim: date | None = None,
+        agente: str | None = None,
+    ) -> dict:
         hoje = timezone.localdate()
         mes_atual = hoje.replace(day=1)
 
         base = Parcela.objects.filter(
+            ciclo__contrato__contrato_canonico__isnull=True,
             status__in=[Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO],
             referencia_mes__lt=mes_atual,
         )
+        if competencia:
+            base = base.filter(
+                referencia_mes__year=competencia.year,
+                referencia_mes__month=competencia.month,
+            )
+        if data_inicio:
+            base = base.filter(data_vencimento__gte=data_inicio)
+        if data_fim:
+            base = base.filter(data_vencimento__lte=data_fim)
+        base = BaixaManualService._apply_parcela_agent_filter(base, agente)
         totals = base.aggregate(
             total=Count("id"),
             em_aberto=Count("id", filter=Q(status=Parcela.Status.EM_ABERTO)),
@@ -650,6 +788,51 @@ class BaixaManualService:
             "nao_descontado": totals["nao_descontado"] or 0,
             "valor_total_pendente": str(totals["valor_total"] or Decimal("0")),
             "baixas_realizadas_mes": baixas_mes,
+        }
+
+    @staticmethod
+    def kpis_quitados(
+        *,
+        competencia: date | None = None,
+        data_inicio: date | None = None,
+        data_fim: date | None = None,
+        agente: str | None = None,
+    ) -> dict:
+        hoje = timezone.localdate()
+        base = BaixaManual.objects.filter(
+            parcela__ciclo__contrato__contrato_canonico__isnull=True,
+        )
+        if competencia:
+            base = base.filter(
+                parcela__referencia_mes__year=competencia.year,
+                parcela__referencia_mes__month=competencia.month,
+            )
+        if data_inicio:
+            base = base.filter(data_baixa__gte=data_inicio)
+        if data_fim:
+            base = base.filter(data_baixa__lte=data_fim)
+        base = BaixaManualService._apply_baixa_agent_filter(base, agente)
+        totals = base.aggregate(
+            total=Count("id"),
+            valor_total=Sum("valor_pago"),
+        )
+        quitados_mes = BaixaManual.objects.filter(
+            data_baixa__year=hoje.year,
+            data_baixa__month=hoje.month,
+            parcela__ciclo__contrato__contrato_canonico__isnull=True,
+        )
+        quitados_mes = BaixaManualService._apply_baixa_agent_filter(quitados_mes, agente)
+        quitados_mes_totals = quitados_mes.aggregate(
+            total=Count("id"),
+            valor_total=Sum("valor_pago"),
+        )
+        return {
+            "total_quitados": totals["total"] or 0,
+            "valor_total_quitado": str(totals["valor_total"] or Decimal("0")),
+            "quitados_este_mes": quitados_mes_totals["total"] or 0,
+            "valor_quitado_este_mes": str(
+                quitados_mes_totals["valor_total"] or Decimal("0")
+            ),
         }
 
     @staticmethod
