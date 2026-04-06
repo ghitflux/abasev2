@@ -98,6 +98,7 @@ type BaixaManualKpis = {
   baixas_realizadas_mes?: number;
   total_associados?: number;
   total_quitados?: number;
+  total_inadimplentes?: number;
   valor_total_quitado?: string;
   quitados_este_mes?: number;
   valor_quitado_este_mes?: string;
@@ -649,9 +650,9 @@ export default function BaixaManualPage() {
         ) : (
           <>
             <StatsCard
-              title="Total de Parcelas"
-              value={String(kpis?.total_pendentes ?? "-")}
-              delta="parcelas pendentes no total"
+              title="Total Inadimplentes"
+              value={String(kpis?.total_inadimplentes ?? "-")}
+              delta={`${kpis?.total_pendentes ?? 0} com parcela registrada`}
               icon={ClipboardListIcon}
               tone="warning"
             />
