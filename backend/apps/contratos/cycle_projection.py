@@ -938,11 +938,51 @@ def _normalize_operational_status(status: str) -> str:
     return mapping.get(status, status)
 
 
+def _resolve_storage_reference_with_fallback(
+    *candidates: str | None,
+    missing_type: str,
+    local_type: str = "local",
+):
+    normalized_candidates: list[str] = []
+    for candidate in candidates:
+        normalized = str(candidate or "").strip()
+        if normalized and normalized not in normalized_candidates:
+            normalized_candidates.append(normalized)
+
+    if not normalized_candidates:
+        return build_storage_reference(
+            "",
+            missing_type=missing_type,
+            local_type=local_type,
+        )
+
+    last_reference = build_storage_reference(
+        normalized_candidates[0],
+        missing_type=missing_type,
+        local_type=local_type,
+    )
+    if last_reference.arquivo_disponivel_localmente:
+        return last_reference
+
+    for candidate in normalized_candidates[1:]:
+        fallback_reference = build_storage_reference(
+            candidate,
+            missing_type=missing_type,
+            local_type=local_type,
+        )
+        if fallback_reference.arquivo_disponivel_localmente:
+            return fallback_reference
+        last_reference = fallback_reference
+
+    return last_reference
+
+
 def _serialize_comprovante(comprovante: Comprovante) -> dict[str, object]:
     arquivo_path = str(getattr(comprovante.arquivo, "name", "") or "")
     arquivo_referencia = comprovante.arquivo_referencia or arquivo_path
-    reference = build_storage_reference(
+    reference = _resolve_storage_reference_with_fallback(
         arquivo_referencia,
+        arquivo_path,
         missing_type=(
             "legado_sem_arquivo"
             if comprovante.legacy_comprovante_id is not None

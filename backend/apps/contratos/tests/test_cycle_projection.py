@@ -349,8 +349,8 @@ class CycleProjectionTestCase(TestCase):
             "Ativo",
         )
 
-    def test_small_value_imported_contract_can_become_apto_when_override_enabled(self):
-        associado = self._create_associado("71000000993", "Associado 30 Apto Override")
+    def test_small_value_imported_contract_override_does_not_release_apto_anymore(self):
+        associado = self._create_associado("71000000993", "Associado 30 Override Bloqueado")
         contrato = self._create_contrato(
             associado=associado,
             valor_mensalidade="30.00",
@@ -398,8 +398,8 @@ class CycleProjectionTestCase(TestCase):
         projection = build_contract_cycle_projection(contrato)
         cycles = sorted(projection["cycles"], key=lambda item: item["numero"])
 
-        self.assertEqual(cycles[0]["status"], Ciclo.Status.APTO_A_RENOVAR)
-        self.assertEqual(projection["status_renovacao"], "apto_a_renovar")
+        self.assertEqual(cycles[0]["status"], Ciclo.Status.ABERTO)
+        self.assertEqual(projection["status_renovacao"], "")
 
     def test_small_value_imported_contract_with_unpaid_month_stays_in_pendencia(self):
         associado = self._create_associado("71000000992", "Associado 50 Pendente")
@@ -1334,3 +1334,62 @@ class CycleProjectionTestCase(TestCase):
             cycles[1]["termo_antecipacao"]["tipo_referencia"],
             "referencia_path",
         )
+
+    def test_term_comprovante_falls_back_to_local_file_when_legacy_reference_is_stale(self):
+        associado = self._create_associado("90120230344", "TERMO COM FALLBACK")
+        contrato = self._create_contrato(
+            associado=associado,
+            data_primeira_mensalidade=date(2025, 10, 1),
+        )
+        self._create_financial_row(contrato, date(2025, 10, 1), status_code="1")
+        self._create_financial_row(contrato, date(2025, 11, 1), status_code="1")
+        self._create_financial_row(contrato, date(2025, 12, 1), status_code="1")
+        self._create_financial_row(contrato, date(2026, 1, 1), status_code="1")
+
+        refinanciamento = Refinanciamento.objects.create(
+            associado=associado,
+            contrato_origem=contrato,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 1, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            origem=Refinanciamento.Origem.OPERACIONAL,
+            data_ativacao_ciclo=timezone.make_aware(
+                datetime(2026, 1, 19, 16, 40, 21)
+            ),
+            executado_em=timezone.make_aware(
+                datetime(2026, 1, 19, 16, 40, 21)
+            ),
+            cycle_key="2025-10|2025-11|2025-12",
+            ref1=date(2025, 10, 1),
+            ref2=date(2025, 11, 1),
+            ref3=date(2025, 12, 1),
+            cpf_cnpj_snapshot=associado.cpf_cnpj,
+            nome_snapshot=associado.nome_completo,
+            contrato_codigo_origem=contrato.codigo,
+        )
+        comprovante = Comprovante.objects.create(
+            refinanciamento=refinanciamento,
+            contrato=contrato,
+            ciclo=contrato.ciclos.order_by("numero").last(),
+            tipo=Comprovante.Tipo.TERMO_ANTECIPACAO,
+            papel=Comprovante.Papel.OPERACIONAL,
+            arquivo=SimpleUploadedFile(
+                "termo-fallback.pdf",
+                b"termo-fallback",
+                content_type="application/pdf",
+            ),
+            nome_original="termo-fallback.pdf",
+            origem=Comprovante.Origem.SOLICITACAO_RENOVACAO,
+            enviado_por=self.agente,
+        )
+        comprovante.arquivo_referencia_path = "ANTECIPACAO-TERMO-FALLBACK.pdf"
+        comprovante.save(update_fields=["arquivo_referencia_path"])
+
+        projection = build_contract_cycle_projection(contrato, include_documents=True)
+        cycles = sorted(projection["cycles"], key=lambda item: item["numero"])
+        termo = cycles[1]["termo_antecipacao"]
+
+        self.assertIsNotNone(termo)
+        self.assertTrue(termo["arquivo_disponivel_localmente"])
+        self.assertEqual(termo["tipo_referencia"], "local")
+        self.assertIn("termo-fallback.pdf", termo["arquivo_referencia"])

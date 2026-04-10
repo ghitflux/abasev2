@@ -52,10 +52,6 @@ def is_return_imported_small_value_contract(contrato: Contrato) -> bool:
     if cached is not None:
         return bool(cached)
 
-    if getattr(contrato, "allow_small_value_renewal", False):
-        contrato._is_return_imported_small_value_contract = False
-        return False
-
     if not is_dedicated_small_value_contract(contrato):
         contrato._is_return_imported_small_value_contract = False
         return False

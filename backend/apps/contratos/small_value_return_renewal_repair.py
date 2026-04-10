@@ -87,9 +87,18 @@ def repair_small_value_return_renewal_block(*, apply: bool) -> dict[str, object]
     ]
 
     rebuild_reports: list[dict[str, object]] = []
+    overrides_removed = 0
     if apply and contracts:
         with transaction.atomic():
             for contrato in contracts:
+                if contrato.allow_small_value_renewal:
+                    contrato.allow_small_value_renewal = False
+                    contrato.save(
+                        update_fields=["allow_small_value_renewal", "updated_at"]
+                    )
+                    overrides_removed += 1
+                if hasattr(contrato, "_is_return_imported_small_value_contract"):
+                    delattr(contrato, "_is_return_imported_small_value_contract")
                 rebuild_reports.append(
                     rebuild_contract_cycle_state(contrato, execute=True).as_dict()
                 )
@@ -116,6 +125,7 @@ def repair_small_value_return_renewal_block(*, apply: bool) -> dict[str, object]
             len(before_candidate_apto_ids) - len(after_candidate_apto_ids),
             0,
         ),
+        "overrides_removed_total": overrides_removed,
         "rebuild_summary": {
             "total_contracts": len(rebuild_reports),
             "ciclos_materializados": sum(

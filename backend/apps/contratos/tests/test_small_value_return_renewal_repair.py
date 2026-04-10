@@ -125,12 +125,14 @@ class SmallValueReturnRenewalRepairTestCase(TestCase):
 
     def test_repair_removes_imported_small_value_contract_from_apto_flow(self):
         contrato = self._create_imported_small_value_contract()
+        contrato.allow_small_value_renewal = True
+        contrato.save(update_fields=["allow_small_value_renewal", "updated_at"])
 
         before = build_contract_cycle_projection(contrato)
         self.assertEqual(
             before["status_renovacao"],
             "",
-            "A projeção já não deve mais expor apto para 30/50 importado.",
+            "Mesmo com override antigo, a projeção não deve expor apto para 30/50 importado.",
         )
 
         report = repair_small_value_return_renewal_block(apply=True)
@@ -139,11 +141,13 @@ class SmallValueReturnRenewalRepairTestCase(TestCase):
         projection = build_contract_cycle_projection(contrato)
         self.assertEqual(report["candidate_contract_total"], 1)
         self.assertEqual(report["candidate_apto_after_total"], 0)
+        self.assertEqual(report["overrides_removed_total"], 1)
         self.assertEqual(projection["status_renovacao"], "")
         self.assertEqual(
             sorted(projection["cycles"], key=lambda item: item["numero"])[0]["status"],
             Ciclo.Status.ABERTO,
         )
+        self.assertFalse(contrato.allow_small_value_renewal)
         self.assertFalse(
             Refinanciamento.objects.filter(
                 contrato_origem=contrato,

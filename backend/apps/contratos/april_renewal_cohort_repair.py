@@ -167,16 +167,6 @@ def _force_latest_cycle_apto(contrato: Contrato) -> None:
         latest_cycle.save(update_fields=["status", "updated_at"])
 
 
-def _set_small_value_renewal_override(contrato: Contrato) -> bool:
-    if contrato.allow_small_value_renewal:
-        return False
-    contrato.allow_small_value_renewal = True
-    contrato.save(update_fields=["allow_small_value_renewal", "updated_at"])
-    if hasattr(contrato, "_is_return_imported_small_value_contract"):
-        delattr(contrato, "_is_return_imported_small_value_contract")
-    return True
-
-
 def _small_value_items_for_cpf(cpf: str) -> list[ArquivoRetornoItem]:
     return list(
         ArquivoRetornoItem.objects.filter(
@@ -240,25 +230,12 @@ def _materialize_missing_small_value_april_rows(
 def _enable_small_value_override_for_april_rows(
     rows: list[AprilRenewalRow],
 ) -> dict[str, Any]:
-    payload: dict[str, Any] = {
+    return {
         "contracts_overridden": 0,
         "cpfs_overridden": [],
+        "skipped": True,
+        "reason": "small_value_return_contracts_no_longer_receive_renewal_override",
     }
-    for row in rows:
-        associado = Associado.objects.filter(cpf_cnpj=row.cpf_normalized).first()
-        contrato = (
-            resolve_operational_contract_for_associado(associado)
-            if associado is not None
-            else None
-        )
-        if contrato is None:
-            continue
-        if not is_return_imported_small_value_contract(contrato):
-            continue
-        if _set_small_value_renewal_override(contrato):
-            payload["contracts_overridden"] += 1
-            payload["cpfs_overridden"].append(row.cpf_normalized)
-    return payload
 
 
 def _regularized_target_refs(contrato: Contrato) -> list[date]:
