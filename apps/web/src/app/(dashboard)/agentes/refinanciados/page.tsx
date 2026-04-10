@@ -38,6 +38,7 @@ import { maskCPFCNPJ } from "@/lib/masks";
 import { exportPaginatedRouteReport } from "@/lib/reports";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { usePermissions } from "@/hooks/use-permissions";
+import AssociadoDetailsDialog from "@/components/associados/associado-details-dialog";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import DatePicker from "@/components/custom/date-picker";
@@ -179,6 +180,7 @@ export default function AgenteRefinanciadosPage() {
   const [sendTarget, setSendTarget] = React.useState<ContratoListItem | null>(null);
   const [liquidacaoTarget, setLiquidacaoTarget] = React.useState<ContratoListItem | null>(null);
   const [termo, setTermo] = React.useState<File | null>(null);
+  const [detailAssociadoId, setDetailAssociadoId] = React.useState<number | null>(null);
   const debouncedSearch = useDebouncedValue(search, 300);
   const canViewGlobalAptos = hasAnyRole(["ADMIN", "COORDENADOR", "ANALISTA"]);
   const canStartRenewal = hasAnyRole(["ADMIN", "COORDENADOR", "ANALISTA", "AGENTE"]);
@@ -563,30 +565,38 @@ export default function AgenteRefinanciadosPage() {
       );
 
       if (canStartRenewal || canRequestLiquidation) {
-        columns.push({
-          id: "acoes",
-          header: "Ações",
-          cellClassName: "min-w-[280px]",
-          cell: (row) => (
-            <div className="flex flex-wrap gap-2">
-              {canStartRenewal ? (
-                <Button size="sm" onClick={() => setSendTarget(row)}>
-                  <ClipboardCheckIcon className="size-4" />
-                  {row.status_renovacao === "pendente_termo_agente"
-                    ? "Reenviar termo"
-                    : "Enviar para renovação"}
-                </Button>
-              ) : null}
-              {canRequestLiquidation ? (
-                <Button size="sm" variant="outline" onClick={() => setLiquidacaoTarget(row)}>
-                  <HandCoinsIcon className="size-4" />
-                  Enviar para liquidação
-                </Button>
-              ) : null}
-            </div>
-          ),
-        });
       }
+
+      columns.push({
+        id: "acoes",
+        header: "Ações",
+        cellClassName: "min-w-[320px]",
+        cell: (row) => (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setDetailAssociadoId(row.associado.id)}
+            >
+              Ver detalhes do associado
+            </Button>
+            {canStartRenewal ? (
+              <Button size="sm" onClick={() => setSendTarget(row)}>
+                <ClipboardCheckIcon className="size-4" />
+                {row.status_renovacao === "pendente_termo_agente"
+                  ? "Reenviar termo"
+                  : "Enviar para renovação"}
+              </Button>
+            ) : null}
+            {canRequestLiquidation ? (
+              <Button size="sm" variant="outline" onClick={() => setLiquidacaoTarget(row)}>
+                <HandCoinsIcon className="size-4" />
+                Enviar para liquidação
+              </Button>
+            ) : null}
+          </div>
+        ),
+      });
 
       return columns;
     },
@@ -1145,6 +1155,17 @@ export default function AgenteRefinanciadosPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AssociadoDetailsDialog
+        associadoId={detailAssociadoId}
+        open={detailAssociadoId != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailAssociadoId(null);
+          }
+        }}
+        description="Consulta expandida do associado, contratos e ciclos sem sair da fila de aptos a renovar."
+      />
     </Tabs>
   );
 }

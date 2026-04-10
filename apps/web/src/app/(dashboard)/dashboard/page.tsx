@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -56,6 +55,7 @@ import { maskCPFCNPJ } from "@/lib/masks";
 import { cn } from "@/lib/utils";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import RoleGuard from "@/components/auth/role-guard";
+import AssociadoDetailsDialog from "@/components/associados/associado-details-dialog";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import DatePicker from "@/components/custom/date-picker";
 import SearchableSelect, {
@@ -134,73 +134,83 @@ const DETAIL_EXPORT_COLUMNS: TableExportColumn<DashboardDetailRow>[] = [
   { header: "Observacao", value: (row) => row.observacao },
 ];
 
-const DETAIL_COLUMNS: DataTableColumn<DashboardDetailRow>[] = [
-  {
-    id: "associado_nome",
-    header: "Associado",
-    cell: (row) => (
-      <div>
-        <p className="font-medium text-foreground">
-          {row.associado_nome || "Sem associado"}
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {row.origem || row.contrato_codigo || "-"}
-        </p>
-      </div>
-    ),
-  },
-  {
-    id: "cpf_cnpj",
-    header: "CPF/CNPJ",
-    cell: (row) => (row.cpf_cnpj ? maskCPFCNPJ(row.cpf_cnpj) : "-"),
-  },
-  {
-    id: "matricula",
-    header: "Matricula",
-    cell: (row) => row.matricula || "-",
-  },
-  {
-    id: "status",
-    header: "Status",
-    cell: (row) => (row.status ? <StatusBadge status={row.status} /> : "-"),
-  },
-  {
-    id: "agente_nome",
-    header: "Agente",
-    cell: (row) => row.agente_nome || "-",
-  },
-  {
-    id: "contrato_codigo",
-    header: "Contrato",
-    cell: (row) =>
-      row.associado_id ? (
-        <Link
-          href={`/associados/${row.associado_id}`}
-          className="text-primary hover:underline"
-        >
-          {row.contrato_codigo || "Abrir cadastro"}
-        </Link>
-      ) : (
-        row.contrato_codigo || "-"
+function buildDetailColumns(
+  onOpenAssociado: (associadoId: number) => void,
+): DataTableColumn<DashboardDetailRow>[] {
+  return [
+    {
+      id: "associado_nome",
+      header: "Associado",
+      cell: (row) => (
+        <div>
+          <p className="font-medium text-foreground">
+            {row.associado_nome || "Sem associado"}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {row.origem || row.contrato_codigo || "-"}
+          </p>
+        </div>
       ),
-  },
-  {
-    id: "competencia",
-    header: "Competencia",
-    cell: (row) => row.competencia || "-",
-  },
-  {
-    id: "valor",
-    header: "Valor",
-    cell: (row) => (row.valor ? formatCurrency(row.valor) : "-"),
-  },
-  {
-    id: "data_referencia",
-    header: "Data",
-    cell: (row) =>
-      row.data_referencia ? formatDate(row.data_referencia) : "-",
-  },
-];
+    },
+    {
+      id: "cpf_cnpj",
+      header: "CPF/CNPJ",
+      cell: (row) => (row.cpf_cnpj ? maskCPFCNPJ(row.cpf_cnpj) : "-"),
+    },
+    {
+      id: "matricula",
+      header: "Matricula",
+      cell: (row) => row.matricula || "-",
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (row) => (row.status ? <StatusBadge status={row.status} /> : "-"),
+    },
+    {
+      id: "agente_nome",
+      header: "Agente",
+      cell: (row) => row.agente_nome || "-",
+    },
+    {
+      id: "contrato_codigo",
+      header: "Contrato",
+      cellClassName: "min-w-[14rem]",
+      cell: (row) => (
+        <div className="space-y-2">
+          <p className="font-mono text-xs text-foreground">
+            {row.contrato_codigo || "-"}
+          </p>
+          {row.associado_id ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onOpenAssociado(row.associado_id as number)}
+            >
+              Ver detalhes do associado
+            </Button>
+          ) : null}
+        </div>
+      ),
+    },
+    {
+      id: "competencia",
+      header: "Competencia",
+      cell: (row) => row.competencia || "-",
+    },
+    {
+      id: "valor",
+      header: "Valor",
+      cell: (row) => (row.valor ? formatCurrency(row.valor) : "-"),
+    },
+    {
+      id: "data_referencia",
+      header: "Data",
+      cell: (row) =>
+        row.data_referencia ? formatDate(row.data_referencia) : "-",
+    },
+  ];
+}
 
 const TREASURY_CHART_CONFIG = {
   recebido: { label: "Recebido", color: "#f97316" },
@@ -328,33 +338,54 @@ const MONTHLY_NEW_ASSOCIADOS_EXPORT_COLUMNS: TableExportColumn<DashboardDetailRo
     { header: "Agente responsável", value: (row) => row.agente_nome || "-" },
   ];
 
-const MONTHLY_NEW_ASSOCIADOS_COLUMNS: DataTableColumn<DashboardDetailRow>[] = [
-  {
-    id: "associado_nome",
-    header: "Nome",
-    cell: (row) => <p className="font-medium text-foreground">{row.associado_nome}</p>,
-  },
-  {
-    id: "cpf_cnpj",
-    header: "CPF",
-    cell: (row) => (row.cpf_cnpj ? maskCPFCNPJ(row.cpf_cnpj) : "-"),
-  },
-  {
-    id: "matricula",
-    header: "Matricula",
-    cell: (row) => row.matricula || "-",
-  },
-  {
-    id: "data_nascimento",
-    header: "Data de nascimento",
-    cell: (row) => (row.data_nascimento ? formatDate(row.data_nascimento) : "-"),
-  },
-  {
-    id: "agente_nome",
-    header: "Agente responsável",
-    cell: (row) => row.agente_nome || "-",
-  },
-];
+function buildMonthlyNewAssociadosColumns(
+  onOpenAssociado: (associadoId: number) => void,
+): DataTableColumn<DashboardDetailRow>[] {
+  return [
+    {
+      id: "associado_nome",
+      header: "Nome",
+      cell: (row) => <p className="font-medium text-foreground">{row.associado_nome}</p>,
+    },
+    {
+      id: "cpf_cnpj",
+      header: "CPF",
+      cell: (row) => (row.cpf_cnpj ? maskCPFCNPJ(row.cpf_cnpj) : "-"),
+    },
+    {
+      id: "matricula",
+      header: "Matricula",
+      cell: (row) => row.matricula || "-",
+    },
+    {
+      id: "data_nascimento",
+      header: "Data de nascimento",
+      cell: (row) => (row.data_nascimento ? formatDate(row.data_nascimento) : "-"),
+    },
+    {
+      id: "agente_nome",
+      header: "Agente responsável",
+      cell: (row) => row.agente_nome || "-",
+    },
+    {
+      id: "acoes",
+      header: "Ações",
+      cellClassName: "min-w-[14rem]",
+      cell: (row) =>
+        row.associado_id ? (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onOpenAssociado(row.associado_id as number)}
+          >
+            Ver detalhes do associado
+          </Button>
+        ) : (
+          "-"
+        ),
+    },
+  ];
+}
 
 function toMonthId(value: Date) {
   return format(value, "yyyy-MM");
@@ -770,6 +801,7 @@ function DashboardPageContent() {
   );
   const [detailPage, setDetailPage] = React.useState(1);
   const [detailSearch, setDetailSearch] = React.useState("");
+  const [detailAssociadoId, setDetailAssociadoId] = React.useState<number | null>(null);
   const [exportingSection, setExportingSection] =
     React.useState<DashboardSection | null>(null);
   const debouncedDetailSearch = useDebouncedValue(detailSearch, 250);
@@ -1182,9 +1214,13 @@ function DashboardPageContent() {
   const isMonthlyNewAssociadosDetail = Boolean(
     detailState?.title && detailState.title.startsWith("Novos associados de "),
   );
-  const detailDialogColumns = isMonthlyNewAssociadosDetail
-    ? MONTHLY_NEW_ASSOCIADOS_COLUMNS
-    : DETAIL_COLUMNS;
+  const detailDialogColumns = React.useMemo(
+    () =>
+      isMonthlyNewAssociadosDetail
+        ? buildMonthlyNewAssociadosColumns(setDetailAssociadoId)
+        : buildDetailColumns(setDetailAssociadoId),
+    [isMonthlyNewAssociadosDetail],
+  );
   const detailDialogExportColumns = isMonthlyNewAssociadosDetail
     ? MONTHLY_NEW_ASSOCIADOS_EXPORT_COLUMNS
     : DETAIL_EXPORT_COLUMNS;
@@ -2722,6 +2758,7 @@ function DashboardPageContent() {
             setDetailState(null);
             setDetailPage(1);
             setDetailSearch("");
+            setDetailAssociadoId(null);
           }
         }}
         title={detailState?.title ?? "Detalhamento"}
@@ -2759,6 +2796,17 @@ function DashboardPageContent() {
             exportColumns: detailDialogExportColumns,
           })
         }
+      />
+
+      <AssociadoDetailsDialog
+        associadoId={detailAssociadoId}
+        open={detailAssociadoId != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailAssociadoId(null);
+          }
+        }}
+        description="Consulta expandida do associado, contratos e ciclos sem sair do dashboard executivo."
       />
     </>
   );
