@@ -1,17 +1,35 @@
 "use client";
 
 import * as React from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { RefreshCcwIcon } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ExternalLinkIcon, RefreshCcwIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import AssociadoDetailsDialog from "@/components/associados/associado-details-dialog";
+import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import StatusBadge from "@/components/custom/status-badge";
+import ExportButton from "@/components/shared/export-button";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DryRunModal from "@/components/importacao/dry-run-modal";
@@ -19,28 +37,51 @@ import {
   useV1ImportacaoArquivoRetornoDescontadosList,
   useV1ImportacaoArquivoRetornoEncerramentosList,
   useV1ImportacaoArquivoRetornoFinanceiroRetrieve,
-  useV1ImportacaoArquivoRetornoList,
   useV1ImportacaoArquivoRetornoNaoDescontadosList,
   useV1ImportacaoArquivoRetornoNovosCiclosList,
   useV1ImportacaoArquivoRetornoPendenciasManuaisList,
   useV1ImportacaoArquivoRetornoUltimaRetrieve,
 } from "@/gen";
-import type { ArquivoRetornoDetail, ArquivoRetornoItem, ArquivoRetornoList } from "@/gen/models";
+import type {
+  ArquivoRetornoDetail,
+  ArquivoRetornoItem,
+  ArquivoRetornoList,
+  PaginatedArquivoRetornoListList,
+} from "@/gen/models";
 import { apiFetch } from "@/lib/api/client";
+import { formatMonthValue, parseMonthValue } from "@/lib/date-value";
 import { formatCurrency, formatDateTime } from "@/lib/formatters";
 import {
   getArquivoFinanceiroResumo,
+  type ArquivoRetornoFinanceiroItem,
   type ArquivoRetornoWithFinanceiro,
 } from "@/lib/importacao-financeiro";
 import { maskCPFCNPJ } from "@/lib/masks";
+import { exportRows, type TableExportColumn } from "@/lib/table-export";
+import { cn } from "@/lib/utils";
 
 const TXT_ACCEPT = { "text/plain": [".txt"] };
 const ITEM_PAGE_SIZE = 5;
+const HISTORY_PAGE_SIZE = 5;
+const DETAIL_PAGE_SIZE_OPTIONS = [
+  { label: "10", value: 10 },
+  { label: "20", value: 20 },
+  { label: "50", value: 50 },
+];
+
 type DryRunPreviewState = {
   arquivoId: number;
   arquivoNome: string;
   competenciaDisplay: string;
   dryRunData: NonNullable<ArquivoRetornoDetail["dry_run_resultado"]>;
+};
+
+type LatestMetricDialogConfig = {
+  key: "linhas" | "mensalidades" | "valores_30_50";
+  title: string;
+  description: string;
+  rows: ArquivoRetornoFinanceiroItem[];
+  emptyMessage: string;
 };
 
 function totalPages(count?: number, pageSize = 5) {
@@ -120,6 +161,159 @@ function ItemSection({ title, description, data, emptyMessage, isLoading = false
   );
 }
 
+function normalizeText(value?: string | null) {
+  return (value ?? "")
+    .toString()
+    .normalize("NFD")
+    .replaceAll(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim();
+}
+
+function normalizeCategoria(value?: string | null) {
+  return normalizeText(value).replaceAll("/", "_").replaceAll("-", "_").replaceAll(" ", "_");
+}
+
+function isMensalidadesCategoria(value?: string | null) {
+  const normalized = normalizeCategoria(value);
+  return normalized === "mensalidades" || normalized === "mensalidade";
+}
+
+function isValores3050Categoria(value?: string | null) {
+  const normalized = normalizeCategoria(value);
+  return normalized === "valores_30_50" || normalized === "valores3050";
+}
+
+function matchesFinanceiroRowSearch(row: ArquivoRetornoFinanceiroItem, search: string) {
+  const searchValue = normalizeText(search);
+  if (!searchValue) {
+    return true;
+  }
+
+  const comparable = [
+    row.associado_nome,
+    row.cpf_cnpj,
+    row.matricula,
+    row.agente_responsavel,
+    row.categoria,
+    row.situacao_label,
+  ]
+    .map(normalizeText)
+    .join(" ");
+  return comparable.includes(searchValue);
+}
+
+function financeiroExportColumns(): TableExportColumn<ArquivoRetornoFinanceiroItem>[] {
+  return [
+    { header: "Associado", value: (row) => row.associado_nome || "" },
+    { header: "CPF", value: (row) => maskCPFCNPJ(row.cpf_cnpj) },
+    { header: "Matrícula", value: (row) => row.matricula || "" },
+    { header: "Agente responsável", value: (row) => row.agente_responsavel || "" },
+    { header: "Categoria", value: (row) => row.categoria || "" },
+    { header: "Esperado", value: (row) => formatCurrency(row.esperado) },
+    { header: "Recebido", value: (row) => formatCurrency(row.recebido) },
+    { header: "Situação", value: (row) => row.situacao_label || "" },
+  ];
+}
+
+function buildFinanceiroColumns({
+  onOpenAssociadoDetails,
+}: {
+  onOpenAssociadoDetails?: (associadoId: number) => void;
+} = {}): DataTableColumn<ArquivoRetornoFinanceiroItem>[] {
+  const columns: DataTableColumn<ArquivoRetornoFinanceiroItem>[] = [
+    {
+      id: "associado_nome",
+      header: "Servidor",
+      cell: (row) => (
+        <div>
+          <p className="font-medium text-foreground">{row.associado_nome}</p>
+          <p className="text-xs text-muted-foreground">{row.matricula || "-"}</p>
+        </div>
+      ),
+    },
+    {
+      id: "cpf_cnpj",
+      header: "CPF",
+      cell: (row) => maskCPFCNPJ(row.cpf_cnpj),
+    },
+    {
+      id: "categoria",
+      header: "Categoria",
+      cell: (row) => row.categoria || "-",
+    },
+    {
+      id: "esperado",
+      header: "Esperado",
+      cell: (row) => formatCurrency(row.esperado),
+    },
+    {
+      id: "recebido",
+      header: "Recebido",
+      cell: (row) => formatCurrency(row.recebido),
+    },
+    {
+      id: "situacao_label",
+      header: "Situação",
+      cell: (row) => <StatusBadge status={row.ok ? "concluido" : "pendencia_manual"} />,
+    },
+  ];
+
+  if (onOpenAssociadoDetails) {
+    columns.push({
+      id: "acoes",
+      header: "",
+      cell: (row) =>
+        row.associado_id ? (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onOpenAssociadoDetails(row.associado_id as number)}
+          >
+            <ExternalLinkIcon className="mr-1.5 size-3.5" />
+            Ver associado
+          </Button>
+        ) : (
+          <span className="text-xs text-muted-foreground">Sem associado vinculado</span>
+        ),
+    });
+  }
+
+  return columns;
+}
+
+function ImportMetricCard({
+  title,
+  value,
+  hint,
+  onClick,
+}: {
+  title: string;
+  value: React.ReactNode;
+  hint?: string;
+  onClick?: () => void;
+}) {
+  const content = (
+    <Card className="border-border/60 bg-card/80 transition-colors hover:bg-card">
+      <CardHeader>
+        <CardDescription>{title}</CardDescription>
+        <CardTitle className="text-3xl">{value}</CardTitle>
+        {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+      </CardHeader>
+    </Card>
+  );
+
+  if (!onClick) {
+    return content;
+  }
+
+  return (
+    <button type="button" className="text-left" onClick={onClick}>
+      {content}
+    </button>
+  );
+}
+
 function MetricCardSkeleton() {
   return (
     <Card className="border-border/60 bg-card/80">
@@ -159,16 +353,32 @@ export default function ImportacaoPage() {
   const [uploadFile, setUploadFile] = React.useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = React.useState(0);
   const [dryRunPreview, setDryRunPreview] = React.useState<DryRunPreviewState | null>(null);
+  const [historyCompetencia, setHistoryCompetencia] = React.useState("");
+  const [historyStatus, setHistoryStatus] = React.useState("todos");
+  const [latestMetricDialogConfig, setLatestMetricDialogConfig] =
+    React.useState<LatestMetricDialogConfig | null>(null);
+  const [latestMetricSearch, setLatestMetricSearch] = React.useState("");
+  const [selectedAssociadoId, setSelectedAssociadoId] = React.useState<number | null>(null);
 
-  const historyQuery = useV1ImportacaoArquivoRetornoList(
-    { page: historyPage, page_size: 5 },
-    {
-      query: {
-        staleTime: 30 * 1000,
-        placeholderData: (previousData) => previousData,
-      },
-    },
-  );
+  const historyQuery = useQuery({
+    queryKey: [
+      "importacao-arquivo-retorno-history",
+      historyPage,
+      historyCompetencia,
+      historyStatus,
+    ],
+    queryFn: () =>
+      apiFetch<PaginatedArquivoRetornoListList>("importacao/arquivo-retorno", {
+        query: {
+          page: historyPage,
+          page_size: HISTORY_PAGE_SIZE,
+          competencia: historyCompetencia || undefined,
+          status: historyStatus !== "todos" ? historyStatus : undefined,
+        },
+      }),
+    staleTime: 30 * 1000,
+    placeholderData: (previousData) => previousData,
+  });
   const latestQuery = useV1ImportacaoArquivoRetornoUltimaRetrieve({
     query: {
       retry: false,
@@ -190,6 +400,65 @@ export default function ImportacaoPage() {
   });
   const latestFinanceiro =
     latestFinanceiroQuery.data?.resumo ?? getArquivoFinanceiroResumo(latestImportWithFinanceiro);
+  const latestFinanceiroRows = latestFinanceiroQuery.data?.rows ?? [];
+
+  const latestMetricRows = React.useMemo(
+    () => ({
+      linhas: latestFinanceiroRows,
+      mensalidades: latestFinanceiroRows.filter((row) => isMensalidadesCategoria(row.categoria)),
+      valores_30_50: latestFinanceiroRows.filter((row) => isValores3050Categoria(row.categoria)),
+    }),
+    [latestFinanceiroRows],
+  );
+  const filteredLatestMetricRows = React.useMemo(
+    () =>
+      (latestMetricDialogConfig?.rows ?? []).filter((row) =>
+        matchesFinanceiroRowSearch(row, latestMetricSearch),
+      ),
+    [latestMetricDialogConfig?.rows, latestMetricSearch],
+  );
+  const latestFinanceiroColumns = React.useMemo(
+    () =>
+      buildFinanceiroColumns({
+        onOpenAssociadoDetails: (associadoId) => setSelectedAssociadoId(associadoId),
+      }),
+    [],
+  );
+
+  const openLatestMetricDialog = React.useCallback(
+    (key: keyof typeof latestMetricRows) => {
+      const configMap: Record<keyof typeof latestMetricRows, Omit<LatestMetricDialogConfig, "rows">> = {
+        linhas: {
+          key: "linhas",
+          title: "Linhas conciliadas da última importação",
+          description:
+            "Listagem financeira consolidada do último arquivo retorno processado.",
+          emptyMessage: "Nenhuma linha conciliada disponível para a última importação.",
+        },
+        mensalidades: {
+          key: "mensalidades",
+          title: "Mensalidades da última importação",
+          description:
+            "Associados classificados como mensalidades no detalhamento financeiro do último arquivo.",
+          emptyMessage: "Nenhuma mensalidade encontrada para a última importação.",
+        },
+        valores_30_50: {
+          key: "valores_30_50",
+          title: "Valores 30/50 da última importação",
+          description:
+            "Associados classificados na faixa de 30/50 reais no último arquivo retorno.",
+          emptyMessage: "Nenhum associado classificado em 30/50 encontrado na última importação.",
+        },
+      };
+
+      setLatestMetricDialogConfig({
+        ...configMap[key],
+        rows: latestMetricRows[key],
+      });
+      setLatestMetricSearch("");
+    },
+    [latestMetricRows],
+  );
 
   React.useEffect(() => {
     setIsPolling(statusIsPending(latestImport?.status));
@@ -197,6 +466,16 @@ export default function ImportacaoPage() {
       void queryClient.invalidateQueries({ queryKey: ["tesouraria-duplicidades-sidebar"] });
     }
   }, [latestImport?.status, queryClient]);
+
+  React.useEffect(() => {
+    setHistoryPage(1);
+  }, [historyCompetencia, historyStatus]);
+
+  React.useEffect(() => {
+    if (!latestMetricDialogConfig) {
+      setLatestMetricSearch("");
+    }
+  }, [latestMetricDialogConfig]);
 
   function invalidateImportacao() {
     void queryClient.invalidateQueries({
@@ -511,7 +790,11 @@ export default function ImportacaoPage() {
                   <Badge variant="outline">Competência detectada: {latestImport.competencia_display}</Badge>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-border/60 bg-background/40 p-4">
+                  <button
+                    type="button"
+                    className="rounded-2xl border border-border/60 bg-background/40 p-4 text-left transition-colors hover:bg-background/55"
+                    onClick={() => setActiveTab("descontados")}
+                  >
                     <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Quitados</p>
                     <p className="mt-2 text-3xl font-semibold">
                       {isLatestFinanceiroLoading
@@ -521,8 +804,12 @@ export default function ImportacaoPage() {
                     <p className="mt-1 text-xs text-muted-foreground">
                       Registros concluídos no resumo financeiro do arquivo.
                     </p>
-                  </div>
-                  <div className="rounded-2xl border border-border/60 bg-background/40 p-4">
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-2xl border border-border/60 bg-background/40 p-4 text-left transition-colors hover:bg-background/55"
+                    onClick={() => setActiveTab("nao-descontados")}
+                  >
                     <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Faltando</p>
                     <p className="mt-2 text-3xl font-semibold">
                       {isLatestFinanceiroLoading ? "..." : (latestFinanceiro?.faltando ?? 0)}
@@ -530,8 +817,12 @@ export default function ImportacaoPage() {
                     <p className="mt-1 text-xs text-muted-foreground">
                       {formatCurrency(latestFinanceiro?.pendente)} ainda pendentes.
                     </p>
-                  </div>
-                  <div className="rounded-2xl border border-border/60 bg-background/40 p-4">
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-2xl border border-border/60 bg-background/40 p-4 text-left transition-colors hover:bg-background/55"
+                    onClick={() => openLatestMetricDialog("linhas")}
+                  >
                     <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Recebido</p>
                     <p className="mt-2 text-3xl font-semibold">
                       {isLatestFinanceiroLoading ? "..." : formatCurrency(latestFinanceiro?.recebido)}
@@ -539,8 +830,12 @@ export default function ImportacaoPage() {
                     <p className="mt-1 text-xs text-muted-foreground">
                       de {formatCurrency(latestFinanceiro?.esperado)} esperados.
                     </p>
-                  </div>
-                  <div className="rounded-2xl border border-border/60 bg-background/40 p-4">
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-2xl border border-border/60 bg-background/40 p-4 text-left transition-colors hover:bg-background/55"
+                    onClick={() => openLatestMetricDialog("linhas")}
+                  >
                     <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Percentual recebido</p>
                     <p className="mt-2 text-3xl font-semibold">
                       {isLatestFinanceiroLoading
@@ -550,7 +845,7 @@ export default function ImportacaoPage() {
                     <p className="mt-1 text-xs text-muted-foreground">
                       Proporção financeira consolidada a partir de `PagamentoMensalidade`.
                     </p>
-                  </div>
+                  </button>
                 </div>
                 <div className="flex items-center gap-3">
                   <Button
@@ -585,30 +880,24 @@ export default function ImportacaoPage() {
           </>
         ) : (
           <>
-            <Card className="border-border/60 bg-card/80">
-              <CardHeader>
-                <CardDescription>Mensalidades Recebidas</CardDescription>
-                <CardTitle className="text-3xl">
-                  {formatCurrency(latestFinanceiro?.mensalidades?.recebido)}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-            <Card className="border-border/60 bg-card/80">
-              <CardHeader>
-                <CardDescription>Valores 30/50 Recebidos</CardDescription>
-                <CardTitle className="text-3xl">
-                  {formatCurrency(latestFinanceiro?.valores_30_50?.recebido)}
-                </CardTitle>
-              </CardHeader>
-            </Card>
-            <Card className="border-border/60 bg-card/80">
-              <CardHeader>
-                <CardDescription>Linhas do Arquivo</CardDescription>
-                <CardTitle className="text-3xl">
-                  {latestFinanceiro?.total ?? latestImport?.total_registros ?? 0}
-                </CardTitle>
-              </CardHeader>
-            </Card>
+            <ImportMetricCard
+              title="Mensalidades Recebidas"
+              value={formatCurrency(latestFinanceiro?.mensalidades?.recebido)}
+              hint="Clique para abrir a listagem financeira da última importação."
+              onClick={() => openLatestMetricDialog("mensalidades")}
+            />
+            <ImportMetricCard
+              title="Valores 30/50 Recebidos"
+              value={formatCurrency(latestFinanceiro?.valores_30_50?.recebido)}
+              hint="Clique para abrir os associados de 30/50 da última importação."
+              onClick={() => openLatestMetricDialog("valores_30_50")}
+            />
+            <ImportMetricCard
+              title="Linhas do Arquivo"
+              value={latestFinanceiro?.total ?? latestImport?.total_registros ?? 0}
+              hint="Clique para abrir o consolidado da última importação."
+              onClick={() => openLatestMetricDialog("linhas")}
+            />
           </>
         )}
       </div>
@@ -686,6 +975,34 @@ export default function ImportacaoPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <CalendarCompetencia
+              value={parseMonthValue(historyCompetencia)}
+              onChange={(value) => setHistoryCompetencia(formatMonthValue(value))}
+            />
+            <Select value={historyStatus} onValueChange={setHistoryStatus}>
+              <SelectTrigger className="min-w-44 rounded-2xl bg-card/60">
+                <SelectValue placeholder="Todos os status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os status</SelectItem>
+                <SelectItem value="concluido">Concluído</SelectItem>
+                <SelectItem value="processando">Processando</SelectItem>
+                <SelectItem value="pendente">Pendente</SelectItem>
+                <SelectItem value="erro">Erro</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              className="rounded-2xl"
+              onClick={() => {
+                setHistoryCompetencia("");
+                setHistoryStatus("todos");
+              }}
+            >
+              Limpar filtros
+            </Button>
+          </div>
           {isInitialHistoryLoading ? (
             <HistoryTableSkeleton />
           ) : (
@@ -719,6 +1036,68 @@ export default function ImportacaoPage() {
           isCanceling={cancelarMutation.isPending}
         />
       ) : null}
+
+      <Dialog
+        open={Boolean(latestMetricDialogConfig)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLatestMetricDialogConfig(null);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[calc(100vh-2rem)] max-w-[92vw] overflow-hidden border-border/60 bg-background/95 sm:max-w-[80rem]">
+          <DialogHeader>
+            <DialogTitle>{latestMetricDialogConfig?.title ?? "Detalhamento da última importação"}</DialogTitle>
+            <DialogDescription>
+              {latestMetricDialogConfig?.description ??
+                "Listagem financeira consolidada do último arquivo retorno."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <Input
+              value={latestMetricSearch}
+              onChange={(event) => setLatestMetricSearch(event.target.value)}
+              placeholder="Buscar por associado, CPF, matrícula ou agente..."
+              className="rounded-2xl border-border/60 bg-card/60 lg:max-w-lg"
+            />
+            <ExportButton
+              onExport={(format) =>
+                exportRows(
+                  format,
+                  latestMetricDialogConfig?.title ?? "Detalhamento da última importação",
+                  "ultima-importacao-detalhamento",
+                  financeiroExportColumns(),
+                  filteredLatestMetricRows,
+                )
+              }
+            />
+          </div>
+          <div className="overflow-x-auto overflow-y-auto">
+            <DataTable
+              columns={latestFinanceiroColumns}
+              data={filteredLatestMetricRows}
+              pageSize={10}
+              pageSizeOptions={DETAIL_PAGE_SIZE_OPTIONS}
+              className={cn("rounded-[1.35rem] border border-border/60 bg-background/55 shadow-none")}
+              tableClassName="min-w-[72rem]"
+              emptyMessage={
+                latestMetricDialogConfig?.emptyMessage ??
+                "Nenhum registro encontrado para o indicador selecionado."
+              }
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <AssociadoDetailsDialog
+        associadoId={selectedAssociadoId}
+        open={selectedAssociadoId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedAssociadoId(null);
+          }
+        }}
+      />
 
     </div>
   );

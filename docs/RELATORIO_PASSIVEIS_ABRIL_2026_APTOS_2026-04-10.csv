@@ -1,0 +1,81 @@
+cpf,nome_csv,mensalidade_csv,matricula_csv,associado_id,contrato_id,contrato_codigo,status_associado,status_contrato,status_renovacao,status_visual_slug,fase_ciclo,meses_nao_descontados_count,motivo,active_refi_status,active_refi_id
+20168942372,MARIA DO SOCORRO RUBEN PEREIRA,400,007638-4,582,583,CTR-20260115152833-S9G5Q,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1670
+23993596315,MARIA DE JESUS SANTANA COSTA,30,030759-9,7099,,,ativo,,,,,,sem_contrato_operacional,,
+22808922353,JOAQUIM VIEIRA FILHO,300,002802-9,56,56,CTR-20250903204013-SGNPD,ativo,ativo,,ciclo_aberto,ciclo_aberto,1,status_visual=ciclo_aberto,,
+22796843300,GILMAR DE DEUS LIMA,500,002805-3,490,491,CTR-20251205130950-FSOD7,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,2,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1630
+34781544304,JOSELINO MOREIRA DA SILVA,450,003114-3,67,67,CTR-20250905141219-A5RRS,ativo,ativo,,ciclo_aberto,ciclo_aberto,1,status_visual=ciclo_aberto,,
+44183054400,FRANCISCO JOSE DE SALES FILHO,500,038012-1,594,595,CTR-20260128112955-KXD2M,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1680
+19941447349,REGIS SOARES SANTOS,500,038649-9,545,546,CTR-20251230120710-TTCLG,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,657
+32747519368,ADEVANDRO DE BRITO SILVA,500,039299-5,590,591,CTR-20260126170159-6VDZD,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1678
+37211420120,VALMIR DE ALBUQUERQUE PAULINO,500,044927-0,531,532,CTR-20251222142133-TGYGF,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1640
+30513367349,SILVIO MARIO PAZ LANDIN SENA,100,001099-5,473,474,CTR-20251203111751-P5GNR,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,2,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1624
+41233875353,MARIA DE LOURDES PEREIRA DOS S,200,014725-7,217,218,CTR-20251008185554-RMSXK,ativo,ativo,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1702
+34801383300,FRANCINEIDE NASCIMENTO SILVA,30,018993-6,98,98,CTR-20250912134959-ITNTN,ativo,ativo,,ciclo_com_pendencia,ciclo_com_pendencia,1,status_visual=ciclo_com_pendencia,,
+21819424391,FRANCISCO CRISOSTOMO BATISTA,30,019061-6,7100,,,ativo,,,,,,sem_contrato_operacional,,
+26713462391,CARLOS EUGENIO ALVES LEAL,150,019315-1,60,60,CTR-20250904143048-GQORQ,ativo,ativo,,ciclo_aberto,ciclo_aberto,1,status_visual=ciclo_aberto,,
+37112147115,JOAO FERREIRA SIMAO,30,019337-2,99,99,CTR-20250912135922-IFROJ,ativo,ativo,,ciclo_com_pendencia,ciclo_com_pendencia,1,status_visual=ciclo_com_pendencia,,
+28784197315,MARIA SOLANGE HOLANDA DA SILVA,200,021108-7,554,555,CTR-20260106113612-KPJRA,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1644
+41168755387,JOEDI GALVAO DIAS,30,036099-6,105,105,CTR-20250912164240-33UNY,ativo,ativo,,ciclo_com_pendencia,ciclo_com_pendencia,1,status_visual=ciclo_com_pendencia,,
+28740602320,MARIA DA GUIA MARTINS,30,036839-3,106,106,CTR-20250912170626-VNPX7,ativo,ativo,,ciclo_com_pendencia,ciclo_com_pendencia,1,status_visual=ciclo_com_pendencia,,
+28765079353,FRANCISCA MARIA OLIVEIRA CUNHA,200,038780-X,293,294,CTR-20251028131655-KZRSY,ativo,ativo,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1600
+23989599372,PAULO FRANCISCO DOS SANTOS,200,041310-X,317,318,CTR-20251031180927-HJKDP,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,2,status_renovacao_apto_mas_nao_listado,apto_a_renovar,643
+33889716334,HERCLES DOUGLAS DE SOUSA,250,013605-X,297,298,CTR-20251029131839-A2OTT,ativo,ativo,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,554
+43971636349,CLAUDIA MARIA DE SOUSA,150,009435-8,479,480,CTR-20251204095341-QOVUT,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,503
+27445682368,JOSE AURIMAR DA SILVA,450,009533-8,139,139,CTR-20250918132554-RVC0Q,ativo,ativo,,ciclo_aberto,ciclo_aberto,1,status_visual=ciclo_aberto,,
+69199710382,ANA CELIA SOBRAL MOURA DE OLIV,150,009598-2,93,93,CTR-20250911182832-JVDW3,ativo,ativo,,ciclo_aberto,ciclo_aberto,1,status_visual=ciclo_aberto,,
+30704197391,JOAQUIM EVANGELISTA DE SOUSA B,350,013292-6,557,558,CTR-20260106141456-XMZJ6,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1647
+34159983391,LUIZ CARLOS RIBEIRO DE ARAUJO,300,013691-3,161,161,CTR-20250919143541-VETPN,ativo,ativo,,ciclo_aberto,ciclo_aberto,1,status_visual=ciclo_aberto,,
+35010355353,ANTONIO JOSE LOPES DA COSTA,100,013822-3,564,565,CTR-20260108103521-KZLIL,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1653
+42105196349,MARCOS ANTONIO PLACIDO DA SILV,300,014845-8,579,580,CTR-20260114154308-C2N5G,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1667
+39483029368,CARLOS ALBERTO DOS SANTOS CARD,30,015270-6,7101,,,ativo,,,,,,sem_contrato_operacional,,
+47895357387,MAURO PEREIRA DA SILVA,150,015383-4,513,514,CTR-20251212150541-RFFXV,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1636
+48149233334,VALDIR GONZAGA MARTINS,30,015860-7,137,137,CTR-20250918130849-FTJ3Q,ativo,ativo,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,680
+38653621334,ROBERTO CARLOS NOGUEIRA DE ARA,150,015972-7,567,568,CTR-20260108145158-UWVCW,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1656
+53498461320,MARIA DO SOCORRO FERREIRA DE C,350,047500-9,514,515,CTR-20251215151207-UW8CM,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,627
+13852540330,LAUDECY MARIA DE MORAIS FERREI,30,016376-7,7102,,,ativo,,,,,,sem_contrato_operacional,,
+27373630391,PAULO DAMASCENO GOMES FILHO,150,016575-1,570,571,CTR-20260112105418-SBXC5,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1659
+28758943315,MARIA LUCIA DA SILVA,150,023879-1,591,592,CTR-20260127101847-MDMCK,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1679
+24053198372,ANA MARIA DAS DORES SOARES,500,017695-8,228,229,CTR-20251010141935-ERIAW,ativo,ativo,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,474
+19909454300,MARIA DO SOCORRO SANTOS SILVEI,30,027929-3,7103,,,ativo,,,,,,sem_contrato_operacional,,
+13889214304,MARIA DALVA PEREIRA DA SILVA,200,028713-0,596,597,CTR-20260129090715-4GTDK,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1682
+10529560330,JOSE FRANCISCO RIBEIRO DE SOUS,30,024310-8,,,,,,,,,,associado_ausente,,
+23951630310,PAULO HENRIQUE DA SILVA,500,030310-X,195,196,CTR-20250923150029-FAD7R,ativo,ativo,apto_a_renovar,apto_a_renovar,apto_a_renovar,2,status_renovacao_apto_mas_nao_listado,apto_a_renovar,689
+37517520300,JOAO DE JESUS OLIVEIRA,500,030418-2,558,559,CTR-20260106143059-ZTJRR,ativo,em_analise,aprovado_para_renovacao,aprovado_para_renovacao,aprovado_para_renovacao,0,status_visual=aprovado_para_renovacao,aprovado_para_renovacao,1648
+30593573315,JORDIVAL GOMES DA SILVA,50,030468-9,7104,,,ativo,,,,,,sem_contrato_operacional,,
+13131010363,MARIA ALICE ALVES DA COSTA,500,036527-X,605,606,CTR-20260130161217-SLNLX,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1690
+20034431349,RITA LINDALVA ALVES DE OLIVEIR,500,002549-6,74,74,CTR-20250902110915-UMFA5,ativo,ativo,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1474
+09683771300,VERBERT EDUARDO VERAS LIMA,500,002851-7,130,130,CTR-20250917175724-XD7Q2,ativo,ativo,,ciclo_aberto,ciclo_aberto,1,status_visual=ciclo_aberto,,
+43932711300,MARIA DA CONCEICAO CARVALHO CA,500,003250-6,178,179,CTR-20250922131818-5N9MF,ativo,ativo,,ciclo_aberto,ciclo_aberto,1,status_visual=ciclo_aberto,,
+07893515368,RITA CECILIA GONDIM VERAS,150,004365-6,298,299,CTR-20251029144138-GTIKP,ativo,ativo,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,661
+48717231787,MAMEDE RODRIGUES CARDOSO VIEIR,30,009056-5,7105,,,ativo,,,,,,sem_contrato_operacional,,
+04705033353,DEOCLECIO FRANCISCO DE ARAUJO,400,009803-5,546,547,CTR-20251230145824-WNYXH,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,511
+04732243304,FRANCISCO ARAUJO DA SILVEIRA,200,010060-9,320,321,CTR-20251103124711-BTJTZ,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,3,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1615
+04710975353,FRANCISCO MORAIS DOS SANTOS,350,011454-5,248,249,CTR-20251016181804-VKHKF,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,2,status_renovacao_apto_mas_nao_listado,apto_a_renovar,543
+13201280330,RAIMUNDO NONATO DE ARAUJO,150,011727-7,510,511,CTR-20251211112833-Z1TCY,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1635
+22623485372,FRANCISCO ALVES DA SILVA,300,011927-0,568,569,CTR-20260109140104-LZ5XL,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1657
+15633322304,ANTONIO FERREIRA DA SILVA,400,011978-4,329,330,CTR-20251104184630-4AT89,ativo,ativo,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,481
+35108010320,GILBERTO SOUSA,30,013276-4,7106,,,ativo,,,,,,sem_contrato_operacional,,
+34264060397,DOURIVAL GOMES DA SILVA,350,014144-5,600,601,CTR-20260129151631-IRFHA,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1686
+33724938349,MARIA ELIZETE DE ANDRADE SILVA,250,014283-2,547,548,CTR-20251230161215-YGFLN,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1641
+30632579315,EDMAR SILVA FRAZ,500,014457-6,175,176,CTR-20250920162444-SZUAV,ativo,ativo,,ciclo_aberto,ciclo_aberto,6,status_visual=ciclo_aberto,,
+15221245353,RITA MARIA MENDES DA SILVA,30,014772-9,7107,,,ativo,,,,,,sem_contrato_operacional,,
+42858658315,ANTONIO JOAQUIM BRANDAO,350,014856-3,394,395,CTR-20251114142220-D9K3G,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,483
+37269542368,MARCOS ANTONIO VAZ DE BARROS,30,014930-6,7108,,,ativo,,,,,,sem_contrato_operacional,,
+37508733304,RAIMUNDO NONATO ARAUJO BARROS,350,015299-4,339,340,CTR-20251107144721-JZ3AP,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,651
+45125260304,JUSTINO DA SILVA LEAL,350,015547-X,11,11,CTR-20250902111725-DIMIG,ativo,ativo,aprovado_para_renovacao,aprovado_para_renovacao,aprovado_para_renovacao,1,status_visual=aprovado_para_renovacao,aprovado_para_renovacao,1692
+13028430363,VERA LUCIA DE FATIMA LOPES,30,018295-8,7109,,,ativo,,,,,,sem_contrato_operacional,,
+33731411334,RAIMUNDA ALMEIDA DE ARAUJO MEL,250,021091-9,602,603,CTR-20260130132415-FJZV0,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1688
+10616985304,FRANCISCA DAS CHAGAS DE OLIVEI,30,021833-2,7110,,,ativo,,,,,,sem_contrato_operacional,,
+15639754320,SONIA MARIA COSTA LIMA DE FREI,30,035844-4,7111,,,ativo,,,,,,sem_contrato_operacional,,
+28675568304,MARIA LUSINETE SILVA SANTOS,150,042879-5,258,259,CTR-20251020183928-U39CO,ativo,ativo,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1575
+03442333830,ANTONIO PEREIRA DE MORAIS,200,043133-8,502,503,CTR-20251209112553-MKBUX,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,1632
+11225858372,MARIA NAIR RIBEIRO DA SILVA SA,500,043718-2,378,379,CTR-20251113123134-SSQBW,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,635
+15221318334,FIRMINO DE SOUSA E SILVA,300,025043-X,42,42,CTR-20250902152638-UCNMK,ativo,ativo,apto_a_renovar,apto_a_renovar,apto_a_renovar,1,status_renovacao_apto_mas_nao_listado,apto_a_renovar,393
+15146820368,MARIA SALOME RABELO,30,048574-8,7112,,,ativo,,,,,,sem_contrato_operacional,,
+93574177453,VIRGINIA MARIA LIMA MATOS DE C,30,050682-6,7113,,,ativo,,,,,,sem_contrato_operacional,,
+13019414334,MARIA DO PERPETUO SOCORRO VASC,50,051174-9,606,607,CTR-20260202120301-QJWII,ativo,em_analise,,ciclo_aberto,ciclo_aberto,0,status_visual=ciclo_aberto,,
+07883684353,EDVALDO DA CUNHA COSTA,30,051269-9,7114,,,ativo,,,,,,sem_contrato_operacional,,
+06541062315,MARIA LUIZA MUNIZ GUIMARAES,30,052747-5,7115,,,ativo,,,,,,sem_contrato_operacional,,
+03028801353,MARIA DAS GRACAS PORTELA VELOS,30,053362-9,7116,,,ativo,,,,,,sem_contrato_operacional,,
+15119998372,ELIANE MARIA MENDES DOS SANTOS,350,054098-6,537,538,CTR-20251223144707-JQUPP,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,520
+40375552472,MARIA DE LOURDES DA SILVA,350,054977-X,375,376,CTR-20251113115000-ACYQH,ativo,em_analise,apto_a_renovar,apto_a_renovar,apto_a_renovar,0,status_renovacao_apto_mas_nao_listado,apto_a_renovar,622

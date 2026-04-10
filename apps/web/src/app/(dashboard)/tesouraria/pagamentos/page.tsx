@@ -18,7 +18,14 @@ import type {
   PaginatedPagamentosAgenteResponse,
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
-import { exportPaginatedRouteReport } from "@/lib/reports";
+import {
+  describeReportScope,
+  exportRouteReport,
+  fetchAllPaginatedRows,
+  filterRowsByReportScope,
+  resolveReportReferenceDate,
+  type ReportScope,
+} from "@/lib/reports";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import DatePicker from "@/components/custom/date-picker";
 import {
@@ -121,7 +128,7 @@ export default function TesourariaPagamentosPage() {
       filters.dataFim?.toISOString(),
     ],
     queryFn: () =>
-      apiFetch<PaginatedPagamentosAgenteResponse>("agente/pagamentos", {
+      apiFetch<PaginatedPagamentosAgenteResponse>("tesouraria/pagamentos", {
         query: {
           page,
           page_size: PAGE_SIZE,
@@ -157,35 +164,46 @@ export default function TesourariaPagamentosPage() {
   const activeAdvancedFilters = countActiveAdvancedFilters(filters);
 
   const handleExport = React.useCallback(
-    async (exportFormat: "csv" | "pdf" | "excel" | "xlsx") => {
-      if (exportFormat !== "pdf" && exportFormat !== "xlsx") {
-        return;
-      }
-
+    async (scope: ReportScope, exportFormat: "pdf" | "xlsx") => {
+      const referenceDate = resolveReportReferenceDate({
+        scope,
+        dayReference: filters.dataInicio ?? filters.dataFim,
+        monthReference: filters.competencia ?? filters.dataInicio ?? filters.dataFim,
+      });
       setIsExporting(true);
       try {
-        await exportPaginatedRouteReport<PagamentoAgenteItem>({
-          route: "/tesouraria/pagamentos",
-          format: exportFormat,
-          sourcePath: "agente/pagamentos",
-          sourceQuery: {
-            search: search || undefined,
-            status: filters.status === "todos" ? undefined : filters.status,
-            agente: filters.agente || undefined,
-            associado_status:
-              filters.associadoStatus === "todos" ? undefined : filters.associadoStatus,
-            pagamento_inicial_status:
-              filters.pagamentoInicialStatus === "todos"
-                ? undefined
-                : filters.pagamentoInicialStatus,
-            numero_ciclos:
-              filters.numeroCiclos === "todos" ? undefined : filters.numeroCiclos,
-            preset: filters.preset === "todos" ? undefined : filters.preset,
-            mes: filters.competencia ? format(filters.competencia, "yyyy-MM") : undefined,
-            data_inicio: filters.dataInicio ? format(filters.dataInicio, "yyyy-MM-dd") : undefined,
-            data_fim: filters.dataFim ? format(filters.dataFim, "yyyy-MM-dd") : undefined,
-          },
-          mapRow: (row) => ({
+        const sourceQuery = {
+          search: search || undefined,
+          status: filters.status === "todos" ? undefined : filters.status,
+          agente: filters.agente || undefined,
+          associado_status:
+            filters.associadoStatus === "todos" ? undefined : filters.associadoStatus,
+          pagamento_inicial_status:
+            filters.pagamentoInicialStatus === "todos"
+              ? undefined
+              : filters.pagamentoInicialStatus,
+          numero_ciclos:
+            filters.numeroCiclos === "todos" ? undefined : filters.numeroCiclos,
+          preset: filters.preset === "todos" ? undefined : filters.preset,
+          mes: filters.competencia ? format(filters.competencia, "yyyy-MM") : undefined,
+          data_inicio: filters.dataInicio ? format(filters.dataInicio, "yyyy-MM-dd") : undefined,
+          data_fim: filters.dataFim ? format(filters.dataFim, "yyyy-MM-dd") : undefined,
+        };
+        const fetchedRows = await fetchAllPaginatedRows<PagamentoAgenteItem>({
+          sourcePath: "tesouraria/pagamentos",
+          sourceQuery,
+        });
+        const rows = filterRowsByReportScope({
+          rows: fetchedRows,
+          scope,
+          referenceDate,
+          getCandidates: (row) => [
+            row.pagamento_inicial_paid_at,
+            row.data_solicitacao,
+            row.auxilio_liberado_em,
+            row.data_contrato,
+          ],
+        }).map((row) => ({
             contrato_codigo: row.contrato_codigo,
             nome: row.nome,
             agente_nome: row.agente_nome,
@@ -195,7 +213,16 @@ export default function TesourariaPagamentosPage() {
             pagamento_inicial_valor: row.pagamento_inicial_valor,
             cancelamento_tipo: row.cancelamento_tipo ?? "",
             cancelamento_motivo: row.cancelamento_motivo ?? "",
-          }),
+          }));
+
+        await exportRouteReport({
+          route: "/tesouraria/pagamentos",
+          format: exportFormat,
+          rows,
+          filters: {
+            ...sourceQuery,
+            ...describeReportScope(scope, referenceDate),
+          },
         });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Falha ao exportar pagamentos.");
@@ -223,7 +250,13 @@ export default function TesourariaPagamentosPage() {
           <ExportButton
             disabled={isExporting}
             label={isExporting ? "Exportando..." : "Exportar"}
-            onExport={(exportFormat) => void handleExport(exportFormat)}
+            enableScopeSelection
+            onExport={(exportFormat) =>
+              exportFormat === "pdf" || exportFormat === "xlsx"
+                ? void handleExport("month", exportFormat)
+                : undefined
+            }
+            onExportScoped={(scope, exportFormat) => void handleExport(scope, exportFormat)}
           />
         </div>
       </section>

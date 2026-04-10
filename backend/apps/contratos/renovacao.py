@@ -10,7 +10,10 @@ from rest_framework.exceptions import ValidationError
 from apps.importacao.financeiro import build_financeiro_resumo
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem
 
-from .canonicalization import get_operational_contracts_for_associado
+from .canonicalization import (
+    get_operational_contracts_for_associado,
+    operational_contracts_queryset,
+)
 from .cycle_projection import build_contract_cycle_projection
 from .cycle_timeline import (
     get_contract_activation_payload,
@@ -38,6 +41,17 @@ def parse_competencia_query(value: str | None):
 
 
 class RenovacaoCicloService:
+    SUPPLEMENTAL_RENEWAL_STATUSES = {"apto_a_renovar"}
+    STATUS_PRIORITY = {
+        "aprovado_para_renovacao": 70,
+        "apto_a_renovar": 60,
+        "ciclo_iniciado": 50,
+        "inadimplente": 40,
+        "ciclo_renovado": 30,
+        "em_aberto": 20,
+        "em_previsao": 10,
+    }
+
     @staticmethod
     def _parcelas_minimas_para_renovar(parcelas_total: int) -> int:
         if parcelas_total <= 1:
@@ -120,6 +134,138 @@ class RenovacaoCicloService:
         if parcela.status in [Parcela.Status.EM_ABERTO]:
             return "em_aberto"
         return parcela.status
+
+    @staticmethod
+    def _build_projection_only_row(
+        *,
+        contrato: Contrato,
+        competencia,
+        projection: dict[str, object],
+    ) -> dict[str, object] | None:
+        status_renovacao = str(projection.get("status_renovacao") or "")
+        if status_renovacao not in RenovacaoCicloService.SUPPLEMENTAL_RENEWAL_STATUSES:
+            return None
+
+        projected_cycles = list(sorted(projection.get("cycles") or [], key=lambda item: item["numero"]))
+        if not projected_cycles:
+            return None
+
+        latest_projected_cycle = projected_cycles[-1]
+        ciclos = RenovacaoCicloService._resolve_ciclos(contrato)
+        ciclo = next(
+            (candidate for candidate in ciclos if candidate.numero == latest_projected_cycle["numero"]),
+            None,
+        )
+        if ciclo is None:
+            return None
+
+        parcelas_projetadas = list(latest_projected_cycle.get("parcelas") or [])
+        representative = next(
+            (
+                parcela
+                for parcela in reversed(parcelas_projetadas)
+                if parcela["referencia_mes"] <= competencia
+            ),
+            parcelas_projetadas[-1] if parcelas_projetadas else None,
+        )
+        contratos_associado = RenovacaoCicloService._resolve_associado_contratos(contrato)
+        associado = contrato.associado
+        parcelas_pagas = sum(
+            1
+            for parcela in parcelas_projetadas
+            if str(parcela.get("status") or "")
+            in {
+                Parcela.Status.DESCONTADO,
+                Parcela.Status.LIQUIDADA,
+                "quitada",
+            }
+        )
+        parcelas_total = len(parcelas_projetadas)
+        status_explicacao = RenovacaoCicloService._build_status_explicacao(
+            contrato=contrato,
+            status_visual=status_renovacao,
+            parcelas_pagas=parcelas_pagas,
+            parcelas_total=parcelas_total,
+            contratos_associado=contratos_associado,
+        )
+        ciclo_activation = get_cycle_activation_payload(ciclo)
+        contrato_activation = get_contract_activation_payload(contrato)
+
+        return {
+            "id": int(representative["id"] if representative else ciclo.id),
+            "competencia": competencia.strftime("%m/%Y"),
+            "contrato_id": contrato.id,
+            "contrato_codigo": contrato.codigo,
+            "associado_id": associado.id,
+            "nome_associado": associado.nome_completo,
+            "cpf_cnpj": associado.cpf_cnpj,
+            "orgao_publico": associado.orgao_publico,
+            "ciclo_id": ciclo.id,
+            "ciclo_numero": int(latest_projected_cycle["numero"]),
+            "status_ciclo": latest_projected_cycle["status"],
+            "status_parcela": (
+                representative["status"] if representative else Parcela.Status.EM_PREVISAO
+            ),
+            "status_visual": status_renovacao,
+            "status_explicacao": status_explicacao,
+            "data_primeiro_ciclo_ativado": contrato_activation["data_primeiro_ciclo_ativado"],
+            "data_ativacao_ciclo": ciclo_activation["data_ativacao_ciclo"],
+            "origem_data_ativacao": ciclo_activation["origem_data_ativacao"],
+            "data_solicitacao_renovacao": ciclo_activation["data_solicitacao_renovacao"],
+            "ativacao_inferida": ciclo_activation["ativacao_inferida"],
+            "matricula": (
+                associado.matricula_orgao
+                or associado.matricula
+                or contrato.codigo
+            ),
+            "agente_responsavel": RenovacaoCicloService._resolve_agente_responsavel(contrato),
+            "parcelas_pagas": parcelas_pagas,
+            "parcelas_total": parcelas_total,
+            "contrato_referencia_renovacao_id": contrato.id,
+            "contrato_referencia_renovacao_codigo": contrato.codigo,
+            "possui_multiplos_contratos": len(
+                [
+                    item
+                    for item in contratos_associado
+                    if item.status != Contrato.Status.CANCELADO
+                ]
+            )
+            > 1,
+            "valor_mensalidade": contrato.valor_mensalidade,
+            "valor_parcela": (
+                representative["valor"] if representative else contrato.valor_mensalidade
+            ),
+            "data_pagamento": representative["data_pagamento"] if representative else None,
+            "orgao_pagto_nome": "",
+            "resultado_importacao": "sem_competencia",
+            "status_codigo_etipi": "",
+            "status_descricao_etipi": "",
+            "gerou_encerramento": False,
+            "gerou_novo_ciclo": False,
+        }
+
+    @staticmethod
+    def _row_priority(row: dict[str, object]) -> tuple[int, int, int]:
+        return (
+            RenovacaoCicloService.STATUS_PRIORITY.get(str(row["status_visual"]), 0),
+            int(row["ciclo_numero"]),
+            int(row["contrato_id"]),
+        )
+
+    @staticmethod
+    def _dedupe_rows_by_associado(rows: list[dict[str, object]]) -> list[dict[str, object]]:
+        selected: dict[int, dict[str, object]] = {}
+        for row in rows:
+            associado_id = int(row["associado_id"])
+            current = selected.get(associado_id)
+            if current is None or RenovacaoCicloService._row_priority(row) > RenovacaoCicloService._row_priority(
+                current
+            ):
+                selected[associado_id] = row
+        return sorted(
+            selected.values(),
+            key=lambda item: (str(item["nome_associado"]).lower(), int(item["contrato_id"])),
+        )
 
     @staticmethod
     def _build_status_explicacao(
@@ -327,7 +473,6 @@ class RenovacaoCicloService:
                 continue
             rows.append(row)
 
-        seen_associado_ids = {row["associado_id"] for row in rows}
         itens_suplementares = (
             ArquivoRetornoItem.objects.select_related(
                 "associado",
@@ -352,8 +497,6 @@ class RenovacaoCicloService:
             )
         )
         for import_item in itens_suplementares:
-            if import_item.associado_id in seen_associado_ids:
-                continue
             contrato = import_item.parcela.ciclo.contrato
             if contrato.status not in [Contrato.Status.ATIVO, Contrato.Status.ENCERRADO]:
                 continue
@@ -365,8 +508,68 @@ class RenovacaoCicloService:
             if status and row["status_visual"] != status:
                 continue
             rows.append(row)
-            seen_associado_ids.add(import_item.associado_id)
-        return rows
+
+        contratos_suplementares = (
+            operational_contracts_queryset(
+                Contrato.objects.select_related(
+                    "agente",
+                    "associado",
+                    "associado__agente_responsavel",
+                ).prefetch_related(
+                    Prefetch(
+                        "ciclos__parcelas",
+                        queryset=Parcela.objects.order_by("numero"),
+                        to_attr="parcelas_prefetched",
+                    ),
+                    Prefetch(
+                        "ciclos",
+                        queryset=Ciclo.objects.order_by("numero").prefetch_related(
+                            Prefetch(
+                                "parcelas",
+                                queryset=Parcela.objects.order_by("numero"),
+                                to_attr="parcelas_prefetched",
+                            )
+                        ),
+                        to_attr="ciclos_prefetched",
+                    ),
+                    Prefetch(
+                        "associado__contratos",
+                        queryset=Contrato.objects.exclude(status=Contrato.Status.CANCELADO).only(
+                            "id",
+                            "codigo",
+                            "status",
+                            "associado_id",
+                        ),
+                        to_attr="contratos_contexto_prefetched",
+                    ),
+                )
+            )
+            .filter(status__in=[Contrato.Status.ATIVO, Contrato.Status.ENCERRADO])
+            .order_by("associado__nome_completo")
+        )
+        if search_value:
+            contratos_suplementares = contratos_suplementares.filter(
+                Q(associado__nome_completo__icontains=search_value)
+                | Q(associado__cpf_cnpj__icontains=search_value)
+                | Q(associado__matricula__icontains=search_value)
+                | Q(associado__matricula_orgao__icontains=search_value)
+                | Q(codigo__icontains=search_value)
+            )
+
+        for contrato in contratos_suplementares:
+            projection = build_contract_cycle_projection(contrato)
+            row = RenovacaoCicloService._build_projection_only_row(
+                contrato=contrato,
+                competencia=competencia,
+                projection=projection,
+            )
+            if row is None:
+                continue
+            if status and row["status_visual"] != status:
+                continue
+            rows.append(row)
+
+        return RenovacaoCicloService._dedupe_rows_by_associado(rows)
 
     @staticmethod
     def visao_mensal(*, competencia, search: str | None = None, status: str | None = None) -> dict[str, object]:
@@ -403,7 +606,7 @@ class RenovacaoCicloService:
                 resumo["em_previsao"] += 1
 
             # Only count active cycles in financial totals (exclude em_previsao)
-            if row["status_visual"] != "em_previsao":
+            if row["status_visual"] != "em_previsao" and row["resultado_importacao"] != "sem_competencia":
                 valor_parcela = Decimal(str(row.get("valor_parcela") or 0))
                 resumo["esperado_total"] += valor_parcela
                 if row["resultado_importacao"] == ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA or row[

@@ -28,6 +28,14 @@ import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
 import { usePermissions } from "@/hooks/use-permissions";
 import { formatCurrency, formatDate, formatMonthYear } from "@/lib/formatters";
+import {
+  describeReportScope,
+  exportRouteReport,
+  fetchAllPaginatedRows,
+  filterRowsByReportScope,
+  resolveReportReferenceDate,
+  type ReportScope,
+} from "@/lib/reports";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import StatusBadge from "@/components/custom/status-badge";
 import DevolucaoFormDialog, {
@@ -35,6 +43,7 @@ import DevolucaoFormDialog, {
 } from "@/components/tesouraria/devolucao-form-dialog";
 import DuplicidadesFinanceirasPanel from "@/components/tesouraria/duplicidades-financeiras-panel";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import ExportButton from "@/components/shared/export-button";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -244,6 +253,7 @@ export default function DevolucoesAssociadoPage() {
   const [draftEstado, setDraftEstado] = React.useState("todos");
   const [draftTipo, setDraftTipo] = React.useState("todos");
   const [draftStatus, setDraftStatus] = React.useState("todos");
+  const [isExporting, setIsExporting] = React.useState(false);
   const [registerState, setRegisterState] = React.useState<DevolucaoFormState | null>(null);
   const [registerAllowsContractSelection, setRegisterAllowsContractSelection] = React.useState(false);
   const [registerContractSearch, setRegisterContractSearch] = React.useState("");
@@ -302,6 +312,108 @@ export default function DevolucoesAssociadoPage() {
         : contratosQuery;
   const totalCount = query.data?.count ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / 20));
+
+  const handleExport = React.useCallback(
+    async (scope: ReportScope, formatValue: "pdf" | "xlsx") => {
+      const referenceDate = resolveReportReferenceDate({
+        scope,
+        dayReference: competencia,
+        monthReference: competencia,
+      });
+
+      setIsExporting(true);
+      try {
+        if (tab === "historico") {
+          const sourceQuery = {
+            search: search || undefined,
+            competencia: competencia ? format(competencia, "yyyy-MM") : undefined,
+            tipo: tipo !== "todos" ? tipo : undefined,
+            status: status !== "todos" ? status : undefined,
+          };
+          const fetchedRows = await fetchAllPaginatedRows<DevolucaoAssociadoItem>({
+            sourcePath: "tesouraria/devolucoes",
+            sourceQuery,
+          });
+          const rows = filterRowsByReportScope({
+            rows: fetchedRows,
+            scope,
+            referenceDate,
+            getCandidates: (row) => [row.data_devolucao, row.competencia_referencia],
+          }).map((row) => ({
+            nome: row.nome,
+            cpf_cnpj: row.cpf_cnpj,
+            matricula: row.matricula,
+            agente_nome: row.agente_nome,
+            contrato_codigo: row.contrato_codigo,
+            tipo: row.tipo,
+            status_devolucao: row.status_devolucao,
+            data_devolucao: row.data_devolucao,
+            quantidade_parcelas: row.quantidade_parcelas,
+            valor: row.valor,
+            competencia_referencia: row.competencia_referencia ?? "",
+            motivo: row.motivo,
+          }));
+
+          await exportRouteReport({
+            route: "/tesouraria/devolucoes",
+            format: formatValue,
+            rows,
+            filters: {
+              ...sourceQuery,
+              aba: tab,
+              ...describeReportScope(scope, referenceDate),
+            },
+          });
+          return;
+        }
+
+        const sourceQuery = {
+          search: search || undefined,
+          competencia: competencia ? format(competencia, "yyyy-MM") : undefined,
+          estado: estado !== "todos" ? estado : undefined,
+          fluxo: tab === "pos_liquidacao" ? "desistencia_pos_liquidacao" : undefined,
+        };
+        const fetchedRows = await fetchAllPaginatedRows<DevolucaoContratoItem>({
+          sourcePath: "tesouraria/devolucoes/contratos",
+          sourceQuery,
+        });
+        const rows = filterRowsByReportScope({
+          rows: fetchedRows,
+          scope,
+          referenceDate,
+          getCandidates: (row) => [row.data_contrato, row.mes_averbacao],
+        }).map((row) => ({
+          nome: row.nome,
+          cpf_cnpj: row.cpf_cnpj,
+          matricula: row.matricula,
+          agente_nome: row.agente_nome,
+          contrato_codigo: row.contrato_codigo,
+          status_contrato: row.status_contrato,
+          data_contrato: row.data_contrato,
+          mes_averbacao: row.mes_averbacao ?? "",
+          tipo_sugerido: row.tipo_sugerido ?? "",
+        }));
+
+        await exportRouteReport({
+          route: "/tesouraria/devolucoes",
+          format: formatValue,
+          rows,
+          filters: {
+            ...sourceQuery,
+            aba: tab,
+            ...describeReportScope(scope, referenceDate),
+          },
+        });
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Falha ao exportar devoluções.",
+        );
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [competencia, estado, search, status, tab, tipo],
+  );
 
   const registrarMutation = useMutation({
     mutationFn: async (payload: DevolucaoFormState) => {
@@ -651,13 +763,26 @@ export default function DevolucoesAssociadoPage() {
   return (
     <div className="space-y-6">
       <section className="rounded-[1.75rem] border border-border/60 bg-card/70 p-6">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-semibold">Devoluções</h1>
-          <p className="text-sm text-muted-foreground">
-            Registre devoluções por pagamento ou desconto indevido e trate duplicidades
-            financeiras vindas do arquivo retorno sem alterar parcelas, ciclos ou baixa
-            financeira do contrato.
-          </p>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-semibold">Devoluções</h1>
+            <p className="text-sm text-muted-foreground">
+              Registre devoluções por pagamento ou desconto indevido e trate duplicidades
+              financeiras vindas do arquivo retorno sem alterar parcelas, ciclos ou baixa
+              financeira do contrato.
+            </p>
+          </div>
+          <ExportButton
+            disabled={isExporting || isDuplicidadeTab}
+            label={isExporting ? "Exportando..." : "Exportar"}
+            enableScopeSelection
+            onExport={(formatValue) =>
+              formatValue === "pdf" || formatValue === "xlsx"
+                ? void handleExport("month", formatValue)
+                : undefined
+            }
+            onExportScoped={(scope, formatValue) => void handleExport(scope, formatValue)}
+          />
         </div>
       </section>
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { format } from "date-fns";
+
 import type { PaginatedResponse, RelatorioGeradoItem } from "@/lib/api/types";
 
 import { apiFetch } from "@/lib/api/client";
@@ -13,6 +15,7 @@ type ReportQueryValue =
   | undefined
   | Array<string | number | boolean>;
 type ReportQuery = Record<string, ReportQueryValue>;
+export type ReportScope = "day" | "month";
 
 export async function exportRouteReport({
   route,
@@ -105,5 +108,80 @@ export async function exportPaginatedRouteReport<T>({
     format,
     rows: rows.map((row) => mapRow(row)),
     filters: filters ?? sourceQuery,
+  });
+}
+
+export function resolveReportReferenceDate({
+  scope,
+  dayReference,
+  monthReference,
+  fallback = new Date(),
+}: {
+  scope: ReportScope;
+  dayReference?: Date;
+  monthReference?: Date;
+  fallback?: Date;
+}) {
+  return scope === "day"
+    ? dayReference ?? monthReference ?? fallback
+    : monthReference ?? dayReference ?? fallback;
+}
+
+export function describeReportScope(scope: ReportScope, referenceDate: Date) {
+  return {
+    escopo_relatorio: scope === "day" ? "dia" : "mes",
+    referencia_relatorio: format(referenceDate, scope === "day" ? "dd/MM/yyyy" : "MM/yyyy"),
+  };
+}
+
+function normalizeDateCandidate(value: unknown) {
+  if (value == null) {
+    return "";
+  }
+
+  const stringValue = String(value).trim();
+  if (!stringValue) {
+    return "";
+  }
+
+  if (/^\d{4}-\d{2}$/.test(stringValue)) {
+    return stringValue;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(stringValue)) {
+    return stringValue.slice(0, 10);
+  }
+
+  const parsed = new Date(stringValue);
+  if (Number.isNaN(parsed.getTime())) {
+    return stringValue;
+  }
+
+  return format(parsed, "yyyy-MM-dd");
+}
+
+export function filterRowsByReportScope<T>({
+  rows,
+  scope,
+  referenceDate,
+  getCandidates,
+}: {
+  rows: T[];
+  scope: ReportScope;
+  referenceDate: Date;
+  getCandidates: (row: T) => Array<unknown>;
+}) {
+  const scopeKey = format(referenceDate, scope === "day" ? "yyyy-MM-dd" : "yyyy-MM");
+
+  return rows.filter((row) => {
+    const candidates = getCandidates(row)
+      .map((candidate) => normalizeDateCandidate(candidate))
+      .filter(Boolean);
+
+    if (!candidates.length) {
+      return true;
+    }
+
+    return candidates.some((candidate) => candidate.startsWith(scopeKey));
   });
 }

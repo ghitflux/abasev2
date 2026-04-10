@@ -18,6 +18,7 @@ from .cycle_projection import (
 )
 from .cycle_timeline import get_contract_cycle_size
 from .models import Ciclo, Contrato, Parcela
+from .small_value_rules import is_return_imported_small_value_contract
 
 
 def _normalize_status(status: str) -> str:
@@ -59,6 +60,38 @@ def _active_operational_refis(contrato: Contrato) -> list[Refinanciamento]:
             ]
         )
     )
+
+
+def _reusable_soft_deleted_operational_refi(
+    contrato: Contrato,
+    *,
+    preferred_status: str | None = None,
+) -> Refinanciamento | None:
+    candidates = list(
+        Refinanciamento.all_objects.filter(
+            contrato_origem=contrato,
+            deleted_at__isnull=False,
+            legacy_refinanciamento_id__isnull=True,
+            origem=Refinanciamento.Origem.OPERACIONAL,
+            ciclo_destino__isnull=True,
+        )
+        .prefetch_related("comprovantes")
+        .order_by("-updated_at", "-created_at", "-id")
+    )
+    if not candidates:
+        return None
+
+    def priority(item: Refinanciamento) -> tuple[int, int, datetime, int]:
+        has_comprovantes = 1 if any(comp.deleted_at is None for comp in item.comprovantes.all()) else 0
+        preferred = 1 if preferred_status and item.status == preferred_status else 0
+        return (
+            preferred,
+            has_comprovantes,
+            item.updated_at or item.created_at,
+            item.id,
+        )
+
+    return max(candidates, key=priority)
 
 
 def _fallback_request_user(contrato: Contrato) -> User | None:
@@ -242,6 +275,8 @@ def _sync_refinanciamentos(
     desired_cycles: list[dict[str, object]],
     cycle_by_number: dict[int, Ciclo],
     report: ContractRebuildReport,
+    *,
+    force_active_operational_status: str | None = None,
 ) -> None:
     cycle_size = get_contract_cycle_size(contrato)
     current_cycle = next(
@@ -295,11 +330,19 @@ def _sync_refinanciamentos(
 
     threshold = max(cycle_size - 1, 1)
     should_have_operational_refi = False
+    block_small_value_renewal = is_return_imported_small_value_contract(contrato)
     if current_cycle is not None and cycle_by_number:
-        paid_count = sum(
-            1 for parcela in current_cycle["parcelas"] if parcela["status"] == Parcela.Status.DESCONTADO
-        )
-        should_have_operational_refi = paid_count >= threshold and len(cycle_by_number) == len(desired_cycles)
+        if force_active_operational_status is not None and not block_small_value_renewal:
+            should_have_operational_refi = True
+        else:
+            paid_count = sum(
+                1 for parcela in current_cycle["parcelas"] if parcela["status"] == Parcela.Status.DESCONTADO
+            )
+            should_have_operational_refi = (
+                not block_small_value_renewal
+                and paid_count >= threshold
+                and len(cycle_by_number) == len(desired_cycles)
+            )
 
     active_refis = _active_operational_refis(contrato)
     chosen = active_refis[0] if active_refis else None
@@ -319,7 +362,13 @@ def _sync_refinanciamentos(
                 chosen.solicitado_por if chosen else _fallback_request_user(contrato)
             ),
             "competencia_solicitada": competencia_solicitada,
-            "status": _normalize_status(chosen.status) if chosen else Refinanciamento.Status.APTO_A_RENOVAR,
+            "status": (
+                force_active_operational_status
+                if force_active_operational_status
+                else _normalize_status(chosen.status)
+                if chosen
+                else Refinanciamento.Status.APTO_A_RENOVAR
+            ),
             "ciclo_origem": current_ciclo,
             "ciclo_destino": None,
             "valor_refinanciamento": contrato.valor_liquido or contrato.valor_total_antecipacao,
@@ -355,7 +404,21 @@ def _sync_refinanciamentos(
                 raise ValueError(
                     "Não foi possível determinar usuário solicitante para o refinanciamento."
                 )
-            chosen = Refinanciamento.objects.create(**value_defaults)
+            reusable = _reusable_soft_deleted_operational_refi(
+                contrato,
+                preferred_status=force_active_operational_status,
+            )
+            if reusable is None:
+                chosen = Refinanciamento.objects.create(**value_defaults)
+            else:
+                chosen = reusable
+                changed_fields = ["deleted_at"]
+                chosen.deleted_at = None
+                for field, value in value_defaults.items():
+                    if getattr(chosen, field) != value:
+                        setattr(chosen, field, value)
+                        changed_fields.append(field)
+                chosen.save(update_fields=[*changed_fields, "updated_at"])
             report.refinanciamentos_ajustados += 1
         else:
             changed_fields: list[str] = []
@@ -429,6 +492,7 @@ def rebuild_contract_cycle_state(
     *,
     execute: bool = True,
     extra_reference_by_parcela_id: dict[int, object] | None = None,
+    force_active_operational_status: str | None = None,
 ) -> ContractRebuildReport:
     projection = build_contract_cycle_projection(contrato)
     desired_cycles = list(sorted(projection["cycles"], key=lambda item: item["numero"]))
@@ -453,7 +517,13 @@ def rebuild_contract_cycle_state(
                 deleted_at__isnull=True,
             ).order_by("numero", "id")
         }
-        _sync_refinanciamentos(contrato, desired_cycles, cycle_by_number, report)
+        _sync_refinanciamentos(
+            contrato,
+            desired_cycles,
+            cycle_by_number,
+            report,
+            force_active_operational_status=force_active_operational_status,
+        )
         return report
 
     existing_cycles: dict[int, Ciclo] = {}
@@ -514,7 +584,13 @@ def rebuild_contract_cycle_state(
 
     _soft_delete_extra_cycles(list(existing_cycles.values()), report)
     _rebind_financial_links(old_reference_by_parcela_id, new_parcela_by_reference, report)
-    _sync_refinanciamentos(contrato, desired_cycles, cycle_by_number, report)
+    _sync_refinanciamentos(
+        contrato,
+        desired_cycles,
+        cycle_by_number,
+        report,
+        force_active_operational_status=force_active_operational_status,
+    )
     return report
 
 

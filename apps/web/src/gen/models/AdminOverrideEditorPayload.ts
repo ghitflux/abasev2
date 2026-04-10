@@ -19,4 +19,15 @@ export type AdminOverrideEditorPayload = {
    * @type array
    */
   readonly documentos: AdminOverrideDocumentoRead[];
+  /**
+   * @type array
+   */
+  readonly warnings?: Array<{
+    readonly code: string;
+    readonly severity: string;
+    readonly contrato_id: number | null;
+    readonly contrato_codigo: string;
+    readonly message: string;
+    readonly details: Record<string, unknown>;
+  }>;
 };

@@ -744,6 +744,7 @@ describe("TesourariaDespesasPage", () => {
     expect(screen.getByText("Composição do mês")).toBeInTheDocument();
     expect(screen.getAllByText("Pagamentos operacionais").length).toBeGreaterThan(0);
     expect(screen.getByText("Complementos de receita")).toBeInTheDocument();
+    expect(screen.getByText("Despesas avulsas")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Valor associado" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Valor agente" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Valor total" })).toBeInTheDocument();

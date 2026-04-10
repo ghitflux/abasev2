@@ -84,6 +84,7 @@ class ArquivoRetornoViewSet(
             self.request.query_params.get("competencia")
         )
         periodo = parse_periodo_query(self.request.query_params.get("periodo"))
+        status = (self.request.query_params.get("status") or "").strip()
 
         if periodo and not competencia:
             raise ValidationError("O parâmetro periodo exige competencia.")
@@ -102,6 +103,9 @@ class ArquivoRetornoViewSet(
                     competencia__year=competencia.year,
                     competencia__month=competencia.month,
                 )
+
+        if status in {choice[0] for choice in ArquivoRetorno.Status.choices}:
+            queryset = queryset.filter(status=status)
 
         return queryset.order_by("-created_at")
 
@@ -142,6 +146,12 @@ class ArquivoRetornoViewSet(
                 type=str,
                 location=OpenApiParameter.QUERY,
                 description="Janela de filtro: mes ou trimestre.",
+            ),
+            OpenApiParameter(
+                name="status",
+                type=str,
+                location=OpenApiParameter.QUERY,
+                description="Status do processamento do arquivo retorno.",
             ),
         ],
         responses=ArquivoRetornoListSerializer(many=True),

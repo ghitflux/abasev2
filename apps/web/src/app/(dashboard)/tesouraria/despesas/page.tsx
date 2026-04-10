@@ -40,6 +40,14 @@ import {
   formatDateTime,
   formatLongMonthYear,
 } from "@/lib/formatters";
+import {
+  describeReportScope,
+  exportRouteReport,
+  fetchAllPaginatedRows,
+  filterRowsByReportScope,
+  resolveReportReferenceDate,
+  type ReportScope,
+} from "@/lib/reports";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import DatePicker from "@/components/custom/date-picker";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
@@ -47,6 +55,7 @@ import InputCurrency from "@/components/custom/input-currency";
 import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import ExportButton from "@/components/shared/export-button";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -389,6 +398,7 @@ export default function TesourariaDespesasPage() {
   });
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
+  const [isExporting, setIsExporting] = React.useState(false);
   const debouncedSearch = useDebouncedValue(search, 300);
   const [statusFilter, setStatusFilter] = React.useState("todos");
   const [statusAnexoFilter, setStatusAnexoFilter] = React.useState("todos");
@@ -615,6 +625,114 @@ export default function TesourariaDespesasPage() {
     [resultadoMensalQuery.data?.totais, resultadoRows],
   );
   const resultadoDetalhe = resultadoDetalheQuery.data;
+
+  const handleExport = React.useCallback(
+    async (scope: ReportScope, formatValue: "pdf" | "xlsx") => {
+      const referenceDate = resolveReportReferenceDate({
+        scope,
+        dayReference: competencia,
+        monthReference: tab === "resultado" ? resultadoBaseMonth : competencia,
+      });
+
+      setIsExporting(true);
+      try {
+        if (tab === "resultado") {
+          const rows = filterRowsByReportScope({
+            rows: resultadoRows,
+            scope: "month",
+            referenceDate,
+            getCandidates: (row) => [row.mes],
+          }).map((row) => ({
+            mes: row.mes,
+            receitas: row.receitas,
+            receitas_inadimplencia: row.receitas_inadimplencia,
+            receitas_retorno: row.receitas_retorno,
+            complementos_receita: row.complementos_receita,
+            despesas: row.despesas,
+            despesas_manuais: row.despesas_manuais,
+            devolucoes: row.devolucoes,
+            pagamentos_operacionais: row.pagamentos_operacionais,
+            lucro: row.lucro,
+            lucro_liquido: row.lucro_liquido,
+          }));
+
+          await exportRouteReport({
+            route: "/tesouraria/despesas",
+            format: formatValue,
+            rows,
+            filters: {
+              aba: tab,
+              competencia: format(resultadoBaseMonth, "yyyy-MM"),
+              agente: agenteResultadoFiltro || undefined,
+              ...describeReportScope(scope, referenceDate),
+            },
+          });
+          return;
+        }
+
+        const sourceQuery = {
+          competencia: format(competencia, "yyyy-MM"),
+          search: debouncedSearch || undefined,
+          status: statusFilter !== "todos" ? statusFilter : undefined,
+          status_anexo: statusAnexoFilter !== "todos" ? statusAnexoFilter : undefined,
+          tipo: tipoFilter !== "todos" ? tipoFilter : undefined,
+          natureza: naturezaFilter !== "todos" ? naturezaFilter : undefined,
+        };
+        const fetchedRows = await fetchAllPaginatedRows<DespesaItem>({
+          sourcePath: "tesouraria/despesas",
+          sourceQuery,
+        });
+        const rows = filterRowsByReportScope({
+          rows: fetchedRows,
+          scope,
+          referenceDate,
+          getCandidates: (row) => [row.data_pagamento, row.data_despesa, row.created_at],
+        }).map((row) => ({
+          categoria: row.categoria,
+          descricao: row.descricao,
+          valor: row.valor,
+          natureza: row.natureza,
+          data_despesa: row.data_despesa,
+          data_pagamento: row.data_pagamento ?? "",
+          status: row.status,
+          tipo: row.tipo,
+          recorrencia: row.recorrencia,
+          recorrencia_ativa: row.recorrencia_ativa ? "sim" : "nao",
+          status_anexo: row.status_anexo,
+          observacoes: row.observacoes,
+        }));
+
+        await exportRouteReport({
+          route: "/tesouraria/despesas",
+          format: formatValue,
+          rows,
+          filters: {
+            ...sourceQuery,
+            aba: tab,
+            ...describeReportScope(scope, referenceDate),
+          },
+        });
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Falha ao exportar despesas.",
+        );
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [
+      agenteResultadoFiltro,
+      competencia,
+      debouncedSearch,
+      naturezaFilter,
+      resultadoBaseMonth,
+      resultadoRows,
+      statusAnexoFilter,
+      statusFilter,
+      tab,
+      tipoFilter,
+    ],
+  );
 
   const openResultadoDetalhe = React.useCallback(
     (mes: string, nextTab: ResultadoDetalheTab) => {
@@ -1073,6 +1191,17 @@ export default function TesourariaDespesasPage() {
                 }}
                 className="w-full rounded-2xl bg-card/60 sm:w-56"
               />
+              <ExportButton
+                disabled={isExporting}
+                label={isExporting ? "Exportando..." : "Exportar"}
+                enableScopeSelection
+                onExport={(formatValue) =>
+                  formatValue === "pdf" || formatValue === "xlsx"
+                    ? void handleExport("month", formatValue)
+                    : undefined
+                }
+                onExportScoped={(scope, formatValue) => void handleExport(scope, formatValue)}
+              />
               <Button
                 onClick={() => {
                   setFormState(initialFormState);
@@ -1511,7 +1640,7 @@ export default function TesourariaDespesasPage() {
               </div>
             ) : resultadoDetalhe ? (
               <div className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                   <StatsCard
                     title="Receitas"
                     value={formatCurrency(resultadoDetalhe.resumo.receitas)}
@@ -1521,8 +1650,15 @@ export default function TesourariaDespesasPage() {
                   />
                   <StatsCard
                     title="Despesas"
-                    value={formatCurrency(resultadoDetalhe.resumo.despesas)}
-                    delta="Manuais + devoluções"
+                    value={formatCurrency(resultadoDetalhe.resumo.despesas_manuais)}
+                    delta="Despesas operacionais lançadas manualmente"
+                    icon={TrendingDownIcon}
+                    tone="warning"
+                  />
+                  <StatsCard
+                    title="Despesas avulsas"
+                    value={formatCurrency(resultadoDetalhe.resumo.devolucoes)}
+                    delta="Devoluções registradas no mês"
                     icon={TrendingDownIcon}
                     tone="warning"
                   />

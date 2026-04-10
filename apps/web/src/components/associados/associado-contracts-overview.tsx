@@ -680,11 +680,21 @@ export function AssociadoContractsOverview({
                 ))}
               </div>
 
-              {contrato.meses_nao_pagos.length ? (
+              {contrato.meses_nao_pagos.filter(
+                (mes) =>
+                  !["quitada", "descontado", "liquidada"].includes(String(mes.status)),
+              ).length ? (
                 <div className="space-y-3">
                   <p className="text-sm font-medium text-foreground">Parcelas não descontadas</p>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {contrato.meses_nao_pagos.map((mes) => (
+                    {contrato.meses_nao_pagos
+                      .filter(
+                        (mes) =>
+                          !["quitada", "descontado", "liquidada"].includes(
+                            String(mes.status),
+                          ),
+                      )
+                      .map((mes) => (
                       <button
                         key={mes.id}
                         type="button"
@@ -711,6 +721,47 @@ export function AssociadoContractsOverview({
                         </CardContent>
                       </button>
                     ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {contrato.meses_nao_pagos.filter((mes) =>
+                ["quitada", "descontado", "liquidada"].includes(String(mes.status)),
+              ).length ? (
+                <div className="space-y-3">
+                  <p className="text-sm font-medium text-foreground">Quitadas fora do ciclo</p>
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {contrato.meses_nao_pagos
+                      .filter((mes) =>
+                        ["quitada", "descontado", "liquidada"].includes(String(mes.status)),
+                      )
+                      .map((mes) => (
+                        <button
+                          key={mes.id}
+                          type="button"
+                          onClick={() =>
+                            onParcelaClick?.({
+                              contratoId: contrato.id,
+                              referenciaMes: mes.referencia_mes,
+                              kind: "unpaid",
+                            })
+                          }
+                          className="rounded-[1.5rem] border border-border/60 bg-card/60 text-left transition hover:border-primary/50"
+                        >
+                          <CardContent className="space-y-2 pt-6">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="font-medium">{formatMonthYear(mes.referencia_mes)}</p>
+                              <StatusBadge status={mes.status} />
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {formatCurrency(mes.valor)}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {mes.observacao || "Sem observação."}
+                            </p>
+                          </CardContent>
+                        </button>
+                      ))}
                   </div>
                 </div>
               ) : null}

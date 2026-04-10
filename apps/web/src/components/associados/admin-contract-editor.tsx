@@ -47,6 +47,7 @@ const contratoStatusOptions = [
 const cicloStatusOptions = [
   "futuro",
   "aberto",
+  "pendencia",
   "ciclo_renovado",
   "apto_a_renovar",
   "fechado",
@@ -927,10 +928,10 @@ const AdminContractEditor = React.forwardRef<AdminContractEditorHandle, Props>(f
       <Card className="rounded-[1.5rem] border-primary/20 bg-primary/5">
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
           <div>
-            <CardTitle className="text-base">Modo edição admin</CardTitle>
+            <CardTitle className="text-base">Editor avançado</CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
               Ajustes do contrato, renovação e layout dos ciclos ficam em rascunho local até o
-              salvamento global do modo admin.
+              salvamento global do editor.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs">

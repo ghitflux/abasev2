@@ -79,6 +79,7 @@ class Contrato(BaseModel):
     )
     admin_manual_layout_enabled = models.BooleanField(default=False)
     admin_manual_layout_updated_at = models.DateTimeField(null=True, blank=True)
+    allow_small_value_renewal = models.BooleanField(default=False)
     cancelamento_tipo = models.CharField(
         max_length=20,
         choices=CancelamentoTipo.choices,
@@ -168,6 +169,7 @@ class Ciclo(BaseModel):
     class Status(models.TextChoices):
         FUTURO = "futuro", "Futuro"
         ABERTO = "aberto", "Aberto"
+        PENDENCIA = "pendencia", "Pendência"
         CICLO_RENOVADO = "ciclo_renovado", "Ciclo renovado"
         APTO_A_RENOVAR = "apto_a_renovar", "Apto a renovar"
         FECHADO = "fechado", "Fechado"

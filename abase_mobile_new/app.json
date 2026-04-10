@@ -26,8 +26,8 @@
         "foregroundImage": "./src/assets/adaptive-icon.png",
         "backgroundColor": "#692e44"
       },
-      "package": "br.org.abase.mobile",
-      "versionCode": 213,
+      "package": "com.abase.abasepi",
+      "versionCode": 214,
       "permissions": [
         "android.permission.RECORD_AUDIO"
       ]

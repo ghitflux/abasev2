@@ -100,16 +100,23 @@ jest.mock("@/components/shared/dashboard-detail-dialog", () => {
       open,
       title,
       rows,
+      onExport,
     }: {
       open: boolean;
       title: string;
       rows: Array<{ id: string; associado_nome: string }>;
+      onExport?: (format: "csv" | "pdf" | "excel" | "xlsx") => void;
     }) =>
       open
         ? React.createElement(
             "div",
             { role: "dialog" },
             React.createElement("h2", null, title),
+            React.createElement(
+              "button",
+              { onClick: () => onExport?.("csv") },
+              "Exportar detalhes",
+            ),
             ...rows.map((row) =>
               React.createElement("div", { key: row.id }, row.associado_nome),
             ),
@@ -442,6 +449,7 @@ const detailPayload = {
       associado_nome: "Maria Ativa",
       cpf_cnpj: "11111111111",
       matricula: "MAT-1111",
+      data_nascimento: "1990-03-10",
       status: "ativo",
       agente_nome: "Alice ABASE",
       contrato_codigo: "CTR-A1",
@@ -605,6 +613,38 @@ describe("DashboardPage", () => {
     expect(await screen.findByText("Maria Ativa")).toBeInTheDocument();
   });
 
+  it("abre o modal de novos associados a partir da tabela mensal e exporta a relacao do mes", async () => {
+    const user = userEvent.setup();
+
+    renderPage();
+
+    expect(await screen.findByText("Resumo mensal da associação")).toBeInTheDocument();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Abrir novos associados de março de 2026",
+      }),
+    );
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByText("Novos associados de março de 2026")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Exportar detalhes" }));
+
+    await waitFor(() => {
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        "dashboard/admin/detalhes",
+        expect.objectContaining({
+          query: expect.objectContaining({
+            section: "summary",
+            metric: "trend:efetivados:2026-03",
+            page_size: "all",
+          }),
+        }),
+      );
+    });
+  });
+
   it("reaplica a consulta da secao ao alterar o filtro de status do panorama geral", async () => {
     const user = userEvent.setup();
 
@@ -651,7 +691,7 @@ describe("DashboardPage", () => {
       "dashboard/admin/resumo-mensal-associacao",
       expect.objectContaining({
         query: expect.objectContaining({
-          competencia: "2026-03",
+          competencia: "2026-04",
         }),
       }),
     );

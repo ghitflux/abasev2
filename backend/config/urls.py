@@ -85,6 +85,7 @@ from apps.tesouraria.views import (
     DespesaViewSet,
     ConfirmacaoViewSet,
     LiquidacaoContratoViewSet,
+    TesourariaPagamentoViewSet,
     TesourariaContratoViewSet,
 )
 
@@ -166,6 +167,11 @@ router.register(
     basename="tesouraria-refinanciamento",
 )
 router.register(r"agente/pagamentos", AgentePagamentoViewSet, basename="agente-pagamento")
+router.register(
+    r"tesouraria/pagamentos",
+    TesourariaPagamentoViewSet,
+    basename="tesouraria-pagamento",
+)
 router.register(
     r"tesouraria/baixa-manual",
     BaixaManualViewSet,

@@ -317,6 +317,79 @@ def _primary_parcela_by_reference(contrato: Contrato) -> dict[date, Parcela]:
     }
 
 
+def _resolve_intra_contract_duplicate_rows(
+    group: DuplicateBillingGroup,
+    summary: DuplicateBillingRepairSummary,
+) -> None:
+    if not group.intra_contract_months:
+        return
+
+    duplicate_note_prefix = (
+        f"Competência consolidada pela normalização de duplicidade em "
+        f"{timezone.localtime().strftime('%Y-%m-%d %H:%M:%S')}."
+    )
+
+    for month in group.intra_contract_months:
+        referencia = date.fromisoformat(month)
+        parcelas = list(
+            Parcela.all_objects.filter(
+                associado=group.associado,
+                ciclo__contrato=group.primary_contract,
+                referencia_mes=referencia,
+                deleted_at__isnull=True,
+            )
+            .exclude(status=Parcela.Status.CANCELADO)
+            .order_by("created_at", "id")
+        )
+        if len(parcelas) <= 1:
+            continue
+
+        canonical = parcelas[0]
+        canonical_changed_fields: list[str] = []
+        canonical_note = _append_merge_note(
+            canonical.observacao,
+            duplicate_note_prefix,
+        )
+        if canonical_note != (canonical.observacao or ""):
+            canonical.observacao = canonical_note
+            canonical_changed_fields.append("observacao")
+
+        for duplicate in parcelas[1:]:
+            summary.itens_retorno_reassociados += ArquivoRetornoItem.objects.filter(
+                parcela=duplicate
+            ).update(parcela=canonical)
+
+            duplicate_baixa = BaixaManual.objects.filter(parcela=duplicate).first()
+            canonical_baixa = BaixaManual.objects.filter(parcela=canonical).first()
+            if duplicate_baixa and canonical_baixa is None:
+                duplicate_baixa.parcela = canonical
+                duplicate_baixa.observacao = _append_merge_note(
+                    duplicate_baixa.observacao,
+                    f"Baixa migrada da parcela duplicada #{duplicate.id}.",
+                )
+                duplicate_baixa.save(update_fields=["parcela", "observacao", "updated_at"])
+                summary.baixas_reassociadas += 1
+                canonical_baixa = duplicate_baixa
+
+            if (
+                duplicate.status in {Parcela.Status.DESCONTADO, Parcela.Status.LIQUIDADA}
+                and canonical.status not in {Parcela.Status.DESCONTADO, Parcela.Status.LIQUIDADA}
+            ):
+                canonical.status = duplicate.status
+                canonical_changed_fields.append("status")
+            if canonical.data_pagamento is None and duplicate.data_pagamento is not None:
+                canonical.data_pagamento = duplicate.data_pagamento
+                canonical_changed_fields.append("data_pagamento")
+
+            duplicate.soft_delete()
+            summary.parcelas_soft_deleted += 1
+
+        if canonical_changed_fields:
+            canonical.save(
+                update_fields=[*sorted(set(canonical_changed_fields)), "updated_at"]
+            )
+
+
 @transaction.atomic
 def _repair_group(
     group: DuplicateBillingGroup,
@@ -337,6 +410,9 @@ def _repair_group(
 
     duplicate_reference_map: dict[int, date] = {}
     refinanciamento_transfers: list[dict[str, int | None]] = []
+
+    if not group.duplicate_contracts:
+        _resolve_intra_contract_duplicate_rows(group, summary)
 
     for duplicate in group.duplicate_contracts:
         duplicate_note = (
@@ -412,19 +488,20 @@ def _repair_group(
         summary.cycles_soft_deleted += delete_summary["cycles_soft_deleted"]
         summary.parcelas_soft_deleted += delete_summary["parcelas_soft_deleted"]
 
-    rebuild_report = rebuild_contract_cycle_state(
-        group.primary_contract,
-        execute=True,
-        extra_reference_by_parcela_id=duplicate_reference_map,
-    )
-    summary.rebuilt_primary_contract = True
-    summary.itens_retorno_reassociados += rebuild_report.itens_retorno_reassociados
-    summary.itens_retorno_orfaos += rebuild_report.itens_retorno_orfaos
-    summary.baixas_reassociadas += rebuild_report.baixas_reassociadas
-    summary.refinanciamentos_soft_deleted += rebuild_report.refinanciamentos_soft_deleted
-    summary.refinanciamentos_reassigned += rebuild_report.refinanciamentos_ajustados
-    summary.cycles_soft_deleted += rebuild_report.ciclos_invalidos_soft_deleted
-    summary.parcelas_soft_deleted += rebuild_report.parcelas_invalidas_soft_deleted
+    if group.duplicate_contracts:
+        rebuild_report = rebuild_contract_cycle_state(
+            group.primary_contract,
+            execute=True,
+            extra_reference_by_parcela_id=duplicate_reference_map,
+        )
+        summary.rebuilt_primary_contract = True
+        summary.itens_retorno_reassociados += rebuild_report.itens_retorno_reassociados
+        summary.itens_retorno_orfaos += rebuild_report.itens_retorno_orfaos
+        summary.baixas_reassociadas += rebuild_report.baixas_reassociadas
+        summary.refinanciamentos_soft_deleted += rebuild_report.refinanciamentos_soft_deleted
+        summary.refinanciamentos_reassigned += rebuild_report.refinanciamentos_ajustados
+        summary.cycles_soft_deleted += rebuild_report.ciclos_invalidos_soft_deleted
+        summary.parcelas_soft_deleted += rebuild_report.parcelas_invalidas_soft_deleted
 
     primary_cycles = {
         ciclo.numero: ciclo

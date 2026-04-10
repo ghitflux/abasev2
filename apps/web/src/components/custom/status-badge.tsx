@@ -47,6 +47,7 @@ const STATUS_STYLES: Record<string, string> = {
   pendente_apto: "bg-sky-500/15 text-sky-300 ring-1 ring-sky-500/30",
   em_aberto: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
   pendente: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
+  pendencia: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
   processando: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
   pendencia_manual: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",
   pendenciado: "bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30",

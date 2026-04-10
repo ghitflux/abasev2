@@ -32,6 +32,14 @@ import {
 import { usePermissions } from "@/hooks/use-permissions";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { formatCurrency, formatDate, formatMonthYear } from "@/lib/formatters";
+import {
+  describeReportScope,
+  exportRouteReport,
+  fetchAllPaginatedRows,
+  filterRowsByReportScope,
+  resolveReportReferenceDate,
+  type ReportScope,
+} from "@/lib/reports";
 import DatePicker from "@/components/custom/date-picker";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import InputCurrency from "@/components/custom/input-currency";
@@ -39,6 +47,7 @@ import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import ExportButton from "@/components/shared/export-button";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -267,6 +276,7 @@ export default function LiquidacoesTesourariaPage() {
   const [draftDataInicio, setDraftDataInicio] = React.useState<Date | undefined>();
   const [draftDataFim, setDraftDataFim] = React.useState<Date | undefined>();
   const [draftEstado, setDraftEstado] = React.useState("todos");
+  const [isExporting, setIsExporting] = React.useState(false);
   const [liquidarState, setLiquidarState] = React.useState<LiquidarState | null>(null);
   const [reverterTarget, setReverterTarget] = React.useState<LiquidacaoContratoItem | null>(null);
   const [motivoReversao, setMotivoReversao] = React.useState("");
@@ -313,6 +323,84 @@ export default function LiquidacoesTesourariaPage() {
     estado,
     contractId,
   });
+
+  const handleExport = React.useCallback(
+    async (scope: ReportScope, formatValue: "pdf" | "xlsx") => {
+      const referenceDate = resolveReportReferenceDate({
+        scope,
+        dayReference: dataInicio ?? dataFim,
+        monthReference: dataInicio ?? dataFim,
+      });
+
+      setIsExporting(true);
+      try {
+        const sourceQuery = {
+          status: tab,
+          search: debouncedSearch || undefined,
+          agente: agenteFiltro || undefined,
+          status_associado: statusAssociado !== "todos" ? statusAssociado : undefined,
+          etapa_fluxo: etapaFluxo !== "todas" ? etapaFluxo : undefined,
+          data_inicio: dataInicio ? format(dataInicio, "yyyy-MM-dd") : undefined,
+          data_fim: dataFim ? format(dataFim, "yyyy-MM-dd") : undefined,
+          estado: tab === "liquidado" && estado !== "todos" ? estado : undefined,
+          contract_id: contractId,
+        };
+        const fetchedRows = await fetchAllPaginatedRows<LiquidacaoContratoItem>({
+          sourcePath: "tesouraria/liquidacoes",
+          sourceQuery,
+        });
+        const rows = filterRowsByReportScope({
+          rows: fetchedRows,
+          scope,
+          referenceDate,
+          getCandidates: (row) => [row.data_liquidacao, row.referencia_inicial, row.referencia_final],
+        }).map((row) => ({
+          nome: row.nome,
+          cpf_cnpj: row.cpf_cnpj,
+          matricula: row.matricula,
+          agente_nome: row.agente_nome,
+          contrato_codigo: row.contrato_codigo,
+          quantidade_parcelas: row.quantidade_parcelas,
+          valor_total: row.valor_total,
+          referencia_inicial: row.referencia_inicial ?? "",
+          referencia_final: row.referencia_final ?? "",
+          status_liquidacao: row.status_liquidacao,
+          status_operacional: row.status_operacional,
+          status_associado: row.status_associado_label,
+          origem_solicitacao: row.origem_solicitacao,
+          data_liquidacao: row.data_liquidacao ?? "",
+          observacao: row.observacao,
+        }));
+
+        await exportRouteReport({
+          route: "/tesouraria/liquidacoes",
+          format: formatValue,
+          rows,
+          filters: {
+            ...sourceQuery,
+            ...describeReportScope(scope, referenceDate),
+          },
+        });
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Falha ao exportar liquidações.",
+        );
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [
+      agenteFiltro,
+      contractId,
+      dataFim,
+      dataInicio,
+      debouncedSearch,
+      estado,
+      etapaFluxo,
+      statusAssociado,
+      tab,
+    ],
+  );
 
   const liquidarMutation = useMutation({
     mutationFn: async (payload: LiquidarState) => {
@@ -699,12 +787,25 @@ export default function LiquidacoesTesourariaPage() {
   return (
     <div className="space-y-6">
       <section className="rounded-[1.75rem] border border-border/60 bg-card/70 p-6">
-        <div className="space-y-1">
-          <h1 className="text-3xl font-semibold">Liquidação</h1>
-          <p className="text-sm text-muted-foreground">
-            Acompanhe todos os associados e registre liquidações pela tesouraria com comprovante,
-            trilha financeira e reversão administrativa controlada.
-          </p>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-1">
+            <h1 className="text-3xl font-semibold">Liquidação</h1>
+            <p className="text-sm text-muted-foreground">
+              Acompanhe todos os associados e registre liquidações pela tesouraria com comprovante,
+              trilha financeira e reversão administrativa controlada.
+            </p>
+          </div>
+          <ExportButton
+            disabled={isExporting}
+            label={isExporting ? "Exportando..." : "Exportar"}
+            enableScopeSelection
+            onExport={(formatValue) =>
+              formatValue === "pdf" || formatValue === "xlsx"
+                ? void handleExport("month", formatValue)
+                : undefined
+            }
+            onExportScoped={(scope, formatValue) => void handleExport(scope, formatValue)}
+          />
         </div>
       </section>
 

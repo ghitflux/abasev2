@@ -14,6 +14,7 @@ import {
   SlidersHorizontalIcon,
   TrendingDownIcon,
   UploadIcon,
+  UserXIcon,
   WalletCardsIcon,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -21,6 +22,14 @@ import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api/client";
 import { formatCurrency, formatDate } from "@/lib/formatters";
+import {
+  describeReportScope,
+  exportRouteReport,
+  fetchAllPaginatedRows,
+  filterRowsByReportScope,
+  resolveReportReferenceDate,
+  type ReportScope,
+} from "@/lib/reports";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import DatePicker from "@/components/custom/date-picker";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
@@ -28,6 +37,7 @@ import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import ExportButton from "@/components/shared/export-button";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -71,23 +81,26 @@ type SimpleUser = {
 
 type BaixaManualItem = {
   id: number;
-  parcela_id: number;
+  parcela_id: number | null;
   associado_id: number;
   nome: string;
   cpf_cnpj: string;
   matricula: string;
   agente_nome: string;
-  contrato_id: number;
+  contrato_id: number | null;
   contrato_codigo: string;
   referencia_mes: string;
   valor: string;
   status: string;
-  data_vencimento: string;
+  data_vencimento: string | null;
   observacao: string;
   data_baixa: string | null;
   valor_pago: string | null;
   realizado_por_nome: string;
   nome_comprovante: string;
+  origem: string;
+  arquivo_retorno_item_id: number | null;
+  pode_dar_baixa: boolean;
 };
 
 type BaixaManualKpis = {
@@ -102,6 +115,7 @@ type BaixaManualKpis = {
   valor_total_quitado?: string;
   quitados_este_mes?: number;
   valor_quitado_este_mes?: string;
+  total_pendentes_com_parcela?: number;
 };
 
 type BaixaManualResponse = {
@@ -121,12 +135,19 @@ type AssociadoGroup = {
   total_parcelas: number;
   valor_total: number;
   ultima_baixa: string | null;
+  possuiParcelaBaixavel: boolean;
 };
 
 type DarBaixaState = {
   item: BaixaManualItem;
   comprovante: File | null;
   valorPago: string;
+  observacao: string;
+};
+
+type InativarAssociadoState = {
+  group: AssociadoGroup;
+  comprovante: File | null;
   observacao: string;
 };
 
@@ -173,6 +194,8 @@ function groupByAssociado(items: BaixaManualItem[], listing: ListingTab): Associ
       existing.parcelas.push(item);
       existing.total_parcelas += 1;
       existing.valor_total += value;
+      existing.possuiParcelaBaixavel =
+        existing.possuiParcelaBaixavel || Boolean(item.pode_dar_baixa && item.parcela_id);
       if (listing === "quitados" && item.data_baixa) {
         existing.ultima_baixa =
           !existing.ultima_baixa || item.data_baixa > existing.ultima_baixa
@@ -193,6 +216,7 @@ function groupByAssociado(items: BaixaManualItem[], listing: ListingTab): Associ
       total_parcelas: 1,
       valor_total: value,
       ultima_baixa: listing === "quitados" ? item.data_baixa : null,
+      possuiParcelaBaixavel: Boolean(item.pode_dar_baixa && item.parcela_id),
     });
   }
 
@@ -209,7 +233,8 @@ export default function BaixaManualPage() {
   const [listing, setListing] = React.useState<ListingTab>("pendentes");
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
-  const [statusFilter, setStatusFilter] = React.useState("todos");
+  const [isExporting, setIsExporting] = React.useState(false);
+  const [statusFilter, setStatusFilter] = React.useState("nao_descontado");
   const [competencia, setCompetencia] = React.useState<Date | undefined>();
   const [agente, setAgente] = React.useState("");
   const [dataInicio, setDataInicio] = React.useState<Date | undefined>();
@@ -221,6 +246,8 @@ export default function BaixaManualPage() {
     dataFim: undefined,
   });
   const [darBaixaState, setDarBaixaState] = React.useState<DarBaixaState | null>(null);
+  const [inativarAssociadoState, setInativarAssociadoState] =
+    React.useState<InativarAssociadoState | null>(null);
   const [navigatingId, setNavigatingId] = React.useState<number | null>(null);
 
   const competenciaParam = competencia ? format(competencia, "yyyy-MM") : undefined;
@@ -277,6 +304,84 @@ export default function BaixaManualPage() {
       }),
   });
 
+  const handleExport = React.useCallback(
+    async (scope: ReportScope, formatValue: "pdf" | "xlsx") => {
+      const referenceDate = resolveReportReferenceDate({
+        scope,
+        dayReference: dataInicio ?? dataFim,
+        monthReference: competencia ?? dataInicio ?? dataFim,
+      });
+
+      setIsExporting(true);
+      try {
+        const sourceQuery = {
+          listing,
+          search: search || undefined,
+          status:
+            listing === "pendentes" && statusFilter !== "todos" ? statusFilter : undefined,
+          competencia: competenciaParam,
+          agente: agente || undefined,
+          data_inicio: dataInicio ? format(dataInicio, "yyyy-MM-dd") : undefined,
+          data_fim: dataFim ? format(dataFim, "yyyy-MM-dd") : undefined,
+        };
+        const fetchedRows = await fetchAllPaginatedRows<BaixaManualItem>({
+          sourcePath: "tesouraria/baixa-manual",
+          sourceQuery,
+        });
+        const rows = filterRowsByReportScope({
+          rows: fetchedRows,
+          scope,
+          referenceDate,
+          getCandidates: (row) =>
+            listing === "quitados"
+              ? [row.data_baixa, row.data_vencimento, row.referencia_mes]
+              : [row.data_vencimento, row.referencia_mes, row.data_baixa],
+        }).map((row) => ({
+          nome: row.nome,
+          cpf_cnpj: row.cpf_cnpj,
+          matricula: row.matricula,
+          agente_nome: row.agente_nome,
+          contrato_codigo: row.contrato_codigo,
+          referencia_mes: row.referencia_mes,
+          valor: row.valor,
+          status: row.status,
+          data_vencimento: row.data_vencimento,
+          data_baixa: row.data_baixa,
+          valor_pago: row.valor_pago ?? "",
+          observacao: row.observacao,
+          realizado_por_nome: row.realizado_por_nome,
+          nome_comprovante: row.nome_comprovante,
+        }));
+
+        await exportRouteReport({
+          route: "/tesouraria/baixa-manual",
+          format: formatValue,
+          rows,
+          filters: {
+            ...sourceQuery,
+            ...describeReportScope(scope, referenceDate),
+          },
+        });
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Falha ao exportar inadimplentes.",
+        );
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [
+      agente,
+      competencia,
+      competenciaParam,
+      dataFim,
+      dataInicio,
+      listing,
+      search,
+      statusFilter,
+    ],
+  );
+
   const darBaixaMutation = useMutation({
     mutationFn: async ({
       parcelaId,
@@ -311,6 +416,46 @@ export default function BaixaManualPage() {
     },
   });
 
+  const inativarAssociadoMutation = useMutation({
+    mutationFn: async ({
+      associadoId,
+      comprovante,
+      observacao,
+    }: {
+      associadoId: number;
+      comprovante: File;
+      observacao: string;
+    }) => {
+      const fd = new FormData();
+      fd.append("associado_id", String(associadoId));
+      fd.append("comprovante", comprovante);
+      if (observacao) {
+        fd.append("observacao", observacao);
+      }
+      return apiFetch<{
+        associado_id: number;
+        parcelas_baixadas: number;
+        total_baixado: string;
+      }>("tesouraria/baixa-manual/inativar-associado", {
+        method: "POST",
+        formData: fd,
+      });
+    },
+    onSuccess: (payload) => {
+      toast.success(
+        `Associado inativado e ${payload.parcelas_baixadas} parcela(s) baixada(s).`,
+      );
+      setInativarAssociadoState(null);
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-baixa-manual"] });
+      void queryClient.invalidateQueries({ queryKey: ["associado"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao inativar associado.",
+      );
+    },
+  });
+
   function handleVerDetalhes(associadoId: number) {
     setNavigatingId(associadoId);
     router.push(`/associados/${associadoId}`);
@@ -318,7 +463,7 @@ export default function BaixaManualPage() {
 
   function resetFilters() {
     setSearch("");
-    setStatusFilter("todos");
+    setStatusFilter("nao_descontado");
     setCompetencia(undefined);
     setAgente("");
     setDataInicio(undefined);
@@ -424,23 +569,44 @@ export default function BaixaManualPage() {
         id: "acoes",
         header: "",
         cell: (row) => (
-          <Button
-            size="sm"
-            variant="outline"
-            className="shrink-0"
-            disabled={navigatingId === row.associado_id}
-            onClick={(event) => {
-              event.stopPropagation();
-              handleVerDetalhes(row.associado_id);
-            }}
-          >
-            {navigatingId === row.associado_id ? (
-              <Spinner className="mr-1.5 size-3.5" />
-            ) : (
-              <ExternalLinkIcon className="mr-1.5 size-3.5" />
-            )}
-            Ver Detalhes
-          </Button>
+          <div className="flex flex-wrap justify-end gap-2">
+            {listing === "pendentes" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0"
+                disabled={!row.possuiParcelaBaixavel}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setInativarAssociadoState({
+                    group: row,
+                    comprovante: null,
+                    observacao: "",
+                  });
+                }}
+              >
+                <UserXIcon className="mr-1.5 size-3.5" />
+                Inativar
+              </Button>
+            ) : null}
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0"
+              disabled={navigatingId === row.associado_id}
+              onClick={(event) => {
+                event.stopPropagation();
+                handleVerDetalhes(row.associado_id);
+              }}
+            >
+              {navigatingId === row.associado_id ? (
+                <Spinner className="mr-1.5 size-3.5" />
+              ) : (
+                <ExternalLinkIcon className="mr-1.5 size-3.5" />
+              )}
+              Ver Detalhes
+            </Button>
+          </div>
         ),
       },
     );
@@ -511,9 +677,26 @@ export default function BaixaManualPage() {
         </div>
       ) : (
         <div className="space-y-3">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-            Parcelas Pendentes - {group.nome}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              Parcelas Pendentes - {group.nome}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!group.possuiParcelaBaixavel}
+              onClick={() =>
+                setInativarAssociadoState({
+                  group,
+                  comprovante: null,
+                  observacao: "",
+                })
+              }
+            >
+              <UserXIcon className="mr-1.5 size-3.5" />
+              Inativar associado
+            </Button>
+          </div>
           <div className="overflow-hidden rounded-xl border border-border/60">
             <table className="w-full text-sm">
               <thead>
@@ -534,6 +717,9 @@ export default function BaixaManualPage() {
                     Status
                   </th>
                   <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Origem
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Ação
                   </th>
                 </tr>
@@ -545,13 +731,17 @@ export default function BaixaManualPage() {
                     className="border-b border-border/40 transition-colors last:border-0 hover:bg-white/3"
                   >
                     <td className="px-4 py-3">
-                      <CopySnippet label="Contrato" value={parcela.contrato_codigo} mono inline />
+                      {parcela.contrato_codigo ? (
+                        <CopySnippet label="Contrato" value={parcela.contrato_codigo} mono inline />
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-medium">
                       {formatMonthYear(parcela.referencia_mes)}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {formatDate(parcela.data_vencimento)}
+                      {parcela.data_vencimento ? formatDate(parcela.data_vencimento) : "-"}
                     </td>
                     <td className="px-4 py-3 font-semibold tabular-nums">
                       {formatCurrency(parcela.valor)}
@@ -560,21 +750,32 @@ export default function BaixaManualPage() {
                       <StatusBadge status={parcela.status} />
                     </td>
                     <td className="px-4 py-3">
-                      <Button
-                        size="sm"
-                        variant="success"
-                        onClick={() =>
-                          setDarBaixaState({
-                            item: parcela,
-                            comprovante: null,
-                            valorPago: parcela.valor,
-                            observacao: "",
-                          })
-                        }
-                      >
-                        <UploadIcon className="mr-1.5 size-3.5" />
-                        Dar Baixa
-                      </Button>
+                      <Badge variant="outline">
+                        {parcela.origem === "arquivo_retorno" ? "Arquivo retorno" : "Parcela"}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      {parcela.pode_dar_baixa && parcela.parcela_id ? (
+                        <Button
+                          size="sm"
+                          variant="success"
+                          onClick={() =>
+                            setDarBaixaState({
+                              item: parcela,
+                              comprovante: null,
+                              valorPago: parcela.valor,
+                              observacao: "",
+                            })
+                          }
+                        >
+                          <UploadIcon className="mr-1.5 size-3.5" />
+                          Dar Baixa
+                        </Button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          Sem parcela vinculada
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -589,25 +790,36 @@ export default function BaixaManualPage() {
   return (
     <div className="space-y-6">
       <section className="rounded-[1.75rem] border border-border/60 bg-card/70 p-6">
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-1">
             <h1 className="text-3xl font-semibold">Inadimplentes</h1>
             <p className="text-sm text-muted-foreground">
               {listing === "quitados"
                 ? "Histórico das parcelas inadimplentes que já receberam baixa manual."
-                : "Parcelas de meses anteriores pendentes ou não descontadas - registre a baixa com comprovante."}
+                : "Fila operacional construída a partir do arquivo retorno e das parcelas vencidas em aberto - registre a baixa com comprovante."}
             </p>
+            <Tabs
+              value={listing}
+              onValueChange={(value) => setListing(value as ListingTab)}
+              className="w-full"
+            >
+              <TabsList variant="line" className="w-fit">
+                <TabsTrigger value="pendentes">Pendentes</TabsTrigger>
+                <TabsTrigger value="quitados">Quitados</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
-          <Tabs
-            value={listing}
-            onValueChange={(value) => setListing(value as ListingTab)}
-            className="w-full"
-          >
-            <TabsList variant="line" className="w-fit">
-              <TabsTrigger value="pendentes">Pendentes</TabsTrigger>
-              <TabsTrigger value="quitados">Quitados</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <ExportButton
+            disabled={isExporting}
+            label={isExporting ? "Exportando..." : "Exportar"}
+            enableScopeSelection
+            onExport={(formatValue) =>
+              formatValue === "pdf" || formatValue === "xlsx"
+                ? void handleExport("month", formatValue)
+                : undefined
+            }
+            onExportScoped={(scope, formatValue) => void handleExport(scope, formatValue)}
+          />
         </div>
       </section>
 
@@ -652,7 +864,7 @@ export default function BaixaManualPage() {
             <StatsCard
               title="Total Inadimplentes"
               value={String(kpis?.total_inadimplentes ?? "-")}
-              delta={`${kpis?.total_pendentes ?? 0} com parcela registrada`}
+              delta={`${kpis?.total_pendentes_com_parcela ?? 0} com parcela registrada`}
               icon={ClipboardListIcon}
               tone="warning"
             />
@@ -952,6 +1164,10 @@ export default function BaixaManualPage() {
                 if (!darBaixaState?.comprovante || !darBaixaState.valorPago) {
                   return;
                 }
+                if (!darBaixaState.item.parcela_id) {
+                  toast.error("Esta linha não possui parcela vinculada para baixa manual.");
+                  return;
+                }
                 darBaixaMutation.mutate({
                   parcelaId: darBaixaState.item.parcela_id,
                   comprovante: darBaixaState.comprovante,
@@ -967,6 +1183,111 @@ export default function BaixaManualPage() {
                 </>
               ) : (
                 "Confirmar Baixa"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!inativarAssociadoState}
+        onOpenChange={(open) => {
+          if (!open) {
+            setInativarAssociadoState(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Inativar associado e baixar vencidas</DialogTitle>
+            <DialogDescription>
+              {inativarAssociadoState ? (
+                <>
+                  <strong>{inativarAssociadoState.group.nome}</strong> com{" "}
+                  {inativarAssociadoState.group.total_parcelas} item(ns) na fila. As
+                  parcelas vencidas com vínculo no sistema serão baixadas com o mesmo
+                  comprovante.
+                </>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+
+          {inativarAssociadoState ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border/60 bg-card/60 px-4 py-3 text-sm">
+                <p className="font-medium text-foreground">
+                  Total listado: {formatCurrency(inativarAssociadoState.group.valor_total.toFixed(2))}
+                </p>
+                <p className="mt-1 text-muted-foreground">
+                  Somente parcelas vencidas com `parcela_id` serão baixadas automaticamente.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Comprovante de pagamento *</Label>
+                <FileUploadDropzone
+                  accept={comprovanteAccept}
+                  maxSize={10 * 1024 * 1024}
+                  onUpload={(file) =>
+                    setInativarAssociadoState((current) =>
+                      current ? { ...current, comprovante: file ?? null } : current,
+                    )
+                  }
+                  isProcessing={false}
+                />
+                {inativarAssociadoState.comprovante ? (
+                  <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+                    <CheckCircleIcon className="size-4 shrink-0" />
+                    {inativarAssociadoState.comprovante.name}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Observação</Label>
+                <Textarea
+                  value={inativarAssociadoState.observacao}
+                  onChange={(event) =>
+                    setInativarAssociadoState((current) =>
+                      current ? { ...current, observacao: event.target.value } : current,
+                    )
+                  }
+                  placeholder="Motivo da inativação e contexto do pagamento..."
+                  className="min-h-24"
+                />
+              </div>
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInativarAssociadoState(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={
+                inativarAssociadoMutation.isPending ||
+                !inativarAssociadoState?.comprovante ||
+                !inativarAssociadoState.group.possuiParcelaBaixavel
+              }
+              onClick={() => {
+                if (!inativarAssociadoState?.comprovante) {
+                  return;
+                }
+                inativarAssociadoMutation.mutate({
+                  associadoId: inativarAssociadoState.group.associado_id,
+                  comprovante: inativarAssociadoState.comprovante,
+                  observacao: inativarAssociadoState.observacao,
+                });
+              }}
+            >
+              {inativarAssociadoMutation.isPending ? (
+                <>
+                  <Spinner className="mr-2 size-4" />
+                  Inativando...
+                </>
+              ) : (
+                "Confirmar inativação"
               )}
             </Button>
           </DialogFooter>

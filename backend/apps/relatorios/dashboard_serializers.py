@@ -129,6 +129,7 @@ class DashboardDetailRowSerializer(serializers.Serializer):
     associado_nome = serializers.CharField(allow_blank=True)
     cpf_cnpj = serializers.CharField(allow_blank=True)
     matricula = serializers.CharField(allow_blank=True)
+    data_nascimento = serializers.CharField(required=False, allow_blank=True)
     status = serializers.CharField(allow_blank=True)
     agente_nome = serializers.CharField(allow_blank=True)
     contrato_codigo = serializers.CharField(allow_blank=True)

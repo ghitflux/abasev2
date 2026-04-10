@@ -8,7 +8,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2Icon, CreditCardIcon, FileTextIcon, MapPinIcon, SaveIcon, SmartphoneIcon, Trash2Icon, UserIcon, WorkflowIcon } from "lucide-react";
 import { toast } from "sonner";
 
-import type { AdminAssociadoEditorPayload, AdminOverrideHistoryEvent, AssociadoDetail } from "@/lib/api/types";
+import type {
+  AdminAssociadoEditorPayload,
+  AdminEditorWarning,
+  AdminOverrideHistoryEvent,
+  AssociadoDetail,
+} from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import {
   AssociadoContractsOverview,
@@ -18,6 +23,7 @@ import CadastroOrigemBadge from "@/components/associados/cadastro-origem-badge";
 import AdminContractEditor from "@/components/associados/admin-contract-editor";
 import type {
   AdminContractEditorHandle,
+  AdminContractEditorPendingChanges,
   ContractEditorDirtyState,
 } from "@/components/associados/admin-contract-editor";
 import AdminOverrideConfirmDialog from "@/components/associados/admin-override-confirm-dialog";
@@ -75,6 +81,89 @@ function isSameDirtyContractState(
   );
 }
 
+function formatAdminWarnings(warnings: AdminEditorWarning[]) {
+  return warnings
+    .slice(0, 3)
+    .map((warning) => warning.message)
+    .join(" ");
+}
+
+function collectLocalCycleWarnings(
+  contratos: AdminContractEditorPendingChanges[],
+): AdminEditorWarning[] {
+  const warnings: AdminEditorWarning[] = [];
+
+  contratos.forEach((contrato) => {
+    const cyclesPayload = contrato.cycles;
+    if (!cyclesPayload) {
+      return;
+    }
+
+    const normalizedCycles = cyclesPayload.cycles
+      .map((cycle) => ({
+        numero: cycle.numero,
+        data_inicio: new Date(`${cycle.data_inicio}T12:00:00`),
+        data_fim: new Date(`${cycle.data_fim}T12:00:00`),
+      }))
+      .sort((left, right) => left.data_inicio.getTime() - right.data_inicio.getTime());
+
+    normalizedCycles.forEach((left, index) => {
+      normalizedCycles.slice(index + 1).forEach((right) => {
+        if (right.data_inicio.getTime() > left.data_fim.getTime()) {
+          return;
+        }
+        if (left.data_inicio.getTime() <= right.data_fim.getTime()) {
+          warnings.push({
+            code: "cycle_date_overlap",
+            severity: "warning",
+            contrato_id: contrato.id,
+            contrato_codigo: "",
+            message: `Ciclos ${left.numero} e ${right.numero} possuem datas sobrepostas.`,
+            details: {
+              cycle_numbers: [left.numero, right.numero],
+            },
+          });
+        }
+      });
+    });
+
+    const references = new Map<string, Array<{ numero: number; cycle_ref: string }>>();
+    cyclesPayload.parcelas.forEach((parcela) => {
+      const current = references.get(parcela.referencia_mes) ?? [];
+      current.push({
+        numero: parcela.numero,
+        cycle_ref: parcela.cycle_ref,
+      });
+      references.set(parcela.referencia_mes, current);
+    });
+
+    references.forEach((parcelas, referencia_mes) => {
+      if (parcelas.length < 2) {
+        return;
+      }
+      warnings.push({
+        code: "duplicate_reference_month",
+        severity: "warning",
+        contrato_id: contrato.id,
+        contrato_codigo: "",
+        message: `A competência ${referencia_mes.slice(5, 7)}/${referencia_mes.slice(0, 4)} aparece em mais de uma parcela.`,
+        details: {
+          referencia_mes,
+          parcelas,
+        },
+      });
+    });
+  });
+
+  return warnings.filter(
+    (warning, index, collection) =>
+      collection.findIndex(
+        (candidate) =>
+          candidate.code === warning.code && candidate.message === warning.message,
+      ) === index,
+  );
+}
+
 function AssociadoPageContent({ params }: AssociadoPageProps) {
   const { id } = React.use(params);
   const associadoId = Number(id);
@@ -102,6 +191,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   const isCoordinator = hasRole("COORDENADOR") && !isAdmin;
   const isAgent = hasRole("AGENTE") && !isAdmin;
   const isTreasurer = hasRole("TESOUREIRO") && !isAdmin;
+  const canUseAdminEditor = isAdmin || isCoordinator;
   const backHref = isAdmin
     ? "/associados"
     : isCoordinator
@@ -122,7 +212,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
     queryKey: ["admin-associado-editor", associadoId],
     queryFn: () =>
       apiFetch<AdminAssociadoEditorPayload>(`admin-overrides/associados/${associadoId}/editor/`),
-    enabled: isAdmin && adminMode,
+    enabled: canUseAdminEditor && adminMode,
     ...dashboardRetainedQueryOptions,
   });
 
@@ -130,7 +220,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
     queryKey: ["admin-associado-history", associadoId],
     queryFn: () =>
       apiFetch<AdminOverrideHistoryEvent[]>(`admin-overrides/associados/${associadoId}/history/`),
-    enabled: isAdmin && adminMode,
+    enabled: canUseAdminEditor && adminMode,
     ...dashboardRetainedQueryOptions,
   });
 
@@ -169,14 +259,14 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   });
 
   React.useEffect(() => {
-    if (!isAdmin || autoAdminEnabledRef.current || adminMode) {
+    if (!canUseAdminEditor || autoAdminEnabledRef.current || adminMode) {
       return;
     }
     if (adminQueryParam === "1") {
       setAdminMode(true);
       autoAdminEnabledRef.current = true;
     }
-  }, [adminMode, adminQueryParam, isAdmin]);
+  }, [adminMode, adminQueryParam, canUseAdminEditor]);
 
   React.useEffect(() => {
     if (!adminMode) {
@@ -224,7 +314,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   );
 
   const hasUnsavedAdminChanges =
-    isAdmin &&
+    canUseAdminEditor &&
     adminMode &&
     (Object.values(contractDirtyState).some(hasDirtyContractState) || esteiraDirty);
 
@@ -246,6 +336,21 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
       if (!pending.contratos.length && !pending.esteira) {
         throw new Error("Nenhuma alteração pendente para salvar.");
       }
+      const localWarnings = collectLocalCycleWarnings(pending.contratos);
+      if (localWarnings.length) {
+        const confirmed = window.confirm(
+          [
+            "Foram detectadas sobreposições ou duplicidades no layout.",
+            "",
+            ...localWarnings.slice(0, 5).map((warning) => `- ${warning.message}`),
+            "",
+            "Deseja salvar mesmo assim?",
+          ].join("\n"),
+        );
+        if (!confirmed) {
+          throw new Error("Salvamento cancelado para revisão das sobreposições.");
+        }
+      }
       return apiFetch<AdminAssociadoEditorPayload>(
         `admin-overrides/associados/${associadoId}/save-all/`,
         {
@@ -259,7 +364,10 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
       );
     },
     onSuccess: async (payload) => {
-      toast.success("Alterações administrativas salvas.");
+      toast.success("Alterações do editor salvas.");
+      if (payload.warnings?.length) {
+        toast.warning(formatAdminWarnings(payload.warnings));
+      }
       queryClient.setQueryData(["admin-associado-editor", associadoId], payload);
       setContractDirtyState({});
       setEsteiraDirty(false);
@@ -360,13 +468,13 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
-          {isAdmin ? (
+          {canUseAdminEditor ? (
             <label className="inline-flex items-center gap-3 rounded-full border border-border/60 bg-card/60 px-4 py-2 text-sm">
               <Switch
                 checked={adminMode}
                 onCheckedChange={handleAdminModeChange}
               />
-              Modo edição admin
+              Modo editor avançado
             </label>
           ) : null}
           <Button variant="outline" asChild>
@@ -491,7 +599,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             </span>
           </AccordionTrigger>
           <AccordionContent className="space-y-4">
-            {isAdmin && adminMode && adminEditorQuery.data?.contratos?.length ? (
+            {canUseAdminEditor && adminMode && adminEditorQuery.data?.contratos?.length ? (
               <div className="space-y-4">
                 {adminEditorQuery.data.contratos.map((contract) => (
                   <AdminContractEditor
@@ -520,7 +628,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           <AccordionItem value="documentos" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
           <AccordionTrigger className="text-base">Documentos</AccordionTrigger>
           <AccordionContent>
-            {isAdmin && adminMode ? (
+            {canUseAdminEditor && adminMode ? (
               <div className="mb-4">
                 <AdminFileManager associadoId={associadoId} associado={associado} />
               </div>
@@ -539,7 +647,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             </span>
           </AccordionTrigger>
           <AccordionContent className="space-y-4">
-            {isAdmin && adminMode ? (
+            {canUseAdminEditor && adminMode ? (
               <AdminEsteiraEditor
                 ref={esteiraEditorRef}
                 esteira={associado.esteira}
@@ -571,9 +679,9 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
         </AccordionItem>
         )}
 
-        {isAdmin && adminMode ? (
+        {canUseAdminEditor && adminMode ? (
           <AccordionItem value="historico-admin" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
-            <AccordionTrigger className="text-base">Histórico Administrativo</AccordionTrigger>
+            <AccordionTrigger className="text-base">Histórico do Editor</AccordionTrigger>
             <AccordionContent>
               <AdminOverrideHistory
                 associadoId={associadoId}
@@ -588,7 +696,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           <div className="flex w-full max-w-2xl items-center justify-between gap-4 rounded-2xl border border-primary/30 bg-background/95 px-4 py-3 shadow-2xl shadow-black/40 backdrop-blur md:w-auto md:min-w-[32rem]">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-foreground">
-                Alterações administrativas pendentes
+                Alterações do editor pendentes
               </p>
               <p className="text-sm text-muted-foreground">
                 Salve contrato, ciclos, renovação e esteira em uma única ação.
@@ -613,8 +721,8 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
       <AdminOverrideConfirmDialog
         open={saveAllOpen}
         onOpenChange={setSaveAllOpen}
-        title="Salvar alterações administrativas"
-        description="Todas as alterações pendentes do modo admin serão gravadas agora."
+        title="Salvar alterações do editor"
+        description="Todas as alterações pendentes do editor avançado serão gravadas agora."
         summary={
           <div className="grid gap-2 text-sm">
             <p>

@@ -8,7 +8,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
-from apps.accounts.permissions import IsAdmin
+from apps.accounts.permissions import IsCoordenadorOrAdmin
 from apps.contratos.models import Ciclo, Contrato
 from apps.refinanciamento.models import Comprovante, Refinanciamento
 
@@ -37,7 +37,7 @@ def _conflict_response(exc: Exception) -> Response:
 
 class AdminOverrideAssociadoViewSet(GenericViewSet):
     queryset = Associado.objects.none()
-    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrAdmin]
 
     def get_queryset(self):
         return Associado.objects.prefetch_related(
@@ -140,7 +140,7 @@ class AdminOverrideAssociadoViewSet(GenericViewSet):
 
 class AdminOverrideContratoViewSet(GenericViewSet):
     queryset = Contrato.objects.none()
-    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrAdmin]
 
     def get_queryset(self):
         return Contrato.objects.select_related("associado", "agente").prefetch_related(
@@ -193,7 +193,7 @@ class AdminOverrideContratoViewSet(GenericViewSet):
 
 class AdminOverrideRefinanciamentoViewSet(GenericViewSet):
     queryset = Refinanciamento.objects.none()
-    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrAdmin]
 
     def get_queryset(self):
         return Refinanciamento.objects.select_related("associado", "contrato_origem")
@@ -222,7 +222,7 @@ class AdminOverrideRefinanciamentoViewSet(GenericViewSet):
 
 class AdminOverrideDocumentoViewSet(GenericViewSet):
     queryset = Documento.objects.none()
-    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrAdmin]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
@@ -252,7 +252,7 @@ class AdminOverrideDocumentoViewSet(GenericViewSet):
 
 class AdminOverrideComprovanteViewSet(GenericViewSet):
     queryset = Comprovante.objects.none()
-    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrAdmin]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
@@ -319,7 +319,7 @@ class AdminOverrideComprovanteViewSet(GenericViewSet):
 
 class AdminOverrideEventViewSet(GenericViewSet):
     queryset = AdminOverrideEvent.objects.none()
-    permission_classes = [permissions.IsAuthenticated, IsAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrAdmin]
 
     def get_queryset(self):
         return AdminOverrideEvent.objects.select_related(

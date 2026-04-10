@@ -120,6 +120,206 @@ def _assert_version(obj, provided_updated_at: str | None) -> None:
         )
 
 
+def _warning_payload(
+    *,
+    code: str,
+    contrato: Contrato,
+    message: str,
+    details: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "code": code,
+        "severity": "warning",
+        "contrato_id": contrato.id,
+        "contrato_codigo": contrato.codigo or "",
+        "message": message,
+        "details": details,
+    }
+
+
+def _reference_month_start(value: date | None) -> date | None:
+    if value is None:
+        return None
+    return value.replace(day=1)
+
+
+def _build_contract_layout_warnings(
+    contrato: Contrato,
+    *,
+    cycles_payload: list[dict[str, Any]] | None = None,
+    parcel_items: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    warnings: list[dict[str, Any]] = []
+
+    normalized_cycles: list[dict[str, Any]] = []
+    cycle_ref_map: dict[str, dict[str, Any]] = {}
+    if cycles_payload is None:
+        cycles = list(
+            contrato.ciclos.filter(deleted_at__isnull=True).order_by("numero", "id")
+        )
+        for cycle in cycles:
+            normalized = {
+                "id": cycle.id,
+                "ref": str(cycle.id),
+                "numero": cycle.numero,
+                "data_inicio": cycle.data_inicio,
+                "data_fim": cycle.data_fim,
+                "status": cycle.status,
+            }
+            normalized_cycles.append(normalized)
+            cycle_ref_map[str(cycle.id)] = normalized
+    else:
+        for raw_cycle in cycles_payload:
+            data_inicio = _parse_optional_date(raw_cycle.get("data_inicio"))
+            data_fim = _parse_optional_date(raw_cycle.get("data_fim"))
+            normalized = {
+                "id": raw_cycle.get("id"),
+                "ref": str(raw_cycle.get("client_key") or raw_cycle.get("id") or ""),
+                "numero": int(raw_cycle.get("numero") or 0),
+                "data_inicio": data_inicio,
+                "data_fim": data_fim,
+                "status": str(raw_cycle.get("status") or ""),
+            }
+            normalized_cycles.append(normalized)
+            if raw_cycle.get("id") is not None:
+                cycle_ref_map[str(raw_cycle["id"])] = normalized
+            if raw_cycle.get("client_key"):
+                cycle_ref_map[str(raw_cycle["client_key"])] = normalized
+
+    sorted_cycles = sorted(
+        [cycle for cycle in normalized_cycles if cycle["data_inicio"] and cycle["data_fim"]],
+        key=lambda cycle: (cycle["data_inicio"], cycle["numero"]),
+    )
+    for index, left in enumerate(sorted_cycles):
+        for right in sorted_cycles[index + 1 :]:
+            if right["data_inicio"] > left["data_fim"]:
+                break
+            if left["data_inicio"] <= right["data_fim"] and right["data_inicio"] <= left["data_fim"]:
+                warnings.append(
+                    _warning_payload(
+                        code="cycle_date_overlap",
+                        contrato=contrato,
+                        message=(
+                            f"Ciclos {left['numero']} e {right['numero']} possuem datas sobrepostas."
+                        ),
+                        details={
+                            "cycle_numbers": [left["numero"], right["numero"]],
+                            "left_range": [
+                                left["data_inicio"].isoformat(),
+                                left["data_fim"].isoformat(),
+                            ],
+                            "right_range": [
+                                right["data_inicio"].isoformat(),
+                                right["data_fim"].isoformat(),
+                            ],
+                        },
+                    )
+                )
+
+    normalized_parcelas: list[dict[str, Any]] = []
+    if parcel_items is None:
+        parcelas = (
+            Parcela.all_objects.filter(ciclo__contrato=contrato, deleted_at__isnull=True)
+            .exclude(status=Parcela.Status.CANCELADO)
+            .select_related("ciclo")
+            .order_by("ciclo__numero", "numero", "id")
+        )
+        for parcela in parcelas:
+            normalized_parcelas.append(
+                {
+                    "id": parcela.id,
+                    "numero": parcela.numero,
+                    "referencia_mes": parcela.referencia_mes,
+                    "cycle_number": parcela.ciclo.numero,
+                    "cycle_start": parcela.ciclo.data_inicio,
+                    "cycle_end": parcela.ciclo.data_fim,
+                }
+            )
+    else:
+        for raw_parcela in parcel_items:
+            cycle_ref = raw_parcela.get("cycle_ref") or raw_parcela.get("cycle_id")
+            cycle = cycle_ref_map.get(str(cycle_ref))
+            normalized_parcelas.append(
+                {
+                    "id": raw_parcela.get("id"),
+                    "numero": int(raw_parcela.get("numero") or 0),
+                    "referencia_mes": _parse_optional_date(raw_parcela.get("referencia_mes")),
+                    "cycle_number": cycle["numero"] if cycle else None,
+                    "cycle_start": cycle["data_inicio"] if cycle else None,
+                    "cycle_end": cycle["data_fim"] if cycle else None,
+                }
+            )
+
+    parcelas_by_reference: defaultdict[date, list[dict[str, Any]]] = defaultdict(list)
+    for parcela in normalized_parcelas:
+        referencia_mes = parcela["referencia_mes"]
+        if referencia_mes is None:
+            continue
+        parcelas_by_reference[referencia_mes].append(parcela)
+
+        cycle_start = _reference_month_start(parcela.get("cycle_start"))
+        cycle_end = _reference_month_start(parcela.get("cycle_end"))
+        referencia_inicio = _reference_month_start(referencia_mes)
+        if (
+            cycle_start is not None
+            and cycle_end is not None
+            and referencia_inicio is not None
+            and (referencia_inicio < cycle_start or referencia_inicio > cycle_end)
+        ):
+            warnings.append(
+                _warning_payload(
+                    code="parcela_outside_cycle_range",
+                    contrato=contrato,
+                    message=(
+                        f"A competência {referencia_mes.strftime('%m/%Y')} está fora do intervalo do ciclo "
+                        f"{parcela.get('cycle_number') or '-'}."
+                    ),
+                    details={
+                        "referencia_mes": referencia_mes.isoformat(),
+                        "cycle_number": parcela.get("cycle_number"),
+                        "cycle_range": [
+                            cycle_start.isoformat(),
+                            cycle_end.isoformat(),
+                        ],
+                    },
+                )
+            )
+
+    for referencia_mes, parcelas in sorted(parcelas_by_reference.items()):
+        if len(parcelas) < 2:
+            continue
+        warnings.append(
+            _warning_payload(
+                code="duplicate_reference_month",
+                contrato=contrato,
+                message=(
+                    f"A competência {referencia_mes.strftime('%m/%Y')} aparece em mais de uma parcela."
+                ),
+                details={
+                    "referencia_mes": referencia_mes.isoformat(),
+                    "parcelas": [
+                        {
+                            "id": parcela.get("id"),
+                            "numero": parcela.get("numero"),
+                            "cycle_number": parcela.get("cycle_number"),
+                        }
+                        for parcela in parcelas
+                    ],
+                },
+            )
+        )
+
+    unique_warnings: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for warning in warnings:
+        key = (str(warning["code"]), str(warning["message"]))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_warnings.append(warning)
+    return unique_warnings
+
+
 def _file_reference_payload(filefield, *, request=None) -> dict[str, Any]:
     stored_path = str(getattr(filefield, "name", "") or "")
     reference = build_filefield_reference(
@@ -343,6 +543,11 @@ def _build_editor_item(
     actual_parcela: Parcela | None,
     bucket: str,
 ) -> dict[str, Any]:
+    resolved_bucket = (
+        bucket
+        if actual_parcela is None or actual_parcela.layout_bucket != bucket
+        else actual_parcela.layout_bucket
+    )
     return {
         "id": actual_parcela.id if actual_parcela else None,
         "numero": int(item.get("numero") or 0),
@@ -352,7 +557,7 @@ def _build_editor_item(
         "status": str(item.get("status") or Parcela.Status.EM_PREVISAO),
         "data_pagamento": item.get("data_pagamento"),
         "observacao": str(item.get("observacao") or ""),
-        "layout_bucket": actual_parcela.layout_bucket if actual_parcela else bucket,
+        "layout_bucket": resolved_bucket,
         "updated_at": (
             actual_parcela.updated_at.isoformat() if actual_parcela and actual_parcela.updated_at else None
         ),
@@ -657,6 +862,7 @@ class AdminOverrideService:
             associado.contratos.exclude(status=Contrato.Status.CANCELADO).order_by("-created_at")
         )
         payload_contracts: list[dict[str, Any]] = []
+        payload_warnings: list[dict[str, Any]] = []
         for contrato in contratos:
             projection = build_contract_cycle_projection(contrato, include_documents=True)
             current_cycles = {
@@ -756,6 +962,7 @@ class AdminOverrideService:
                     ),
                 }
             )
+            payload_warnings.extend(_build_contract_layout_warnings(contrato))
         return {
             "associado": _serialize_associado(associado),
             "contratos": payload_contracts,
@@ -764,6 +971,7 @@ class AdminOverrideService:
                 _serialize_documento(documento)
                 for documento in associado.documentos.filter(deleted_at__isnull=True).order_by("tipo", "id")
             ],
+            "warnings": payload_warnings,
         }
 
     @staticmethod
@@ -1460,16 +1668,17 @@ class AdminOverrideService:
             include_documents=True,
         )
 
+        all_cycles = list(Ciclo.all_objects.filter(contrato=contrato))
         current_cycles = {
             ciclo.id: ciclo
-            for ciclo in contrato.ciclos.filter(deleted_at__isnull=True)
+            for ciclo in all_cycles
+            if ciclo.deleted_at is None
         }
+        all_parcelas = list(Parcela.all_objects.filter(ciclo__contrato=contrato))
         current_parcelas = {
             parcela.id: parcela
-            for parcela in Parcela.all_objects.filter(
-                ciclo__contrato=contrato,
-                deleted_at__isnull=True,
-            ).exclude(status=Parcela.Status.CANCELADO)
+            for parcela in all_parcelas
+            if parcela.deleted_at is None and parcela.status != Parcela.Status.CANCELADO
         }
         old_reference_by_parcela_id = {
             parcela.id: parcela.referencia_mes
@@ -1484,16 +1693,17 @@ class AdminOverrideService:
         cycle_ref_map: dict[str, Ciclo] = {}
         touched_cycle_ids: set[int] = set()
         touched_parcela_ids: set[int] = set()
+        assigned_numbers_by_cycle: defaultdict[int, set[int]] = defaultdict(set)
 
         with transaction.atomic():
-            existing_cycle_list = list(current_cycles.values())
+            existing_cycle_list = all_cycles
             for index, ciclo in enumerate(existing_cycle_list, start=1):
                 temporary_number = 1000 + index
                 if ciclo.numero != temporary_number:
                     ciclo.numero = temporary_number
                     ciclo.save(update_fields=["numero", "updated_at"])
 
-            existing_parcela_list = list(current_parcelas.values())
+            existing_parcela_list = all_parcelas
             for index, parcela in enumerate(existing_parcela_list, start=1):
                 temporary_number = 1000 + index
                 if parcela.numero != temporary_number:
@@ -1534,11 +1744,20 @@ class AdminOverrideService:
                 cycle = cycle_ref_map.get(str(cycle_ref))
                 if cycle is None:
                     raise ValidationError("Parcela sem ciclo de destino válido.")
+                requested_number = int(
+                    raw_parcela.get("numero")
+                    or (parcela.numero if parcela is not None else 1)
+                    or 1
+                )
+                allocated_number = requested_number
+                while allocated_number in assigned_numbers_by_cycle[cycle.id]:
+                    allocated_number += 1
+                assigned_numbers_by_cycle[cycle.id].add(allocated_number)
                 if parcela is None:
                     parcela = Parcela.all_objects.create(
                         ciclo=cycle,
                         associado=contrato.associado,
-                        numero=int(raw_parcela.get("numero") or 1),
+                        numero=allocated_number,
                         referencia_mes=_parse_optional_date(raw_parcela.get("referencia_mes")) or cycle.data_inicio,
                         valor=_parse_decimal(raw_parcela.get("valor")),
                         data_vencimento=_parse_optional_date(raw_parcela.get("data_vencimento")) or cycle.data_inicio,
@@ -1550,7 +1769,7 @@ class AdminOverrideService:
                 else:
                     parcela.ciclo = cycle
                     parcela.associado = contrato.associado
-                    parcela.numero = int(raw_parcela.get("numero") or parcela.numero)
+                    parcela.numero = allocated_number
                     parcela.referencia_mes = _parse_optional_date(raw_parcela.get("referencia_mes")) or parcela.referencia_mes
                     parcela.valor = _parse_decimal(raw_parcela.get("valor"), parcela.valor)
                     parcela.data_vencimento = _parse_optional_date(raw_parcela.get("data_vencimento")) or parcela.data_vencimento

@@ -359,3 +359,79 @@ class RenovacaoCicloViewSetTestCase(ImportacaoBaseTestCase):
         self.assertTrue(row["possui_multiplos_contratos"])
         self.assertIn("2/3 parcelas baixadas", row["status_explicacao"])
         self.assertIn(contrato_atual.codigo, row["status_explicacao"])
+
+    def test_listagem_inclui_apto_projetado_sem_parcela_na_competencia(self):
+        associado = Associado.objects.create(
+            nome_completo="Servidor Sem Parcela em Abril",
+            cpf_cnpj="90123456789",
+            email="90123456789@teste.local",
+            telefone="86999999999",
+            orgao_publico="Órgão Teste",
+            matricula_orgao="MAT-APRIL-01",
+            status=Associado.Status.ATIVO,
+            agente_responsavel=self.tesoureiro,
+        )
+        contrato = Contrato.objects.create(
+            associado=associado,
+            agente=self.tesoureiro,
+            valor_bruto=Decimal("900.00"),
+            valor_liquido=Decimal("900.00"),
+            valor_mensalidade=Decimal("300.00"),
+            prazo_meses=3,
+            status=Contrato.Status.ATIVO,
+            data_primeira_mensalidade=date(2026, 1, 1),
+            data_aprovacao=date(2025, 12, 28),
+        )
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.APTO_A_RENOVAR,
+            valor_total=Decimal("900.00"),
+        )
+        Parcela.objects.bulk_create(
+            [
+                Parcela(
+                    ciclo=ciclo,
+                    numero=1,
+                    referencia_mes=date(2026, 1, 1),
+                    valor=Decimal("300.00"),
+                    data_vencimento=date(2026, 1, 1),
+                    status=Parcela.Status.DESCONTADO,
+                    data_pagamento=date(2026, 1, 15),
+                ),
+                Parcela(
+                    ciclo=ciclo,
+                    numero=2,
+                    referencia_mes=date(2026, 2, 1),
+                    valor=Decimal("300.00"),
+                    data_vencimento=date(2026, 2, 1),
+                    status=Parcela.Status.DESCONTADO,
+                    data_pagamento=date(2026, 2, 15),
+                ),
+                Parcela(
+                    ciclo=ciclo,
+                    numero=3,
+                    referencia_mes=date(2026, 3, 1),
+                    valor=Decimal("300.00"),
+                    data_vencimento=date(2026, 3, 1),
+                    status=Parcela.Status.EM_ABERTO,
+                ),
+            ]
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/renovacao-ciclos/",
+            {"competencia": "2026-04", "status": "apto_a_renovar", "page_size": 20},
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["count"], 1)
+        row = payload["results"][0]
+        self.assertEqual(row["contrato_id"], contrato.id)
+        self.assertEqual(row["contrato_codigo"], contrato.codigo)
+        self.assertEqual(row["competencia"], "04/2026")
+        self.assertEqual(row["status_visual"], "apto_a_renovar")
+        self.assertEqual(row["resultado_importacao"], "sem_competencia")

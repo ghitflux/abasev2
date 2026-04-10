@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -14,6 +15,7 @@ from apps.contratos.cycle_timeline import (
 from core.file_references import build_filefield_reference
 
 from .models import Comprovante, Refinanciamento
+from .treasury_value_repair import _resolve_contrato
 
 
 class ComprovanteResumoSerializer(serializers.ModelSerializer):
@@ -56,10 +58,15 @@ class ComprovanteResumoSerializer(serializers.ModelSerializer):
 
     def _reference(self, obj: Comprovante):
         request = self.context.get("request")
+        missing_type = (
+            "legado_sem_arquivo"
+            if obj.origem == Comprovante.Origem.LEGADO
+            else "referencia_sem_arquivo"
+        )
         reference = build_filefield_reference(
             obj.arquivo,
             request=request,
-            missing_type="legado_sem_arquivo",
+            missing_type=missing_type,
         )
         if obj.arquivo_referencia and obj.arquivo_referencia != reference.arquivo_referencia:
             return reference.__class__(
@@ -131,6 +138,8 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
     data_renovacao = serializers.SerializerMethodField()
     origem_renovacao = serializers.SerializerMethodField()
     motivo_apto_renovacao = serializers.SerializerMethodField()
+    valor_liberado_associado = serializers.SerializerMethodField()
+    repasse_agente = serializers.SerializerMethodField()
     legacy_refinanciamento_id = serializers.IntegerField(read_only=True)
     origem = serializers.CharField(read_only=True)
 
@@ -154,6 +163,7 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
             "competencia_solicitada",
             "status",
             "valor_refinanciamento",
+            "valor_liberado_associado",
             "repasse_agente",
             "ciclo_key",
             "referencias",
@@ -233,6 +243,38 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
         if itens:
             return min(len(itens), total)
         return min(obj.parcelas_ok, total)
+
+    @extend_schema_field(serializers.DecimalField(max_digits=10, decimal_places=2))
+    def get_valor_liberado_associado(self, obj: Refinanciamento) -> str:
+        contrato = self._resolve_contrato_origem(obj)
+        valor = obj.valor_refinanciamento or Decimal("0.00")
+        if (
+            contrato is not None
+            and contrato.margem_disponivel
+            and contrato.margem_disponivel > 0
+        ):
+            valor = contrato.margem_disponivel
+        elif valor <= 0 and contrato is not None:
+            valor = (
+                contrato.valor_liquido
+                or contrato.valor_total_antecipacao
+                or contrato.valor_mensalidade
+                or Decimal("0.00")
+            )
+        return f"{valor:.2f}"
+
+    @extend_schema_field(serializers.DecimalField(max_digits=10, decimal_places=2))
+    def get_repasse_agente(self, obj: Refinanciamento) -> str:
+        repasse = obj.repasse_agente or Decimal("0.00")
+        if repasse > 0:
+            return f"{repasse:.2f}"
+        contrato = self._resolve_contrato_origem(obj)
+        if contrato is not None and contrato.comissao_agente and contrato.comissao_agente > 0:
+            repasse = contrato.comissao_agente
+        return f"{repasse:.2f}"
+
+    def _resolve_contrato_origem(self, obj: Refinanciamento):
+        return _resolve_contrato(obj)
 
     def get_mensalidades_total(self, obj: Refinanciamento) -> int:
         if obj.contrato_origem is not None:

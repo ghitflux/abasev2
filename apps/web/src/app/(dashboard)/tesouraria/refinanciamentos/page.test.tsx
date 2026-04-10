@@ -52,6 +52,7 @@ function buildRefinanciamento(overrides: Partial<RefinanciamentoItem> = {}): Ref
     competencia_solicitada: overrides.competencia_solicitada ?? "2026-04-01",
     status: overrides.status ?? "aprovado_para_renovacao",
     valor_refinanciamento: overrides.valor_refinanciamento ?? "1200.00",
+    valor_liberado_associado: overrides.valor_liberado_associado ?? "900.00",
     repasse_agente: overrides.repasse_agente ?? "120.00",
     ciclo_key: overrides.ciclo_key ?? "2026-02|2026-03|2026-04",
     referencias: overrides.referencias ?? ["2026-02-01", "2026-03-01", "2026-04-01"],
@@ -203,9 +204,12 @@ it("renderiza secoes operacionais e consulta apenas aprovados para a fila penden
     ),
   );
 
-  expect(screen.getByText("Renovações aprovadas para pagamento")).toBeInTheDocument();
-  expect(screen.getByText("Renovações concluídas")).toBeInTheDocument();
-  expect(screen.getByText("Renovações bloqueadas ou revertidas")).toBeInTheDocument();
+  expect(screen.getByText("Contratos aprovados para pagamento")).toBeInTheDocument();
+  expect(screen.getByText("Contratos concluídos")).toBeInTheDocument();
+  expect(screen.getByText("Contratos bloqueados ou revertidos")).toBeInTheDocument();
+  await waitFor(() =>
+    expect(screen.getAllByRole("button", { name: /Ver detalhes do associado/i }).length).toBeGreaterThan(0),
+  );
   await waitFor(() =>
     expect(screen.getByRole("button", { name: /Efetivar renovação/i })).toBeDisabled(),
   );
@@ -220,4 +224,85 @@ it("renderiza secoes operacionais e consulta apenas aprovados para a fila penden
       ["bloqueado", "revertido", "desativado"],
     ]),
   );
+});
+
+it("separa termo do agente dos comprovantes de pagamento e mostra o valor liberado do associado", async () => {
+  mockedApiFetch.mockImplementation(async (path, options) => {
+    if (path === "tesouraria/refinanciamentos/resumo") {
+      return {
+        total: 1,
+        em_analise: 0,
+        assumidos: 0,
+        aprovados: 0,
+        efetivados: 0,
+        concluidos: 0,
+        bloqueados: 0,
+        revertidos: 0,
+        desativados: 0,
+        em_fluxo: 1,
+        com_anexo_agente: 0,
+        repasse_total: "73.50",
+      } satisfies RefinanciamentoResumo;
+    }
+
+    if (path === "tesouraria/refinanciamentos") {
+      const status = options?.query?.status;
+      if (Array.isArray(status) && status.includes("aprovado_para_renovacao")) {
+        return {
+          count: 1,
+          next: null,
+          previous: null,
+          results: [
+            buildRefinanciamento({
+              associado_nome: "JUSTINO DA SILVA LEAL",
+              valor_refinanciamento: "1881.03",
+              valor_liberado_associado: "735.00",
+              repasse_agente: "73.50",
+              comprovantes: [
+                {
+                  id: 1,
+                  refinanciamento: 1,
+                  contrato: 11,
+                  ciclo: 3,
+                  tipo: "termo_antecipacao",
+                  papel: "agente",
+                  arquivo: "",
+                  arquivo_referencia: "refinanciamentos/renovacoes/termo-justino.pdf",
+                  arquivo_disponivel_localmente: false,
+                  tipo_referencia: "referencia_path",
+                  nome_original: "ANTECIPAÇÃO- JUSTINO DA SILVA LEAL.pdf",
+                  created_at: "2026-04-01T10:00:00Z",
+                },
+              ],
+            }),
+          ],
+        };
+      }
+      return {
+        count: 0,
+        next: null,
+        previous: null,
+        results: [],
+      };
+    }
+
+    throw new Error(`Unexpected path: ${String(path)}`);
+  });
+
+  renderPage();
+
+  expect(await screen.findByText("Termo do agente")).toBeInTheDocument();
+  expect(screen.getByText("Comp. associado")).toBeInTheDocument();
+  expect(screen.getByText("Comp. agente")).toBeInTheDocument();
+  expect(screen.getByText("ANTECIPAÇÃO- JUSTINO DA SILVA LEAL.pdf")).toBeInTheDocument();
+  expect(screen.getByText("Referência")).toBeInTheDocument();
+  expect(screen.queryByText("Legado")).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(
+      screen.getAllByText((_, element) => element?.textContent?.includes("735,00") ?? false).length,
+    ).toBeGreaterThan(0),
+  );
+  expect(
+    screen.queryAllByText((_, element) => element?.textContent?.includes("1.881,03") ?? false),
+  ).toHaveLength(0);
 });

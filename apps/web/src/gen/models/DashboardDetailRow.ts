@@ -27,6 +27,10 @@ export type DashboardDetailRow = {
   /**
    * @type string
    */
+  data_nascimento?: string;
+  /**
+   * @type string
+   */
   status: string;
   /**
    * @type string

@@ -19,7 +19,14 @@ import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
 import { formatCurrency, formatDateTime } from "@/lib/formatters";
 import { maskCPFCNPJ } from "@/lib/masks";
-import { exportRouteReport, fetchAllPaginatedRows } from "@/lib/reports";
+import {
+  describeReportScope,
+  exportRouteReport,
+  fetchAllPaginatedRows,
+  filterRowsByReportScope,
+  resolveReportReferenceDate,
+  type ReportScope,
+} from "@/lib/reports";
 import DatePicker from "@/components/custom/date-picker";
 import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
@@ -690,10 +697,12 @@ export default function TesourariaPage() {
   );
 
   const handleExport = React.useCallback(
-    async (formatValue: "csv" | "pdf" | "excel" | "xlsx") => {
-      if (formatValue !== "pdf" && formatValue !== "xlsx") {
-        return;
-      }
+    async (scope: ReportScope, formatValue: "pdf" | "xlsx") => {
+      const referenceDate = resolveReportReferenceDate({
+        scope,
+        dayReference: dataInicio ?? dataFim,
+        monthReference: dataInicio ?? dataFim,
+      });
 
       setIsExporting(true);
       try {
@@ -711,7 +720,7 @@ export default function TesourariaPage() {
           ordering,
         };
 
-        const rows = (
+        const fetchedRows = (
           await Promise.all(
             pagamentos.map((pagamento) =>
               fetchAllPaginatedRows<TesourariaContratoItem>({
@@ -723,17 +732,23 @@ export default function TesourariaPage() {
               }),
             ),
           )
-        )
-          .flat()
-          .map((row) => buildTesourariaExportRow(row));
+        ).flat();
+
+        const exportRows = filterRowsByReportScope({
+          rows: fetchedRows,
+          scope,
+          referenceDate,
+          getCandidates: (row) => [row.data_solicitacao, row.data_assinatura],
+        }).map((row) => buildTesourariaExportRow(row));
 
         await exportRouteReport({
           route: "/tesouraria",
           format: formatValue,
-          rows,
+          rows: exportRows,
           filters: {
             ...sharedQuery,
             pagamento: pagamentos,
+            ...describeReportScope(scope, referenceDate),
           },
         });
       } catch (error) {
@@ -1073,7 +1088,13 @@ export default function TesourariaPage() {
         <ExportButton
           disabled={isExporting}
           label={isExporting ? "Exportando..." : "Exportar"}
-          onExport={(formatValue) => void handleExport(formatValue)}
+          enableScopeSelection
+          onExport={(formatValue) =>
+            formatValue === "pdf" || formatValue === "xlsx"
+              ? void handleExport("month", formatValue)
+              : undefined
+          }
+          onExportScoped={(scope, formatValue) => void handleExport(scope, formatValue)}
         />
       </section>
 

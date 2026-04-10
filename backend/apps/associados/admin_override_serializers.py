@@ -187,11 +187,21 @@ class AdminOverrideEsteiraReadSerializer(serializers.Serializer):
     updated_at = serializers.DateTimeField(read_only=True, allow_null=True)
 
 
+class AdminOverrideWarningSerializer(serializers.Serializer):
+    code = serializers.CharField(read_only=True)
+    severity = serializers.CharField(read_only=True)
+    contrato_id = serializers.IntegerField(read_only=True, allow_null=True)
+    contrato_codigo = serializers.CharField(read_only=True, allow_blank=True)
+    message = serializers.CharField(read_only=True)
+    details = serializers.JSONField(read_only=True)
+
+
 class AdminOverrideEditorPayloadSerializer(serializers.Serializer):
     associado = AssociadoAdminSnapshotSerializer(read_only=True)
     contratos = AdminOverrideContratoEditorSerializer(many=True, read_only=True)
     esteira = AdminOverrideEsteiraReadSerializer(read_only=True, allow_null=True)
     documentos = AdminOverrideDocumentoReadSerializer(many=True, read_only=True)
+    warnings = AdminOverrideWarningSerializer(many=True, read_only=True)
 
 
 class EnderecoAdminWriteSerializer(serializers.Serializer):

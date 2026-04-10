@@ -681,7 +681,7 @@ export default function AgenteRefinanciadosPage() {
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="space-y-2">
             <h1 className="text-3xl font-semibold tracking-tight">
-              Renovações
+              Aptos a renovar
             </h1>
             <p className="max-w-3xl text-sm text-muted-foreground">
               {canViewGlobalAptos

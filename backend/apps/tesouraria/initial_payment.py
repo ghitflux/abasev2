@@ -5,6 +5,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Iterable
 
+from django.db import models
 from django.utils import timezone
 
 from apps.contratos.models import Contrato
@@ -139,6 +140,10 @@ def _contract_comprovantes(contrato: Contrato) -> Iterable[Comprovante]:
                         Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
                     }
                 )
+                or (
+                    comprovante.ciclo_id is not None
+                    and comprovante.papel == Comprovante.Papel.OPERACIONAL
+                )
             )
         ]
     else:
@@ -148,16 +153,22 @@ def _contract_comprovantes(contrato: Contrato) -> Iterable[Comprovante]:
                 refinanciamento__isnull=True,
             )
             .filter(
-                tipo__in=[
-                    Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
-                    Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
-                ]
-            )
-            .filter(
-                origem__in=[
-                    Comprovante.Origem.EFETIVACAO_CONTRATO,
-                    Comprovante.Origem.LEGADO,
-                ]
+                (
+                    models.Q(
+                        tipo__in=[
+                            Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+                            Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+                        ],
+                        origem__in=[
+                            Comprovante.Origem.EFETIVACAO_CONTRATO,
+                            Comprovante.Origem.LEGADO,
+                        ],
+                    )
+                )
+                | models.Q(
+                    ciclo__isnull=False,
+                    papel=Comprovante.Papel.OPERACIONAL,
+                )
             )
             .select_related("enviado_por")
             .order_by("created_at", "id")
@@ -282,6 +293,12 @@ def build_initial_payment_evidences(
                 request=request,
                 missing_type="legado_sem_arquivo",
             )
+            origem = (
+                "admin_editor"
+                if comprovante.ciclo_id is not None
+                and comprovante.papel == Comprovante.Papel.OPERACIONAL
+                else (comprovante.origem or "efetivacao_contrato")
+            )
             evidence_rows.append(
                 {
                     "id": f"contrato-{comprovante.id}",
@@ -294,7 +311,7 @@ def build_initial_payment_evidences(
                     "arquivo_referencia": comprovante.arquivo_referencia,
                     "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
                     "tipo_referencia": reference.tipo_referencia,
-                    "origem": comprovante.origem or "efetivacao_contrato",
+                    "origem": origem,
                     "papel": comprovante.papel,
                     "tipo": comprovante.tipo,
                     "status": (

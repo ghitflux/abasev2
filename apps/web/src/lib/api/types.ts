@@ -625,6 +625,16 @@ export type AdminAssociadoEditorPayload = {
   contratos: AdminEditorContrato[];
   esteira?: EsteiraResumo | null;
   documentos: Documento[];
+  warnings?: AdminEditorWarning[];
+};
+
+export type AdminEditorWarning = {
+  code: string;
+  severity: string;
+  contrato_id: number | null;
+  contrato_codigo: string;
+  message: string;
+  details: Record<string, unknown>;
 };
 
 export type EsteiraContrato = {
@@ -1218,6 +1228,7 @@ export type RefinanciamentoItem = {
   competencia_solicitada: string;
   status: string;
   valor_refinanciamento: string;
+  valor_liberado_associado: string;
   repasse_agente: string;
   ciclo_key: string;
   referencias: string[];

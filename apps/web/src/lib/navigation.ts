@@ -97,15 +97,15 @@ const ROUTE_SEARCH_ALIASES: Partial<Record<string, string[]>> = {
   "/agentes/refinanciados": [
     "minhas renovacoes",
     "minhas renovações",
-    "renovacoes",
-    "renovações",
+    "aptos a renovar",
+    "aptos",
     "refinanciados",
   ],
   "/tesouraria": ["novos contratos", "dashboard contratos", "tesouraria", "contratos"],
   "/tesouraria/refinanciamentos": [
     "refinanciamentos",
-    "renovacoes",
-    "renovações",
+    "contratos para renovacao",
+    "contratos para renovação",
     "renovacoes de ciclo",
     "renovacoes de ciclos",
     "tesouraria refinanciamentos",
@@ -245,7 +245,7 @@ export const navigationSections: NavigationSection[] = [
             roles: ["AGENTE", "ADMIN"],
           },
           {
-            title: "Renovações",
+            title: "Aptos a renovar",
             href: "/agentes/refinanciados",
             icon: HandCoins,
             roles: ["AGENTE", "ADMIN", "COORDENADOR", "ANALISTA"],
@@ -261,19 +261,32 @@ export const navigationSections: NavigationSection[] = [
       {
         title: "Análise",
         icon: ShieldCheck,
-        roles: ["ANALISTA", "COORDENADOR", "ADMIN"],
+        roles: ["ANALISTA", "ADMIN"],
         children: [
           {
             title: "Dashboard Análise",
             href: "/analise",
             icon: ShieldCheck,
-            roles: ["ANALISTA", "COORDENADOR", "ADMIN"],
+            roles: ["ANALISTA", "ADMIN"],
           },
           {
             title: "Contratos para Renovação",
             href: "/analise/aptos",
             icon: RefreshCcw,
             roles: ["ANALISTA", "ADMIN"],
+          },
+        ],
+      },
+      {
+        title: "Coordenação",
+        icon: ShieldCheck,
+        roles: ["COORDENADOR", "ADMIN"],
+        children: [
+          {
+            title: "Dashboard Análise",
+            href: "/analise",
+            icon: ShieldCheck,
+            roles: ["COORDENADOR", "ADMIN"],
           },
           {
             title: "Aptos a Renovar",
@@ -312,7 +325,7 @@ export const navigationSections: NavigationSection[] = [
             roles: ["TESOUREIRO", "ADMIN"],
           },
           {
-            title: "Renovações",
+            title: "Contratos para Renovação",
             href: "/tesouraria/refinanciamentos",
             icon: HandCoins,
             roles: ["TESOUREIRO", "ADMIN"],

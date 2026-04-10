@@ -66,6 +66,7 @@ class AdminDashboardViewSetTestCase(TestCase):
         status: str,
         agente: User,
         created_at: datetime,
+        data_nascimento: date | None = None,
     ) -> Associado:
         associado = Associado.objects.create(
             nome_completo=nome,
@@ -75,6 +76,7 @@ class AdminDashboardViewSetTestCase(TestCase):
             telefone="86999999999",
             matricula_orgao=f"MAT-{cpf[-4:]}",
             agente_responsavel=agente,
+            data_nascimento=data_nascimento,
         )
         self._set_created_at(associado, created_at)
         return associado
@@ -154,6 +156,7 @@ class AdminDashboardViewSetTestCase(TestCase):
             status=Associado.Status.ATIVO,
             agente=self.agente_a,
             created_at=self._aware_datetime(2026, 3, 1),
+            data_nascimento=date(1990, 3, 10),
         )
         self.analysis = self._create_associado(
             nome="Ana Analise",
@@ -595,3 +598,25 @@ class AdminDashboardViewSetTestCase(TestCase):
             {row["contrato_codigo"] for row in agent_payload["results"]},
             {"CTR-A1", "CTR-A3"},
         )
+
+    def test_detalhes_novos_associados_do_mes_retorna_data_nascimento(self):
+        response = self.client.get(
+            "/api/v1/dashboard/admin/detalhes/",
+            {
+                "section": "new-associados",
+                "metric": "cadastros:2026-03",
+                "date_start": "2026-03-01",
+                "date_end": "2026-03-31",
+                "page_size": "all",
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["count"], 4)
+        maria = next(
+            row for row in payload["results"] if row["associado_nome"] == "Maria Ativa"
+        )
+        self.assertEqual(maria["cpf_cnpj"], "11111111111")
+        self.assertEqual(maria["matricula"], "MAT-1111")
+        self.assertEqual(maria["data_nascimento"], "1990-03-10")
+        self.assertEqual(maria["agente_nome"], self.agente_a.full_name)

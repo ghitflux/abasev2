@@ -14,6 +14,7 @@ import {
 import { toast } from "sonner";
 
 import type {
+  ComprovanteResumo,
   PaginatedResponse,
   RefinanciamentoItem,
   RefinanciamentoResumo,
@@ -21,9 +22,17 @@ import type {
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
 import { formatCurrency, formatDateTime, formatMonthYear } from "@/lib/formatters";
-import { exportPaginatedRouteReport } from "@/lib/reports";
+import {
+  describeReportScope,
+  exportRouteReport,
+  fetchAllPaginatedRows,
+  filterRowsByReportScope,
+  resolveReportReferenceDate,
+  type ReportScope,
+} from "@/lib/reports";
 import DatePicker from "@/components/custom/date-picker";
 import StatusBadge from "@/components/custom/status-badge";
+import AssociadoDetailsDialog from "@/components/associados/associado-details-dialog";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import ExportButton from "@/components/shared/export-button";
@@ -57,6 +66,7 @@ function CompactUploadButton({
   label,
   existingUrl,
   existingReference,
+  existingReferenceType,
   existingName,
   draftFile,
   onSelect,
@@ -67,12 +77,15 @@ function CompactUploadButton({
   label: string;
   existingUrl?: string;
   existingReference?: string;
+  existingReferenceType?: string;
   existingName?: string;
   draftFile?: File;
   onSelect?: (file: File) => void;
   onClear?: () => void;
   disabled?: boolean;
 }) {
+  const hasReferenceOnly = Boolean(existingReference && !existingUrl);
+  const isLegacyReference = existingReferenceType === "legado_sem_arquivo";
   return (
     <div className="flex min-w-[14rem] items-center gap-2 rounded-xl border border-border/60 bg-background/40 p-2.5">
       <div className="min-w-0 flex-1">
@@ -82,7 +95,11 @@ function CompactUploadButton({
         <p className="truncate text-xs text-foreground">
           {draftFile?.name ||
             existingName ||
-            (existingReference ? "Arquivo legado vinculado" : "Sem anexo")}
+            (hasReferenceOnly
+              ? isLegacyReference
+                ? "Arquivo legado vinculado"
+                : "Arquivo vinculado por referência"
+              : "Sem anexo")}
         </p>
       </div>
       {existingUrl ? (
@@ -91,8 +108,12 @@ function CompactUploadButton({
             Ver
           </a>
         </Button>
-      ) : existingReference ? (
-        <Badge className="rounded-full bg-amber-500/15 text-amber-200">Legado</Badge>
+      ) : hasReferenceOnly ? (
+        isLegacyReference ? (
+          <Badge className="rounded-full bg-amber-500/15 text-amber-200">Legado</Badge>
+        ) : (
+          <Badge className="rounded-full bg-sky-500/15 text-sky-200">Referência</Badge>
+        )
       ) : null}
       {onSelect ? (
         <label className="cursor-pointer">
@@ -124,6 +145,27 @@ function CompactUploadButton({
   );
 }
 
+function findComprovanteByTipo(
+  comprovantes: ComprovanteResumo[],
+  tipo: string,
+): ComprovanteResumo | undefined {
+  return comprovantes.find((item) => item.tipo === tipo);
+}
+
+function resolveRenewalAttachments(row: RefinanciamentoItem) {
+  return {
+    termoAgente: findComprovanteByTipo(row.comprovantes, "termo_antecipacao"),
+    comprovanteAssociado: findComprovanteByTipo(
+      row.comprovantes,
+      "comprovante_pagamento_associado",
+    ),
+    comprovanteAgente: findComprovanteByTipo(
+      row.comprovantes,
+      "comprovante_pagamento_agente",
+    ),
+  };
+}
+
 export default function TesourariaRefinanciamentosPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = React.useState("");
@@ -137,6 +179,7 @@ export default function TesourariaRefinanciamentosPage() {
   const [pageEfetivadas, setPageEfetivadas] = React.useState(1);
   const [pageCanceladas, setPageCanceladas] = React.useState(1);
   const [drafts, setDrafts] = React.useState<DraftMap>({});
+  const [detailAssociadoId, setDetailAssociadoId] = React.useState<number | null>(null);
 
   React.useEffect(() => {
     setPagePending(1);
@@ -274,21 +317,37 @@ export default function TesourariaRefinanciamentosPage() {
       {
         id: "anexos",
         header: "Anexos",
-        cellClassName: "min-w-[22rem]",
+        cellClassName: "min-w-[28rem]",
         cell: (row) => {
-          const associado = row.comprovantes.find((item) => item.papel === "associado");
-          const agente = row.comprovantes.find((item) => item.papel === "agente");
+          const { termoAgente, comprovanteAssociado, comprovanteAgente } =
+            resolveRenewalAttachments(row);
           const draft = drafts[row.id] ?? {};
 
           return (
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
                 <CompactUploadButton
+                  id={`renovacao-${row.id}-termo-agente`}
+                  label="Termo do agente"
+                  existingUrl={
+                    termoAgente?.arquivo_disponivel_localmente ? termoAgente.arquivo : undefined
+                  }
+                  existingReference={termoAgente?.arquivo_referencia}
+                  existingReferenceType={termoAgente?.tipo_referencia}
+                  existingName={termoAgente?.nome_original}
+                  disabled
+                />
+                <CompactUploadButton
                   id={`renovacao-${row.id}-associado`}
-                  label="Associado"
-                  existingUrl={associado?.arquivo_disponivel_localmente ? associado.arquivo : undefined}
-                  existingReference={associado?.arquivo_referencia}
-                  existingName={associado?.nome_original}
+                  label="Comp. associado"
+                  existingUrl={
+                    comprovanteAssociado?.arquivo_disponivel_localmente
+                      ? comprovanteAssociado.arquivo
+                      : undefined
+                  }
+                  existingReference={comprovanteAssociado?.arquivo_referencia}
+                  existingReferenceType={comprovanteAssociado?.tipo_referencia}
+                  existingName={comprovanteAssociado?.nome_original}
                   draftFile={draft.associado}
                   onSelect={(file) =>
                     setDrafts((current) => ({
@@ -305,10 +364,15 @@ export default function TesourariaRefinanciamentosPage() {
                 />
                 <CompactUploadButton
                   id={`renovacao-${row.id}-agente`}
-                  label="Agente"
-                  existingUrl={agente?.arquivo_disponivel_localmente ? agente.arquivo : undefined}
-                  existingReference={agente?.arquivo_referencia}
-                  existingName={agente?.nome_original}
+                  label="Comp. agente"
+                  existingUrl={
+                    comprovanteAgente?.arquivo_disponivel_localmente
+                      ? comprovanteAgente.arquivo
+                      : undefined
+                  }
+                  existingReference={comprovanteAgente?.arquivo_referencia}
+                  existingReferenceType={comprovanteAgente?.tipo_referencia}
+                  existingName={comprovanteAgente?.nome_original}
                   draftFile={draft.agente}
                   onSelect={(file) =>
                     setDrafts((current) => ({
@@ -325,7 +389,8 @@ export default function TesourariaRefinanciamentosPage() {
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                Envie os dois anexos para liberar a efetivação da renovação.
+                Mantenha o termo do agente visível e anexe os comprovantes de pagamento do
+                associado e do agente para liberar a efetivação.
               </p>
             </div>
           );
@@ -364,7 +429,21 @@ export default function TesourariaRefinanciamentosPage() {
         id: "associado",
         header: "Associado",
         cell: (row) => (
-          <CopySnippet label="Associado" value={row.associado_nome} inline className="max-w-[16rem]" />
+          <div className="space-y-2">
+            <CopySnippet
+              label="Associado"
+              value={row.associado_nome}
+              inline
+              className="max-w-[16rem]"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setDetailAssociadoId(row.associado_id)}
+            >
+              Ver detalhes do associado
+            </Button>
+          </div>
         ),
       },
       {
@@ -406,7 +485,7 @@ export default function TesourariaRefinanciamentosPage() {
         header: "Valor / Repasse",
         cell: (row) => (
           <div className="space-y-1">
-            <p className="font-semibold">{formatCurrency(row.valor_refinanciamento)}</p>
+            <p className="font-semibold">{formatCurrency(row.valor_liberado_associado)}</p>
             <p className="text-xs text-emerald-400">
               Repasse do agente: {formatCurrency(row.repasse_agente)}
             </p>
@@ -444,27 +523,48 @@ export default function TesourariaRefinanciamentosPage() {
       {
         id: "anexos",
         header: "Anexos",
-        cellClassName: "min-w-[20rem]",
+        cellClassName: "min-w-[28rem]",
         cell: (row) => {
-          const associado = row.comprovantes.find((item) => item.papel === "associado");
-          const agente = row.comprovantes.find((item) => item.papel === "agente");
+          const { termoAgente, comprovanteAssociado, comprovanteAgente } =
+            resolveRenewalAttachments(row);
 
           return (
             <div className="flex flex-wrap gap-2">
               <CompactUploadButton
+                id={`readonly-${row.id}-termo-agente`}
+                label="Termo do agente"
+                existingUrl={
+                  termoAgente?.arquivo_disponivel_localmente ? termoAgente.arquivo : undefined
+                }
+                existingReference={termoAgente?.arquivo_referencia}
+                existingReferenceType={termoAgente?.tipo_referencia}
+                existingName={termoAgente?.nome_original}
+                disabled
+              />
+              <CompactUploadButton
                 id={`readonly-${row.id}-associado`}
-                label="Associado"
-                existingUrl={associado?.arquivo_disponivel_localmente ? associado.arquivo : undefined}
-                existingReference={associado?.arquivo_referencia}
-                existingName={associado?.nome_original}
+                label="Comp. associado"
+                existingUrl={
+                  comprovanteAssociado?.arquivo_disponivel_localmente
+                    ? comprovanteAssociado.arquivo
+                    : undefined
+                }
+                existingReference={comprovanteAssociado?.arquivo_referencia}
+                existingReferenceType={comprovanteAssociado?.tipo_referencia}
+                existingName={comprovanteAssociado?.nome_original}
                 disabled
               />
               <CompactUploadButton
                 id={`readonly-${row.id}-agente`}
-                label="Agente"
-                existingUrl={agente?.arquivo_disponivel_localmente ? agente.arquivo : undefined}
-                existingReference={agente?.arquivo_referencia}
-                existingName={agente?.nome_original}
+                label="Comp. agente"
+                existingUrl={
+                  comprovanteAgente?.arquivo_disponivel_localmente
+                    ? comprovanteAgente.arquivo
+                    : undefined
+                }
+                existingReference={comprovanteAgente?.arquivo_referencia}
+                existingReferenceType={comprovanteAgente?.tipo_referencia}
+                existingName={comprovanteAgente?.nome_original}
                 disabled
               />
             </div>
@@ -478,6 +578,13 @@ export default function TesourariaRefinanciamentosPage() {
           <div className="space-y-1">
             <CopySnippet label="Associado" value={row.associado_nome} inline className="max-w-[16rem]" />
             <CopySnippet label="CPF" value={row.cpf_cnpj} mono inline />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setDetailAssociadoId(row.associado_id)}
+            >
+              Ver detalhes do associado
+            </Button>
           </div>
         ),
       },
@@ -505,7 +612,7 @@ export default function TesourariaRefinanciamentosPage() {
         header: "Valor / Repasse",
         cell: (row) => (
           <div className="space-y-1">
-            <p className="font-semibold">{formatCurrency(row.valor_refinanciamento)}</p>
+            <p className="font-semibold">{formatCurrency(row.valor_liberado_associado)}</p>
             <p className="text-xs text-emerald-400">
               Repasse do agente: {formatCurrency(row.repasse_agente)}
             </p>
@@ -537,34 +644,54 @@ export default function TesourariaRefinanciamentosPage() {
   );
 
   const handleExport = React.useCallback(
-    async (exportFormat: "csv" | "pdf" | "excel" | "xlsx") => {
-      if (exportFormat !== "pdf" && exportFormat !== "xlsx") {
-        return;
-      }
-
+    async (scope: ReportScope, exportFormat: "pdf" | "xlsx") => {
+      const referenceDate = resolveReportReferenceDate({
+        scope,
+        dayReference: dataInicio ?? dataFim,
+        monthReference: dataInicio ?? dataFim,
+      });
       setIsExporting(true);
       try {
-        await exportPaginatedRouteReport<RefinanciamentoItem>({
-          route: "/tesouraria/refinanciamentos",
-          format: exportFormat,
+        const sourceQuery = {
+          search: search || undefined,
+          data_inicio: toIsoDate(dataInicio),
+          data_fim: toIsoDate(dataFim),
+        };
+        const fetchedRows = await fetchAllPaginatedRows<RefinanciamentoItem>({
           sourcePath: "tesouraria/refinanciamentos",
-          sourceQuery: {
-            search: search || undefined,
-            data_inicio: toIsoDate(dataInicio),
-            data_fim: toIsoDate(dataFim),
-          },
-          mapRow: (row) => ({
+          sourceQuery,
+        });
+        const rows = filterRowsByReportScope({
+          rows: fetchedRows,
+          scope,
+          referenceDate,
+          getCandidates: (row) => [
+            row.data_solicitacao_renovacao,
+            row.data_solicitacao,
+            row.executado_em,
+            row.data_ativacao_ciclo,
+            row.updated_at,
+          ],
+        }).map((row) => ({
             associado_nome: row.associado_nome,
             cpf_cnpj: row.cpf_cnpj,
             contrato_codigo: row.contrato_codigo,
             competencia_solicitada: row.competencia_solicitada,
             status: row.status,
-            valor_refinanciamento: row.valor_refinanciamento,
+            valor_liberado_associado: row.valor_liberado_associado,
             repasse_agente: row.repasse_agente,
             executado_em: row.executado_em,
             data_ativacao_ciclo: row.data_ativacao_ciclo,
             updated_at: row.updated_at,
-          }),
+          }));
+        await exportRouteReport({
+          route: "/tesouraria/refinanciamentos",
+          format: exportFormat,
+          rows,
+          filters: {
+            ...sourceQuery,
+            ...describeReportScope(scope, referenceDate),
+          },
         });
       } catch (error) {
         toast.error(
@@ -585,16 +712,22 @@ export default function TesourariaRefinanciamentosPage() {
             <p className="text-sm uppercase tracking-[0.28em] text-muted-foreground">
               Tesouraria
             </p>
-            <h1 className="text-3xl font-semibold">Renovações</h1>
+            <h1 className="text-3xl font-semibold">Contratos para Renovação</h1>
             <p className="text-sm text-muted-foreground">
-              Renovações aprovadas pela coordenação, com fila operacional da tesouraria e
-              histórico de efetivação.
+              Contratos aprovados pela coordenação, com fila operacional da tesouraria
+              e histórico de efetivação.
             </p>
           </div>
           <ExportButton
             disabled={isExporting}
             label={isExporting ? "Exportando..." : "Exportar"}
-            onExport={(exportFormat) => void handleExport(exportFormat)}
+            enableScopeSelection
+            onExport={(exportFormat) =>
+              exportFormat === "pdf" || exportFormat === "xlsx"
+                ? void handleExport("month", exportFormat)
+                : undefined
+            }
+            onExportScoped={(scope, exportFormat) => void handleExport(scope, exportFormat)}
           />
         </div>
       </section>
@@ -610,7 +743,7 @@ export default function TesourariaRefinanciamentosPage() {
         <StatsCard
           title="Efetivadas"
           value={String(resumo?.efetivados ?? efetivadasQuery.data?.count ?? 0)}
-          delta="Renovações concluídas pela tesouraria"
+          delta="Contratos concluídos pela tesouraria"
           icon={CheckCircle2Icon}
           tone="positive"
         />
@@ -708,7 +841,7 @@ export default function TesourariaRefinanciamentosPage() {
 
       <RefinanciamentoSection
         eyebrow="Pendentes"
-        title="Renovações aprovadas para pagamento"
+        title="Contratos aprovados para pagamento"
         total={pendingQuery.data?.count ?? 0}
         page={pagePending}
         rows={pendingQuery.data?.results ?? []}
@@ -720,7 +853,7 @@ export default function TesourariaRefinanciamentosPage() {
 
       <RefinanciamentoSection
         eyebrow="Efetivadas"
-        title="Renovações concluídas"
+        title="Contratos concluídos"
         total={efetivadasQuery.data?.count ?? 0}
         page={pageEfetivadas}
         rows={efetivadasQuery.data?.results ?? []}
@@ -732,7 +865,7 @@ export default function TesourariaRefinanciamentosPage() {
 
       <RefinanciamentoSection
         eyebrow="Canceladas"
-        title="Renovações bloqueadas ou revertidas"
+        title="Contratos bloqueados ou revertidos"
         total={canceladasQuery.data?.count ?? 0}
         page={pageCanceladas}
         rows={canceladasQuery.data?.results ?? []}
@@ -740,6 +873,16 @@ export default function TesourariaRefinanciamentosPage() {
         onPageChange={setPageCanceladas}
         loading={canceladasQuery.isLoading}
         emptyMessage="Nenhuma renovação cancelada no recorte."
+      />
+
+      <AssociadoDetailsDialog
+        associadoId={detailAssociadoId}
+        open={detailAssociadoId != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailAssociadoId(null);
+          }
+        }}
       />
     </div>
   );

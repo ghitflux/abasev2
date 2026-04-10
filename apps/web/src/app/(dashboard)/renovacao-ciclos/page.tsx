@@ -9,7 +9,6 @@ import {
   ArrowUpRightIcon,
   ChevronDownIcon,
   ChevronRightIcon,
-  CircleAlertIcon,
   EyeIcon,
   LayoutGridIcon,
   ListIcon,
@@ -66,7 +65,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useV1ImportacaoArquivoRetornoList,
@@ -131,7 +129,6 @@ const PERIOD_OPTIONS = [
 
 type PeriodPreset = (typeof PERIOD_OPTIONS)[number]["value"];
 type LayoutMode = "grid" | "list";
-type MonitoringMode = "trimestral" | "semestral";
 
 type AdvancedFilters = {
   periodPreset: PeriodPreset;
@@ -208,18 +205,6 @@ type ReturnMetricDialogConfig = {
   key: "quitados" | "faltando" | "mensalidades" | "valores_30_50";
   title: string;
   description: string;
-  exportTitle: string;
-  exportFilename: string;
-  emptyMessage: string;
-};
-
-type MonitoringCardDefinition = {
-  title: string;
-  value: number;
-  tone?: "neutral" | "warning" | "danger";
-  rows: EnrichedCycleItem[];
-  dialogTitle: string;
-  dialogDescription: string;
   exportTitle: string;
   exportFilename: string;
   emptyMessage: string;
@@ -1744,6 +1729,8 @@ function MonthlyCycleCard({
     },
     enabled: canUseFinanceiroResumo && Boolean(arquivoMensal?.id),
     staleTime: 30 * 1000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
     placeholderData: (previousData: ArquivoRetornoFinanceiroPayload | undefined) =>
       previousData,
   });
@@ -1754,13 +1741,17 @@ function MonthlyCycleCard({
         : buildMonthlyMetrics(filteredRows);
 
     if (canUseFinanceiroResumo) {
-      return applyFinanceiroToMonthlyMetrics(metrics, financeiroMensal);
+      return applyFinanceiroToMonthlyMetrics(
+        metrics,
+        financeiroDetalheQuery.data?.resumo ?? financeiroMensal,
+      );
     }
     return metrics;
   }, [
     canUseFinanceiroResumo,
     canUseServerResumo,
     filteredRows,
+    financeiroDetalheQuery.data?.resumo,
     financeiroMensal,
     resumoMensalQuery.data,
   ]);
@@ -1807,14 +1798,23 @@ function MonthlyCycleCard({
     [filteredRows],
   );
   const monthlyMetricCounts = React.useMemo(
-    () => ({
-      cicloRenovado: metricRowsByStatus.ciclo_renovado.length,
-      aptoRenovar: metricRowsByStatus.apto_a_renovar.length,
-      emAberto: metricRowsByStatus.em_aberto.length,
-      inadimplente: metricRowsByStatus.inadimplente.length,
-      emPrevisao: metricRowsByStatus.em_previsao.length,
-    }),
-    [metricRowsByStatus],
+    () =>
+      !searchValue && selectedStatus === "todos" && canUseServerResumo
+        ? {
+            cicloRenovado: monthlyMetrics.cicloRenovado,
+            aptoRenovar: monthlyMetrics.aptoRenovar,
+            emAberto: monthlyMetrics.emAberto,
+            inadimplente: monthlyMetrics.inadimplente,
+            emPrevisao: metricRowsByStatus.em_previsao.length,
+          }
+        : {
+            cicloRenovado: metricRowsByStatus.ciclo_renovado.length,
+            aptoRenovar: metricRowsByStatus.apto_a_renovar.length,
+            emAberto: metricRowsByStatus.em_aberto.length,
+            inadimplente: metricRowsByStatus.inadimplente.length,
+            emPrevisao: metricRowsByStatus.em_previsao.length,
+          },
+    [canUseServerResumo, metricRowsByStatus, monthlyMetrics, searchValue, selectedStatus],
   );
   const cycleMetricAutocompleteOptions = React.useMemo(
     () => buildAutocompleteOptions(metricDialogConfig?.rows ?? []),
@@ -1925,15 +1925,6 @@ function MonthlyCycleCard({
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {!hasConciliatedRows ? (
-          <div className="flex items-start gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-            <CircleAlertIcon className="mt-0.5 size-4 shrink-0 text-amber-300" />
-            <div>
-              Há arquivo retorno para {monthLabel}, mas a base local não possui parcelas conciliadas nessa competência.
-            </div>
-          </div>
-        ) : null}
-
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-medium text-foreground">
@@ -2143,6 +2134,8 @@ function ReturnFileCard({
       ),
     enabled: shouldLoadFinanceiro,
     staleTime: 30 * 1000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
     placeholderData: (previousData: ArquivoRetornoFinanceiroPayload | undefined) => previousData,
   });
   const isDetailLoading = isExpanded && financeiroQuery.isLoading && !financeiroQuery.data;
@@ -2182,6 +2175,8 @@ function ReturnFileCard({
     arquivo.competencia_display,
     arquivo.competencia,
   );
+  const liveFinanceiroResumo =
+    financeiroQuery.data?.resumo ?? financeiroResumo;
   const metricRowsByStatus = React.useMemo(
     () => ({
       quitados: detailRows.filter((row) => row.ok),
@@ -2192,45 +2187,16 @@ function ReturnFileCard({
     [detailRows],
   );
   const detailSummary = React.useMemo(() => summarizeReturnRows(detailRows), [detailRows]);
-  const total =
-    financeiroQuery.data && shouldLoadFinanceiro
-      ? detailSummary.total
-      : financeiroResumo?.total ?? arquivo.total_registros ?? 0;
-  const quitados =
-    financeiroQuery.data && shouldLoadFinanceiro
-      ? detailSummary.quitados.count
-      : financeiroResumo?.ok ?? 0;
+  const total = liveFinanceiroResumo?.total ?? arquivo.total_registros ?? detailSummary.total;
+  const quitados = liveFinanceiroResumo?.ok ?? detailSummary.quitados.count;
   const faltando =
-    financeiroQuery.data && shouldLoadFinanceiro
-      ? detailSummary.faltando.count
-      : financeiroResumo?.faltando ?? Math.max(total - quitados, 0);
-  const recebido =
-    financeiroQuery.data && shouldLoadFinanceiro
-      ? detailRows.reduce(
-          (accumulator, row) => accumulator + toFinanceiroNumber(row.recebido),
-          0,
-        )
-      : toFinanceiroNumber(financeiroResumo?.recebido);
-  const esperado =
-    financeiroQuery.data && shouldLoadFinanceiro
-      ? detailRows.reduce(
-          (accumulator, row) => accumulator + toFinanceiroNumber(row.esperado),
-          0,
-        )
-      : toFinanceiroNumber(financeiroResumo?.esperado);
-  const pendente =
-    financeiroQuery.data && shouldLoadFinanceiro
-      ? detailSummary.faltando.pendente
-      : toFinanceiroNumber(financeiroResumo?.pendente);
+    liveFinanceiroResumo?.faltando ?? Math.max(total - quitados, 0);
+  const recebido = toFinanceiroNumber(liveFinanceiroResumo?.recebido);
+  const esperado = toFinanceiroNumber(liveFinanceiroResumo?.esperado);
+  const pendente = toFinanceiroNumber(liveFinanceiroResumo?.pendente);
   const progresso = esperado > 0 ? (recebido / esperado) * 100 : 0;
-  const mensalidades =
-    financeiroQuery.data && shouldLoadFinanceiro
-      ? detailSummary.mensalidades
-      : financeiroResumo?.mensalidades;
-  const valores3050 =
-    financeiroQuery.data && shouldLoadFinanceiro
-      ? detailSummary.valores_30_50
-      : financeiroResumo?.valores_30_50;
+  const mensalidades = liveFinanceiroResumo?.mensalidades ?? detailSummary.mensalidades;
+  const valores3050 = liveFinanceiroResumo?.valores_30_50 ?? detailSummary.valores_30_50;
   const metricDialogRows = metricDialogConfig
     ? metricRowsByStatus[metricDialogConfig.key]
     : [];
@@ -2503,72 +2469,6 @@ function MetricTile({
   );
 }
 
-function MonitoringCard({
-  title,
-  value,
-  tone = "neutral",
-  onClick,
-}: {
-  title: string;
-  value: number;
-  tone?: "neutral" | "warning" | "danger";
-  onClick?: () => void;
-}) {
-  const content = (
-    <>
-      <p className="break-words text-xs uppercase tracking-[0.18em] text-muted-foreground">{title}</p>
-      <p
-        className={cn(
-          "mt-3 break-words text-3xl font-semibold",
-          tone === "danger"
-            ? "text-rose-300"
-            : tone === "warning"
-              ? "text-amber-300"
-              : "text-foreground",
-        )}
-      >
-        {value}
-      </p>
-    </>
-  );
-
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className={cn(
-          KPI_SURFACE_CLASS,
-          "rounded-[1.35rem] border bg-card/80 px-5 py-4 text-left shadow-lg shadow-black/10 transition-colors hover:bg-card focus-visible:ring-2 focus-visible:ring-ring/50",
-          tone === "danger"
-            ? "border-rose-500/35"
-            : tone === "warning"
-              ? "border-amber-500/35"
-              : "border-border/60",
-        )}
-      >
-        {content}
-      </button>
-    );
-  }
-
-  return (
-    <div
-      className={cn(
-        KPI_SURFACE_CLASS,
-        "rounded-[1.35rem] border bg-card/80 px-5 py-4 shadow-lg shadow-black/10",
-        tone === "danger"
-          ? "border-rose-500/35"
-          : tone === "warning"
-            ? "border-amber-500/35"
-            : "border-border/60",
-      )}
-    >
-      {content}
-    </div>
-  );
-}
-
 export default function RenovacaoCiclosPage() {
   const { hasRole } = usePermissions();
   const isAdmin = hasRole("ADMIN");
@@ -2588,10 +2488,7 @@ export default function RenovacaoCiclosPage() {
   const [retornoCompetencia, setRetornoCompetencia] = React.useState("");
   const [retornoPeriod, setRetornoPeriod] = React.useState<"mes" | "trimestre">("mes");
   const [visibleReturnFilesCount, setVisibleReturnFilesCount] = React.useState(3);
-  const [monitoringMode, setMonitoringMode] = React.useState<MonitoringMode>("trimestral");
   const [detailMetricDialogConfig, setDetailMetricDialogConfig] =
-    React.useState<CycleMetricDialogConfig | null>(null);
-  const [monitoringMetricDialogConfig, setMonitoringMetricDialogConfig] =
     React.useState<CycleMetricDialogConfig | null>(null);
   const [renewalEditTarget, setRenewalEditTarget] =
     React.useState<EnrichedCycleItem | null>(null);
@@ -2781,149 +2678,6 @@ export default function RenovacaoCiclosPage() {
       detailRows.map((row) => [onlyDigits(row.cpf_cnpj), row]),
     );
   }, [detailRows]);
-
-  const monitoringCards = React.useMemo<MonitoringCardDefinition[]>(() => {
-    const competenciaLabel = formatCompetenciaHeading(selectedCompetencia);
-    const firstStageRows = filteredDetailRows.filter((row) => row.parcelas_pagas <= 1);
-    const secondStageRows = filteredDetailRows.filter((row) => row.parcelas_pagas === 2);
-    const thirdStageRows = filteredDetailRows.filter((row) => row.parcelas_pagas >= 3);
-    const pendingRows = filteredDetailRows.filter(
-      (row) =>
-        row.status_visual === "inadimplente" ||
-        row.status_visual === "em_aberto" ||
-        row.resultado_importacao === "nao_descontado",
-    );
-
-    if (monitoringMode === "semestral") {
-      return [
-        {
-          title: "Meses 1-2 (Abertura)",
-          value: firstStageRows.length,
-          rows: firstStageRows,
-          dialogTitle: `Meses 1-2 (Abertura) em ${competenciaLabel}`,
-          dialogDescription:
-            "Associados reais do estágio inicial no recorte semestral.",
-          exportTitle: `Meses 1-2 (Abertura) - ${competenciaLabel}`,
-          exportFilename: sanitizeFileName(
-            `monitoramento-${selectedCompetencia || "atual"}-meses-1-2`,
-          ),
-          emptyMessage: "Nenhum associado encontrado para o estágio de abertura.",
-        },
-        {
-          title: "Meses 3-4 (Acompanhamento)",
-          value: secondStageRows.length,
-          tone: "neutral",
-          rows: secondStageRows,
-          dialogTitle: `Meses 3-4 (Acompanhamento) em ${competenciaLabel}`,
-          dialogDescription:
-            "Associados reais do estágio intermediário no recorte semestral.",
-          exportTitle: `Meses 3-4 (Acompanhamento) - ${competenciaLabel}`,
-          exportFilename: sanitizeFileName(
-            `monitoramento-${selectedCompetencia || "atual"}-meses-3-4`,
-          ),
-          emptyMessage: "Nenhum associado encontrado para o estágio intermediário.",
-        },
-        {
-          title: "Meses 5-6 (Encerramento)",
-          value: thirdStageRows.length,
-          tone: "warning",
-          rows: thirdStageRows,
-          dialogTitle: `Meses 5-6 (Encerramento) em ${competenciaLabel}`,
-          dialogDescription:
-            "Associados reais em encerramento no recorte semestral do ciclo.",
-          exportTitle: `Meses 5-6 (Encerramento) - ${competenciaLabel}`,
-          exportFilename: sanitizeFileName(
-            `monitoramento-${selectedCompetencia || "atual"}-meses-5-6`,
-          ),
-          emptyMessage: "Nenhum associado encontrado para o estágio de encerramento.",
-        },
-        {
-          title: "Pendências acumuladas",
-          value: pendingRows.length,
-          tone: "danger",
-          rows: pendingRows,
-          dialogTitle: `Pendências acumuladas em ${competenciaLabel}`,
-          dialogDescription:
-            "Associados com pendência operacional acumulada no recorte semestral.",
-          exportTitle: `Pendências acumuladas - ${competenciaLabel}`,
-          exportFilename: sanitizeFileName(
-            `monitoramento-${selectedCompetencia || "atual"}-pendencias`,
-          ),
-          emptyMessage: "Nenhuma pendência acumulada encontrada para esta competência.",
-        },
-      ];
-    }
-
-    return [
-      {
-        title: "Mês 1/3 (Início)",
-        value: firstStageRows.length,
-        rows: firstStageRows,
-        dialogTitle: `Mês 1/3 (Início) em ${competenciaLabel}`,
-        dialogDescription: "Associados ainda no primeiro estágio do ciclo atual.",
-        exportTitle: `Mês 1/3 (Início) - ${competenciaLabel}`,
-        exportFilename: sanitizeFileName(
-          `monitoramento-${selectedCompetencia || "atual"}-mes-1-3`,
-        ),
-        emptyMessage: "Nenhum associado encontrado para o primeiro estágio do ciclo.",
-      },
-      {
-        title: "Mês 2/3 (Meio)",
-        value: secondStageRows.length,
-        rows: secondStageRows,
-        dialogTitle: `Mês 2/3 (Meio) em ${competenciaLabel}`,
-        dialogDescription: "Associados no estágio intermediário do ciclo atual.",
-        exportTitle: `Mês 2/3 (Meio) - ${competenciaLabel}`,
-        exportFilename: sanitizeFileName(
-          `monitoramento-${selectedCompetencia || "atual"}-mes-2-3`,
-        ),
-        emptyMessage: "Nenhum associado encontrado para o estágio intermediário.",
-      },
-      {
-        title: "Mês 3/3 (Encerramento)",
-        value: thirdStageRows.length,
-        tone: "warning",
-        rows: thirdStageRows,
-        dialogTitle: `Mês 3/3 (Encerramento) em ${competenciaLabel}`,
-        dialogDescription: "Associados prontos para encerramento ou renovação do ciclo.",
-        exportTitle: `Mês 3/3 (Encerramento) - ${competenciaLabel}`,
-        exportFilename: sanitizeFileName(
-          `monitoramento-${selectedCompetencia || "atual"}-mes-3-3`,
-        ),
-        emptyMessage: "Nenhum associado encontrado para o encerramento do ciclo.",
-      },
-      {
-        title: "Pendências acumuladas",
-        value: pendingRows.length,
-        tone: "danger",
-        rows: pendingRows,
-        dialogTitle: `Pendências acumuladas em ${competenciaLabel}`,
-        dialogDescription:
-          "Associados com inadimplência, parcela em aberto ou retorno não descontado.",
-        exportTitle: `Pendências acumuladas - ${competenciaLabel}`,
-        exportFilename: sanitizeFileName(
-          `monitoramento-${selectedCompetencia || "atual"}-pendencias`,
-        ),
-        emptyMessage: "Nenhuma pendência acumulada encontrada para esta competência.",
-      },
-    ];
-  }, [filteredDetailRows, monitoringMode, selectedCompetencia]);
-  const monitoringMetricAutocompleteOptions = React.useMemo(
-    () => buildAutocompleteOptions(monitoringMetricDialogConfig?.rows ?? []),
-    [monitoringMetricDialogConfig?.rows],
-  );
-  const openMonitoringMetricDialog = React.useCallback((card: MonitoringCardDefinition) => {
-    setMonitoringMetricDialogConfig({
-      key: card.title,
-      title: card.dialogTitle,
-      description: card.dialogDescription,
-      rows: card.rows,
-      monthLabel: selectedCompetenciaLabel,
-      exportTitle: card.exportTitle,
-      exportFilename: card.exportFilename,
-      emptyMessage: card.emptyMessage,
-    });
-  }, [selectedCompetenciaLabel]);
 
   const activeAdvancedFiltersCount = countActiveFilters(selectedStatus, advancedFilters);
   const isMonthsLoading = monthsQuery.isLoading && !(monthsQuery.data ?? []).length;
@@ -3292,51 +3046,6 @@ export default function RenovacaoCiclosPage() {
           />
         </div>
       </div>
-
-      <section className="space-y-5">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold text-foreground">
-              Monitoramento de ciclos ({monitoringMode === "trimestral" ? "trimestral" : "semestral"})
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              KPIs derivados da competência filtrada para identificar abertura, andamento, encerramento e pendências acumuladas.
-            </p>
-          </div>
-
-          <Tabs value={monitoringMode} onValueChange={(value) => setMonitoringMode(value as MonitoringMode)}>
-            <TabsList variant="line">
-              <TabsTrigger value="trimestral">Trimestral</TabsTrigger>
-              <TabsTrigger value="semestral">Semestral</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-
-        <Tabs value={monitoringMode} onValueChange={(value) => setMonitoringMode(value as MonitoringMode)}>
-          <TabsContent value={monitoringMode} className="space-y-4">
-            <div className="grid gap-4 xl:grid-cols-4">
-              {monitoringCards.map((card) => (
-                <MonitoringCard
-                  key={card.title}
-                  title={card.title}
-                  value={card.value}
-                  tone={card.tone}
-                  onClick={() => openMonitoringMetricDialog(card)}
-                />
-              ))}
-            </div>
-
-            <div className="rounded-[1.35rem] border border-border/60 bg-card/80 px-5 py-4 text-sm text-muted-foreground">
-              <div className="flex items-start gap-3">
-                <CircleAlertIcon className="mt-0.5 size-4 text-cyan-300" />
-                <p>
-                  Regra de renovação automática: cada ciclo mantém três parcelas. No modo semestral, a leitura projeta dois ciclos consecutivos para antecipar acúmulo de pendências.
-                </p>
-              </div>
-            </div>
-          </TabsContent>
-        </Tabs>
-      </section>
 
       <section className="space-y-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
@@ -3774,56 +3483,6 @@ export default function RenovacaoCiclosPage() {
               tableClassName="min-w-[82rem]"
               emptyMessage={
                 detailMetricDialogConfig?.emptyMessage ??
-                "Nenhum associado encontrado para este indicador."
-              }
-            />
-          </div>
-        )}
-      />
-
-      <MetricDetailDialog
-        open={Boolean(monitoringMetricDialogConfig)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setMonitoringMetricDialogConfig(null);
-          }
-        }}
-        title={
-          monitoringMetricDialogConfig?.title ??
-          `Monitoramento de ciclos em ${selectedCompetenciaLabel}`
-        }
-        description={
-          monitoringMetricDialogConfig?.description ??
-          "Associados relacionados ao indicador selecionado do monitoramento."
-        }
-        rows={monitoringMetricDialogConfig?.rows ?? []}
-        autocompleteOptions={monitoringMetricAutocompleteOptions}
-        matchesSearch={matchesCycleSearchValue}
-        placeholder="Buscar associado neste indicador"
-        searchPlaceholder="Buscar por nome, CPF ou matrícula"
-        emptyLabel={
-          monitoringMetricDialogConfig?.emptyMessage ??
-          "Nenhum associado encontrado para este indicador."
-        }
-        exportTitle={
-          monitoringMetricDialogConfig?.exportTitle ??
-          `Monitoramento de ciclos ${selectedCompetenciaLabel}`
-        }
-        exportFilename={
-          monitoringMetricDialogConfig?.exportFilename ??
-          sanitizeFileName(`monitoramento-${selectedCompetencia || "atual"}-kpi`)
-        }
-        exportColumns={cycleExportColumns(monitoringMetricDialogConfig?.monthLabel ?? selectedCompetenciaLabel)}
-        renderTable={(rows) => (
-          <div className={TABLE_VIEWPORT_CLASS}>
-            <CycleMembersTable
-              rows={rows}
-              monthLabel={monitoringMetricDialogConfig?.monthLabel ?? selectedCompetenciaLabel}
-              pageSize={10}
-              pageSizeOptions={DETAIL_PAGE_SIZE_OPTIONS}
-              tableClassName="min-w-[82rem]"
-              emptyMessage={
-                monitoringMetricDialogConfig?.emptyMessage ??
                 "Nenhum associado encontrado para este indicador."
               }
             />

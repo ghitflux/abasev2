@@ -36,7 +36,7 @@ describe("navigation", () => {
     expect(financeiroChildren.map((entry) => entry.href)).not.toContain("/agentes/pagamentos");
     expect(
       cadastroChildren.find((entry) => entry.href === "/agentes/refinanciados")?.title,
-    ).toBe("Renovações");
+    ).toBe("Aptos a renovar");
     expect(
       cadastroChildren.find((entry) => entry.href === "/agentes/pagamentos")?.title,
     ).toBe("Pagamentos");
@@ -178,7 +178,7 @@ describe("navigation", () => {
     ).toBe("Pagamentos");
     expect(
       tesourariaChildren.find((item) => item.href === "/tesouraria/refinanciamentos")?.title,
-    ).toBe("Renovações");
+    ).toBe("Contratos para Renovação");
     expect(
       tesourariaChildren.find((item) => item.href === "/tesouraria/baixa-manual")?.title,
     ).toBe("Inadimplentes");
@@ -219,6 +219,25 @@ describe("navigation", () => {
     expect(canAccessPath("/configuracoes/comissoes", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/importacao", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/analise", ["COORDENADOR"])).toBe(true);
+  });
+
+  it("separa a secao de coordenacao da visao de analise na sidebar", () => {
+    const coordinatorSections = getNavigationForRole("COORDENADOR");
+    const operacaoItems =
+      coordinatorSections.find((section) => section.title === "Operação")?.items ?? [];
+
+    expect(operacaoItems.map((item) => item.title)).toContain("Coordenação");
+    expect(operacaoItems.map((item) => item.title)).not.toContain("Análise");
+
+    const coordenacaoChildren =
+      operacaoItems.find((item) => item.title === "Coordenação")?.children ?? [];
+
+    expect(coordenacaoChildren.find((item) => item.href === "/coordenacao/refinanciamento")?.title).toBe(
+      "Aptos a Renovar",
+    );
+    expect(coordenacaoChildren.find((item) => item.href === "/coordenacao/refinanciados")?.title).toBe(
+      "Refinanciados",
+    );
   });
 
   it("renomeia dashboard de ciclos para tesouraria e admin", () => {

@@ -60,6 +60,7 @@ from .serializers import (
     EfetivarContratoSerializer,
     ExcluirDevolucaoSerializer,
     ExcluirLiquidacaoSerializer,
+    InativarAssociadoBaixaSerializer,
     LiquidacaoContratoListSerializer,
     LiquidacaoKpisSerializer,
     LiquidarContratoSerializer,
@@ -467,6 +468,13 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
         return Response({"marked_count": marked_count})
 
 
+class TesourariaPagamentoViewSet(AgentePagamentoViewSet):
+    permission_classes = [permissions.IsAuthenticated, IsTesoureiroOrAdmin]
+
+    def _notification_queryset(self):
+        return PagamentoNotificacao.objects.none()
+
+
 class BaixaManualViewSet(mixins.ListModelMixin, GenericViewSet):
     serializer_class = BaixaManualItemSerializer
     permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrTesoureiroOrAdmin]
@@ -519,7 +527,10 @@ class BaixaManualViewSet(mixins.ListModelMixin, GenericViewSet):
         if self._listing() == "quitados":
             kpis = BaixaManualService.kpis_quitados(**kpis_filters)
         else:
-            kpis = BaixaManualService.kpis_pendentes(**kpis_filters)
+            kpis = BaixaManualService.kpis_pendentes(
+                **kpis_filters,
+                status_filter=self.request.query_params.get("status"),
+            )
         page = self.paginate_queryset(queryset)
         serializer = self.get_serializer(page if page is not None else queryset, many=True)
         if page is not None:
@@ -541,6 +552,31 @@ class BaixaManualViewSet(mixins.ListModelMixin, GenericViewSet):
         )
         return Response(
             {"id": baixa.id, "message": "Baixa manual registrada com sucesso."},
+            status=201,
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="inativar-associado",
+        parser_classes=[MultiPartParser],
+    )
+    def inativar_associado(self, request):
+        payload = InativarAssociadoBaixaSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        result = BaixaManualService.inativar_associado_com_baixa(
+            payload.validated_data["associado_id"],
+            comprovante=payload.validated_data["comprovante"],
+            observacao=payload.validated_data.get("observacao", ""),
+            user=request.user,
+        )
+        return Response(
+            {
+                "associado_id": result["associado_id"],
+                "parcelas_baixadas": result["parcelas_baixadas"],
+                "total_baixado": result["total_baixado"],
+                "message": "Associado inativado e parcelas vencidas baixadas com sucesso.",
+            },
             status=201,
         )
 

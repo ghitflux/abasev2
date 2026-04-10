@@ -5,6 +5,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from calendar import monthrange
 
+from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Count, DecimalField, Prefetch, Q, Sum, Value
 from django.db.models.functions import Coalesce
@@ -19,7 +20,7 @@ from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Contrato, Parcela
 from apps.esteira.models import EsteiraItem, Transicao
 from apps.financeiro.models import Despesa
-from apps.importacao.models import PagamentoMensalidade
+from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante, Refinanciamento
 
 from .models import BaixaManual, Confirmacao, DevolucaoAssociado, Pagamento
@@ -661,6 +662,175 @@ class BaixaManualService:
             )
         )
 
+    @staticmethod
+    def _parse_item_competencia(value: str | None) -> date | None:
+        if not value:
+            return None
+
+        normalized = value.strip()
+        for pattern in ("%m/%Y", "%Y-%m"):
+            try:
+                return datetime.strptime(normalized, pattern).date().replace(day=1)
+            except ValueError:
+                continue
+        return None
+
+    @classmethod
+    def _latest_return_file_ids(
+        cls,
+        *,
+        competencia: date | None = None,
+    ) -> list[int]:
+        base_queryset = ArquivoRetorno.objects.filter(status="concluido")
+        if competencia:
+            latest = (
+                base_queryset.filter(competencia=competencia)
+                .order_by("-processado_em", "-created_at", "-id")
+                .first()
+            )
+            return [latest.id] if latest else []
+
+        file_ids_by_month: dict[date, int] = {}
+        for arquivo in base_queryset.order_by("-competencia", "-processado_em", "-created_at", "-id"):
+            if arquivo.competencia not in file_ids_by_month:
+                file_ids_by_month[arquivo.competencia] = arquivo.id
+        return list(file_ids_by_month.values())
+
+    @staticmethod
+    def _build_pending_row_from_parcela(
+        parcela: Parcela,
+        *,
+        source: str = "parcela",
+        arquivo_retorno_item_id: int | None = None,
+    ) -> dict[str, object]:
+        contrato = parcela.ciclo.contrato
+        associado = contrato.associado
+        agente = contrato.agente or associado.agente_responsavel
+        return {
+            "id": parcela.id,
+            "parcela_id": parcela.id,
+            "associado_id": associado.id,
+            "nome": associado.nome_completo,
+            "cpf_cnpj": associado.cpf_cnpj,
+            "matricula": associado.matricula_orgao or associado.matricula or "",
+            "agente_nome": agente.full_name if agente else "",
+            "contrato_id": contrato.id,
+            "contrato_codigo": contrato.codigo,
+            "referencia_mes": parcela.referencia_mes,
+            "valor": parcela.valor,
+            "status": parcela.status,
+            "data_vencimento": parcela.data_vencimento,
+            "observacao": parcela.observacao,
+            "data_baixa": None,
+            "valor_pago": None,
+            "realizado_por_nome": "",
+            "nome_comprovante": "",
+            "origem": source,
+            "arquivo_retorno_item_id": arquivo_retorno_item_id,
+            "pode_dar_baixa": True,
+            "_agente_id": agente.id if agente else None,
+            "_sort_nome": associado.nome_completo or "",
+            "_sort_referencia": parcela.referencia_mes,
+        }
+
+    @classmethod
+    def _build_pending_row_from_return_item(
+        cls,
+        item: ArquivoRetornoItem,
+    ) -> dict[str, object] | None:
+        referencia = cls._parse_item_competencia(item.competencia)
+        if referencia is None:
+            return None
+
+        parcela = item.parcela
+        if parcela and parcela.status not in {
+            Parcela.Status.EM_ABERTO,
+            Parcela.Status.NAO_DESCONTADO,
+        }:
+            return None
+
+        associado = item.associado or getattr(parcela, "associado", None)
+        if associado is None:
+            return None
+
+        if parcela is None and associado.status == Associado.Status.INATIVO:
+            return None
+
+        contrato = getattr(getattr(parcela, "ciclo", None), "contrato", None)
+        agente = None
+        if contrato and contrato.agente:
+            agente = contrato.agente
+        elif associado.agente_responsavel:
+            agente = associado.agente_responsavel
+
+        return {
+            "id": -item.id,
+            "parcela_id": item.parcela_id,
+            "associado_id": associado.id,
+            "nome": associado.nome_completo or item.nome_servidor,
+            "cpf_cnpj": associado.cpf_cnpj or item.cpf_cnpj,
+            "matricula": associado.matricula_orgao or associado.matricula or item.matricula_servidor,
+            "agente_nome": agente.full_name if agente else "",
+            "contrato_id": contrato.id if contrato else None,
+            "contrato_codigo": contrato.codigo if contrato else "",
+            "referencia_mes": referencia,
+            "valor": item.valor_descontado,
+            "status": Parcela.Status.NAO_DESCONTADO,
+            "data_vencimento": getattr(parcela, "data_vencimento", None),
+            "observacao": item.observacao or item.motivo_rejeicao or "",
+            "data_baixa": None,
+            "valor_pago": None,
+            "realizado_por_nome": "",
+            "nome_comprovante": "",
+            "origem": "arquivo_retorno",
+            "arquivo_retorno_item_id": item.id,
+            "pode_dar_baixa": bool(item.parcela_id),
+            "_agente_id": agente.id if agente else None,
+            "_sort_nome": associado.nome_completo or item.nome_servidor or "",
+            "_sort_referencia": referencia,
+        }
+
+    @staticmethod
+    def _pending_row_matches_search(row: dict[str, object], search: str | None) -> bool:
+        search_term = (search or "").strip().lower()
+        if not search_term:
+            return True
+
+        comparable = " ".join(
+            [
+                str(row.get("nome") or ""),
+                str(row.get("cpf_cnpj") or ""),
+                str(row.get("matricula") or ""),
+                str(row.get("contrato_codigo") or ""),
+            ]
+        ).lower()
+        return search_term in comparable
+
+    @staticmethod
+    def _pending_row_matches_agent(row: dict[str, object], agente: str | None) -> bool:
+        agente_term = (agente or "").strip()
+        if not agente_term:
+            return True
+        if agente_term.isdigit():
+            return row.get("_agente_id") == int(agente_term)
+        return agente_term.lower() in str(row.get("agente_nome") or "").lower()
+
+    @staticmethod
+    def _pending_row_matches_dates(
+        row: dict[str, object],
+        *,
+        data_inicio: date | None = None,
+        data_fim: date | None = None,
+    ) -> bool:
+        target_date = row.get("data_vencimento") or row.get("referencia_mes")
+        if not isinstance(target_date, date):
+            return False
+        if data_inicio and target_date < data_inicio:
+            return False
+        if data_fim and target_date > data_fim:
+            return False
+        return True
+
     @classmethod
     def listar_parcelas_pendentes(
         cls,
@@ -673,41 +843,114 @@ class BaixaManualService:
     ):
         hoje = timezone.localdate()
         mes_atual = hoje.replace(day=1)
+        effective_status = (
+            status_filter
+            if status_filter in {Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO}
+            else None
+        )
 
-        queryset = (
+        rows: list[dict[str, object]] = []
+        retorno_parcela_ids: set[int] = set()
+        retorno_associado_competencias: set[tuple[int, date]] = set()
+        latest_file_ids: list[int] = []
+
+        if effective_status in {None, Parcela.Status.NAO_DESCONTADO}:
+            latest_file_ids = cls._latest_return_file_ids(competencia=competencia)
+            if latest_file_ids:
+                return_items = (
+                    ArquivoRetornoItem.objects.select_related(
+                        "associado__agente_responsavel",
+                        "parcela__associado__agente_responsavel",
+                        "parcela__ciclo__contrato__agente",
+                    )
+                    .filter(
+                        arquivo_retorno_id__in=latest_file_ids,
+                        resultado_processamento=ArquivoRetornoItem.ResultadoProcessamento.NAO_DESCONTADO,
+                    )
+                    .order_by("associado__nome_completo", "linha_numero", "id")
+                )
+
+                for item in return_items:
+                    row = cls._build_pending_row_from_return_item(item)
+                    if row is None:
+                        continue
+                    referencia = row.get("referencia_mes")
+                    if not isinstance(referencia, date) or referencia >= mes_atual:
+                        continue
+                    if not cls._pending_row_matches_dates(
+                        row,
+                        data_inicio=data_inicio,
+                        data_fim=data_fim,
+                    ):
+                        continue
+                    if not cls._pending_row_matches_agent(row, agente):
+                        continue
+                    if not cls._pending_row_matches_search(row, search):
+                        continue
+
+                    parcela_id = row.get("parcela_id")
+                    associado_id = row.get("associado_id")
+                    if isinstance(parcela_id, int):
+                        retorno_parcela_ids.add(parcela_id)
+                    if isinstance(associado_id, int):
+                        retorno_associado_competencias.add((associado_id, referencia))
+                    rows.append(row)
+
+        parcela_queryset = (
             Parcela.objects.select_related(
-                "ciclo__contrato__associado",
+                "ciclo__contrato__associado__agente_responsavel",
                 "ciclo__contrato__agente",
             )
             .filter(
                 ciclo__contrato__contrato_canonico__isnull=True,
-                status__in=[
-                    Parcela.Status.EM_ABERTO,
-                    Parcela.Status.EM_PREVISAO,
-                    Parcela.Status.NAO_DESCONTADO,
-                ],
+                status__in=[Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO],
                 referencia_mes__lt=mes_atual,
             )
-            .order_by("-referencia_mes", "ciclo__contrato__associado__nome_completo")
+            .order_by(
+                "ciclo__contrato__associado__nome_completo",
+                "referencia_mes",
+                "id",
+            )
         )
 
         if competencia:
-            queryset = queryset.filter(
+            parcela_queryset = parcela_queryset.filter(
                 referencia_mes__year=competencia.year,
                 referencia_mes__month=competencia.month,
             )
 
-        if status_filter in {"em_aberto", "nao_descontado"}:
-            queryset = queryset.filter(status=status_filter)
+        if effective_status in {Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO}:
+            parcela_queryset = parcela_queryset.filter(status=effective_status)
 
         if data_inicio:
-            queryset = queryset.filter(data_vencimento__gte=data_inicio)
+            parcela_queryset = parcela_queryset.filter(data_vencimento__gte=data_inicio)
 
         if data_fim:
-            queryset = queryset.filter(data_vencimento__lte=data_fim)
+            parcela_queryset = parcela_queryset.filter(data_vencimento__lte=data_fim)
 
-        queryset = cls._apply_parcela_agent_filter(queryset, agente)
-        return cls._apply_parcela_search(queryset, search)
+        parcela_queryset = cls._apply_parcela_agent_filter(parcela_queryset, agente)
+        parcela_queryset = cls._apply_parcela_search(parcela_queryset, search)
+
+        for parcela in parcela_queryset:
+            if parcela.status == Parcela.Status.NAO_DESCONTADO:
+                if latest_file_ids:
+                    continue
+                if (
+                    parcela.id in retorno_parcela_ids
+                    or (parcela.associado_id, parcela.referencia_mes)
+                    in retorno_associado_competencias
+                ):
+                    continue
+            rows.append(cls._build_pending_row_from_parcela(parcela))
+
+        rows.sort(
+            key=lambda row: (
+                str(row.get("_sort_nome") or ""),
+                row.get("_sort_referencia") or date.min,
+                abs(int(row.get("id") or 0)),
+            )
+        )
+        return rows
 
     @staticmethod
     def listar_parcelas_quitadas(
@@ -747,36 +990,34 @@ class BaixaManualService:
     @staticmethod
     def kpis_pendentes(
         *,
+        status_filter: str | None = None,
         competencia: date | None = None,
         data_inicio: date | None = None,
         data_fim: date | None = None,
         agente: str | None = None,
     ) -> dict:
         hoje = timezone.localdate()
-        mes_atual = hoje.replace(day=1)
-
-        base = Parcela.objects.filter(
-            ciclo__contrato__contrato_canonico__isnull=True,
-            status__in=[Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO],
-            referencia_mes__lt=mes_atual,
+        rows = BaixaManualService.listar_parcelas_pendentes(
+            status_filter=status_filter,
+            competencia=competencia,
+            data_inicio=data_inicio,
+            data_fim=data_fim,
+            agente=agente,
         )
-        if competencia:
-            base = base.filter(
-                referencia_mes__year=competencia.year,
-                referencia_mes__month=competencia.month,
-            )
-        if data_inicio:
-            base = base.filter(data_vencimento__gte=data_inicio)
-        if data_fim:
-            base = base.filter(data_vencimento__lte=data_fim)
-        base = BaixaManualService._apply_parcela_agent_filter(base, agente)
-        totals = base.aggregate(
-            total=Count("id"),
-            em_aberto=Count("id", filter=Q(status=Parcela.Status.EM_ABERTO)),
-            nao_descontado=Count("id", filter=Q(status=Parcela.Status.NAO_DESCONTADO)),
-            valor_total=Sum("valor"),
-            total_associados=Count("ciclo__contrato__associado_id", distinct=True),
+        total_pendentes = len(rows)
+        em_aberto = sum(1 for row in rows if row.get("status") == Parcela.Status.EM_ABERTO)
+        nao_descontado = sum(
+            1 for row in rows if row.get("status") == Parcela.Status.NAO_DESCONTADO
         )
+        valor_total = sum(Decimal(str(row.get("valor") or "0")) for row in rows)
+        total_associados = len(
+            {
+                int(associado_id)
+                for associado_id in (row.get("associado_id") for row in rows)
+                if associado_id is not None
+            }
+        )
+        total_com_parcela = sum(1 for row in rows if row.get("parcela_id"))
 
         baixas_mes = BaixaManual.objects.filter(
             created_at__year=hoje.year,
@@ -787,19 +1028,16 @@ class BaixaManualService:
             parcela__ciclo__contrato__contrato_canonico__isnull=True,
         ).count()
 
-        total_inadimplentes = Associado.objects.filter(
-            status=Associado.Status.INADIMPLENTE,
-        ).count()
-
         return {
-            "total_pendentes": totals["total"] or 0,
-            "em_aberto": totals["em_aberto"] or 0,
-            "nao_descontado": totals["nao_descontado"] or 0,
-            "valor_total_pendente": str(totals["valor_total"] or Decimal("0")),
+            "total_pendentes": total_pendentes,
+            "total_pendentes_com_parcela": total_com_parcela,
+            "em_aberto": em_aberto,
+            "nao_descontado": nao_descontado,
+            "valor_total_pendente": str(valor_total),
             "baixas_realizadas_mes": baixas_mes,
-            "total_associados": totals["total_associados"] or 0,
+            "total_associados": total_associados,
             "total_quitados": total_quitados,
-            "total_inadimplentes": total_inadimplentes,
+            "total_inadimplentes": total_associados,
         }
 
     @staticmethod
@@ -848,15 +1086,14 @@ class BaixaManualService:
         }
 
     @staticmethod
-    @transaction.atomic
-    def dar_baixa(parcela_id: int, comprovante, valor_pago, observacao: str, user):
-        try:
-            parcela = Parcela.objects.select_related(
-                "ciclo__contrato__associado",
-            ).get(pk=parcela_id)
-        except Parcela.DoesNotExist as exc:
-            raise ValidationError("Parcela não encontrada.") from exc
-
+    def _registrar_baixa_manual(
+        parcela: Parcela,
+        *,
+        comprovante,
+        valor_pago,
+        observacao: str,
+        user,
+    ) -> BaixaManual:
         if parcela.status not in {
             Parcela.Status.EM_ABERTO,
             Parcela.Status.EM_PREVISAO,
@@ -886,6 +1123,85 @@ class BaixaManualService:
             valor_pago=valor_pago,
             data_baixa=timezone.localdate(),
         )
+
+    @staticmethod
+    @transaction.atomic
+    def dar_baixa(parcela_id: int, comprovante, valor_pago, observacao: str, user):
+        try:
+            parcela = Parcela.objects.select_related(
+                "ciclo__contrato__associado",
+            ).get(pk=parcela_id)
+        except Parcela.DoesNotExist as exc:
+            raise ValidationError("Parcela não encontrada.") from exc
+
+        return BaixaManualService._registrar_baixa_manual(
+            parcela,
+            comprovante=comprovante,
+            valor_pago=valor_pago,
+            observacao=observacao,
+            user=user,
+        )
+
+    @staticmethod
+    @transaction.atomic
+    def inativar_associado_com_baixa(
+        associado_id: int,
+        *,
+        comprovante,
+        observacao: str,
+        user,
+    ) -> dict[str, object]:
+        try:
+            associado = Associado.objects.get(pk=associado_id)
+        except Associado.DoesNotExist as exc:
+            raise ValidationError("Associado não encontrado.") from exc
+
+        hoje = timezone.localdate()
+        mes_atual = hoje.replace(day=1)
+        parcelas = list(
+            Parcela.objects.select_related("ciclo__contrato__associado")
+            .filter(
+                associado=associado,
+                ciclo__contrato__contrato_canonico__isnull=True,
+                status__in=[Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO],
+                referencia_mes__lt=mes_atual,
+            )
+            .order_by("referencia_mes", "numero", "id")
+        )
+        if not parcelas:
+            raise ValidationError(
+                "O associado não possui parcelas vencidas elegíveis para baixa e inativação."
+            )
+
+        file_name = getattr(comprovante, "name", "comprovante.pdf")
+        file_content = comprovante.read()
+        if not file_content:
+            raise ValidationError("Envie um comprovante válido para registrar a baixa.")
+
+        baixas: list[BaixaManual] = []
+        for index, parcela in enumerate(parcelas, start=1):
+            cloned = ContentFile(
+                file_content,
+                name=f"{index:02d}-{parcela.id}-{file_name}",
+            )
+            baixas.append(
+                BaixaManualService._registrar_baixa_manual(
+                    parcela,
+                    comprovante=cloned,
+                    valor_pago=parcela.valor,
+                    observacao=observacao,
+                    user=user,
+                )
+            )
+
+        associado.status = Associado.Status.INATIVO
+        associado.save(update_fields=["status", "updated_at"])
+
+        return {
+            "associado_id": associado.id,
+            "parcelas_baixadas": len(baixas),
+            "total_baixado": str(sum(baixa.valor_pago for baixa in baixas)),
+        }
 
 
 class DespesaService:

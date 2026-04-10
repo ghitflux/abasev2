@@ -98,7 +98,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   mockedApiFetch.mockImplementation(async (path) => {
-    if (path === "agente/pagamentos") {
+    if (path === "tesouraria/pagamentos") {
       return {
         count: 1,
         next: null,
@@ -139,7 +139,7 @@ it("mantem apenas a busca fora do sheet e fixa page_size da tesouraria", async (
 
   await waitFor(() =>
     expect(mockedApiFetch).toHaveBeenCalledWith(
-      "agente/pagamentos",
+      "tesouraria/pagamentos",
       expect.objectContaining({
         query: expect.objectContaining({ page_size: 15 }),
       }),

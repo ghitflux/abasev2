@@ -13,6 +13,9 @@ from apps.associados.models import Associado
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.importacao.models import PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante, Refinanciamento
+from apps.refinanciamento.treasury_value_repair import (
+    repair_treasury_refinanciamento_values,
+)
 from apps.tesouraria.models import Pagamento
 
 
@@ -91,6 +94,7 @@ class RefinanciamentoPagamentosTestCase(TestCase):
             agente=agente_responsavel,
             valor_bruto=Decimal("1500.00"),
             valor_liquido=Decimal("1200.00"),
+            margem_disponivel=Decimal("900.00"),
             valor_mensalidade=Decimal("500.00"),
             prazo_meses=3,
             status=Contrato.Status.ATIVO,
@@ -829,6 +833,146 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         self.assertEqual(ids, [segundo.id, primeiro.id])
         self.assertNotIn(fora_recorte.id, ids)
         self.assertNotIn(efetivado.id, ids)
+
+    def test_tesouraria_lista_exibe_valor_liberado_do_associado(self):
+        contrato = self._create_contrato("72345678921")
+        contrato.margem_disponivel = Decimal("735.00")
+        contrato.save(update_fields=["margem_disponivel", "updated_at"])
+
+        refinanciamento = Refinanciamento.objects.create(
+            associado=contrato.associado,
+            contrato_origem=contrato,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            valor_refinanciamento=Decimal("1881.03"),
+            repasse_agente=Decimal("73.50"),
+            cycle_key="2026-02|2026-03|2026-04",
+        )
+        Comprovante.objects.create(
+            refinanciamento=refinanciamento,
+            contrato=contrato,
+            ciclo=None,
+            tipo=Comprovante.Tipo.TERMO_ANTECIPACAO,
+            papel=Comprovante.Papel.AGENTE,
+            origem=Comprovante.Origem.SOLICITACAO_RENOVACAO,
+            arquivo=self._termo_file("termo-justino.pdf"),
+            nome_original="ANTECIPACAO - JUSTINO.pdf",
+            enviado_por=self.agente,
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/refinanciamentos/",
+            {"status": "aprovado_para_renovacao"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        row = next(
+            item
+            for item in response.json()["results"]
+            if item["id"] == refinanciamento.id
+        )
+        self.assertEqual(row["valor_refinanciamento"], "1881.03")
+        self.assertEqual(row["valor_liberado_associado"], "735.00")
+        self.assertEqual(row["repasse_agente"], "73.50")
+        self.assertIn(
+            Comprovante.Tipo.TERMO_ANTECIPACAO,
+            [item["tipo"] for item in row["comprovantes"]],
+        )
+
+    def test_tesouraria_lista_faz_fallback_do_repasse_quando_refinanciamento_zerado(self):
+        contrato = self._create_contrato("72345678922")
+        contrato.margem_disponivel = Decimal("630.00")
+        contrato.comissao_agente = Decimal("63.00")
+        contrato.save(
+            update_fields=["margem_disponivel", "comissao_agente", "updated_at"]
+        )
+
+        refinanciamento = Refinanciamento.objects.create(
+            associado=contrato.associado,
+            contrato_origem=contrato,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            valor_refinanciamento=Decimal("0.00"),
+            repasse_agente=Decimal("0.00"),
+            cycle_key="2026-02|2026-03|2026-04",
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/refinanciamentos/",
+            {"status": "efetivado"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        row = next(
+            item
+            for item in response.json()["results"]
+            if item["id"] == refinanciamento.id
+        )
+        self.assertEqual(row["valor_liberado_associado"], "630.00")
+        self.assertEqual(row["repasse_agente"], "63.00")
+
+    def test_tesouraria_lista_resolve_contrato_por_associado_quando_legado_esta_sem_vinculo(self):
+        contrato = self._create_contrato("72345678923")
+        contrato.margem_disponivel = Decimal("630.00")
+        contrato.comissao_agente = Decimal("63.00")
+        contrato.save(
+            update_fields=["margem_disponivel", "comissao_agente", "updated_at"]
+        )
+
+        refinanciamento = Refinanciamento.objects.create(
+            associado=contrato.associado,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            valor_refinanciamento=Decimal("0.00"),
+            repasse_agente=Decimal("0.00"),
+            cycle_key="2025-10|2025-11|2025-12",
+            contrato_codigo_origem="",
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/refinanciamentos/",
+            {"status": "efetivado"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        row = next(
+            item
+            for item in response.json()["results"]
+            if item["id"] == refinanciamento.id
+        )
+        self.assertEqual(row["valor_liberado_associado"], "630.00")
+        self.assertEqual(row["repasse_agente"], "63.00")
+
+    def test_repair_tesouraria_refinanciamento_religa_contrato_por_associado(self):
+        contrato = self._create_contrato("72345678924")
+        contrato.margem_disponivel = Decimal("525.00")
+        contrato.comissao_agente = Decimal("52.50")
+        contrato.save(
+            update_fields=["margem_disponivel", "comissao_agente", "updated_at"]
+        )
+
+        refinanciamento = Refinanciamento.objects.create(
+            associado=contrato.associado,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            valor_refinanciamento=Decimal("0.00"),
+            repasse_agente=Decimal("0.00"),
+            cycle_key="2025-10|2025-11|2025-12",
+            contrato_codigo_origem="",
+        )
+
+        report = repair_treasury_refinanciamento_values(apply=True)
+        refinanciamento.refresh_from_db()
+
+        self.assertGreaterEqual(report["updated_rows"], 1)
+        self.assertEqual(refinanciamento.contrato_origem_id, contrato.id)
+        self.assertEqual(refinanciamento.contrato_codigo_origem, contrato.codigo)
+        self.assertEqual(refinanciamento.valor_refinanciamento, Decimal("525.00"))
+        self.assertEqual(refinanciamento.repasse_agente, Decimal("52.50"))
 
     def test_pagamento_manual_pago_conta_como_pagamento_livre(self):
         contrato = self._create_contrato("82345678901")

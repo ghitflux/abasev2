@@ -316,6 +316,46 @@ type SectionExportRow = DashboardDetailRow & {
   indicador: string;
 };
 
+const MONTHLY_NEW_ASSOCIADOS_EXPORT_COLUMNS: TableExportColumn<DashboardDetailRow>[] =
+  [
+    { header: "Nome", value: (row) => row.associado_nome },
+    { header: "CPF", value: (row) => maskCPFCNPJ(row.cpf_cnpj) },
+    { header: "Matricula", value: (row) => row.matricula },
+    {
+      header: "Data de nascimento",
+      value: (row) => (row.data_nascimento ? formatDate(row.data_nascimento) : "-"),
+    },
+    { header: "Agente responsável", value: (row) => row.agente_nome || "-" },
+  ];
+
+const MONTHLY_NEW_ASSOCIADOS_COLUMNS: DataTableColumn<DashboardDetailRow>[] = [
+  {
+    id: "associado_nome",
+    header: "Nome",
+    cell: (row) => <p className="font-medium text-foreground">{row.associado_nome}</p>,
+  },
+  {
+    id: "cpf_cnpj",
+    header: "CPF",
+    cell: (row) => (row.cpf_cnpj ? maskCPFCNPJ(row.cpf_cnpj) : "-"),
+  },
+  {
+    id: "matricula",
+    header: "Matricula",
+    cell: (row) => row.matricula || "-",
+  },
+  {
+    id: "data_nascimento",
+    header: "Data de nascimento",
+    cell: (row) => (row.data_nascimento ? formatDate(row.data_nascimento) : "-"),
+  },
+  {
+    id: "agente_nome",
+    header: "Agente responsável",
+    cell: (row) => row.agente_nome || "-",
+  },
+];
+
 function toMonthId(value: Date) {
   return format(value, "yyyy-MM");
 }
@@ -969,6 +1009,7 @@ function DashboardPageContent() {
       filenameBase,
       metrics,
       query,
+      exportColumns = SECTION_EXPORT_COLUMNS,
     }: {
       format: "csv" | "pdf" | "excel" | "xlsx";
       section: DashboardSection;
@@ -976,6 +1017,7 @@ function DashboardPageContent() {
       filenameBase: string;
       metrics: SectionExportMetric[];
       query: Record<string, string | undefined>;
+      exportColumns?: TableExportColumn<any>[];
     }) => {
       if (!metrics.length) {
         toast.error("Nenhum dado disponivel para exportacao nesta secao.");
@@ -991,7 +1033,7 @@ function DashboardPageContent() {
           return;
         }
 
-        exportRows(format, title, filenameBase, SECTION_EXPORT_COLUMNS, rows);
+        exportRows(format, title, filenameBase, exportColumns, rows);
       } catch (error) {
         toast.error(
           error instanceof Error
@@ -1137,6 +1179,18 @@ function DashboardPageContent() {
     () => Math.max(1, Math.ceil((detailQuery.data?.count ?? 0) / 20)),
     [detailQuery.data?.count],
   );
+  const isMonthlyNewAssociadosDetail = Boolean(
+    detailState?.title && detailState.title.startsWith("Novos associados de "),
+  );
+  const detailDialogColumns = isMonthlyNewAssociadosDetail
+    ? MONTHLY_NEW_ASSOCIADOS_COLUMNS
+    : DETAIL_COLUMNS;
+  const detailDialogExportColumns = isMonthlyNewAssociadosDetail
+    ? MONTHLY_NEW_ASSOCIADOS_EXPORT_COLUMNS
+    : DETAIL_EXPORT_COLUMNS;
+  const detailDialogSearchPlaceholder = isMonthlyNewAssociadosDetail
+    ? "Buscar por nome, CPF, matricula ou agente responsável"
+    : "Buscar por nome, CPF, matricula ou contrato";
 
   return (
     <>
@@ -1532,7 +1586,30 @@ function DashboardPageContent() {
                                 {formatCurrency(row.saldo_positivo)}
                               </TableCell>
                               <TableCell className="px-4 py-3">
-                                {row.novos_associados}
+                                {row.novos_associados > 0 ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="h-auto rounded-xl px-2 py-1 font-semibold text-primary hover:text-primary"
+                                    aria-label={`Abrir novos associados de ${formatMonthCell(row.mes)}`}
+                                    onClick={() =>
+                                      {
+                                        const monthDate = new Date(`${row.mes}T12:00:00`);
+                                        openDetail(
+                                          "summary",
+                                          `trend:efetivados:${format(monthDate, "yyyy-MM")}`,
+                                          `Novos associados de ${formatMonthCell(row.mes)}`,
+                                          "Relação completa dos associados efetivados no mês selecionado, com dados cadastrais essenciais para conferência e exportação.",
+                                          {},
+                                        );
+                                      }
+                                    }
+                                  >
+                                    {row.novos_associados}
+                                  </Button>
+                                ) : (
+                                  row.novos_associados
+                                )}
                               </TableCell>
                               <TableCell className="px-4 py-3">
                                 {row.desvinculados}
@@ -2653,14 +2730,15 @@ function DashboardPageContent() {
           "Tabela detalhada do indicador selecionado."
         }
         rows={detailRows}
-        columns={DETAIL_COLUMNS}
-        exportColumns={DETAIL_EXPORT_COLUMNS}
+        columns={detailDialogColumns}
+        exportColumns={detailDialogExportColumns}
         exportTitle={detailState?.title ?? "Detalhamento dashboard"}
         exportFilename={(detailState?.title ?? "detalhamento-dashboard")
           .toLowerCase()
           .replace(/[^\w]+/g, "-")}
         emptyMessage="Nenhum registro encontrado para o recorte selecionado."
         isLoading={detailQuery.isLoading}
+        searchPlaceholder={detailDialogSearchPlaceholder}
         searchValue={detailSearch}
         onSearchValueChange={setDetailSearch}
         currentPage={detailPage}
@@ -2678,6 +2756,7 @@ function DashboardPageContent() {
               ? [{ label: detailState.title, metric: detailState.metric }]
               : [],
             query: detailState?.query ?? {},
+            exportColumns: detailDialogExportColumns,
           })
         }
       />

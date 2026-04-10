@@ -3,11 +3,13 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.utils import timezone
 
 from apps.accounts.models import Role, User
 from apps.associados.models import Associado
+from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.duplicate_billing import (
     audit_duplicate_billing_months,
     repair_duplicate_billing_months,
@@ -15,6 +17,7 @@ from apps.contratos.duplicate_billing import (
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.importacao.models import PagamentoMensalidade
 from apps.refinanciamento.models import Refinanciamento
+from apps.tesouraria.models import BaixaManual
 
 
 class DuplicateBillingRepairTestCase(TestCase):
@@ -231,11 +234,85 @@ class DuplicateBillingRepairTestCase(TestCase):
             Ciclo.objects.filter(contrato=primary).order_by("numero").prefetch_related("parcelas")
         )
         self.assertEqual(len(primary_cycles), 2)
-        self.assertEqual(
-            list(primary_cycles[0].parcelas.order_by("numero").values_list("referencia_mes", flat=True)),
-            [date(2025, 10, 1), date(2025, 11, 1), date(2025, 12, 1)],
+        active_refs = list(
+            Parcela.objects.filter(ciclo__contrato=primary)
+            .exclude(status=Parcela.Status.CANCELADO)
+            .values_list("referencia_mes", flat=True)
         )
-        self.assertEqual(
-            list(primary_cycles[1].parcelas.order_by("numero").values_list("referencia_mes", flat=True)),
-            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)],
+        self.assertEqual(len(active_refs), len(set(active_refs)))
+        self.assertIn(date(2025, 10, 1), active_refs)
+        self.assertIn(date(2025, 12, 1), active_refs)
+        self.assertIn(date(2026, 1, 1), active_refs)
+        self.assertIn(date(2026, 2, 1), active_refs)
+
+    def test_repair_duplicate_billing_months_keeps_oldest_intra_contract_parcela(self):
+        associado = self._create_associado("51601370849", "UBIRAJARA DE SOUSA ROCHA")
+        contrato = Contrato.objects.create(
+            associado=associado,
+            agente=self.user,
+            codigo="CTR-20251009134547-V65BR",
+            valor_bruto=Decimal("1050.00"),
+            valor_liquido=Decimal("1050.00"),
+            valor_mensalidade=Decimal("350.00"),
+            prazo_meses=3,
+            status=Contrato.Status.EM_ANALISE,
+            data_contrato=date(2025, 10, 9),
+            data_aprovacao=date(2025, 10, 9),
+            data_primeira_mensalidade=date(2025, 12, 1),
+            mes_averbacao=date(2025, 10, 1),
+            auxilio_liberado_em=date(2025, 10, 9),
         )
+        ciclo_1 = self._create_cycle(
+            contrato=contrato,
+            numero=1,
+            referencias=[date(2025, 12, 1), date(2026, 2, 1)],
+            status=Ciclo.Status.CICLO_RENOVADO,
+            parcela_statuses=[
+                Parcela.Status.DESCONTADO,
+                Parcela.Status.DESCONTADO,
+            ],
+        )
+        ciclo_2 = self._create_cycle(
+            contrato=contrato,
+            numero=2,
+            referencias=[date(2026, 2, 1), date(2026, 3, 1)],
+            status=Ciclo.Status.APTO_A_RENOVAR,
+            parcela_statuses=[
+                Parcela.Status.DESCONTADO,
+                Parcela.Status.DESCONTADO,
+            ],
+        )
+        antiga = ciclo_1.parcelas.order_by("numero").last()
+        mais_nova = ciclo_2.parcelas.order_by("numero").first()
+        BaixaManual.objects.create(
+            parcela=mais_nova,
+            realizado_por=self.user,
+            comprovante=SimpleUploadedFile("baixa.pdf", b"ok", content_type="application/pdf"),
+            nome_comprovante="baixa.pdf",
+            observacao="Baixa lançada na parcela duplicada.",
+            valor_pago=Decimal("350.00"),
+            data_baixa=date(2026, 4, 1),
+        )
+
+        pre_audit = audit_duplicate_billing_months(cpf_cnpj=associado.cpf_cnpj)
+        self.assertEqual(pre_audit["summary"]["duplicate_keys"], 1)
+
+        payload = repair_duplicate_billing_months(cpf_cnpj=associado.cpf_cnpj, execute=True)
+
+        antiga.refresh_from_db()
+        mais_nova.refresh_from_db()
+        baixa = BaixaManual.objects.get()
+
+        self.assertEqual(payload["summary"]["remaining_duplicate_keys"], 0)
+        self.assertFalse(payload["repairs"][0]["rebuilt_primary_contract"])
+        self.assertIsNone(antiga.deleted_at)
+        self.assertIsNotNone(mais_nova.deleted_at)
+        self.assertEqual(baixa.parcela_id, antiga.id)
+        self.assertIn("Competência consolidada", antiga.observacao)
+        projection = build_contract_cycle_projection(contrato)
+        projection_refs = [
+            parcela["referencia_mes"]
+            for cycle in projection["cycles"]
+            for parcela in cycle["parcelas"]
+        ]
+        self.assertEqual(len(projection_refs), len(set(projection_refs)))

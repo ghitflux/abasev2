@@ -188,10 +188,37 @@ describe("ImportacaoPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    useV1ImportacaoArquivoRetornoList.mockReturnValue({ data: historyPayload });
     useV1ImportacaoArquivoRetornoUltimaRetrieve.mockReturnValue({ data: latestImport });
     useV1ImportacaoArquivoRetornoFinanceiroRetrieve.mockReturnValue({
-      data: { resumo: latestImport.financeiro, rows: [] },
+      data: {
+        resumo: latestImport.financeiro,
+        rows: [
+          {
+            id: 9,
+            associado_nome: "Maria de Jesus Santana Costa",
+            matricula: "030759-9",
+            cpf_cnpj: "23993596315",
+            categoria: "mensalidades",
+            esperado: "30.00",
+            recebido: "30.00",
+            ok: true,
+            situacao_code: "ok",
+            situacao_label: "Quitado",
+          },
+          {
+            id: 10,
+            associado_nome: "José do Nascimento",
+            matricula: "123456-7",
+            cpf_cnpj: "11122233344",
+            categoria: "valores_30_50",
+            esperado: "30.00",
+            recebido: "30.00",
+            ok: true,
+            situacao_code: "ok",
+            situacao_label: "Quitado",
+          },
+        ],
+      },
       isLoading: false,
     });
     useV1ImportacaoArquivoRetornoDescontadosList.mockReturnValue({ data: itemPayload });
@@ -200,6 +227,10 @@ describe("ImportacaoPage", () => {
     useV1ImportacaoArquivoRetornoEncerramentosList.mockReturnValue({ data: itemPayload });
     useV1ImportacaoArquivoRetornoNovosCiclosList.mockReturnValue({ data: itemPayload });
     mockedApiFetch.mockImplementation(async (path, options) => {
+      if (path === "importacao/arquivo-retorno") {
+        return historyPayload;
+      }
+
       if (path === "importacao/arquivo-retorno/upload") {
         const arquivo = options?.formData?.get("arquivo") as File | null;
         return {
@@ -242,6 +273,17 @@ describe("ImportacaoPage", () => {
     expect(screen.getByText("Valores 30/50 Recebidos")).toBeInTheDocument();
   });
 
+  it("abre a listagem financeira ao clicar em um card numérico da importação", async () => {
+    const user = userEvent.setup();
+
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /Valores 30\/50 Recebidos/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("Valores 30/50 da última importação")).toBeInTheDocument();
+    expect(within(dialog).getByText("José do Nascimento")).toBeInTheDocument();
+  });
+
   it("entra em polling visual após upload", async () => {
     const user = userEvent.setup();
     const { container } = renderPage();
@@ -270,6 +312,10 @@ describe("ImportacaoPage", () => {
     });
 
     mockedApiFetch.mockImplementation((path, options) => {
+      if (path === "importacao/arquivo-retorno") {
+        return Promise.resolve(historyPayload);
+      }
+
       if (path === "importacao/arquivo-retorno/upload") {
         options?.onUploadProgress?.({ loaded: 10, total: 20, percent: 50 });
         return new Promise((resolve) => {
@@ -310,6 +356,10 @@ describe("ImportacaoPage", () => {
     const user = userEvent.setup();
 
     mockedApiFetch.mockImplementation(async (path, options) => {
+      if (path === "importacao/arquivo-retorno") {
+        return historyPayload;
+      }
+
       if (path === "importacao/arquivo-retorno/upload") {
         const arquivo = options?.formData?.get("arquivo") as File | null;
         return {
@@ -348,6 +398,10 @@ describe("ImportacaoPage", () => {
     const user = userEvent.setup();
 
     mockedApiFetch.mockImplementation(async (path, options) => {
+      if (path === "importacao/arquivo-retorno") {
+        return historyPayload;
+      }
+
       if (path === "importacao/arquivo-retorno/upload") {
         return {
           ...latestImport,
@@ -384,6 +438,10 @@ describe("ImportacaoPage", () => {
     const user = userEvent.setup();
 
     mockedApiFetch.mockImplementation(async (path, options) => {
+      if (path === "importacao/arquivo-retorno") {
+        return historyPayload;
+      }
+
       if (path === "importacao/arquivo-retorno/upload") {
         return {
           ...latestImport,
@@ -420,6 +478,10 @@ describe("ImportacaoPage", () => {
     const user = userEvent.setup();
 
     mockedApiFetch.mockImplementation(async (path) => {
+      if (path === "importacao/arquivo-retorno") {
+        return historyPayload;
+      }
+
       if (path === "importacao/arquivo-retorno/upload") {
         return {
           ...latestImport,
@@ -451,6 +513,10 @@ describe("ImportacaoPage", () => {
     let cancelCalls = 0;
 
     mockedApiFetch.mockImplementation(async (path) => {
+      if (path === "importacao/arquivo-retorno") {
+        return historyPayload;
+      }
+
       if (path === "importacao/arquivo-retorno/upload") {
         return {
           ...latestImport,

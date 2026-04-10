@@ -245,6 +245,21 @@ it("consulta a aba de quitados ao trocar de tab", async () => {
   expect(screen.getByText("Marcianita Michele Ramos Mendes")).toBeInTheDocument();
 });
 
+it("abre inadimplentes filtrando por nao descontado por padrao", async () => {
+  renderPage();
+
+  await waitFor(() =>
+    expect(
+      mockedApiFetch.mock.calls.some(
+        ([path, options]) =>
+          path === "tesouraria/baixa-manual" &&
+          options?.query?.listing === "pendentes" &&
+          options?.query?.status === "nao_descontado",
+      ),
+    ).toBe(true),
+  );
+});
+
 it("aplica filtros avancados por agente, data e busca na aba de quitados", async () => {
   const user = userEvent.setup();
 

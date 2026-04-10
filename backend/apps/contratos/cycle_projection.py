@@ -14,8 +14,14 @@ from apps.importacao.manual_payment_flags import (
 from apps.importacao.models import PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante, Refinanciamento
 from apps.tesouraria.models import BaixaManual, Pagamento
+from core.file_references import build_storage_reference
 
 from .canonicalization import get_operational_contracts_for_associado
+from .special_references import is_forced_outside_cycle_reference
+from .small_value_rules import (
+    blocked_small_value_cycle_status,
+    is_return_imported_small_value_contract,
+)
 from .cycle_timeline import (
     get_contract_activation_payload,
     get_contract_cycle_size,
@@ -46,6 +52,7 @@ EFFECTIVE_REFINANCIAMENTO_STATUSES = {
 STATUS_VISUAL_PHASE_LABELS = {
     "em_analise": "Em Análise",
     "ciclo_aberto": "Ativo",
+    "ciclo_com_pendencia": "Com Pendência",
     "apto_a_renovar": "Apto para Renovação",
     "solicitado_para_liquidacao": "Solicitado para Liquidação",
     "renovacao_em_analise": "Renovação em Análise",
@@ -66,6 +73,7 @@ STATUS_VISUAL_PHASE_PRIORITY = {
     "solicitado_para_liquidacao": 4,
     "aguardando_coordenacao": 4,
     "renovacao_em_analise": 3,
+    "ciclo_com_pendencia": 2,
     "apto_a_renovar": 2,
     "ciclo_aberto": 2,
     "ciclo_renovado": 1,
@@ -89,10 +97,24 @@ RESOLVED_UNPAID_STATUSES = {
     Parcela.Status.LIQUIDADA,
     PROJECTION_STATUS_QUITADA,
 }
+MANUAL_OUTSIDE_CYCLE_HINTS = (
+    "fora do ciclo",
+    "quitada manualmente",
+)
 
 
 def _is_unresolved_unpaid_row(row: dict[str, object]) -> bool:
     return str(row.get("status") or "") not in RESOLVED_UNPAID_STATUSES
+
+
+def _is_resolved_cycle_status(value: str | None) -> bool:
+    return str(value or "") in RESOLVED_UNPAID_STATUSES
+
+
+def _month_floor(value: date | None) -> date | None:
+    if value is None:
+        return None
+    return value.replace(day=1)
 
 
 @dataclass(frozen=True)
@@ -152,6 +174,8 @@ def _cycle_phase_status(
         return "contrato_desativado"
     if contrato.status == Contrato.Status.ENCERRADO:
         return "contrato_encerrado"
+    if cycle_status == Ciclo.Status.PENDENCIA:
+        return "ciclo_com_pendencia"
     if refinanciamento_operacional is not None:
         normalized = _normalize_operational_status(refinanciamento_operacional.status)
         if normalized in OPERATIONAL_STATUS_TO_VISUAL_PHASE:
@@ -394,6 +418,7 @@ def _merge_financial_references(
         referencia = _month_start(pagamento.referencia_month)
         if referencia is None:
             continue
+        forced_outside_cycle = is_forced_outside_cycle_reference(referencia)
         if _is_canceled_pagamento(pagamento):
             paid_by_reference.pop(referencia, None)
             unpaid_by_reference.pop(referencia, None)
@@ -401,7 +426,7 @@ def _merge_financial_references(
         if _is_manual_regularized_pagamento(pagamento):
             manual_counts_for_cycle = _manual_regularized_counts_for_cycle(pagamento)
             materialized_paid = materialized_paid_by_reference.get(referencia)
-            if manual_counts_for_cycle is True:
+            if manual_counts_for_cycle is True and not forced_outside_cycle:
                 paid_by_reference[referencia] = FinancialReference(
                     referencia_mes=referencia,
                     status=(
@@ -431,7 +456,7 @@ def _merge_financial_references(
                 )
                 unpaid_by_reference.pop(referencia, None)
                 continue
-            if manual_counts_for_cycle is False:
+            if manual_counts_for_cycle is False or forced_outside_cycle:
                 paid_by_reference[referencia] = FinancialReference(
                     referencia_mes=referencia,
                     status=PROJECTION_STATUS_QUITADA,
@@ -451,7 +476,7 @@ def _merge_financial_references(
                 unpaid_by_reference.pop(referencia, None)
                 references_with_unpaid_history.add(referencia)
                 continue
-            if materialized_paid is not None:
+            if materialized_paid is not None and not forced_outside_cycle:
                 paid_by_reference[referencia] = FinancialReference(
                     referencia_mes=referencia,
                     status=materialized_paid.status,
@@ -479,14 +504,14 @@ def _merge_financial_references(
                 source="manual_regularized",
                 counts_for_cycle=False,
                 had_unpaid_event=True,
-                force_outside_cycle=False,
+                force_outside_cycle=forced_outside_cycle,
             )
             unpaid_by_reference.pop(referencia, None)
             references_with_unpaid_history.add(referencia)
             continue
         if _is_paid_pagamento(pagamento):
             paid_at = _pagamento_paid_date(pagamento)
-            had_unpaid_event = referencia in references_with_unpaid_history
+            had_unpaid_event = referencia in references_with_unpaid_history or forced_outside_cycle
             paid_by_reference[referencia] = FinancialReference(
                 referencia_mes=referencia,
                 status=(
@@ -504,6 +529,7 @@ def _merge_financial_references(
                 source="pagamento_mensalidade",
                 counts_for_cycle=not had_unpaid_event,
                 had_unpaid_event=had_unpaid_event,
+                force_outside_cycle=forced_outside_cycle,
             )
             unpaid_by_reference.pop(referencia, None)
             continue
@@ -518,6 +544,7 @@ def _merge_financial_references(
             source="pagamento_mensalidade",
             counts_for_cycle=False,
             had_unpaid_event=True,
+            force_outside_cycle=forced_outside_cycle,
         )
         paid_by_reference.pop(referencia, None)
 
@@ -529,13 +556,22 @@ def _merge_financial_references(
         if materialized_paid is not None:
             paid_by_reference[referencia] = FinancialReference(
                 referencia_mes=referencia,
-                status=materialized_paid.status,
+                status=(
+                    PROJECTION_STATUS_QUITADA
+                    if is_forced_outside_cycle_reference(referencia)
+                    else materialized_paid.status
+                ),
                 data_pagamento=materialized_paid.data_pagamento or baixa.data_baixa,
                 valor=baixa.valor_pago or materialized_paid.valor or contrato.valor_mensalidade,
-                observacao=baixa.observacao or materialized_paid.observacao or "",
+                observacao=(
+                    baixa.observacao
+                    or materialized_paid.observacao
+                    or "Competência quitada por baixa manual fora do ciclo."
+                ),
                 source="baixa_manual",
-                counts_for_cycle=True,
-                had_unpaid_event=False,
+                counts_for_cycle=not is_forced_outside_cycle_reference(referencia),
+                had_unpaid_event=is_forced_outside_cycle_reference(referencia),
+                force_outside_cycle=is_forced_outside_cycle_reference(referencia),
             )
             unpaid_by_reference.pop(referencia, None)
             continue
@@ -549,6 +585,7 @@ def _merge_financial_references(
             source="baixa_manual",
             counts_for_cycle=False,
             had_unpaid_event=had_unpaid_event,
+            force_outside_cycle=is_forced_outside_cycle_reference(referencia),
         )
         unpaid_by_reference.pop(referencia, None)
         references_with_unpaid_history.add(referencia)
@@ -572,16 +609,24 @@ def _merge_financial_references(
         elif parcela.status == Parcela.Status.LIQUIDADA:
             paid_by_reference[referencia] = FinancialReference(
                 referencia_mes=referencia,
-                status=Parcela.Status.LIQUIDADA,
+                status=(
+                    PROJECTION_STATUS_QUITADA
+                    if is_forced_outside_cycle_reference(referencia)
+                    else Parcela.Status.LIQUIDADA
+                ),
                 data_pagamento=parcela.data_pagamento,
                 valor=parcela.valor,
                 observacao=parcela.observacao or "Parcela liquidada pela tesouraria.",
                 source="parcela_liquidada",
-                counts_for_cycle=True,
-                had_unpaid_event=False,
+                counts_for_cycle=not is_forced_outside_cycle_reference(referencia),
+                had_unpaid_event=is_forced_outside_cycle_reference(referencia),
+                force_outside_cycle=is_forced_outside_cycle_reference(referencia),
             )
         elif parcela.status == Parcela.Status.DESCONTADO:
-            had_unpaid_event = referencia in references_with_unpaid_history
+            had_unpaid_event = (
+                referencia in references_with_unpaid_history
+                or is_forced_outside_cycle_reference(referencia)
+            )
             paid_by_reference[referencia] = FinancialReference(
                 referencia_mes=referencia,
                 status=(
@@ -602,6 +647,7 @@ def _merge_financial_references(
                 source="parcela_fallback",
                 counts_for_cycle=not had_unpaid_event,
                 had_unpaid_event=had_unpaid_event,
+                force_outside_cycle=is_forced_outside_cycle_reference(referencia),
             )
 
     known_references = {
@@ -773,9 +819,26 @@ def _effective_renewal_first_reference(
             refinanciamento,
             activated_at=activated_at,
         ):
-            return max(next_reference, activation_reference)
-        return next_reference
-    return activation_reference
+            candidate = max(next_reference, activation_reference)
+        else:
+            candidate = next_reference
+    else:
+        candidate = activation_reference
+
+    occupied_references = {
+        parcela.referencia_mes.replace(day=1)
+        for parcela in _query_current_parcelas(contrato)
+        if parcela.ciclo_id != refinanciamento.ciclo_destino_id
+    }
+    cycle_size = get_contract_cycle_size(contrato)
+    safety_limit = 24
+    while safety_limit > 0 and any(
+        _add_months(candidate, offset) in occupied_references
+        for offset in range(cycle_size)
+    ):
+        candidate = _add_months(candidate, 1)
+        safety_limit -= 1
+    return candidate
 
 
 def _is_effective_renewal(refinanciamento: Refinanciamento) -> bool:
@@ -877,7 +940,17 @@ def _normalize_operational_status(status: str) -> str:
 
 def _serialize_comprovante(comprovante: Comprovante) -> dict[str, object]:
     arquivo_path = str(getattr(comprovante.arquivo, "name", "") or "")
-    local = comprovante.arquivo_disponivel_localmente
+    arquivo_referencia = comprovante.arquivo_referencia or arquivo_path
+    reference = build_storage_reference(
+        arquivo_referencia,
+        missing_type=(
+            "legado_sem_arquivo"
+            if comprovante.legacy_comprovante_id is not None
+            or comprovante.origem == Comprovante.Origem.LEGADO
+            else "referencia_path"
+        ),
+        local_type="local",
+    )
     created_at = (
         (
             getattr(comprovante.refinanciamento, "data_ativacao_ciclo", None)
@@ -896,10 +969,10 @@ def _serialize_comprovante(comprovante: Comprovante) -> dict[str, object]:
         "id": comprovante.id,
         "tipo": comprovante.tipo,
         "papel": comprovante.papel,
-        "arquivo": arquivo_path or comprovante.arquivo_referencia,
-        "arquivo_referencia": comprovante.arquivo_referencia,
-        "arquivo_disponivel_localmente": local,
-        "tipo_referencia": "local" if local else "legado_sem_arquivo",
+        "arquivo": reference.url or arquivo_path or arquivo_referencia,
+        "arquivo_referencia": reference.arquivo_referencia or arquivo_referencia,
+        "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
+        "tipo_referencia": reference.tipo_referencia,
         "nome_original": comprovante.nome_original,
         "mime": comprovante.mime,
         "size_bytes": comprovante.size_bytes,
@@ -919,19 +992,32 @@ def _synthesize_termo_payload(refinanciamento: Refinanciamento) -> dict[str, obj
         or refinanciamento.executado_em
         or refinanciamento.created_at
     )
+    reference = build_storage_reference(
+        refinanciamento.termo_antecipacao_path,
+        missing_type=(
+            "legado_sem_arquivo"
+            if refinanciamento.legacy_refinanciamento_id is not None
+            else "referencia_path"
+        ),
+        local_type="local",
+    )
     return {
         "id": None,
         "tipo": Comprovante.Tipo.TERMO_ANTECIPACAO,
         "papel": Comprovante.Papel.OPERACIONAL,
-        "arquivo": refinanciamento.termo_antecipacao_path,
-        "arquivo_referencia": refinanciamento.termo_antecipacao_path,
-        "arquivo_disponivel_localmente": False,
-        "tipo_referencia": "legado_sem_arquivo",
+        "arquivo": reference.url or refinanciamento.termo_antecipacao_path,
+        "arquivo_referencia": reference.arquivo_referencia or refinanciamento.termo_antecipacao_path,
+        "arquivo_disponivel_localmente": reference.arquivo_disponivel_localmente,
+        "tipo_referencia": reference.tipo_referencia,
         "nome_original": refinanciamento.termo_antecipacao_original_name,
         "mime": refinanciamento.termo_antecipacao_mime,
         "size_bytes": refinanciamento.termo_antecipacao_size_bytes,
         "data_pagamento": activation_at,
-        "origem": Comprovante.Origem.LEGADO,
+        "origem": (
+            Comprovante.Origem.LEGADO
+            if refinanciamento.legacy_refinanciamento_id is not None
+            else Comprovante.Origem.SOLICITACAO_RENOVACAO
+        ),
         "created_at": activation_at,
         "legacy_comprovante_id": None,
     }
@@ -947,28 +1033,38 @@ def _cycle_documents(
     if not include_documents:
         return [], None
 
+    contract_queryset = Comprovante.objects.filter(
+        contrato=contrato,
+        ciclo__numero=cycle_number,
+    ).select_related("enviado_por", "refinanciamento")
+
     if renewal is not None:
-        comprovantes = list(
-            Comprovante.objects.filter(refinanciamento=renewal.refinanciamento)
-            .select_related("enviado_por")
-            .order_by("created_at", "id")
+        renewal_queryset = Comprovante.objects.filter(
+            refinanciamento=renewal.refinanciamento
+        ).select_related("enviado_por", "refinanciamento")
+        comprovantes_map = {
+            comprovante.id: comprovante
+            for comprovante in [
+                *list(contract_queryset.order_by("created_at", "id")),
+                *list(renewal_queryset.order_by("created_at", "id")),
+            ]
+        }
+        comprovantes = sorted(
+            comprovantes_map.values(),
+            key=lambda item: (item.created_at, item.id),
         )
     else:
         comprovantes = list(
-            Comprovante.objects.filter(contrato=contrato, refinanciamento__isnull=True)
-            .filter(ciclo__numero=cycle_number)
-            .select_related("enviado_por")
+            contract_queryset
             .order_by("created_at", "id")
         )
 
-    termo = next(
-        (
-            _serialize_comprovante(comprovante)
-            for comprovante in comprovantes
-            if comprovante.tipo == Comprovante.Tipo.TERMO_ANTECIPACAO
-        ),
-        None,
-    )
+    termos = [
+        comprovante
+        for comprovante in comprovantes
+        if comprovante.tipo == Comprovante.Tipo.TERMO_ANTECIPACAO
+    ]
+    termo = _serialize_comprovante(termos[-1]) if termos else None
     comprovantes_ciclo = [
         _serialize_comprovante(comprovante)
         for comprovante in comprovantes
@@ -1123,6 +1219,134 @@ def _financial_row(item: FinancialReference, *, contrato: Contrato, index: int) 
     }
 
 
+def _normalize_projected_cycle_rows(
+    *,
+    contrato: Contrato,
+    cycles: list[dict[str, object]],
+    unpaid_rows: list[dict[str, object]],
+) -> tuple[list[dict[str, object]], list[dict[str, object]], list[dict[str, object]]]:
+    if not cycles:
+        unresolved = [item for item in unpaid_rows if _is_unresolved_unpaid_row(item)]
+        return cycles, unpaid_rows, unresolved
+
+    latest_cycle_number = max(int(cycle.get("numero") or 0) for cycle in cycles)
+    current_month = timezone.localdate().replace(day=1)
+    normalized_unpaid = list(unpaid_rows)
+    seen_unpaid_refs = {
+        (
+            int(item.get("contrato_id") or contrato.id),
+            _month_floor(item.get("referencia_mes")),
+        )
+        for item in normalized_unpaid
+        if _month_floor(item.get("referencia_mes")) is not None
+    }
+
+    for cycle in cycles:
+        cycle_status = str(cycle.get("status") or "")
+        cycle_number = int(cycle.get("numero") or 0)
+        kept_rows: list[dict[str, object]] = []
+        for parcela in list(cycle.get("parcelas") or []):
+            referencia_mes = _month_floor(parcela.get("referencia_mes"))
+            status = str(parcela.get("status") or "")
+            observacao = str(parcela.get("observacao") or "")
+            observacao_normalizada = observacao.lower()
+            forced_outside_cycle = is_forced_outside_cycle_reference(referencia_mes)
+
+            should_move = False
+            normalized_status = status
+            if forced_outside_cycle:
+                should_move = True
+                normalized_status = (
+                    PROJECTION_STATUS_QUITADA
+                    if status
+                    in {
+                        Parcela.Status.DESCONTADO,
+                        Parcela.Status.LIQUIDADA,
+                        PROJECTION_STATUS_QUITADA,
+                    }
+                    else Parcela.Status.NAO_DESCONTADO
+                )
+            elif status in {Parcela.Status.NAO_DESCONTADO, PROJECTION_STATUS_QUITADA}:
+                should_move = True
+            elif status == Parcela.Status.EM_PREVISAO and referencia_mes is not None:
+                if (
+                    referencia_mes < current_month
+                    or cycle_number < latest_cycle_number
+                    or cycle_status == Ciclo.Status.CICLO_RENOVADO
+                ):
+                    should_move = True
+                    normalized_status = Parcela.Status.NAO_DESCONTADO
+            elif any(hint in observacao_normalizada for hint in MANUAL_OUTSIDE_CYCLE_HINTS):
+                if status in {
+                    Parcela.Status.DESCONTADO,
+                    Parcela.Status.LIQUIDADA,
+                    PROJECTION_STATUS_QUITADA,
+                }:
+                    should_move = True
+                    normalized_status = PROJECTION_STATUS_QUITADA
+
+            if not should_move:
+                kept_rows.append(parcela)
+                continue
+
+            unpaid_row = {
+                **parcela,
+                "contrato_id": contrato.id,
+                "contrato_codigo": contrato.codigo,
+                "status": normalized_status,
+                "data_pagamento": (
+                    None
+                    if normalized_status == Parcela.Status.NAO_DESCONTADO
+                    else parcela.get("data_pagamento")
+                ),
+                "observacao": (
+                    observacao
+                    or (
+                        "Competência quitada fora do ciclo."
+                        if normalized_status == PROJECTION_STATUS_QUITADA
+                        else "Competência vencida fora do ciclo."
+                    )
+                ),
+            }
+            dedupe_key = (contrato.id, referencia_mes)
+            if referencia_mes is not None and dedupe_key in seen_unpaid_refs:
+                continue
+            if referencia_mes is not None:
+                seen_unpaid_refs.add(dedupe_key)
+            normalized_unpaid.append(unpaid_row)
+
+        cycle["parcelas"] = [
+            {
+                **parcela,
+                "numero": index + 1,
+            }
+            for index, parcela in enumerate(
+                sorted(
+                    kept_rows,
+                    key=lambda item: (
+                        _month_floor(item.get("referencia_mes")) or date.min,
+                        int(item.get("id") or 0),
+                    ),
+                )
+            )
+        ]
+        if cycle["parcelas"]:
+            cycle["primeira_competencia_ciclo"] = cycle["parcelas"][0]["referencia_mes"]
+            cycle["ultima_competencia_ciclo"] = cycle["parcelas"][-1]["referencia_mes"]
+            cycle["resumo_referencias"] = ", ".join(
+                parcela["referencia_mes"].strftime("%m/%Y")
+                for parcela in cycle["parcelas"]
+            )
+
+    normalized_unpaid = sorted(
+        normalized_unpaid,
+        key=lambda item: item["referencia_mes"],
+        reverse=True,
+    )
+    unresolved = [item for item in normalized_unpaid if _is_unresolved_unpaid_row(item)]
+    return cycles, normalized_unpaid, unresolved
+
+
 def _manual_phase_slug(
     *,
     contrato: Contrato,
@@ -1142,6 +1366,8 @@ def _manual_phase_slug(
                 return OPERATIONAL_STATUS_TO_VISUAL_PHASE[normalized]
     if cycle_status == Ciclo.Status.CICLO_RENOVADO:
         return "ciclo_renovado"
+    if cycle_status == Ciclo.Status.PENDENCIA:
+        return "ciclo_com_pendencia"
     if cycle_status == Ciclo.Status.APTO_A_RENOVAR:
         return "apto_a_renovar"
     return "ciclo_aberto"
@@ -1152,6 +1378,7 @@ def _build_manual_contract_projection(
     *,
     include_documents: bool = False,
 ) -> dict[str, object]:
+    cycle_size = get_contract_cycle_size(contrato)
     ciclos = list(
         contrato.ciclos.filter(deleted_at__isnull=True).order_by("numero", "id")
     )
@@ -1161,60 +1388,116 @@ def _build_manual_contract_projection(
         .select_related("ciclo")
         .order_by("ciclo__numero", "numero", "id")
     )
-    parcelas_por_ciclo: dict[int, list[Parcela]] = {}
+    parcelas_por_ciclo: dict[int, list[dict[str, object]]] = {}
     unpaid_rows: list[dict[str, object]] = []
     movement_rows: list[dict[str, object]] = []
+    current_month = timezone.localdate().replace(day=1)
+
+    def build_row(
+        parcela: Parcela,
+        *,
+        status: str | None = None,
+        source: str = "admin_override",
+    ) -> dict[str, object]:
+        return {
+            "id": parcela.id,
+            "numero": parcela.numero,
+            "referencia_mes": parcela.referencia_mes,
+            "valor": parcela.valor,
+            "data_vencimento": parcela.data_vencimento,
+            "status": status or parcela.status,
+            "data_pagamento": parcela.data_pagamento,
+            "observacao": parcela.observacao,
+            "source": source,
+        }
+
+    latest_cycle_number = max((ciclo.numero for ciclo in ciclos), default=0)
 
     for parcela in parcelas:
-        if parcela.layout_bucket == Parcela.LayoutBucket.UNPAID:
+        row = build_row(parcela)
+        effective_bucket = parcela.layout_bucket
+        effective_status = str(parcela.status or "")
+        observacao = (parcela.observacao or "").lower()
+        forced_outside_cycle = is_forced_outside_cycle_reference(parcela.referencia_mes)
+
+        if forced_outside_cycle:
+            effective_bucket = Parcela.LayoutBucket.UNPAID
+            if effective_status in {
+                Parcela.Status.DESCONTADO,
+                Parcela.Status.LIQUIDADA,
+            }:
+                effective_status = PROJECTION_STATUS_QUITADA
+            elif effective_status not in {PROJECTION_STATUS_QUITADA, Parcela.Status.NAO_DESCONTADO}:
+                effective_status = Parcela.Status.NAO_DESCONTADO
+        elif effective_bucket == Parcela.LayoutBucket.CYCLE:
+            if effective_status == Parcela.Status.NAO_DESCONTADO:
+                effective_bucket = Parcela.LayoutBucket.UNPAID
+            elif effective_status == PROJECTION_STATUS_QUITADA and any(
+                hint in observacao for hint in MANUAL_OUTSIDE_CYCLE_HINTS
+            ):
+                effective_bucket = Parcela.LayoutBucket.UNPAID
+            elif effective_status == Parcela.Status.EM_PREVISAO and (
+                _month_floor(parcela.referencia_mes) < current_month
+                or parcela.ciclo.numero < latest_cycle_number
+                or parcela.ciclo.status == Ciclo.Status.CICLO_RENOVADO
+            ):
+                effective_bucket = Parcela.LayoutBucket.UNPAID
+                effective_status = Parcela.Status.NAO_DESCONTADO
+
+        if effective_bucket == Parcela.LayoutBucket.UNPAID:
             unpaid_rows.append(
                 {
-                    "id": parcela.id,
                     "contrato_id": contrato.id,
                     "contrato_codigo": contrato.codigo,
-                    "referencia_mes": parcela.referencia_mes,
-                    "valor": parcela.valor,
-                    "status": parcela.status,
-                    "data_pagamento": parcela.data_pagamento,
-                    "observacao": parcela.observacao,
-                    "source": "admin_override",
+                    **build_row(parcela, status=effective_status),
                 }
             )
             continue
-        if parcela.layout_bucket == Parcela.LayoutBucket.MOVEMENT:
+        if effective_bucket == Parcela.LayoutBucket.MOVEMENT:
             movement_rows.append(
                 {
-                    "id": parcela.id,
                     "contrato_id": contrato.id,
                     "contrato_codigo": contrato.codigo,
-                    "referencia_mes": parcela.referencia_mes,
-                    "valor": parcela.valor,
-                    "status": parcela.status,
-                    "data_pagamento": parcela.data_pagamento,
-                    "observacao": parcela.observacao,
-                    "source": "admin_override",
+                    **build_row(parcela, status=effective_status),
                 }
             )
             continue
-        parcelas_por_ciclo.setdefault(parcela.ciclo_id, []).append(parcela)
+        parcelas_por_ciclo.setdefault(parcela.ciclo_id, []).append(
+            build_row(parcela, status=effective_status)
+        )
 
     unresolved_unpaid_rows = [
         item for item in unpaid_rows if _is_unresolved_unpaid_row(item)
     ]
     has_unpaid = bool(unresolved_unpaid_rows)
-    latest_cycle_number = max((ciclo.numero for ciclo in ciclos), default=0)
     threshold = get_future_generation_threshold(contrato)
     refinanciamento_ativo = _active_operational_refinanciamentos(contrato)
-    refinanciamento_operacional = refinanciamento_ativo[0] if refinanciamento_ativo else None
+    block_small_value_renewal = is_return_imported_small_value_contract(contrato)
+    refinanciamento_operacional = (
+        None
+        if block_small_value_renewal
+        else (refinanciamento_ativo[0] if refinanciamento_ativo else None)
+    )
     projected_cycles: list[dict[str, object]] = []
 
     for ciclo in ciclos:
-        cycle_parcelas = parcelas_por_ciclo.get(ciclo.id, [])
-        activation = get_cycle_activation_payload(ciclo)
-        paid_count = sum(
-            1 for parcela in cycle_parcelas if parcela.status == Parcela.Status.DESCONTADO
+        cycle_parcelas = sorted(
+            parcelas_por_ciclo.get(ciclo.id, []),
+            key=lambda item: (
+                item["referencia_mes"],
+                int(item.get("numero") or 0),
+                int(item.get("id") or 0),
+            ),
         )
+        activation = get_cycle_activation_payload(ciclo)
+        paid_count = sum(1 for parcela in cycle_parcelas if _is_resolved_cycle_status(parcela["status"]))
         projected_cycle_status = ciclo.status
+        if (
+            ciclo.numero != latest_cycle_number
+            and projected_cycle_status in {Ciclo.Status.CICLO_RENOVADO, Ciclo.Status.FECHADO}
+            and paid_count < cycle_size
+        ):
+            projected_cycle_status = Ciclo.Status.PENDENCIA
         if (
             ciclo.numero == latest_cycle_number
             and refinanciamento_operacional is None
@@ -1222,6 +1505,14 @@ def _build_manual_contract_projection(
             and projected_cycle_status != Ciclo.Status.CICLO_RENOVADO
         ):
             projected_cycle_status = Ciclo.Status.APTO_A_RENOVAR
+        if (
+            block_small_value_renewal
+            and ciclo.numero == latest_cycle_number
+            and projected_cycle_status == Ciclo.Status.APTO_A_RENOVAR
+        ):
+            projected_cycle_status = blocked_small_value_cycle_status(
+                has_unpaid_months=has_unpaid
+            )
         phase_slug = _manual_phase_slug(
             contrato=contrato,
             cycle_status=projected_cycle_status,
@@ -1260,13 +1551,13 @@ def _build_manual_contract_projection(
                 "data_renovacao": None,
                 "origem_renovacao": "",
                 "primeira_competencia_ciclo": (
-                    cycle_parcelas[0].referencia_mes if cycle_parcelas else ciclo.data_inicio
+                    cycle_parcelas[0]["referencia_mes"] if cycle_parcelas else ciclo.data_inicio
                 ),
                 "ultima_competencia_ciclo": (
-                    cycle_parcelas[-1].referencia_mes if cycle_parcelas else ciclo.data_fim
+                    cycle_parcelas[-1]["referencia_mes"] if cycle_parcelas else ciclo.data_fim
                 ),
                 "resumo_referencias": ", ".join(
-                    parcela.referencia_mes.strftime("%m/%Y") for parcela in cycle_parcelas
+                    parcela["referencia_mes"].strftime("%m/%Y") for parcela in cycle_parcelas
                 ),
                 "refinanciamento_id": None,
                 "legacy_refinanciamento_id": None,
@@ -1274,16 +1565,10 @@ def _build_manual_contract_projection(
                 "termo_antecipacao": termo_antecipacao,
                 "parcelas": [
                     {
-                        "id": parcela.id,
-                        "numero": parcela.numero,
-                        "referencia_mes": parcela.referencia_mes,
-                        "valor": parcela.valor,
-                        "data_vencimento": parcela.data_vencimento,
-                        "status": parcela.status,
-                        "data_pagamento": parcela.data_pagamento,
-                        "observacao": parcela.observacao,
+                        **parcela,
+                        "numero": index + 1,
                     }
-                    for parcela in cycle_parcelas
+                    for index, parcela in enumerate(cycle_parcelas)
                 ],
             }
         )
@@ -1370,24 +1655,21 @@ def build_contract_cycle_projection(
         for renewal in renewals
         if renewal.first_reference in regularized_map
     }
-    # Months that belong to an EFETIVADO legado refi's origin cycle are authoritative
-    # and must never be blacklisted, even if the payment record shows a non-paid status.
-    legado_refi_covered_refs: set[date] = set()
-    for renewal in renewals:
-        if renewal.refinanciamento.legacy_refinanciamento_id is not None:
-            for ref in _renewal_origin_refs(renewal.refinanciamento):
-                legado_refi_covered_refs.add(ref.replace(day=1))
     forced_outside_references = {
         item.referencia_mes
         for item in regularized
         if item.force_outside_cycle
     }
     blocked_references = (
-        ((unpaid_reference_set | regularized_reference_set) - legado_refi_covered_refs)
-        | forced_outside_references
+        unpaid_reference_set | regularized_reference_set | forced_outside_references
     )
+    block_small_value_renewal = is_return_imported_small_value_contract(contrato)
     operational_refis = _active_operational_refinanciamentos(contrato)
-    operational_refi = operational_refis[0] if operational_refis else None
+    operational_refi = (
+        None
+        if block_small_value_renewal
+        else (operational_refis[0] if operational_refis else None)
+    )
 
     cycle_count = 1 + len(renewals)
     seed_reference = _seed_reference(contrato, paid or unpaid or regularized, renewals)
@@ -1471,9 +1753,17 @@ def build_contract_cycle_projection(
             )
 
         if next_renewal is not None:
-            cycle_status = Ciclo.Status.CICLO_RENOVADO
+            cycle_status = (
+                Ciclo.Status.CICLO_RENOVADO
+                if paid_count >= cycle_size
+                else Ciclo.Status.PENDENCIA
+            )
         elif paid_count >= threshold:
-            cycle_status = Ciclo.Status.APTO_A_RENOVAR
+            cycle_status = (
+                blocked_small_value_cycle_status(has_unpaid_months=bool(unpaid))
+                if block_small_value_renewal and index == cycle_count
+                else Ciclo.Status.APTO_A_RENOVAR
+            )
         else:
             cycle_status = Ciclo.Status.ABERTO
 
@@ -1546,9 +1836,11 @@ def build_contract_cycle_projection(
             )
         )
     ]
-    unresolved_unpaid_rows = [
-        item for item in unpaid_rows if _is_unresolved_unpaid_row(item)
-    ]
+    cycles, unpaid_rows, unresolved_unpaid_rows = _normalize_projected_cycle_rows(
+        contrato=contrato,
+        cycles=cycles,
+        unpaid_rows=unpaid_rows,
+    )
     movimentos_avulsos = [
         _financial_row(item, contrato=contrato, index=index)
         for index, item in enumerate(
@@ -1568,7 +1860,7 @@ def build_contract_cycle_projection(
     if operational_refi is not None:
         status_renovacao = _normalize_operational_status(operational_refi.status)
         refinanciamento_id = operational_refi.id
-    elif cycles and sum(
+    elif not block_small_value_renewal and cycles and sum(
         1
         for parcela in cycles[-1]["parcelas"]
         if parcela["status"] == Parcela.Status.DESCONTADO

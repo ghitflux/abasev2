@@ -554,82 +554,154 @@ class BaixaManualItemSerializer(serializers.Serializer):
     valor_pago = serializers.SerializerMethodField()
     realizado_por_nome = serializers.SerializerMethodField()
     nome_comprovante = serializers.SerializerMethodField()
+    origem = serializers.SerializerMethodField()
+    arquivo_retorno_item_id = serializers.SerializerMethodField()
+    pode_dar_baixa = serializers.SerializerMethodField()
 
     def _contrato(self, obj):
+        if isinstance(obj, dict):
+            return None
         if hasattr(obj, "parcela"):
             return obj.parcela.ciclo.contrato
         return obj.ciclo.contrato
 
     def _parcela(self, obj):
+        if isinstance(obj, dict):
+            return None
         if hasattr(obj, "parcela"):
             return obj.parcela
         return obj
 
-    def get_parcela_id(self, obj) -> int:
-        return self._parcela(obj).id
+    def _row_value(self, obj, key: str, default=None):
+        if isinstance(obj, dict):
+            return obj.get(key, default)
+        return default
 
-    def get_associado_id(self, obj) -> int:
-        return self._contrato(obj).associado.id
+    def get_parcela_id(self, obj) -> int | None:
+        if isinstance(obj, dict):
+            return self._row_value(obj, "parcela_id")
+        parcela = self._parcela(obj)
+        return parcela.id if parcela else None
+
+    def get_associado_id(self, obj) -> int | None:
+        if isinstance(obj, dict):
+            return self._row_value(obj, "associado_id")
+        contrato = self._contrato(obj)
+        return contrato.associado.id if contrato else None
 
     def get_nome(self, obj) -> str:
+        if isinstance(obj, dict):
+            return str(self._row_value(obj, "nome", ""))
         return self._contrato(obj).associado.nome_completo
 
     def get_cpf_cnpj(self, obj) -> str:
+        if isinstance(obj, dict):
+            return str(self._row_value(obj, "cpf_cnpj", ""))
         return self._contrato(obj).associado.cpf_cnpj
 
     def get_matricula(self, obj) -> str:
+        if isinstance(obj, dict):
+            return str(self._row_value(obj, "matricula", ""))
         assoc = self._contrato(obj).associado
         return assoc.matricula_orgao or assoc.matricula
 
     def get_agente_nome(self, obj) -> str:
+        if isinstance(obj, dict):
+            return str(self._row_value(obj, "agente_nome", ""))
         agente = self._contrato(obj).agente
         return agente.full_name if agente else ""
 
-    def get_contrato_id(self, obj) -> int:
-        return self._contrato(obj).id
+    def get_contrato_id(self, obj) -> int | None:
+        if isinstance(obj, dict):
+            return self._row_value(obj, "contrato_id")
+        contrato = self._contrato(obj)
+        return contrato.id if contrato else None
 
     def get_contrato_codigo(self, obj) -> str:
+        if isinstance(obj, dict):
+            return str(self._row_value(obj, "contrato_codigo", ""))
         return self._contrato(obj).codigo
 
     def get_referencia_mes(self, obj):
+        if isinstance(obj, dict):
+            return self._row_value(obj, "referencia_mes")
         return self._parcela(obj).referencia_mes
 
     def get_valor(self, obj) -> str:
+        if isinstance(obj, dict):
+            value = self._row_value(obj, "valor")
+            return f"{value:.2f}" if value is not None else "0.00"
         return f"{self._parcela(obj).valor:.2f}"
 
     def get_status(self, obj) -> str:
+        if isinstance(obj, dict):
+            return str(self._row_value(obj, "status", ""))
         return self._parcela(obj).status
 
     def get_data_vencimento(self, obj):
+        if isinstance(obj, dict):
+            return self._row_value(obj, "data_vencimento")
         return self._parcela(obj).data_vencimento
 
     def get_observacao(self, obj) -> str:
+        if isinstance(obj, dict):
+            return str(self._row_value(obj, "observacao", ""))
         return self._parcela(obj).observacao
 
     def get_data_baixa(self, obj):
+        if isinstance(obj, dict):
+            return self._row_value(obj, "data_baixa")
         if hasattr(obj, "data_baixa"):
             return obj.data_baixa
         return None
 
     def get_valor_pago(self, obj):
+        if isinstance(obj, dict):
+            value = self._row_value(obj, "valor_pago")
+            return f"{value:.2f}" if value is not None else None
         if hasattr(obj, "valor_pago"):
             return f"{obj.valor_pago:.2f}"
         return None
 
     def get_realizado_por_nome(self, obj) -> str:
+        if isinstance(obj, dict):
+            return str(self._row_value(obj, "realizado_por_nome", ""))
         if hasattr(obj, "realizado_por") and obj.realizado_por:
             return obj.realizado_por.full_name or obj.realizado_por.email
         return ""
 
     def get_nome_comprovante(self, obj) -> str:
+        if isinstance(obj, dict):
+            return str(self._row_value(obj, "nome_comprovante", ""))
         if hasattr(obj, "nome_comprovante"):
             return obj.nome_comprovante
         return ""
+
+    def get_origem(self, obj) -> str:
+        if isinstance(obj, dict):
+            return str(self._row_value(obj, "origem", ""))
+        return "parcela"
+
+    def get_arquivo_retorno_item_id(self, obj) -> int | None:
+        if isinstance(obj, dict):
+            return self._row_value(obj, "arquivo_retorno_item_id")
+        return None
+
+    def get_pode_dar_baixa(self, obj) -> bool:
+        if isinstance(obj, dict):
+            return bool(self._row_value(obj, "pode_dar_baixa"))
+        return True
 
 
 class DarBaixaManualSerializer(serializers.Serializer):
     comprovante = serializers.FileField(required=True)
     valor_pago = serializers.DecimalField(max_digits=10, decimal_places=2, required=True)
+    observacao = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class InativarAssociadoBaixaSerializer(serializers.Serializer):
+    associado_id = serializers.IntegerField(required=True)
+    comprovante = serializers.FileField(required=True)
     observacao = serializers.CharField(required=False, allow_blank=True, default="")
 
 

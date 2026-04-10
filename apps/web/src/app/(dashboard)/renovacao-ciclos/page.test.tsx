@@ -491,7 +491,7 @@ describe("RenovacaoCiclosPage", () => {
     expect(screen.getByText("Gestão detalhada por mês")).toBeInTheDocument();
     expect(screen.getByText("Detalhamento mensal já conciliado")).toBeInTheDocument();
     expect(screen.getByText("Arquivos retorno")).toBeInTheDocument();
-    expect(screen.getByText(/Monitoramento de ciclos/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Monitoramento de ciclos/i)).not.toBeInTheDocument();
     expect((await screen.findAllByText("Maria de Jesus Santana Costa")).length).toBeGreaterThan(0);
     expect(await screen.findByText("Carlos Mendes")).toBeInTheDocument();
     expect(await screen.findByText("retorno_fevereiro_2026.txt")).toBeInTheDocument();
@@ -652,18 +652,6 @@ describe("RenovacaoCiclosPage", () => {
       within(dialog).getByText("Total de associados em Fevereiro de 2026"),
     ).toBeInTheDocument();
     expect(within(dialog).getByText("Maria de Jesus Santana Costa")).toBeInTheDocument();
-    expect(within(dialog).getByText("João Carlos da Silva")).toBeInTheDocument();
-    expect(within(dialog).getByText("Por página")).toBeInTheDocument();
-  });
-
-  it("abre o modal do monitoramento de ciclos ao clicar no KPI correspondente", async () => {
-    const user = userEvent.setup();
-    renderPage();
-
-    await user.click(await screen.findByRole("button", { name: /Mês 1\/3 \(Início\)/i }));
-
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Mês 1/3 (Início) em Fevereiro de 2026")).toBeInTheDocument();
     expect(within(dialog).getByText("João Carlos da Silva")).toBeInTheDocument();
     expect(within(dialog).getByText("Por página")).toBeInTheDocument();
   });

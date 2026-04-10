@@ -21,6 +21,7 @@ class AdminOverrideApiTestCase(TestCase):
     def setUpTestData(cls):
         admin_role = Role.objects.create(codigo="ADMIN", nome="Administrador")
         agent_role = Role.objects.create(codigo="AGENTE", nome="Agente")
+        coordinator_role = Role.objects.create(codigo="COORDENADOR", nome="Coordenador")
 
         cls.admin = User.objects.create_user(
             email="admin@teste.local",
@@ -37,6 +38,14 @@ class AdminOverrideApiTestCase(TestCase):
             last_name="ABASE",
         )
         cls.agent.roles.add(agent_role)
+
+        cls.coordinator = User.objects.create_user(
+            email="coordenador@teste.local",
+            password="Senha@123",
+            first_name="Coordenador",
+            last_name="ABASE",
+        )
+        cls.coordinator.roles.add(coordinator_role)
 
         cls.associado = Associado.objects.create(
             nome_completo="Associado Admin",
@@ -115,11 +124,221 @@ class AdminOverrideApiTestCase(TestCase):
         self.agent_client = APIClient()
         self.agent_client.force_authenticate(self.agent)
 
+        self.coordinator_client = APIClient()
+        self.coordinator_client.force_authenticate(self.coordinator)
+
     def test_admin_override_endpoints_are_admin_only(self):
         response = self.agent_client.get(
             f"/api/v1/admin-overrides/associados/{self.associado.id}/editor/"
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_coordenador_can_access_editor_and_save_cycle_layout(self):
+        editor = self.coordinator_client.get(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/editor/"
+        )
+        self.assertEqual(editor.status_code, 200, editor.json())
+
+        response = self.coordinator_client.post(
+            f"/api/v1/admin-overrides/contratos/{self.contrato.id}/cycles/layout/",
+            {
+                "updated_at": self.contrato.updated_at.isoformat(),
+                "motivo": "Ajuste operacional pela coordenação",
+                "cycles": [
+                    {
+                        "id": self.ciclo.id,
+                        "numero": 1,
+                        "data_inicio": "2026-01-01",
+                        "data_fim": "2026-03-01",
+                        "status": "pendencia",
+                        "valor_total": "900.00",
+                    }
+                ],
+                "parcelas": [
+                    {
+                        "id": self.parcela_jan.id,
+                        "cycle_ref": str(self.ciclo.id),
+                        "numero": 1,
+                        "referencia_mes": "2026-01-01",
+                        "valor": "300.00",
+                        "data_vencimento": "2026-01-05",
+                        "status": "descontado",
+                        "layout_bucket": "cycle",
+                    },
+                    {
+                        "id": self.parcela_fev.id,
+                        "cycle_ref": str(self.ciclo.id),
+                        "numero": 2,
+                        "referencia_mes": "2026-02-01",
+                        "valor": "300.00",
+                        "data_vencimento": "2026-02-05",
+                        "status": "nao_descontado",
+                        "layout_bucket": "cycle",
+                    },
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.ciclo.refresh_from_db()
+        self.assertEqual(self.ciclo.status, Ciclo.Status.PENDENCIA)
+
+    def test_save_all_returns_non_blocking_warnings_for_duplicate_competencia(self):
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",
+            {
+                "motivo": "Salvar com aviso de sobreposição",
+                "contratos": [
+                    {
+                        "id": self.contrato.id,
+                        "cycles": {
+                            "updated_at": self.contrato.updated_at.isoformat(),
+                            "cycles": [
+                                {
+                                    "id": self.ciclo.id,
+                                    "numero": 1,
+                                    "data_inicio": "2026-01-01",
+                                    "data_fim": "2026-03-01",
+                                    "status": "pendencia",
+                                    "valor_total": "900.00",
+                                },
+                                {
+                                    "client_key": "ciclo-extra",
+                                    "numero": 2,
+                                    "data_inicio": "2026-02-01",
+                                    "data_fim": "2026-04-01",
+                                    "status": "aberto",
+                                    "valor_total": "300.00",
+                                },
+                            ],
+                            "parcelas": [
+                                {
+                                    "id": self.parcela_jan.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 1,
+                                    "referencia_mes": "2026-01-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-01-05",
+                                    "status": "descontado",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_fev.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 2,
+                                    "referencia_mes": "2026-02-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-02-05",
+                                    "status": "nao_descontado",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_mar.id,
+                                    "cycle_ref": "ciclo-extra",
+                                    "numero": 1,
+                                    "referencia_mes": "2026-02-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-03-05",
+                                    "status": "em_previsao",
+                                    "layout_bucket": "cycle",
+                                },
+                            ],
+                        },
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertTrue(payload["warnings"])
+        warning_codes = {item["code"] for item in payload["warnings"]}
+        self.assertIn("cycle_date_overlap", warning_codes)
+        self.assertIn("duplicate_reference_month", warning_codes)
+
+    def test_save_all_handles_unpaid_month_without_duplicate_parcela_number(self):
+        self.parcela_fev.soft_delete()
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",
+            {
+                "motivo": "Salvar mês não descontado sem colisão de numeração",
+                "contratos": [
+                    {
+                        "id": self.contrato.id,
+                        "cycles": {
+                            "updated_at": self.contrato.updated_at.isoformat(),
+                            "cycles": [
+                                {
+                                    "id": self.ciclo.id,
+                                    "numero": 1,
+                                    "data_inicio": "2026-01-01",
+                                    "data_fim": "2026-03-01",
+                                    "status": "pendencia",
+                                    "valor_total": "900.00",
+                                }
+                            ],
+                            "parcelas": [
+                                {
+                                    "id": self.parcela_jan.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 1,
+                                    "referencia_mes": "2026-01-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-01-05",
+                                    "status": "descontado",
+                                    "data_pagamento": None,
+                                    "observacao": "",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_mar.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 2,
+                                    "referencia_mes": "2026-03-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-03-05",
+                                    "status": "em_previsao",
+                                    "data_pagamento": None,
+                                    "observacao": "",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": None,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 1,
+                                    "referencia_mes": "2026-02-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-02-05",
+                                    "status": "nao_descontado",
+                                    "data_pagamento": None,
+                                    "observacao": "Competência fora do ciclo regular",
+                                    "layout_bucket": "unpaid",
+                                },
+                            ],
+                        },
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        active_parcelas = list(
+            Parcela.all_objects.filter(
+                ciclo=self.ciclo,
+                deleted_at__isnull=True,
+            ).order_by("numero", "id")
+        )
+        numeros = [parcela.numero for parcela in active_parcelas]
+        self.assertEqual(len(numeros), len(set(numeros)))
+        unpaid_refs = [
+            parcela.referencia_mes.isoformat()
+            for parcela in active_parcelas
+            if parcela.layout_bucket == Parcela.LayoutBucket.UNPAID
+        ]
+        self.assertIn("2026-02-01", unpaid_refs)
 
     def test_admin_can_save_manual_cycle_layout_and_rebuild_keeps_it(self):
         response = self.admin_client.post(

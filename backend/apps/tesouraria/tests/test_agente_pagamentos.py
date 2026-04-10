@@ -264,6 +264,39 @@ class AgentePagamentosViewSetTestCase(TestCase):
             "comprovantes/manual-marco.pdf",
         )
 
+    def test_pagamentos_expoem_evidencia_operacional_do_admin_editor(self):
+        contrato = self._create_contract(
+            cpf="13131313131",
+            nome="Associado Admin Editor",
+            agente=self.agente,
+        )
+        ciclo = contrato.ciclos.get()
+
+        Comprovante.objects.create(
+            contrato=contrato,
+            ciclo=ciclo,
+            refinanciamento=None,
+            tipo=Comprovante.Tipo.OUTRO,
+            papel=Comprovante.Papel.OPERACIONAL,
+            origem=Comprovante.Origem.OUTRO,
+            arquivo=SimpleUploadedFile(
+                "admin-editor.pdf",
+                b"arquivo admin editor",
+                content_type="application/pdf",
+            ),
+            enviado_por=self.admin,
+        )
+
+        response = self.tes_client.get("/api/v1/tesouraria/pagamentos/")
+        self.assertEqual(response.status_code, 200, response.json())
+        row = next(
+            item
+            for item in response.json()["results"]
+            if item["contrato_codigo"] == contrato.codigo
+        )
+        self.assertTrue(row["pagamento_inicial_evidencias"])
+        self.assertEqual(row["pagamento_inicial_evidencias"][0]["origem"], "admin_editor")
+
     def test_pagamento_inicial_pago_sem_arquivo_retorna_placeholder(self):
         contrato = self._create_contract(
             cpf="22211133344",
@@ -397,3 +430,18 @@ class AgentePagamentosViewSetTestCase(TestCase):
 
         self.assertIn(contrato_agente.codigo, codigos)
         self.assertIn(contrato_outro_agente.codigo, codigos)
+
+    def test_tesoureiro_possui_rota_propria_de_pagamentos(self):
+        contrato = self._create_contract(
+            cpf="12121212121",
+            nome="Associado Rota Própria",
+            agente=self.agente,
+        )
+
+        response = self.tes_client.get("/api/v1/tesouraria/pagamentos/")
+        self.assertEqual(response.status_code, 200, response.json())
+
+        payload = response.json()
+        self.assertGreaterEqual(payload["count"], 1)
+        codigos = {row["contrato_codigo"] for row in payload["results"]}
+        self.assertIn(contrato.codigo, codigos)
