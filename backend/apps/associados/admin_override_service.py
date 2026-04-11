@@ -1780,22 +1780,27 @@ class AdminOverrideService:
         assigned_numbers_by_cycle: defaultdict[int, set[int]] = defaultdict(set)
 
         with transaction.atomic():
+            # Renumeração temporária: usamos max_numero_existente + 1 + index para garantir
+            # que os números temporários sejam únicos globalmente e não colidam com nenhum
+            # número já existente. Isso evita violação da constraint (ciclo_id, numero)
+            # e mantém os valores dentro do range smallint unsigned (0-65535).
             existing_cycle_list = all_cycles
-            for ciclo in existing_cycle_list:
-                # Usar ciclo.id como base garante unicidade mesmo com múltiplos ciclos
-                temporary_number = 100000 + ciclo.id
-                if ciclo.numero != temporary_number:
-                    ciclo.numero = temporary_number
-                    ciclo.save(update_fields=["numero", "updated_at"])
+            if existing_cycle_list:
+                max_ciclo_numero = max(c.numero for c in existing_cycle_list)
+                for index, ciclo in enumerate(existing_cycle_list):
+                    temporary_number = max_ciclo_numero + 1 + index
+                    if ciclo.numero != temporary_number:
+                        ciclo.numero = temporary_number
+                        ciclo.save(update_fields=["numero", "updated_at"])
 
             existing_parcela_list = all_parcelas
-            for parcela in existing_parcela_list:
-                # Usar parcela.id como base garante unicidade global, evitando
-                # colisão de constraint (ciclo_id, numero) durante renumeração temporária
-                temporary_number = 100000 + parcela.id
-                if parcela.numero != temporary_number:
-                    parcela.numero = temporary_number
-                    parcela.save(update_fields=["numero", "updated_at"])
+            if existing_parcela_list:
+                max_parcela_numero = max(p.numero for p in existing_parcela_list)
+                for index, parcela in enumerate(existing_parcela_list):
+                    temporary_number = max_parcela_numero + 1 + index
+                    if parcela.numero != temporary_number:
+                        parcela.numero = temporary_number
+                        parcela.save(update_fields=["numero", "updated_at"])
 
             for raw_cycle in cycles_payload:
                 cycle_id = raw_cycle.get("id")
