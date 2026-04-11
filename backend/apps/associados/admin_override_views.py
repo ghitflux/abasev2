@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema
 from rest_framework import permissions, status
@@ -33,6 +34,21 @@ from .models import AdminOverrideEvent, Associado, Documento
 
 def _conflict_response(exc: Exception) -> Response:
     return Response({"detail": str(exc)}, status=status.HTTP_409_CONFLICT)
+
+
+def _validation_error_response(exc: DjangoValidationError) -> Response:
+    if hasattr(exc, "message_dict") and exc.message_dict:
+        return Response(exc.message_dict, status=status.HTTP_400_BAD_REQUEST)
+    if getattr(exc, "messages", None):
+        messages = [str(message) for message in exc.messages if str(message).strip()]
+        if len(messages) == 1:
+            return Response({"detail": messages[0]}, status=status.HTTP_400_BAD_REQUEST)
+        if messages:
+            return Response(
+                {"non_field_errors": messages},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class AdminOverrideAssociadoViewSet(GenericViewSet):
@@ -93,6 +109,8 @@ class AdminOverrideAssociadoViewSet(GenericViewSet):
             )
         except AdminOverrideConflict as exc:
             return _conflict_response(exc)
+        except DjangoValidationError as exc:
+            return _validation_error_response(exc)
         payload = AdminOverrideService.build_associado_editor_payload(associado)
         return Response(AdminOverrideEditorPayloadSerializer(payload).data)
 
@@ -114,6 +132,8 @@ class AdminOverrideAssociadoViewSet(GenericViewSet):
             )
         except AdminOverrideConflict as exc:
             return _conflict_response(exc)
+        except DjangoValidationError as exc:
+            return _validation_error_response(exc)
         payload = AdminOverrideService.build_associado_editor_payload(associado)
         return Response(AdminOverrideEditorPayloadSerializer(payload).data)
 
@@ -135,6 +155,8 @@ class AdminOverrideAssociadoViewSet(GenericViewSet):
             )
         except AdminOverrideConflict as exc:
             return _conflict_response(exc)
+        except DjangoValidationError as exc:
+            return _validation_error_response(exc)
         return Response(AdminOverrideEditorPayloadSerializer(payload).data)
 
 
@@ -166,6 +188,8 @@ class AdminOverrideContratoViewSet(GenericViewSet):
             )
         except AdminOverrideConflict as exc:
             return _conflict_response(exc)
+        except DjangoValidationError as exc:
+            return _validation_error_response(exc)
         payload = AdminOverrideService.build_associado_editor_payload(contrato.associado)
         return Response(AdminOverrideEditorPayloadSerializer(payload).data)
 
@@ -187,6 +211,8 @@ class AdminOverrideContratoViewSet(GenericViewSet):
             )
         except AdminOverrideConflict as exc:
             return _conflict_response(exc)
+        except DjangoValidationError as exc:
+            return _validation_error_response(exc)
         payload = AdminOverrideService.build_associado_editor_payload(contrato.associado)
         return Response(AdminOverrideEditorPayloadSerializer(payload).data)
 
@@ -216,6 +242,8 @@ class AdminOverrideRefinanciamentoViewSet(GenericViewSet):
             )
         except AdminOverrideConflict as exc:
             return _conflict_response(exc)
+        except DjangoValidationError as exc:
+            return _validation_error_response(exc)
         payload = AdminOverrideService.build_associado_editor_payload(refinanciamento.associado)
         return Response(AdminOverrideEditorPayloadSerializer(payload).data)
 
@@ -247,6 +275,8 @@ class AdminOverrideDocumentoViewSet(GenericViewSet):
             )
         except AdminOverrideConflict as exc:
             return _conflict_response(exc)
+        except DjangoValidationError as exc:
+            return _validation_error_response(exc)
         return Response(DocumentoSerializer(novo, context=self.get_serializer_context()).data)
 
 
@@ -289,6 +319,8 @@ class AdminOverrideComprovanteViewSet(GenericViewSet):
             )
         except AdminOverrideConflict as exc:
             return _conflict_response(exc)
+        except DjangoValidationError as exc:
+            return _validation_error_response(exc)
         payload = AdminOverrideService.build_associado_editor_payload(ciclo.contrato.associado)
         return Response(AdminOverrideEditorPayloadSerializer(payload).data, status=status.HTTP_201_CREATED)
 
@@ -311,6 +343,8 @@ class AdminOverrideComprovanteViewSet(GenericViewSet):
             )
         except AdminOverrideConflict as exc:
             return _conflict_response(exc)
+        except DjangoValidationError as exc:
+            return _validation_error_response(exc)
         payload = AdminOverrideService.build_associado_editor_payload(
             novo.contrato.associado if novo.contrato_id else novo.refinanciamento.associado,
         )
@@ -348,6 +382,8 @@ class AdminOverrideEventViewSet(GenericViewSet):
             )
         except AdminOverrideConflict as exc:
             return _conflict_response(exc)
+        except DjangoValidationError as exc:
+            return _validation_error_response(exc)
         payload = AdminOverrideService.build_associado_history_payload(
             reverted.associado,
             request=request,

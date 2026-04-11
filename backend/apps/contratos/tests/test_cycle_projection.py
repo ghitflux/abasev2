@@ -1077,6 +1077,51 @@ class CycleProjectionTestCase(TestCase):
             "ciclo_em_dia",
         )
 
+    def test_manual_layout_closed_cycle_is_rendered_as_concluded(self):
+        associado = self._create_associado("11199922235", "Manual Concluido")
+        contrato = self._create_contrato(
+            associado=associado,
+            data_primeira_mensalidade=date(2026, 1, 1),
+        )
+        contrato.admin_manual_layout_enabled = True
+        contrato.save(update_fields=["admin_manual_layout_enabled", "updated_at"])
+
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.FECHADO,
+            valor_total=Decimal("900.00"),
+        )
+        for index, referencia in enumerate(
+            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)],
+            start=1,
+        ):
+            Parcela.objects.create(
+                ciclo=ciclo,
+                associado=associado,
+                numero=index,
+                referencia_mes=referencia,
+                valor=Decimal("300.00"),
+                data_vencimento=referencia,
+                status=Parcela.Status.DESCONTADO,
+                data_pagamento=referencia,
+            )
+
+        projection = build_contract_cycle_projection(contrato)
+        cycle = projection["cycles"][0]
+
+        self.assertEqual(cycle["status"], Ciclo.Status.FECHADO)
+        self.assertEqual(cycle["status_visual_label"], "Concluído")
+        self.assertEqual(cycle["fase_ciclo"], "ciclo_renovado")
+        self.assertEqual(
+            get_contract_visual_status_payload(contrato, projection=projection)[
+                "status_visual_label"
+            ],
+            "Concluído",
+        )
+
     def test_manual_projection_moves_non_counting_rows_outside_cycle_and_keeps_documents(self):
         associado = self._create_associado("11199922236", "Manual Docs Fora Do Ciclo")
         contrato = self._create_contrato(

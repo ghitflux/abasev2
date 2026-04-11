@@ -5,11 +5,9 @@ from datetime import date
 
 NOVEMBER_2025_REFERENCE = date(2025, 11, 1)
 
-FORCED_OUTSIDE_CYCLE_REFERENCES = frozenset(
-    {
-        NOVEMBER_2025_REFERENCE,
-    }
-)
+# Novembro/2025 deixou de ser tratado como competência obrigatoriamente fora do ciclo.
+# A constante permanece para rotinas históricas de auditoria/reparo.
+FORCED_OUTSIDE_CYCLE_REFERENCES = frozenset()
 
 
 def month_floor(value: date | None) -> date | None:

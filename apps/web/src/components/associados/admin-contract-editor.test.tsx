@@ -1,8 +1,9 @@
 import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import AdminContractEditor from "./admin-contract-editor";
+import type { AdminContractEditorHandle } from "./admin-contract-editor";
 import type { AdminEditorContrato } from "@/lib/api/types";
 
 jest.mock("@/components/custom/calendar-competencia", () => {
@@ -130,5 +131,117 @@ describe("AdminContractEditor", () => {
       expect(firstDirtyHandler).toHaveBeenCalledTimes(initialCallCount);
     });
     expect(secondDirtyHandler).not.toHaveBeenCalled();
+  });
+
+  it("move competencia fora do ciclo para o ciclo compativel e renumera as parcelas", () => {
+    const ref = React.createRef<AdminContractEditorHandle>();
+    const onPayloadRefresh = jest.fn();
+    const contractWithOutsideMonth: AdminEditorContrato = {
+      ...contractFixture,
+      ciclos: [
+        {
+          id: 301,
+          numero: 1,
+          data_inicio: "2025-10-01",
+          data_fim: "2025-12-01",
+          status: "aberto",
+          valor_total: "225.00",
+          updated_at: "2026-04-01T10:00:00Z",
+          comprovantes_ciclo: [],
+          termo_antecipacao: null,
+          parcelas: [
+            {
+              id: 401,
+              numero: 1,
+              referencia_mes: "2025-10-01",
+              valor: "75.00",
+              data_vencimento: "2025-10-05",
+              status: "descontado",
+              data_pagamento: "2025-10-05",
+              observacao: "",
+              layout_bucket: "cycle",
+              updated_at: "2026-04-01T10:00:00Z",
+              financial_flags: {
+                tem_retorno: false,
+                tem_baixa_manual: false,
+                tem_liquidacao: false,
+              },
+            },
+            {
+              id: 403,
+              numero: 3,
+              referencia_mes: "2025-12-01",
+              valor: "75.00",
+              data_vencimento: "2025-12-05",
+              status: "em_previsao",
+              data_pagamento: null,
+              observacao: "",
+              layout_bucket: "cycle",
+              updated_at: "2026-04-01T10:00:00Z",
+              financial_flags: {
+                tem_retorno: false,
+                tem_baixa_manual: false,
+                tem_liquidacao: false,
+              },
+            },
+          ],
+        },
+      ],
+      meses_nao_pagos: [
+        {
+          id: 402,
+          numero: 2,
+          referencia_mes: "2025-11-01",
+          valor: "75.00",
+          data_vencimento: "2025-11-05",
+          status: "nao_descontado",
+          data_pagamento: null,
+          observacao: "Competência movida para fora do ciclo.",
+          layout_bucket: "unpaid",
+          updated_at: "2026-04-01T10:00:00Z",
+          financial_flags: {
+            tem_retorno: false,
+            tem_baixa_manual: false,
+            tem_liquidacao: false,
+          },
+        },
+      ],
+      movimentos_financeiros_avulsos: [],
+    };
+
+    renderWithQueryClient(
+      <AdminContractEditor
+        ref={ref}
+        associadoId={55}
+        contract={contractWithOutsideMonth}
+        onPayloadRefresh={onPayloadRefresh}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Mover para ciclo compatível/i }));
+
+    expect(
+      ref.current?.getPendingChanges()?.cycles?.parcelas.map((parcela) => ({
+        referencia_mes: parcela.referencia_mes,
+        numero: parcela.numero,
+        layout_bucket: parcela.layout_bucket,
+      })),
+    ).toEqual([
+      {
+        referencia_mes: "2025-10-01",
+        numero: 1,
+        layout_bucket: "cycle",
+      },
+      {
+        referencia_mes: "2025-11-01",
+        numero: 2,
+        layout_bucket: "cycle",
+      },
+      {
+        referencia_mes: "2025-12-01",
+        numero: 3,
+        layout_bucket: "cycle",
+      },
+    ]);
   });
 });

@@ -81,6 +81,10 @@ STATUS_VISUAL_PHASE_PRIORITY = {
     "contrato_desativado": -1,
     "contrato_encerrado": -2,
 }
+CONCLUDED_CYCLE_STATUSES = {
+    Ciclo.Status.CICLO_RENOVADO,
+    Ciclo.Status.FECHADO,
+}
 OPERATIONAL_STATUS_TO_VISUAL_PHASE = {
     Refinanciamento.Status.APTO_A_RENOVAR: "apto_a_renovar",
     Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO: "solicitado_para_liquidacao",
@@ -176,6 +180,8 @@ def _cycle_phase_status(
         return "contrato_encerrado"
     if cycle_status == Ciclo.Status.PENDENCIA:
         return "ciclo_com_pendencia"
+    if cycle_status in CONCLUDED_CYCLE_STATUSES:
+        return "ciclo_renovado"
     if refinanciamento_operacional is not None:
         normalized = _normalize_operational_status(refinanciamento_operacional.status)
         if normalized in OPERATIONAL_STATUS_TO_VISUAL_PHASE:
@@ -1404,7 +1410,7 @@ def _manual_phase_slug(
             normalized = _normalize_operational_status(refinanciamento_operacional[0].status)
             if normalized in OPERATIONAL_STATUS_TO_VISUAL_PHASE:
                 return OPERATIONAL_STATUS_TO_VISUAL_PHASE[normalized]
-    if cycle_status == Ciclo.Status.CICLO_RENOVADO:
+    if cycle_status in CONCLUDED_CYCLE_STATUSES:
         return "ciclo_renovado"
     if cycle_status == Ciclo.Status.PENDENCIA:
         return "ciclo_com_pendencia"
@@ -1458,18 +1464,7 @@ def _build_manual_contract_projection(
         effective_bucket = parcela.layout_bucket
         effective_status = str(parcela.status or "")
         observacao = (parcela.observacao or "").lower()
-        forced_outside_cycle = is_forced_outside_cycle_reference(parcela.referencia_mes)
-
-        if forced_outside_cycle:
-            effective_bucket = Parcela.LayoutBucket.UNPAID
-            if effective_status in {
-                Parcela.Status.DESCONTADO,
-                Parcela.Status.LIQUIDADA,
-            }:
-                effective_status = PROJECTION_STATUS_QUITADA
-            elif effective_status not in {PROJECTION_STATUS_QUITADA, Parcela.Status.NAO_DESCONTADO}:
-                effective_status = Parcela.Status.NAO_DESCONTADO
-        elif effective_bucket == Parcela.LayoutBucket.CYCLE:
+        if effective_bucket == Parcela.LayoutBucket.CYCLE:
             if effective_status == Parcela.Status.NAO_DESCONTADO:
                 effective_bucket = Parcela.LayoutBucket.UNPAID
             elif effective_status == PROJECTION_STATUS_QUITADA and any(
@@ -1542,7 +1537,7 @@ def _build_manual_contract_projection(
             ciclo.numero == latest_cycle_number
             and refinanciamento_operacional is None
             and paid_count >= threshold
-            and projected_cycle_status != Ciclo.Status.CICLO_RENOVADO
+            and projected_cycle_status not in CONCLUDED_CYCLE_STATUSES
         ):
             projected_cycle_status = Ciclo.Status.APTO_A_RENOVAR
         if (

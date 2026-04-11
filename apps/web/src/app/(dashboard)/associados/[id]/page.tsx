@@ -5,7 +5,20 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2Icon, CreditCardIcon, FileTextIcon, MapPinIcon, SaveIcon, SmartphoneIcon, Trash2Icon, UserIcon, WorkflowIcon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  Building2Icon,
+  CreditCardIcon,
+  FileTextIcon,
+  LoaderCircleIcon,
+  MapPinIcon,
+  SaveIcon,
+  ShieldCheckIcon,
+  SmartphoneIcon,
+  Trash2Icon,
+  UserIcon,
+  WorkflowIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import type {
@@ -50,7 +63,13 @@ import {
   AlertDialogMedia,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
@@ -61,6 +80,14 @@ const AdminFileManager = dynamic(
 const AdminOverrideHistory = dynamic(
   () => import("@/components/associados/admin-override-history"),
 );
+
+const DEFAULT_OPEN_SECTIONS = ["contato", "contratos"];
+const ADMIN_EDITOR_SECTIONS = [
+  "contratos",
+  "documentos",
+  "esteira",
+  "historico-admin",
+];
 
 type AssociadoPageProps = {
   params: Promise<{ id: string }>;
@@ -88,6 +115,15 @@ function formatAdminWarnings(warnings: AdminEditorWarning[]) {
     .join(" ");
 }
 
+function mergeAccordionSections(
+  current: string[],
+  sections: readonly string[],
+) {
+  const next = new Set(current);
+  sections.forEach((section) => next.add(section));
+  return Array.from(next);
+}
+
 function collectLocalCycleWarnings(
   contratos: AdminContractEditorPendingChanges[],
 ): AdminEditorWarning[] {
@@ -105,7 +141,10 @@ function collectLocalCycleWarnings(
         data_inicio: new Date(`${cycle.data_inicio}T12:00:00`),
         data_fim: new Date(`${cycle.data_fim}T12:00:00`),
       }))
-      .sort((left, right) => left.data_inicio.getTime() - right.data_inicio.getTime());
+      .sort(
+        (left, right) =>
+          left.data_inicio.getTime() - right.data_inicio.getTime(),
+      );
 
     normalizedCycles.forEach((left, index) => {
       normalizedCycles.slice(index + 1).forEach((right) => {
@@ -127,7 +166,10 @@ function collectLocalCycleWarnings(
       });
     });
 
-    const references = new Map<string, Array<{ numero: number; cycle_ref: string }>>();
+    const references = new Map<
+      string,
+      Array<{ numero: number; cycle_ref: string }>
+    >();
     cyclesPayload.parcelas.forEach((parcela) => {
       const current = references.get(parcela.referencia_mes) ?? [];
       current.push({
@@ -159,7 +201,8 @@ function collectLocalCycleWarnings(
     (warning, index, collection) =>
       collection.findIndex(
         (candidate) =>
-          candidate.code === warning.code && candidate.message === warning.message,
+          candidate.code === warning.code &&
+          candidate.message === warning.message,
       ) === index,
   );
 }
@@ -173,11 +216,16 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   const [selectedTarget, setSelectedTarget] =
     React.useState<ParcelaDetailTarget | null>(null);
   const [adminMode, setAdminMode] = React.useState(false);
+  const [openSections, setOpenSections] = React.useState<string[]>(
+    DEFAULT_OPEN_SECTIONS,
+  );
   const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
   const [deleteConfirmed, setDeleteConfirmed] = React.useState(false);
   const [inativarDialogOpen, setInativarDialogOpen] = React.useState(false);
   const [saveAllOpen, setSaveAllOpen] = React.useState(false);
-  const contractEditorRefs = React.useRef<Record<number, AdminContractEditorHandle | null>>({});
+  const contractEditorRefs = React.useRef<
+    Record<number, AdminContractEditorHandle | null>
+  >({});
   const esteiraEditorRef = React.useRef<AdminEsteiraEditorHandle | null>(null);
   const [contractDirtyState, setContractDirtyState] = React.useState<
     Record<number, ContractEditorDirtyState>
@@ -196,11 +244,11 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
     ? "/associados"
     : isCoordinator
       ? "/associados"
-    : isAnalyst
-      ? "/analise"
-      : isTreasurer
-        ? "/tesouraria"
-      : "/agentes/meus-contratos";
+      : isAnalyst
+        ? "/analise"
+        : isTreasurer
+          ? "/tesouraria"
+          : "/agentes/meus-contratos";
 
   const associadoQuery = useQuery({
     queryKey: ["associado", associadoId],
@@ -211,7 +259,9 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   const adminEditorQuery = useQuery({
     queryKey: ["admin-associado-editor", associadoId],
     queryFn: () =>
-      apiFetch<AdminAssociadoEditorPayload>(`admin-overrides/associados/${associadoId}/editor/`),
+      apiFetch<AdminAssociadoEditorPayload>(
+        `admin-overrides/associados/${associadoId}/editor/`,
+      ),
     enabled: canUseAdminEditor && adminMode,
     ...dashboardRetainedQueryOptions,
   });
@@ -219,7 +269,9 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   const adminHistoryQuery = useQuery({
     queryKey: ["admin-associado-history", associadoId],
     queryFn: () =>
-      apiFetch<AdminOverrideHistoryEvent[]>(`admin-overrides/associados/${associadoId}/history/`),
+      apiFetch<AdminOverrideHistoryEvent[]>(
+        `admin-overrides/associados/${associadoId}/history/`,
+      ),
     enabled: canUseAdminEditor && adminMode,
     ...dashboardRetainedQueryOptions,
   });
@@ -237,7 +289,9 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
       router.replace("/associados");
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao excluir associado.");
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao excluir associado.",
+      );
     },
   });
 
@@ -254,7 +308,9 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
       await queryClient.invalidateQueries({ queryKey: ["contratos"] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao inativar associado.");
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao inativar associado.",
+      );
     },
   });
 
@@ -275,12 +331,42 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
     }
   }, [adminMode]);
 
-  const handleAdminModeChange = React.useCallback((checked: boolean) => {
-    setAdminMode((current) => {
+  React.useEffect(() => {
+    if (adminMode) {
+      setOpenSections((current) =>
+        mergeAccordionSections(current, ADMIN_EDITOR_SECTIONS),
+      );
+      return;
+    }
+
+    setOpenSections((current) =>
+      current.filter((section) => section !== "historico-admin"),
+    );
+  }, [adminMode]);
+
+  const handleAdminModeChange = React.useCallback(
+    (checked: boolean) => {
       const next = Boolean(checked);
-      return current === next ? current : next;
-    });
-  }, []);
+      setAdminMode((current) => (current === next ? current : next));
+
+      const nextSearchParams = new URLSearchParams(searchParams.toString());
+      if (next) {
+        nextSearchParams.set("admin", "1");
+      } else {
+        nextSearchParams.delete("admin");
+      }
+
+      const queryString = nextSearchParams.toString();
+      const href = queryString
+        ? `/associados/${associadoId}?${queryString}`
+        : `/associados/${associadoId}`;
+
+      React.startTransition(() => {
+        router.replace(href, { scroll: false });
+      });
+    },
+    [associadoId, router, searchParams],
+  );
 
   const handleContractDirtyChange = React.useCallback(
     (contractId: number, state: ContractEditorDirtyState) => {
@@ -304,23 +390,56 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   const handleAdminPayloadRefresh = React.useCallback(
     async (payload?: AdminAssociadoEditorPayload) => {
       if (payload) {
-        queryClient.setQueryData(["admin-associado-editor", associadoId], payload);
+        queryClient.setQueryData(
+          ["admin-associado-editor", associadoId],
+          payload,
+        );
       } else {
         await adminEditorQuery.refetch();
       }
-      await Promise.all([associadoQuery.refetch(), adminHistoryQuery.refetch()]);
+      await Promise.all([
+        associadoQuery.refetch(),
+        adminHistoryQuery.refetch(),
+      ]);
     },
-    [adminEditorQuery, adminHistoryQuery, associadoId, associadoQuery, queryClient],
+    [
+      adminEditorQuery,
+      adminHistoryQuery,
+      associadoId,
+      associadoQuery,
+      queryClient,
+    ],
   );
 
   const hasUnsavedAdminChanges =
     canUseAdminEditor &&
     adminMode &&
-    (Object.values(contractDirtyState).some(hasDirtyContractState) || esteiraDirty);
+    (Object.values(contractDirtyState).some(hasDirtyContractState) ||
+      esteiraDirty);
+
+  const adminEditorErrorMessage =
+    adminEditorQuery.error instanceof Error
+      ? adminEditorQuery.error.message
+      : "Falha ao carregar o editor avançado.";
+  const adminHistoryErrorMessage =
+    adminHistoryQuery.error instanceof Error
+      ? adminHistoryQuery.error.message
+      : "Falha ao carregar o histórico do editor.";
+  const isAdminEditorLoading =
+    adminMode &&
+    (adminEditorQuery.isLoading ||
+      (adminEditorQuery.isFetching && !adminEditorQuery.data));
+  const isAdminHistoryLoading =
+    adminMode &&
+    (adminHistoryQuery.isLoading ||
+      (adminHistoryQuery.isFetching && !adminHistoryQuery.data));
 
   const collectPendingAdminChanges = React.useCallback(() => {
     const contratos = (adminEditorQuery.data?.contratos ?? [])
-      .map((contract) => contractEditorRefs.current[contract.id]?.getPendingChanges() ?? null)
+      .map(
+        (contract) =>
+          contractEditorRefs.current[contract.id]?.getPendingChanges() ?? null,
+      )
       .filter((item): item is NonNullable<typeof item> => Boolean(item));
     const esteira = esteiraEditorRef.current?.getPendingChanges() ?? null;
 
@@ -342,13 +461,17 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           [
             "Foram detectadas sobreposições ou duplicidades no layout.",
             "",
-            ...localWarnings.slice(0, 5).map((warning) => `- ${warning.message}`),
+            ...localWarnings
+              .slice(0, 5)
+              .map((warning) => `- ${warning.message}`),
             "",
             "Deseja salvar mesmo assim?",
           ].join("\n"),
         );
         if (!confirmed) {
-          throw new Error("Salvamento cancelado para revisão das sobreposições.");
+          throw new Error(
+            "Salvamento cancelado para revisão das sobreposições.",
+          );
         }
       }
       return apiFetch<AdminAssociadoEditorPayload>(
@@ -368,13 +491,23 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
       if (payload.warnings?.length) {
         toast.warning(formatAdminWarnings(payload.warnings));
       }
-      queryClient.setQueryData(["admin-associado-editor", associadoId], payload);
+      queryClient.setQueryData(
+        ["admin-associado-editor", associadoId],
+        payload,
+      );
       setContractDirtyState({});
       setEsteiraDirty(false);
-      await Promise.all([associadoQuery.refetch(), adminHistoryQuery.refetch()]);
+      await Promise.all([
+        associadoQuery.refetch(),
+        adminHistoryQuery.refetch(),
+      ]);
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao salvar alterações administrativas.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao salvar alterações administrativas.",
+      );
     },
   });
 
@@ -446,8 +579,12 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
     <div className="space-y-6">
       <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">Associado</p>
-          <h1 className="mt-2 text-3xl font-semibold">{associado.nome_completo}</h1>
+          <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">
+            Associado
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold">
+            {associado.nome_completo}
+          </h1>
           <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
             <span>{associado.matricula_display || associado.matricula}</span>
             <span>{associado.cpf_cnpj}</span>
@@ -492,7 +629,15 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           {isAdmin ? (
             <>
               <Button variant="outline" asChild>
-                <Link href={`/associados-editar/${associado.id}`}>Editar cadastro</Link>
+                <Link
+                  href={
+                    adminMode
+                      ? `/associados-editar/${associado.id}?admin=1`
+                      : `/associados-editar/${associado.id}`
+                  }
+                >
+                  Editar cadastro
+                </Link>
               </Button>
               <Button
                 variant="destructive"
@@ -509,10 +654,82 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
         </div>
       </section>
 
-      <Accordion type="multiple" defaultValue={["contato", "contratos"]} className="space-y-4">
+      {canUseAdminEditor && adminMode ? (
+        <Alert
+          variant={adminEditorQuery.isError ? "destructive" : "default"}
+          className={
+            adminEditorQuery.isError
+              ? "border-destructive/40 bg-destructive/10"
+              : "border-primary/30 bg-primary/5"
+          }
+        >
+          {adminEditorQuery.isError ? (
+            <AlertCircleIcon className="size-4" />
+          ) : isAdminEditorLoading ? (
+            <LoaderCircleIcon className="size-4 animate-spin" />
+          ) : (
+            <ShieldCheckIcon className="size-4 text-primary" />
+          )}
+          <AlertTitle>
+            {adminEditorQuery.isError
+              ? "Falha ao carregar o editor avançado"
+              : isAdminEditorLoading
+                ? "Carregando editor avançado"
+                : "Editor avançado ativo"}
+          </AlertTitle>
+          <AlertDescription className="gap-3">
+            {adminEditorQuery.isError ? (
+              <>
+                <p>{adminEditorErrorMessage}</p>
+                <div className="flex flex-wrap gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      void adminEditorQuery.refetch();
+                      void adminHistoryQuery.refetch();
+                    }}
+                  >
+                    Tentar novamente
+                  </Button>
+                </div>
+              </>
+            ) : isAdminEditorLoading ? (
+              <p>
+                Preparando contrato, arquivos, esteira e histórico
+                administrativo deste associado.
+              </p>
+            ) : (
+              <>
+                <p>
+                  Use <strong>Editar cadastro</strong> para dados cadastrais e
+                  os blocos abaixo para contrato, arquivos e esteira.
+                </p>
+                {adminEditorQuery.data?.warnings?.length ? (
+                  <p>
+                    {adminEditorQuery.data.warnings.length} warning(s)
+                    operacional(is) detectado(s) no layout atual.
+                  </p>
+                ) : null}
+              </>
+            )}
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      <Accordion
+        type="multiple"
+        value={openSections}
+        onValueChange={setOpenSections}
+        className="space-y-4"
+      >
         {isAgent ? null : (
           <>
-            <AccordionItem value="dados" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
+            <AccordionItem
+              value="dados"
+              className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6"
+            >
               <AccordionTrigger className="text-base">
                 <span className="inline-flex items-center gap-2">
                   <UserIcon className="size-4 text-primary" />
@@ -521,19 +738,37 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
               </AccordionTrigger>
               <AccordionContent>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <DetailItem label="Tipo documento" value={associado.tipo_documento} />
+                  <DetailItem
+                    label="Tipo documento"
+                    value={associado.tipo_documento}
+                  />
                   <DetailItem label="CPF/CNPJ" value={associado.cpf_cnpj} />
                   <DetailItem label="RG" value={associado.rg} />
-                  <DetailItem label="Órgão expedidor" value={associado.orgao_expedidor} />
-                  <DetailItem label="Data de nascimento" value={formatDate(associado.data_nascimento)} />
+                  <DetailItem
+                    label="Órgão expedidor"
+                    value={associado.orgao_expedidor}
+                  />
+                  <DetailItem
+                    label="Data de nascimento"
+                    value={formatDate(associado.data_nascimento)}
+                  />
                   <DetailItem label="Profissão" value={associado.profissao} />
-                  <DetailItem label="Estado civil" value={associado.estado_civil} />
-                  <DetailItem label="Agente" value={associado.agente?.full_name} />
+                  <DetailItem
+                    label="Estado civil"
+                    value={associado.estado_civil}
+                  />
+                  <DetailItem
+                    label="Agente"
+                    value={associado.agente?.full_name}
+                  />
                 </div>
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="endereco" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
+            <AccordionItem
+              value="endereco"
+              className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6"
+            >
               <AccordionTrigger className="text-base">
                 <span className="inline-flex items-center gap-2">
                   <MapPinIcon className="size-4 text-primary" />
@@ -543,17 +778,35 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
               <AccordionContent>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                   <DetailItem label="CEP" value={associado.endereco?.cep} />
-                  <DetailItem label="Endereço" value={associado.endereco?.endereco} />
-                  <DetailItem label="Número" value={associado.endereco?.numero} />
-                  <DetailItem label="Complemento" value={associado.endereco?.complemento} />
-                  <DetailItem label="Bairro" value={associado.endereco?.bairro} />
-                  <DetailItem label="Cidade" value={associado.endereco?.cidade} />
+                  <DetailItem
+                    label="Endereço"
+                    value={associado.endereco?.endereco}
+                  />
+                  <DetailItem
+                    label="Número"
+                    value={associado.endereco?.numero}
+                  />
+                  <DetailItem
+                    label="Complemento"
+                    value={associado.endereco?.complemento}
+                  />
+                  <DetailItem
+                    label="Bairro"
+                    value={associado.endereco?.bairro}
+                  />
+                  <DetailItem
+                    label="Cidade"
+                    value={associado.endereco?.cidade}
+                  />
                   <DetailItem label="UF" value={associado.endereco?.uf} />
                 </div>
               </AccordionContent>
             </AccordionItem>
 
-            <AccordionItem value="banco" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
+            <AccordionItem
+              value="banco"
+              className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6"
+            >
               <AccordionTrigger className="text-base">
                 <span className="inline-flex items-center gap-2">
                   <CreditCardIcon className="size-4 text-primary" />
@@ -562,18 +815,36 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
               </AccordionTrigger>
               <AccordionContent>
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  <DetailItem label="Banco" value={associado.dados_bancarios?.banco} />
-                  <DetailItem label="Agência" value={associado.dados_bancarios?.agencia} />
-                  <DetailItem label="Conta" value={associado.dados_bancarios?.conta} />
-                  <DetailItem label="Tipo de conta" value={associado.dados_bancarios?.tipo_conta} />
-                  <DetailItem label="Chave PIX" value={associado.dados_bancarios?.chave_pix} />
+                  <DetailItem
+                    label="Banco"
+                    value={associado.dados_bancarios?.banco}
+                  />
+                  <DetailItem
+                    label="Agência"
+                    value={associado.dados_bancarios?.agencia}
+                  />
+                  <DetailItem
+                    label="Conta"
+                    value={associado.dados_bancarios?.conta}
+                  />
+                  <DetailItem
+                    label="Tipo de conta"
+                    value={associado.dados_bancarios?.tipo_conta}
+                  />
+                  <DetailItem
+                    label="Chave PIX"
+                    value={associado.dados_bancarios?.chave_pix}
+                  />
                 </div>
               </AccordionContent>
             </AccordionItem>
           </>
         )}
 
-        <AccordionItem value="contato" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
+        <AccordionItem
+          value="contato"
+          className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6"
+        >
           <AccordionTrigger className="text-base">
             <span className="inline-flex items-center gap-2">
               <Building2Icon className="size-4 text-primary" />
@@ -584,14 +855,26 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
               <DetailItem label="Celular" value={associado.contato?.celular} />
               <DetailItem label="E-mail" value={associado.contato?.email} />
-              <DetailItem label="Órgão público" value={associado.contato?.orgao_publico} />
-              <DetailItem label="Situação do servidor" value={associado.contato?.situacao_servidor} />
-              <DetailItem label="Matrícula do servidor" value={associado.contato?.matricula_servidor} />
+              <DetailItem
+                label="Órgão público"
+                value={associado.contato?.orgao_publico}
+              />
+              <DetailItem
+                label="Situação do servidor"
+                value={associado.contato?.situacao_servidor}
+              />
+              <DetailItem
+                label="Matrícula do servidor"
+                value={associado.contato?.matricula_servidor}
+              />
             </div>
           </AccordionContent>
         </AccordionItem>
 
-        <AccordionItem value="contratos" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
+        <AccordionItem
+          value="contratos"
+          className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6"
+        >
           <AccordionTrigger className="text-base">
             <span className="inline-flex items-center gap-2">
               <FileTextIcon className="size-4 text-primary" />
@@ -599,7 +882,41 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             </span>
           </AccordionTrigger>
           <AccordionContent className="space-y-4">
-            {canUseAdminEditor && adminMode && adminEditorQuery.data?.contratos?.length ? (
+            {canUseAdminEditor && adminMode && isAdminEditorLoading ? (
+              <div className="space-y-4">
+                <div className="h-32 animate-pulse rounded-[1.5rem] bg-background/60" />
+                <div className="h-72 animate-pulse rounded-[1.5rem] bg-background/60" />
+              </div>
+            ) : null}
+            {canUseAdminEditor && adminMode && adminEditorQuery.isError ? (
+              <Alert
+                variant="destructive"
+                className="border-destructive/40 bg-destructive/10"
+              >
+                <AlertCircleIcon className="size-4" />
+                <AlertTitle>Editor de contrato indisponível</AlertTitle>
+                <AlertDescription className="gap-3">
+                  <p>{adminEditorErrorMessage}</p>
+                  <div className="flex flex-wrap gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        void adminEditorQuery.refetch();
+                      }}
+                    >
+                      Recarregar editor
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {canUseAdminEditor &&
+            adminMode &&
+            !isAdminEditorLoading &&
+            !adminEditorQuery.isError &&
+            adminEditorQuery.data?.contratos?.length ? (
               <div className="space-y-4">
                 {adminEditorQuery.data.contratos.map((contract) => (
                   <AdminContractEditor
@@ -609,11 +926,29 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
                     }}
                     associadoId={associadoId}
                     contract={contract}
-                    onDirtyChange={(state) => handleContractDirtyChange(contract.id, state)}
+                    onDirtyChange={(state) =>
+                      handleContractDirtyChange(contract.id, state)
+                    }
                     onPayloadRefresh={handleAdminPayloadRefresh}
                   />
                 ))}
               </div>
+            ) : null}
+            {canUseAdminEditor &&
+            adminMode &&
+            !isAdminEditorLoading &&
+            !adminEditorQuery.isError &&
+            !adminEditorQuery.data?.contratos?.length ? (
+              <Alert className="border-border/60 bg-background/60">
+                <AlertCircleIcon className="size-4" />
+                <AlertTitle>Nenhum contrato disponível no editor</AlertTitle>
+                <AlertDescription>
+                  <p>
+                    Este associado não possui contrato operacional elegível para
+                    override nesta tela.
+                  </p>
+                </AlertDescription>
+              </Alert>
             ) : null}
             <AssociadoContractsOverview
               associado={associado}
@@ -625,68 +960,166 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
         </AccordionItem>
 
         {isAgent ? null : (
-          <AccordionItem value="documentos" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
-          <AccordionTrigger className="text-base">Documentos</AccordionTrigger>
-          <AccordionContent>
-            {canUseAdminEditor && adminMode ? (
-              <div className="mb-4">
-                <AdminFileManager associadoId={associadoId} associado={associado} />
-              </div>
-            ) : null}
-            <AssociadoDocumentsGrid associado={associado} />
-          </AccordionContent>
-        </AccordionItem>
+          <AccordionItem
+            value="documentos"
+            className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6"
+          >
+            <AccordionTrigger className="text-base">
+              Documentos
+            </AccordionTrigger>
+            <AccordionContent>
+              {canUseAdminEditor && adminMode && isAdminEditorLoading ? (
+                <div className="mb-4 h-28 animate-pulse rounded-[1.5rem] bg-background/60" />
+              ) : null}
+              {canUseAdminEditor && adminMode && adminEditorQuery.isError ? (
+                <Alert
+                  variant="destructive"
+                  className="mb-4 border-destructive/40 bg-destructive/10"
+                >
+                  <AlertCircleIcon className="size-4" />
+                  <AlertTitle>Arquivos do editor indisponíveis</AlertTitle>
+                  <AlertDescription>
+                    <p>{adminEditorErrorMessage}</p>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+              {canUseAdminEditor &&
+              adminMode &&
+              !isAdminEditorLoading &&
+              !adminEditorQuery.isError ? (
+                <div className="mb-4">
+                  <AdminFileManager
+                    associadoId={associadoId}
+                    associado={associado}
+                  />
+                </div>
+              ) : null}
+              <AssociadoDocumentsGrid associado={associado} />
+            </AccordionContent>
+          </AccordionItem>
         )}
 
         {isAgent ? null : (
-          <AccordionItem value="esteira" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
-          <AccordionTrigger className="text-base">
-            <span className="inline-flex items-center gap-2">
-              <WorkflowIcon className="size-4 text-primary" />
-              Histórico da Esteira
-            </span>
-          </AccordionTrigger>
-          <AccordionContent className="space-y-4">
-            {canUseAdminEditor && adminMode ? (
-              <AdminEsteiraEditor
-                ref={esteiraEditorRef}
-                esteira={associado.esteira}
-                onDirtyChange={handleEsteiraDirtyChange}
-              />
-            ) : null}
-            <div className="flex flex-wrap items-center gap-3">
-              <StatusBadge status={associado.esteira?.etapa_atual ?? "pendente"} />
-              <StatusBadge status={associado.esteira?.status ?? "aguardando"} />
-            </div>
-            <div className="space-y-3">
-              {associado.esteira?.transicoes?.length ? (
-                associado.esteira.transicoes.map((transicao) => (
-                  <div key={transicao.id} className="rounded-2xl border border-border/60 bg-background/60 p-4 text-sm">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="font-medium capitalize">
-                        {transicao.de_status.replaceAll("_", " ")} → {transicao.para_status.replaceAll("_", " ")}
+          <AccordionItem
+            value="esteira"
+            className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6"
+          >
+            <AccordionTrigger className="text-base">
+              <span className="inline-flex items-center gap-2">
+                <WorkflowIcon className="size-4 text-primary" />
+                Histórico da Esteira
+              </span>
+            </AccordionTrigger>
+            <AccordionContent className="space-y-4">
+              {canUseAdminEditor && adminMode && isAdminEditorLoading ? (
+                <div className="h-28 animate-pulse rounded-[1.5rem] bg-background/60" />
+              ) : null}
+              {canUseAdminEditor && adminMode && adminEditorQuery.isError ? (
+                <Alert
+                  variant="destructive"
+                  className="border-destructive/40 bg-destructive/10"
+                >
+                  <AlertCircleIcon className="size-4" />
+                  <AlertTitle>Editor de esteira indisponível</AlertTitle>
+                  <AlertDescription>
+                    <p>{adminEditorErrorMessage}</p>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+              {canUseAdminEditor &&
+              adminMode &&
+              !isAdminEditorLoading &&
+              !adminEditorQuery.isError ? (
+                <AdminEsteiraEditor
+                  ref={esteiraEditorRef}
+                  esteira={associado.esteira}
+                  onDirtyChange={handleEsteiraDirtyChange}
+                />
+              ) : null}
+              <div className="flex flex-wrap items-center gap-3">
+                <StatusBadge
+                  status={associado.esteira?.etapa_atual ?? "pendente"}
+                />
+                <StatusBadge
+                  status={associado.esteira?.status ?? "aguardando"}
+                />
+              </div>
+              <div className="space-y-3">
+                {associado.esteira?.transicoes?.length ? (
+                  associado.esteira.transicoes.map((transicao) => (
+                    <div
+                      key={transicao.id}
+                      className="rounded-2xl border border-border/60 bg-background/60 p-4 text-sm"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="font-medium capitalize">
+                          {transicao.de_status.replaceAll("_", " ")} →{" "}
+                          {transicao.para_status.replaceAll("_", " ")}
+                        </p>
+                        <span className="text-muted-foreground">
+                          {formatDate(transicao.realizado_em)}
+                        </span>
+                      </div>
+                      <p className="mt-2 text-muted-foreground">
+                        {transicao.observacao || transicao.acao}
                       </p>
-                      <span className="text-muted-foreground">{formatDate(transicao.realizado_em)}</span>
                     </div>
-                    <p className="mt-2 text-muted-foreground">{transicao.observacao || transicao.acao}</p>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">Sem transições registradas.</p>
-              )}
-            </div>
-          </AccordionContent>
-        </AccordionItem>
+                  ))
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Sem transições registradas.
+                  </p>
+                )}
+              </div>
+            </AccordionContent>
+          </AccordionItem>
         )}
 
         {canUseAdminEditor && adminMode ? (
-          <AccordionItem value="historico-admin" className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6">
-            <AccordionTrigger className="text-base">Histórico do Editor</AccordionTrigger>
+          <AccordionItem
+            value="historico-admin"
+            className="rounded-[1.75rem] border border-border/60 bg-card/60 px-6"
+          >
+            <AccordionTrigger className="text-base">
+              Histórico do Editor
+            </AccordionTrigger>
             <AccordionContent>
-              <AdminOverrideHistory
-                associadoId={associadoId}
-                events={adminHistoryQuery.data ?? []}
-              />
+              {isAdminHistoryLoading ? (
+                <div className="space-y-3">
+                  <div className="h-24 animate-pulse rounded-[1.5rem] bg-background/60" />
+                  <div className="h-24 animate-pulse rounded-[1.5rem] bg-background/60" />
+                </div>
+              ) : adminHistoryQuery.isError ? (
+                <Alert
+                  variant="destructive"
+                  className="border-destructive/40 bg-destructive/10"
+                >
+                  <AlertCircleIcon className="size-4" />
+                  <AlertTitle>
+                    Falha ao carregar o histórico do editor
+                  </AlertTitle>
+                  <AlertDescription className="gap-3">
+                    <p>{adminHistoryErrorMessage}</p>
+                    <div className="flex flex-wrap gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          void adminHistoryQuery.refetch();
+                        }}
+                      >
+                        Tentar novamente
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <AdminOverrideHistory
+                  associadoId={associadoId}
+                  events={adminHistoryQuery.data ?? []}
+                />
+              )}
             </AccordionContent>
           </AccordionItem>
         ) : null}
@@ -728,7 +1161,11 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             <p>
               Contratos pendentes:{" "}
               <span className="font-medium text-foreground">
-                {Object.values(contractDirtyState).filter(hasDirtyContractState).length}
+                {
+                  Object.values(contractDirtyState).filter(
+                    hasDirtyContractState,
+                  ).length
+                }
               </span>
             </p>
             <p>
@@ -742,8 +1179,12 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
         submitLabel="Salvar tudo"
         isSubmitting={saveAllMutation.isPending}
         onConfirm={async (motivo) => {
-          await saveAllMutation.mutateAsync(motivo);
-          setSaveAllOpen(false);
+          try {
+            await saveAllMutation.mutateAsync(motivo);
+            setSaveAllOpen(false);
+          } catch {
+            // The mutation already shows the error toast.
+          }
         }}
       />
       <ParcelaDetalheDialog
@@ -765,8 +1206,8 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           <AlertDialogHeader>
             <AlertDialogTitle>Inativar associado</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação marca o associado como inativo e o status passa a aparecer
-              nos filtros e indicadores operacionais.
+              Esta ação marca o associado como inativo e o status passa a
+              aparecer nos filtros e indicadores operacionais.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -802,23 +1243,28 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             </AlertDialogMedia>
             <AlertDialogTitle>Excluir associado</AlertDialogTitle>
             <AlertDialogDescription>
-              O associado <strong>{associado.nome_completo}</strong> será removido da listagem
-              ativa.
+              O associado <strong>{associado.nome_completo}</strong> será
+              removido da listagem ativa.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-4 rounded-2xl border border-border/60 bg-card/60 p-4">
             <div className="space-y-1 text-sm">
               <p className="font-medium">{associado.nome_completo}</p>
               <p className="text-muted-foreground">
-                {associado.matricula_display || associado.matricula} · {associado.cpf_cnpj}
+                {associado.matricula_display || associado.matricula} ·{" "}
+                {associado.cpf_cnpj}
               </p>
             </div>
             <label className="flex items-start gap-3 text-sm text-muted-foreground">
               <Checkbox
                 checked={deleteConfirmed}
-                onCheckedChange={(checked) => setDeleteConfirmed(Boolean(checked))}
+                onCheckedChange={(checked) =>
+                  setDeleteConfirmed(Boolean(checked))
+                }
               />
-              <span>Confirmo que revisei o cadastro e desejo excluir este associado.</span>
+              <span>
+                Confirmo que revisei o cadastro e desejo excluir este associado.
+              </span>
             </label>
           </div>
           <AlertDialogFooter>
@@ -845,16 +1291,26 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
 
 export default function AssociadoPage(props: AssociadoPageProps) {
   return (
-    <RoleGuard allow={["ADMIN", "AGENTE", "ANALISTA", "COORDENADOR", "TESOUREIRO"]}>
+    <RoleGuard
+      allow={["ADMIN", "AGENTE", "ANALISTA", "COORDENADOR", "TESOUREIRO"]}
+    >
       <AssociadoPageContent {...props} />
     </RoleGuard>
   );
 }
 
-function DetailItem({ label, value }: { label: string; value?: string | null }) {
+function DetailItem({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string | null;
+}) {
   return (
     <div className="rounded-2xl border border-border/60 bg-background/60 p-4">
-      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
+      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+        {label}
+      </p>
       <p className="mt-2 text-sm font-medium text-foreground">{value || "-"}</p>
     </div>
   );

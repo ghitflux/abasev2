@@ -6,10 +6,10 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
-from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
+from rest_framework.exceptions import ValidationError
 
 from apps.contratos.canonicalization import resolve_operational_contract_for_associado
 from apps.contratos.cycle_projection import (
@@ -58,6 +58,10 @@ RESOLVED_UNPAID_STATUSES = {
     Parcela.Status.LIQUIDADA,
     "quitada",
 }
+CONCLUDED_CYCLE_STATUSES = {
+    Ciclo.Status.CICLO_RENOVADO,
+    Ciclo.Status.FECHADO,
+}
 
 
 def _parse_decimal(value: Any, default: Decimal = Decimal("0.00")) -> Decimal:
@@ -81,6 +85,17 @@ def _parse_optional_date(value: Any) -> date | None:
     if parsed is None:
         raise ValidationError("Data inválida.")
     return parsed
+
+
+def _normalize_cycle_status(value: Any, default: str = Ciclo.Status.ABERTO) -> str:
+    if value in (None, ""):
+        return default
+    normalized = str(value).strip().lower()
+    if not normalized:
+        return default
+    if normalized == "concluido":
+        return Ciclo.Status.FECHADO
+    return normalized
 
 
 def _json_safe(value: Any) -> Any:
@@ -178,7 +193,7 @@ def _build_contract_layout_warnings(
                 "numero": int(raw_cycle.get("numero") or 0),
                 "data_inicio": data_inicio,
                 "data_fim": data_fim,
-                "status": str(raw_cycle.get("status") or ""),
+                "status": _normalize_cycle_status(raw_cycle.get("status"), default=""),
             }
             normalized_cycles.append(normalized)
             if raw_cycle.get("id") is not None:
@@ -353,13 +368,23 @@ def _serialize_documento(documento: Documento, *, request=None) -> dict[str, Any
 
 def _serialize_comprovante(comprovante: Comprovante, *, request=None) -> dict[str, Any]:
     file_payload = _file_reference_payload(comprovante.arquivo, request=request)
+    stored_path = str(getattr(comprovante.arquivo, "name", "") or "")
+    arquivo = (
+        file_payload.get("url")
+        or stored_path
+        or file_payload.get("arquivo_referencia")
+        or ""
+    )
     return {
         "id": comprovante.id,
         "tipo": comprovante.tipo,
         "papel": comprovante.papel,
+        "arquivo": arquivo,
         "origem": comprovante.origem,
         "status_validacao": comprovante.status_validacao,
         "nome_original": comprovante.nome_original,
+        "mime": comprovante.mime,
+        "size_bytes": comprovante.size_bytes,
         "data_pagamento": (
             comprovante.data_pagamento.isoformat()
             if comprovante.data_pagamento
@@ -368,6 +393,7 @@ def _serialize_comprovante(comprovante: Comprovante, *, request=None) -> dict[st
         "created_at": comprovante.created_at.isoformat() if comprovante.created_at else None,
         "updated_at": comprovante.updated_at.isoformat() if comprovante.updated_at else None,
         "deleted_at": comprovante.deleted_at.isoformat() if comprovante.deleted_at else None,
+        "legacy_comprovante_id": comprovante.legacy_comprovante_id,
         "contrato_id": comprovante.contrato_id,
         "ciclo_id": comprovante.ciclo_id,
         "refinanciamento_id": comprovante.refinanciamento_id,
@@ -600,7 +626,7 @@ def _manual_phase_slug(
             normalized = refinanciamento.status
             if normalized in mapping:
                 return mapping[normalized]
-    if cycle_status == Ciclo.Status.CICLO_RENOVADO:
+    if cycle_status in CONCLUDED_CYCLE_STATUSES:
         return "ciclo_renovado"
     if cycle_status == Ciclo.Status.APTO_A_RENOVAR:
         return "apto_a_renovar"
@@ -692,7 +718,7 @@ def _build_manual_contract_projection(
             ciclo.numero == latest_cycle_number
             and refinanciamento_ativo is None
             and paid_count >= threshold
-            and projected_cycle_status != Ciclo.Status.CICLO_RENOVADO
+            and projected_cycle_status not in CONCLUDED_CYCLE_STATUSES
         ):
             projected_cycle_status = Ciclo.Status.APTO_A_RENOVAR
         phase_slug = _manual_phase_slug(
@@ -864,7 +890,10 @@ class AdminOverrideService:
         payload_contracts: list[dict[str, Any]] = []
         payload_warnings: list[dict[str, Any]] = []
         for contrato in contratos:
-            projection = build_contract_cycle_projection(contrato, include_documents=True)
+            projection = AdminOverrideService.build_contract_projection_for_response(
+                contrato,
+                include_documents=True,
+            )
             current_cycles = {
                 ciclo.numero: ciclo
                 for ciclo in contrato.ciclos.filter(deleted_at__isnull=True).order_by("numero", "id")
@@ -1685,10 +1714,65 @@ class AdminOverrideService:
             for parcela in current_parcelas.values()
         }
 
-        cycles_payload = payload.get("cycles") or []
-        parcel_items = payload.get("parcelas") or []
+        cycles_payload = [dict(item) for item in (payload.get("cycles") or [])]
+        parcel_items = [dict(item) for item in (payload.get("parcelas") or [])]
         if not cycles_payload:
-            raise ValidationError("Informe ao menos um ciclo no layout.")
+            if current_cycles:
+                cycles_payload = [
+                    {
+                        "id": cycle.id,
+                        "numero": cycle.numero,
+                        "data_inicio": cycle.data_inicio,
+                        "data_fim": cycle.data_fim,
+                        "status": cycle.status,
+                        "valor_total": cycle.valor_total,
+                    }
+                    for cycle in sorted(
+                        current_cycles.values(),
+                        key=lambda item: (item.numero, item.id),
+                    )
+                ]
+            elif parcel_items:
+                referencia_inicial = min(
+                    (
+                        _parse_optional_date(item.get("referencia_mes"))
+                        or _parse_optional_date(item.get("data_vencimento"))
+                        or timezone.localdate()
+                    )
+                    for item in parcel_items
+                )
+                referencia_final = max(
+                    (
+                        _parse_optional_date(item.get("referencia_mes"))
+                        or _parse_optional_date(item.get("data_vencimento"))
+                        or referencia_inicial
+                    )
+                    for item in parcel_items
+                )
+                fallback_cycle_ref = "admin-fallback-cycle-1"
+                cycles_payload = [
+                    {
+                        "id": None,
+                        "client_key": fallback_cycle_ref,
+                        "numero": 1,
+                        "data_inicio": referencia_inicial,
+                        "data_fim": referencia_final,
+                        "status": Ciclo.Status.ABERTO,
+                        "valor_total": sum(
+                            (_parse_decimal(item.get("valor")) for item in parcel_items),
+                            start=Decimal("0.00"),
+                        ),
+                    }
+                ]
+                parcel_items = [
+                    {
+                        **item,
+                        "cycle_ref": item.get("cycle_ref") or item.get("cycle_id") or fallback_cycle_ref,
+                    }
+                    for item in parcel_items
+                ]
+            else:
+                raise ValidationError("Informe ao menos um ciclo no layout.")
 
         cycle_ref_map: dict[str, Ciclo] = {}
         touched_cycle_ids: set[int] = set()
@@ -1719,14 +1803,17 @@ class AdminOverrideService:
                         numero=int(raw_cycle.get("numero") or 1),
                         data_inicio=_parse_optional_date(raw_cycle.get("data_inicio")) or timezone.localdate(),
                         data_fim=_parse_optional_date(raw_cycle.get("data_fim")) or timezone.localdate(),
-                        status=str(raw_cycle.get("status") or Ciclo.Status.ABERTO),
+                        status=_normalize_cycle_status(raw_cycle.get("status")),
                         valor_total=_parse_decimal(raw_cycle.get("valor_total")),
                     )
                 else:
                     cycle.numero = int(raw_cycle.get("numero") or cycle.numero)
                     cycle.data_inicio = _parse_optional_date(raw_cycle.get("data_inicio")) or cycle.data_inicio
                     cycle.data_fim = _parse_optional_date(raw_cycle.get("data_fim")) or cycle.data_fim
-                    cycle.status = str(raw_cycle.get("status") or cycle.status)
+                    cycle.status = _normalize_cycle_status(
+                        raw_cycle.get("status"),
+                        default=cycle.status,
+                    )
                     cycle.valor_total = _parse_decimal(
                         raw_cycle.get("valor_total"),
                         cycle.valor_total,
@@ -1737,11 +1824,25 @@ class AdminOverrideService:
                 if raw_cycle.get("client_key"):
                     cycle_ref_map[str(raw_cycle["client_key"])] = cycle
 
+            fallback_cycle = next(
+                iter(
+                    sorted(
+                        {cycle.id: cycle for cycle in cycle_ref_map.values() if cycle.id is not None}.values(),
+                        key=lambda item: (item.numero, item.id),
+                    )
+                ),
+                None,
+            )
+
             for raw_parcela in parcel_items:
                 parcela_id = raw_parcela.get("id")
                 parcela = current_parcelas.get(parcela_id) if parcela_id else None
                 cycle_ref = raw_parcela.get("cycle_ref") or raw_parcela.get("cycle_id")
                 cycle = cycle_ref_map.get(str(cycle_ref))
+                if cycle is None and parcela is not None:
+                    cycle = current_cycles.get(parcela.ciclo_id)
+                if cycle is None:
+                    cycle = fallback_cycle
                 if cycle is None:
                     raise ValidationError("Parcela sem ciclo de destino válido.")
                 requested_number = int(

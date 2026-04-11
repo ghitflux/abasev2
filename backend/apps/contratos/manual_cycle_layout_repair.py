@@ -10,8 +10,6 @@ from apps.refinanciamento.models import Refinanciamento
 
 from .cycle_rebuild import relink_contract_documents
 from .models import Ciclo, Contrato, Parcela
-from .special_references import is_forced_outside_cycle_reference
-
 PROJECTION_STATUS_QUITADA = "quitada"
 OUTSIDE_CYCLE_HINTS = (
     "fora do ciclo",
@@ -70,19 +68,8 @@ def _desired_bucket_and_status(
     bucket = str(parcela.layout_bucket or Parcela.LayoutBucket.CYCLE)
     status = str(parcela.status or "")
     observacao = (parcela.observacao or "").lower()
-    forced_outside_cycle = is_forced_outside_cycle_reference(parcela.referencia_mes)
-
     if bucket != Parcela.LayoutBucket.CYCLE:
         return bucket, status
-
-    if forced_outside_cycle:
-        if status in {
-            Parcela.Status.DESCONTADO,
-            Parcela.Status.LIQUIDADA,
-            PROJECTION_STATUS_QUITADA,
-        }:
-            return Parcela.LayoutBucket.UNPAID, PROJECTION_STATUS_QUITADA
-        return Parcela.LayoutBucket.UNPAID, Parcela.Status.NAO_DESCONTADO
 
     if status in {Parcela.Status.NAO_DESCONTADO, PROJECTION_STATUS_QUITADA}:
         return Parcela.LayoutBucket.UNPAID, status

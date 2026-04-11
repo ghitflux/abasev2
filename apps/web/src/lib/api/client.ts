@@ -42,33 +42,73 @@ function buildQuery(query?: Record<string, QueryValue>) {
   return queryString ? `?${queryString}` : "";
 }
 
-function extractApiErrorMessage(payload: unknown) {
+function isHtmlLikePayload(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return normalized.startsWith("<!doctype") || normalized.startsWith("<html") || normalized.startsWith("<body");
+}
+
+function parseErrorPayload(raw: string, contentType: string) {
+  const normalized = raw.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (contentType.includes("application/json") || normalized.startsWith("{") || normalized.startsWith("[")) {
+    try {
+      return JSON.parse(normalized);
+    } catch {
+      return normalized;
+    }
+  }
+
+  return normalized;
+}
+
+export function extractApiErrorMessage(
+  payload: unknown,
+  visited = new Set<object>(),
+) {
+  if (typeof payload === "string" && payload.trim() && !isHtmlLikePayload(payload)) {
+    return payload.trim();
+  }
+
+  if (Array.isArray(payload)) {
+    for (const item of payload) {
+      const message = extractApiErrorMessage(item, visited);
+      if (message) {
+        return message;
+      }
+    }
+    return null;
+  }
+
   if (!payload || typeof payload !== "object") {
     return null;
   }
 
+  if (visited.has(payload as object)) {
+    return null;
+  }
+
+  visited.add(payload as object);
+
   const record = payload as Record<string, unknown>;
   const directMessage = record.detail ?? record.message;
-  if (typeof directMessage === "string" && directMessage.trim()) {
-    return directMessage;
+  const normalizedDirectMessage = extractApiErrorMessage(directMessage, visited);
+  if (normalizedDirectMessage) {
+    return normalizedDirectMessage;
   }
 
   const nonFieldErrors = record.non_field_errors;
-  if (
-    Array.isArray(nonFieldErrors) &&
-    typeof nonFieldErrors[0] === "string" &&
-    nonFieldErrors[0].trim()
-  ) {
-    return nonFieldErrors[0];
+  const normalizedNonFieldErrors = extractApiErrorMessage(nonFieldErrors, visited);
+  if (normalizedNonFieldErrors) {
+    return normalizedNonFieldErrors;
   }
 
   for (const value of Object.values(record)) {
-    if (typeof value === "string" && value.trim()) {
-      return value;
-    }
-
-    if (Array.isArray(value) && typeof value[0] === "string" && value[0].trim()) {
-      return value[0];
+    const message = extractApiErrorMessage(value, visited);
+    if (message) {
+      return message;
     }
   }
 
@@ -120,7 +160,9 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}) {
   });
 
   if (!response.ok) {
-    const payload = await response.json().catch(() => null);
+    const contentType = response.headers.get("content-type") ?? "";
+    const rawPayload = await response.text().catch(() => "");
+    const payload = parseErrorPayload(rawPayload, contentType);
     const detail = extractApiErrorMessage(payload) ?? "Falha ao processar a requisição.";
     throw new Error(detail);
   }

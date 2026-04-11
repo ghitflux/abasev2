@@ -587,6 +587,14 @@ export default function AssociadoForm({
         mode === "create"
           ? TAXA_ANTECIPACAO_PADRAO
           : values.contrato.taxa_antecipacao;
+      const contractPayload = {
+        valor_bruto_total: centsToDecimal(values.contrato.valor_bruto_total),
+        valor_liquido: centsToDecimal(values.contrato.valor_liquido),
+        prazo_meses: prazoPayload,
+        taxa_antecipacao: taxaPayload.toFixed(2),
+        mensalidade: centsToDecimal(values.contrato.mensalidade),
+        margem_disponivel: centsToDecimal(margemDisponivel),
+      };
       const payload = {
         tipo_documento: values.tipo_documento,
         cpf_cnpj: values.cpf_cnpj,
@@ -599,12 +607,7 @@ export default function AssociadoForm({
         endereco: values.endereco,
         dados_bancarios: values.dados_bancarios,
         contato: values.contato,
-        valor_bruto_total: centsToDecimal(values.contrato.valor_bruto_total),
-        valor_liquido: centsToDecimal(values.contrato.valor_liquido),
-        prazo_meses: prazoPayload,
-        taxa_antecipacao: taxaPayload.toFixed(2),
-        mensalidade: centsToDecimal(values.contrato.mensalidade),
-        margem_disponivel: centsToDecimal(margemDisponivel),
+        ...contractPayload,
         ...(mode === "create"
           ? {
               data_aprovacao: toIsoDate(
@@ -635,6 +638,10 @@ export default function AssociadoForm({
           : {}),
       };
 
+      const editAssociadoId = associadoId ?? initialData?.id;
+      if (mode !== "create" && !editAssociadoId) {
+        throw new Error("Associado inválido para edição.");
+      }
       const associado =
         mode === "create"
           ? await apiFetch<AssociadoDetail>("associados", {
@@ -643,13 +650,39 @@ export default function AssociadoForm({
             })
           : isAdminEditMode
             ? await (async () => {
-                await apiFetch(`admin-overrides/associados/${associadoId}/core/`, {
+                await apiFetch(`admin-overrides/associados/${editAssociadoId}/core/`, {
                   method: "POST",
-                  body: payload,
+                  body: {
+                    updated_at: initialData?.updated_at ?? null,
+                    motivo: adminMotivo,
+                    nome_completo: values.nome_completo,
+                    rg: values.rg,
+                    orgao_expedidor: values.orgao_expedidor,
+                    data_nascimento: toIsoDate(values.data_nascimento),
+                    profissao: values.profissao,
+                    estado_civil: values.estado_civil,
+                    endereco: values.endereco,
+                    dados_bancarios: values.dados_bancarios,
+                    contato: values.contato,
+                    ...contractPayload,
+                    ...(canManageAgentAssignment
+                      ? {
+                          agente_responsavel_id: values.agente_responsavel_id,
+                        }
+                      : {}),
+                  },
                 });
-                return apiFetch<AssociadoDetail>(`associados/${associadoId}`);
+                try {
+                  return await apiFetch<AssociadoDetail>(`associados/${editAssociadoId}`);
+                } catch {
+                  return {
+                    ...(initialData ?? {}),
+                    id: editAssociadoId,
+                    nome_completo: values.nome_completo,
+                  } as AssociadoDetail;
+                }
               })()
-            : await apiFetch<AssociadoDetail>(`associados/${associadoId}`, {
+            : await apiFetch<AssociadoDetail>(`associados/${editAssociadoId}`, {
                 method: "PATCH",
                 body: payload,
               });
