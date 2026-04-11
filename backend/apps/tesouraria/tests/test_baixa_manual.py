@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import tempfile
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -11,7 +11,7 @@ from rest_framework.test import APIClient
 from apps.accounts.models import Role, User
 from apps.associados.models import Associado
 from apps.contratos.models import Ciclo, Contrato, Parcela
-from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem
+from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, PagamentoMensalidade
 from apps.tesouraria.models import BaixaManual
 
 
@@ -536,3 +536,94 @@ class BaixaManualViewSetTestCase(TestCase):
         self.assertEqual(payload["results"][0]["realizado_por_nome"], "Tesouraria ABASE")
         self.assertEqual(payload["kpis"]["total_quitados"], 1)
         self.assertEqual(payload["kpis"]["valor_total_quitado"], "200.00")
+
+    def test_dar_baixa_permita_item_retorno_sem_parcela_vinculada(self):
+        associado = self._create_associado(
+            cpf="99999999999",
+            nome="Associado Sem Parcela",
+            matricula="MAT-999",
+            agente=self.agente_a,
+        )
+        arquivo = self._create_arquivo_retorno(competencia=date(2026, 3, 1))
+        item = self._create_retorno_item(
+            arquivo=arquivo,
+            associado=associado,
+            linha_numero=7,
+            competencia="03/2026",
+            valor="180.00",
+            parcela=None,
+        )
+
+        response = self.client.post(
+            f"/api/v1/tesouraria/baixa-manual/{-item.id}/dar-baixa/",
+            {
+                "observacao": "Quitado sem parcela materializada",
+                "valor_pago": "180.00",
+                "comprovante": SimpleUploadedFile(
+                    "manual.pdf",
+                    b"arquivo-manual",
+                    content_type="application/pdf",
+                ),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        item.refresh_from_db()
+        pagamento = PagamentoMensalidade.objects.get(
+            associado=associado,
+            referencia_month=date(2026, 3, 1),
+        )
+        self.assertEqual(item.resultado_processamento, ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA)
+        self.assertEqual(pagamento.manual_status, PagamentoMensalidade.ManualStatus.PAGO)
+        self.assertEqual(pagamento.recebido_manual, Decimal("180.00"))
+        self.assertEqual(pagamento.status_code, "M")
+        self.assertTrue(pagamento.manual_comprovante_path.endswith(".pdf"))
+
+    def test_lista_quitados_inclui_quitacao_manual_sem_parcela(self):
+        associado = self._create_associado(
+            cpf="88888888888",
+            nome="Quitado Sem Parcela",
+            matricula="MAT-888",
+            agente=self.agente_a,
+        )
+        PagamentoMensalidade.objects.create(
+            created_by=self.tesoureiro,
+            import_uuid="manual-quitado-888",
+            referencia_month=date(2026, 3, 1),
+            status_code="M",
+            matricula=associado.matricula_orgao,
+            orgao_pagto="SEFAZ",
+            nome_relatorio=associado.nome_completo,
+            cpf_cnpj=associado.cpf_cnpj,
+            associado=associado,
+            valor=Decimal("210.00"),
+            recebido_manual=Decimal("210.00"),
+            manual_status=PagamentoMensalidade.ManualStatus.PAGO,
+            manual_paid_at=datetime(2026, 4, 8, 12, 0, 0),
+            manual_forma_pagamento="baixa_manual",
+            manual_comprovante_path="baixas_manuais/manual-quitado.pdf",
+            manual_by=self.tesoureiro,
+            source_file_path="manual/baixa-manual",
+        )
+
+        response = self.client.get(
+            "/api/v1/tesouraria/baixa-manual/",
+            {
+                "listing": "quitados",
+                "agente": str(self.agente_a.id),
+                "data_inicio": "2026-04-01",
+                "data_fim": "2026-04-30",
+                "search": "MAT-888",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["count"], 1)
+        self.assertIsNone(payload["results"][0]["parcela_id"])
+        self.assertEqual(payload["results"][0]["origem"], "pagamento_manual")
+        self.assertEqual(payload["results"][0]["valor_pago"], "210.00")
+        self.assertEqual(payload["results"][0]["nome_comprovante"], "manual-quitado.pdf")
+        self.assertEqual(payload["kpis"]["total_quitados"], 1)
+        self.assertEqual(payload["kpis"]["valor_total_quitado"], "210.00")

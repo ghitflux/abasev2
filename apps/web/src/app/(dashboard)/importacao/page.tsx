@@ -9,11 +9,19 @@ import AssociadoDetailsDialog from "@/components/associados/associado-details-di
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import StatusBadge from "@/components/custom/status-badge";
-import ExportButton from "@/components/shared/export-button";
-import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import ReportExportDialog from "@/components/shared/report-export-dialog";
+import DataTable, {
+  type DataTableColumn,
+} from "@/components/shared/data-table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -100,7 +108,13 @@ type ItemSectionProps = {
   isLoading?: boolean;
 };
 
-function ItemSection({ title, description, data, emptyMessage, isLoading = false }: ItemSectionProps) {
+function ItemSection({
+  title,
+  description,
+  data,
+  emptyMessage,
+  isLoading = false,
+}: ItemSectionProps) {
   const columns: DataTableColumn<ArquivoRetornoItem>[] = [
     {
       id: "nome",
@@ -108,7 +122,9 @@ function ItemSection({ title, description, data, emptyMessage, isLoading = false
       cell: (row) => (
         <div>
           <p className="font-medium text-foreground">{row.nome_servidor}</p>
-          <p className="text-xs text-muted-foreground">{row.matricula_servidor}</p>
+          <p className="text-xs text-muted-foreground">
+            {row.matricula_servidor}
+          </p>
         </div>
       ),
     },
@@ -130,13 +146,19 @@ function ItemSection({ title, description, data, emptyMessage, isLoading = false
     {
       id: "status_codigo",
       header: "ETIPI",
-      cell: (row) => <Badge variant="outline">{row.status_codigo || "-"}</Badge>,
+      cell: (row) => (
+        <Badge variant="outline">{row.status_codigo || "-"}</Badge>
+      ),
     },
     {
       id: "status_desconto",
       header: "Sistema",
       cell: (row) => (
-        <StatusBadge status={row.status_desconto ?? row.resultado_processamento ?? "pendente"} />
+        <StatusBadge
+          status={
+            row.status_desconto ?? row.resultado_processamento ?? "pendente"
+          }
+        />
       ),
     },
   ];
@@ -171,7 +193,10 @@ function normalizeText(value?: string | null) {
 }
 
 function normalizeCategoria(value?: string | null) {
-  return normalizeText(value).replaceAll("/", "_").replaceAll("-", "_").replaceAll(" ", "_");
+  return normalizeText(value)
+    .replaceAll("/", "_")
+    .replaceAll("-", "_")
+    .replaceAll(" ", "_");
 }
 
 function isMensalidadesCategoria(value?: string | null) {
@@ -184,7 +209,10 @@ function isValores3050Categoria(value?: string | null) {
   return normalized === "valores_30_50" || normalized === "valores3050";
 }
 
-function matchesFinanceiroRowSearch(row: ArquivoRetornoFinanceiroItem, search: string) {
+function matchesFinanceiroRowSearch(
+  row: ArquivoRetornoFinanceiroItem,
+  search: string,
+) {
   const searchValue = normalizeText(search);
   if (!searchValue) {
     return true;
@@ -208,7 +236,10 @@ function financeiroExportColumns(): TableExportColumn<ArquivoRetornoFinanceiroIt
     { header: "Associado", value: (row) => row.associado_nome || "" },
     { header: "CPF", value: (row) => maskCPFCNPJ(row.cpf_cnpj) },
     { header: "Matrícula", value: (row) => row.matricula || "" },
-    { header: "Agente responsável", value: (row) => row.agente_responsavel || "" },
+    {
+      header: "Agente responsável",
+      value: (row) => row.agente_responsavel || "",
+    },
     { header: "Categoria", value: (row) => row.categoria || "" },
     { header: "Esperado", value: (row) => formatCurrency(row.esperado) },
     { header: "Recebido", value: (row) => formatCurrency(row.recebido) },
@@ -228,7 +259,9 @@ function buildFinanceiroColumns({
       cell: (row) => (
         <div>
           <p className="font-medium text-foreground">{row.associado_nome}</p>
-          <p className="text-xs text-muted-foreground">{row.matricula || "-"}</p>
+          <p className="text-xs text-muted-foreground">
+            {row.matricula || "-"}
+          </p>
         </div>
       ),
     },
@@ -255,7 +288,9 @@ function buildFinanceiroColumns({
     {
       id: "situacao_label",
       header: "Situação",
-      cell: (row) => <StatusBadge status={row.ok ? "concluido" : "pendencia_manual"} />,
+      cell: (row) => (
+        <StatusBadge status={row.ok ? "concluido" : "pendencia_manual"} />
+      ),
     },
   ];
 
@@ -274,7 +309,9 @@ function buildFinanceiroColumns({
             Ver associado
           </Button>
         ) : (
-          <span className="text-xs text-muted-foreground">Sem associado vinculado</span>
+          <span className="text-xs text-muted-foreground">
+            Sem associado vinculado
+          </span>
         ),
     });
   }
@@ -347,18 +384,22 @@ function HistoryTableSkeleton() {
 
 export default function ImportacaoPage() {
   const queryClient = useQueryClient();
+  const latestResultSectionRef = React.useRef<HTMLDivElement | null>(null);
   const [historyPage, setHistoryPage] = React.useState(1);
   const [activeTab, setActiveTab] = React.useState("descontados");
   const [isPolling, setIsPolling] = React.useState(false);
   const [uploadFile, setUploadFile] = React.useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = React.useState(0);
-  const [dryRunPreview, setDryRunPreview] = React.useState<DryRunPreviewState | null>(null);
+  const [dryRunPreview, setDryRunPreview] =
+    React.useState<DryRunPreviewState | null>(null);
   const [historyCompetencia, setHistoryCompetencia] = React.useState("");
   const [historyStatus, setHistoryStatus] = React.useState("todos");
   const [latestMetricDialogConfig, setLatestMetricDialogConfig] =
     React.useState<LatestMetricDialogConfig | null>(null);
   const [latestMetricSearch, setLatestMetricSearch] = React.useState("");
-  const [selectedAssociadoId, setSelectedAssociadoId] = React.useState<number | null>(null);
+  const [selectedAssociadoId, setSelectedAssociadoId] = React.useState<
+    number | null
+  >(null);
 
   const historyQuery = useQuery({
     queryKey: [
@@ -389,24 +430,34 @@ export default function ImportacaoPage() {
   });
 
   const latestImport = latestQuery.data ?? historyQuery.data?.results?.[0];
-  const latestImportWithFinanceiro = latestImport as ArquivoRetornoWithFinanceiro | undefined;
+  const latestImportWithFinanceiro = latestImport as
+    | ArquivoRetornoWithFinanceiro
+    | undefined;
   const latestId = latestImport?.id ?? 0;
-  const latestFinanceiroQuery = useV1ImportacaoArquivoRetornoFinanceiroRetrieve(latestId, {
-    query: {
-      enabled: !!latestId && latestImport?.status === "concluido",
-      staleTime: 5 * 60 * 1000,
-      placeholderData: (previousData) => previousData,
+  const latestFinanceiroQuery = useV1ImportacaoArquivoRetornoFinanceiroRetrieve(
+    latestId,
+    {
+      query: {
+        enabled: !!latestId && latestImport?.status === "concluido",
+        staleTime: 5 * 60 * 1000,
+        placeholderData: (previousData) => previousData,
+      },
     },
-  });
+  );
   const latestFinanceiro =
-    latestFinanceiroQuery.data?.resumo ?? getArquivoFinanceiroResumo(latestImportWithFinanceiro);
+    latestFinanceiroQuery.data?.resumo ??
+    getArquivoFinanceiroResumo(latestImportWithFinanceiro);
   const latestFinanceiroRows = latestFinanceiroQuery.data?.rows ?? [];
 
   const latestMetricRows = React.useMemo(
     () => ({
       linhas: latestFinanceiroRows,
-      mensalidades: latestFinanceiroRows.filter((row) => isMensalidadesCategoria(row.categoria)),
-      valores_30_50: latestFinanceiroRows.filter((row) => isValores3050Categoria(row.categoria)),
+      mensalidades: latestFinanceiroRows.filter((row) =>
+        isMensalidadesCategoria(row.categoria),
+      ),
+      valores_30_50: latestFinanceiroRows.filter((row) =>
+        isValores3050Categoria(row.categoria),
+      ),
     }),
     [latestFinanceiroRows],
   );
@@ -420,34 +471,41 @@ export default function ImportacaoPage() {
   const latestFinanceiroColumns = React.useMemo(
     () =>
       buildFinanceiroColumns({
-        onOpenAssociadoDetails: (associadoId) => setSelectedAssociadoId(associadoId),
+        onOpenAssociadoDetails: (associadoId) =>
+          setSelectedAssociadoId(associadoId),
       }),
     [],
   );
 
   const openLatestMetricDialog = React.useCallback(
     (key: keyof typeof latestMetricRows) => {
-      const configMap: Record<keyof typeof latestMetricRows, Omit<LatestMetricDialogConfig, "rows">> = {
+      const configMap: Record<
+        keyof typeof latestMetricRows,
+        Omit<LatestMetricDialogConfig, "rows">
+      > = {
         linhas: {
           key: "linhas",
           title: "Linhas conciliadas da última importação",
           description:
             "Listagem financeira consolidada do último arquivo retorno processado.",
-          emptyMessage: "Nenhuma linha conciliada disponível para a última importação.",
+          emptyMessage:
+            "Nenhuma linha conciliada disponível para a última importação.",
         },
         mensalidades: {
           key: "mensalidades",
           title: "Mensalidades da última importação",
           description:
             "Associados classificados como mensalidades no detalhamento financeiro do último arquivo.",
-          emptyMessage: "Nenhuma mensalidade encontrada para a última importação.",
+          emptyMessage:
+            "Nenhuma mensalidade encontrada para a última importação.",
         },
         valores_30_50: {
           key: "valores_30_50",
           title: "Valores 30/50 da última importação",
           description:
             "Associados classificados na faixa de 30/50 reais no último arquivo retorno.",
-          emptyMessage: "Nenhum associado classificado em 30/50 encontrado na última importação.",
+          emptyMessage:
+            "Nenhum associado classificado em 30/50 encontrado na última importação.",
         },
       };
 
@@ -463,7 +521,9 @@ export default function ImportacaoPage() {
   React.useEffect(() => {
     setIsPolling(statusIsPending(latestImport?.status));
     if (!statusIsPending(latestImport?.status)) {
-      void queryClient.invalidateQueries({ queryKey: ["tesouraria-duplicidades-sidebar"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-duplicidades-sidebar"],
+      });
     }
   }, [latestImport?.status, queryClient]);
 
@@ -477,13 +537,36 @@ export default function ImportacaoPage() {
     }
   }, [latestMetricDialogConfig]);
 
+  const focusLatestResultSection = React.useCallback(() => {
+    latestResultSectionRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }, []);
+
+  const openLatestResultTab = React.useCallback(
+    (nextTab: string) => {
+      setActiveTab(nextTab);
+      window.requestAnimationFrame(() => {
+        focusLatestResultSection();
+      });
+    },
+    [focusLatestResultSection],
+  );
+
   function invalidateImportacao() {
     void queryClient.invalidateQueries({
       predicate: (query) =>
-        JSON.stringify(query.queryKey).includes("/api/v1/importacao/arquivo-retorno/"),
+        JSON.stringify(query.queryKey).includes(
+          "/api/v1/importacao/arquivo-retorno/",
+        ),
     });
-    void queryClient.invalidateQueries({ queryKey: ["importacao-duplicidades-financeiras"] });
-    void queryClient.invalidateQueries({ queryKey: ["tesouraria-duplicidades-sidebar"] });
+    void queryClient.invalidateQueries({
+      queryKey: ["importacao-duplicidades-financeiras"],
+    });
+    void queryClient.invalidateQueries({
+      queryKey: ["tesouraria-duplicidades-sidebar"],
+    });
   }
 
   const uploadMutation = useMutation<ArquivoRetornoDetail, Error, File>({
@@ -492,13 +575,16 @@ export default function ImportacaoPage() {
       setUploadProgress(0);
       const formData = new FormData();
       formData.append("arquivo", file);
-      return apiFetch<ArquivoRetornoDetail>("importacao/arquivo-retorno/upload", {
-        method: "POST",
-        formData,
-        onUploadProgress: (progress) => {
-          setUploadProgress(progress.percent);
+      return apiFetch<ArquivoRetornoDetail>(
+        "importacao/arquivo-retorno/upload",
+        {
+          method: "POST",
+          formData,
+          onUploadProgress: (progress) => {
+            setUploadProgress(progress.percent);
+          },
         },
-      });
+      );
     },
     onSuccess: (data) => {
       toast.success("Arquivo enviado com sucesso.");
@@ -521,30 +607,42 @@ export default function ImportacaoPage() {
     onError: (error) => {
       setUploadFile(null);
       setUploadProgress(0);
-      toast.error(error instanceof Error ? error.message : "Falha no upload do arquivo.");
+      toast.error(
+        error instanceof Error ? error.message : "Falha no upload do arquivo.",
+      );
     },
   });
 
   const reprocessarMutation = useMutation<ArquivoRetornoDetail, Error, number>({
     mutationFn: async (id) =>
-      apiFetch<ArquivoRetornoDetail>(`importacao/arquivo-retorno/${id}/reprocessar`, {
-        method: "POST",
-      }),
+      apiFetch<ArquivoRetornoDetail>(
+        `importacao/arquivo-retorno/${id}/reprocessar`,
+        {
+          method: "POST",
+        },
+      ),
     onSuccess: () => {
       toast.success("Reprocessamento solicitado.");
       setIsPolling(true);
       invalidateImportacao();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao reprocessar o arquivo.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao reprocessar o arquivo.",
+      );
     },
   });
 
   const confirmarMutation = useMutation<ArquivoRetornoDetail, Error, number>({
     mutationFn: async (id) =>
-      apiFetch<ArquivoRetornoDetail>(`importacao/arquivo-retorno/${id}/confirmar`, {
-        method: "POST",
-      }),
+      apiFetch<ArquivoRetornoDetail>(
+        `importacao/arquivo-retorno/${id}/confirmar`,
+        {
+          method: "POST",
+        },
+      ),
     onSuccess: (data) => {
       setDryRunPreview(null);
       setIsPolling(statusIsPending(data.status));
@@ -553,7 +651,9 @@ export default function ImportacaoPage() {
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error ? error.message : "Falha ao confirmar a importação.",
+        error instanceof Error
+          ? error.message
+          : "Falha ao confirmar a importação.",
       );
     },
   });
@@ -572,11 +672,14 @@ export default function ImportacaoPage() {
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error ? error.message : "Falha ao cancelar a importação.",
+        error instanceof Error
+          ? error.message
+          : "Falha ao cancelar a importação.",
       );
     },
   });
-  const isDryRunBusy = confirmarMutation.isPending || cancelarMutation.isPending;
+  const isDryRunBusy =
+    confirmarMutation.isPending || cancelarMutation.isPending;
 
   const descontadosQuery = useV1ImportacaoArquivoRetornoDescontadosList(
     latestId,
@@ -652,7 +755,8 @@ export default function ImportacaoPage() {
             : novosCiclosQuery;
   const isInitialLatestLoading = latestQuery.isLoading && !latestImport;
   const isInitialHistoryLoading = historyQuery.isLoading && !historyQuery.data;
-  const isInitialItemsLoading = activeItemsQuery.isLoading && !activeItemsQuery.data;
+  const isInitialItemsLoading =
+    activeItemsQuery.isLoading && !activeItemsQuery.data;
   const isLatestFinanceiroLoading =
     latestImport?.status === "concluido" &&
     latestFinanceiroQuery.isLoading &&
@@ -710,10 +814,13 @@ export default function ImportacaoPage() {
       <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
         <Card className="border-border/60 bg-card/80">
           <CardHeader>
-            <CardTitle className="text-2xl">Importar Relatório de Retorno</CardTitle>
+            <CardTitle className="text-2xl">
+              Importar Relatório de Retorno
+            </CardTitle>
             <CardDescription>
-              Formato esperado: relatório ETIPI/iNETConsig em <code>.txt</code>. A competência e o
-              sistema de origem são extraídos automaticamente do arquivo.
+              Formato esperado: relatório ETIPI/iNETConsig em <code>.txt</code>.
+              A competência e o sistema de origem são extraídos automaticamente
+              do arquivo.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -732,28 +839,43 @@ export default function ImportacaoPage() {
                   <span className="font-medium text-foreground">
                     Enviando {uploadFile?.name ?? "arquivo retorno"}
                   </span>
-                  <span className="text-muted-foreground">{uploadProgress}%</span>
+                  <span className="text-muted-foreground">
+                    {uploadProgress}%
+                  </span>
                 </div>
-                <Progress value={Math.max(uploadProgress, 4)} className="mt-3 h-2.5" />
+                <Progress
+                  value={Math.max(uploadProgress, 4)}
+                  className="mt-3 h-2.5"
+                />
               </div>
             ) : null}
             {isPolling ? (
               <div className="rounded-2xl border border-border/60 bg-background/40 p-4">
                 <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="font-medium text-foreground">Processando arquivo retorno</span>
+                  <span className="font-medium text-foreground">
+                    Processando arquivo retorno
+                  </span>
                   <span className="text-muted-foreground">
                     {processados}/{Math.max(totalRegistros, processados)}
                   </span>
                 </div>
-                <Progress value={Math.max(processamentoPercentual, 8)} className="mt-3 h-2.5" />
+                <Progress
+                  value={Math.max(processamentoPercentual, 8)}
+                  className="mt-3 h-2.5"
+                />
               </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-              <Badge variant="outline" className="border-primary/30 text-primary">
+              <Badge
+                variant="outline"
+                className="border-primary/30 text-primary"
+              >
                 Competência detectada no cabeçalho
               </Badge>
               <Badge variant="outline">Sem seleção manual de órgão</Badge>
-              <Badge variant="outline">Upload multipart + processamento assíncrono</Badge>
+              <Badge variant="outline">
+                Upload multipart + processamento assíncrono
+              </Badge>
             </div>
           </CardContent>
         </Card>
@@ -787,15 +909,19 @@ export default function ImportacaoPage() {
                 <div className="flex flex-wrap items-center gap-3">
                   <StatusBadge status={latestImport.status ?? "pendente"} />
                   <Badge variant="outline">{latestImport.sistema_origem}</Badge>
-                  <Badge variant="outline">Competência detectada: {latestImport.competencia_display}</Badge>
+                  <Badge variant="outline">
+                    Competência detectada: {latestImport.competencia_display}
+                  </Badge>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <button
                     type="button"
                     className="rounded-2xl border border-border/60 bg-background/40 p-4 text-left transition-colors hover:bg-background/55"
-                    onClick={() => setActiveTab("descontados")}
+                    onClick={() => openLatestResultTab("descontados")}
                   >
-                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Quitados</p>
+                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                      Quitados
+                    </p>
                     <p className="mt-2 text-3xl font-semibold">
                       {isLatestFinanceiroLoading
                         ? "..."
@@ -808,14 +934,19 @@ export default function ImportacaoPage() {
                   <button
                     type="button"
                     className="rounded-2xl border border-border/60 bg-background/40 p-4 text-left transition-colors hover:bg-background/55"
-                    onClick={() => setActiveTab("nao-descontados")}
+                    onClick={() => openLatestResultTab("nao-descontados")}
                   >
-                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Faltando</p>
+                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                      Faltando
+                    </p>
                     <p className="mt-2 text-3xl font-semibold">
-                      {isLatestFinanceiroLoading ? "..." : (latestFinanceiro?.faltando ?? 0)}
+                      {isLatestFinanceiroLoading
+                        ? "..."
+                        : (latestFinanceiro?.faltando ?? 0)}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {formatCurrency(latestFinanceiro?.pendente)} ainda pendentes.
+                      {formatCurrency(latestFinanceiro?.pendente)} ainda
+                      pendentes.
                     </p>
                   </button>
                   <button
@@ -823,9 +954,13 @@ export default function ImportacaoPage() {
                     className="rounded-2xl border border-border/60 bg-background/40 p-4 text-left transition-colors hover:bg-background/55"
                     onClick={() => openLatestMetricDialog("linhas")}
                   >
-                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Recebido</p>
+                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                      Recebido
+                    </p>
                     <p className="mt-2 text-3xl font-semibold">
-                      {isLatestFinanceiroLoading ? "..." : formatCurrency(latestFinanceiro?.recebido)}
+                      {isLatestFinanceiroLoading
+                        ? "..."
+                        : formatCurrency(latestFinanceiro?.recebido)}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       de {formatCurrency(latestFinanceiro?.esperado)} esperados.
@@ -836,14 +971,17 @@ export default function ImportacaoPage() {
                     className="rounded-2xl border border-border/60 bg-background/40 p-4 text-left transition-colors hover:bg-background/55"
                     onClick={() => openLatestMetricDialog("linhas")}
                   >
-                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Percentual recebido</p>
+                    <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
+                      Percentual recebido
+                    </p>
                     <p className="mt-2 text-3xl font-semibold">
                       {isLatestFinanceiroLoading
                         ? "..."
                         : `${(latestFinanceiro?.percentual ?? 0).toFixed(1)}%`}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Proporção financeira consolidada a partir de `PagamentoMensalidade`.
+                      Proporção financeira consolidada a partir de
+                      `PagamentoMensalidade`.
                     </p>
                   </button>
                 </div>
@@ -851,20 +989,26 @@ export default function ImportacaoPage() {
                   <Button
                     variant="outline"
                     onClick={() => reprocessarMutation.mutate(latestImport.id)}
-                    disabled={reprocessarMutation.isPending || statusIsPending(latestImport.status)}
+                    disabled={
+                      reprocessarMutation.isPending ||
+                      statusIsPending(latestImport.status)
+                    }
                   >
                     <RefreshCcwIcon className="mr-2 size-4" />
                     Reprocessar arquivo
                   </Button>
                   {isPolling ? (
-                    <span className="text-sm text-muted-foreground">Processando arquivo retorno...</span>
+                    <span className="text-sm text-muted-foreground">
+                      Processando arquivo retorno...
+                    </span>
                   ) : null}
                 </div>
               </>
             ) : (
               <p className="text-sm text-muted-foreground">
-                O sistema mostrará aqui a competência detectada, os contadores do processamento e os
-                cards de encerramento quando o primeiro arquivo for importado.
+                O sistema mostrará aqui a competência detectada, os contadores
+                do processamento e os cards de encerramento quando o primeiro
+                arquivo for importado.
               </p>
             )}
           </CardContent>
@@ -894,7 +1038,9 @@ export default function ImportacaoPage() {
             />
             <ImportMetricCard
               title="Linhas do Arquivo"
-              value={latestFinanceiro?.total ?? latestImport?.total_registros ?? 0}
+              value={
+                latestFinanceiro?.total ?? latestImport?.total_registros ?? 0
+              }
               hint="Clique para abrir o consolidado da última importação."
               onClick={() => openLatestMetricDialog("linhas")}
             />
@@ -902,11 +1048,15 @@ export default function ImportacaoPage() {
         )}
       </div>
 
-      <Card className="border-border/60 bg-card/80">
+      <Card
+        ref={latestResultSectionRef}
+        className="border-border/60 bg-card/80"
+      >
         <CardHeader>
           <CardTitle>Resultado da última importação</CardTitle>
           <CardDescription>
-            Linhas úteis do arquivo retorno com status bruto ETIPI e status normalizado do sistema.
+            Linhas úteis do arquivo retorno com status bruto ETIPI e status
+            normalizado do sistema.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -932,7 +1082,9 @@ export default function ImportacaoPage() {
                 title="Não descontados"
                 description="Itens rejeitados pelo ETIPI com marcação de não descontado."
                 data={naoDescontadosQuery.data?.results ?? []}
-                isLoading={activeTab === "nao-descontados" && isInitialItemsLoading}
+                isLoading={
+                  activeTab === "nao-descontados" && isInitialItemsLoading
+                }
                 emptyMessage="Nenhum não descontado nesta importação."
               />
             </TabsContent>
@@ -950,7 +1102,9 @@ export default function ImportacaoPage() {
                 title="Encerramentos previstos"
                 description="Itens que fecharam o ciclo atual do associado."
                 data={encerramentosQuery.data?.results ?? []}
-                isLoading={activeTab === "encerramentos" && isInitialItemsLoading}
+                isLoading={
+                  activeTab === "encerramentos" && isInitialItemsLoading
+                }
                 emptyMessage="Nenhum encerramento previsto nesta importação."
               />
             </TabsContent>
@@ -959,7 +1113,9 @@ export default function ImportacaoPage() {
                 title="Novos ciclos abertos"
                 description="Associados que tiveram ciclo renovado automaticamente."
                 data={novosCiclosQuery.data?.results ?? []}
-                isLoading={activeTab === "novos-ciclos" && isInitialItemsLoading}
+                isLoading={
+                  activeTab === "novos-ciclos" && isInitialItemsLoading
+                }
                 emptyMessage="Nenhum novo ciclo aberto nesta importação."
               />
             </TabsContent>
@@ -971,14 +1127,17 @@ export default function ImportacaoPage() {
         <CardHeader>
           <CardTitle>Histórico de importações</CardTitle>
           <CardDescription>
-            Últimos uploads com referência extraída, contadores do processamento e status do arquivo.
+            Últimos uploads com referência extraída, contadores do processamento
+            e status do arquivo.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <CalendarCompetencia
               value={parseMonthValue(historyCompetencia)}
-              onChange={(value) => setHistoryCompetencia(formatMonthValue(value))}
+              onChange={(value) =>
+                setHistoryCompetencia(formatMonthValue(value))
+              }
             />
             <Select value={historyStatus} onValueChange={setHistoryStatus}>
               <SelectTrigger className="min-w-44 rounded-2xl bg-card/60">
@@ -1045,9 +1204,12 @@ export default function ImportacaoPage() {
           }
         }}
       >
-        <DialogContent className="max-h-[calc(100vh-2rem)] max-w-[92vw] overflow-hidden border-border/60 bg-background/95 sm:max-w-[80rem]">
+        <DialogContent className="grid max-h-[calc(100vh-2rem)] max-w-[92vw] grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-border/60 bg-background/95 sm:max-w-[80rem]">
           <DialogHeader>
-            <DialogTitle>{latestMetricDialogConfig?.title ?? "Detalhamento da última importação"}</DialogTitle>
+            <DialogTitle>
+              {latestMetricDialogConfig?.title ??
+                "Detalhamento da última importação"}
+            </DialogTitle>
             <DialogDescription>
               {latestMetricDialogConfig?.description ??
                 "Listagem financeira consolidada do último arquivo retorno."}
@@ -1060,11 +1222,14 @@ export default function ImportacaoPage() {
               placeholder="Buscar por associado, CPF, matrícula ou agente..."
               className="rounded-2xl border-border/60 bg-card/60 lg:max-w-lg"
             />
-            <ExportButton
-              onExport={(format) =>
+            <ReportExportDialog
+              hideScope
+              label="Exportar"
+              onExport={(_, fmt) =>
                 exportRows(
-                  format,
-                  latestMetricDialogConfig?.title ?? "Detalhamento da última importação",
+                  fmt,
+                  latestMetricDialogConfig?.title ??
+                    "Detalhamento da última importação",
                   "ultima-importacao-detalhamento",
                   financeiroExportColumns(),
                   filteredLatestMetricRows,
@@ -1072,13 +1237,15 @@ export default function ImportacaoPage() {
               }
             />
           </div>
-          <div className="overflow-x-auto overflow-y-auto">
+          <div className="min-h-0 overflow-x-auto overflow-y-auto">
             <DataTable
               columns={latestFinanceiroColumns}
               data={filteredLatestMetricRows}
               pageSize={10}
               pageSizeOptions={DETAIL_PAGE_SIZE_OPTIONS}
-              className={cn("rounded-[1.35rem] border border-border/60 bg-background/55 shadow-none")}
+              className={cn(
+                "rounded-[1.35rem] border border-border/60 bg-background/55 shadow-none",
+              )}
               tableClassName="min-w-[72rem]"
               emptyMessage={
                 latestMetricDialogConfig?.emptyMessage ??
@@ -1098,7 +1265,6 @@ export default function ImportacaoPage() {
           }
         }}
       />
-
     </div>
   );
 }

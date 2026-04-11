@@ -26,7 +26,7 @@ import SearchableSelect, {
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
-import ExportButton from "@/components/shared/export-button";
+import ReportExportDialog from "@/components/shared/report-export-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1615,10 +1615,11 @@ function MetricDetailDialog<T extends { id: number | string }>({
               className="min-w-0 flex-1 rounded-2xl sm:min-w-[22rem]"
             />
           </div>
-          <ExportButton
-            onExport={(format) =>
+          <ReportExportDialog
+            hideScope
+            onExport={(_, fmt) =>
               exportRows(
-                format,
+                fmt,
                 exportTitle,
                 exportFilename,
                 exportColumns,
@@ -1865,11 +1866,12 @@ function MonthlyCycleCard({
               </CardDescription>
             ) : null}
           </div>
-          <ExportButton
-            onExport={(format) => {
+          <ReportExportDialog
+            hideScope
+            onExport={(_, fmt) => {
               if (useFinanceiroDetalhe) {
                 exportRows(
-                  format,
+                  fmt,
                   `Gestão detalhada ${monthLabel}`,
                   sanitizeFileName(`gestao-financeira-${competenciaId}`),
                   returnExportColumns(),
@@ -1879,7 +1881,7 @@ function MonthlyCycleCard({
               }
 
               exportRows(
-                format,
+                fmt,
                 `Gestão detalhada ${monthLabel}`,
                 sanitizeFileName(`gestao-ciclo-${competenciaId}`),
                 cycleExportColumns(monthLabel),
@@ -1987,11 +1989,12 @@ function MonthlyCycleCard({
                     className="min-w-0 flex-1 rounded-2xl sm:min-w-[22rem]"
                   />
                 </div>
-                <ExportButton
-                  onExport={(format) => {
+                <ReportExportDialog
+                  hideScope
+                  onExport={(_, fmt) => {
                     if (useFinanceiroDetalhe) {
                       exportRows(
-                        format,
+                        fmt,
                         `Gestão detalhada ${monthLabel}`,
                         sanitizeFileName(`gestao-financeira-${competenciaId}`),
                         returnExportColumns(),
@@ -2001,7 +2004,7 @@ function MonthlyCycleCard({
                     }
 
                     exportRows(
-                      format,
+                      fmt,
                       `Gestão detalhada ${monthLabel}`,
                       sanitizeFileName(`gestao-ciclo-${competenciaId}`),
                       cycleExportColumns(monthLabel),
@@ -2329,10 +2332,11 @@ function ReturnFileCard({
             {isExpanded ? "Ocultar detalhamento do arquivo" : "Detalhamento do arquivo"}
           </Button>
           {isExpanded ? (
-            <ExportButton
-              onExport={(format) =>
+            <ReportExportDialog
+              hideScope
+              onExport={(_, fmt) =>
                 exportRows(
-                  format,
+                  fmt,
                   `Arquivo retorno ${arquivo.arquivo_nome}`,
                   sanitizeFileName(`arquivo-retorno-${arquivo.id}`),
                   returnExportColumns(),
@@ -3033,10 +3037,11 @@ export default function RenovacaoCiclosPage() {
             Limpar filtros
           </Button>
 
-          <ExportButton
-            onExport={(format) =>
+          <ReportExportDialog
+            hideScope
+            onExport={(_, fmt) =>
               exportRows(
-                format,
+                fmt,
                 `Detalhamento mensal ${selectedCompetenciaLabel}`,
                 sanitizeFileName(`detalhamento-mensal-${selectedCompetencia || "atual"}`),
                 cycleExportColumns(selectedCompetenciaLabel),
@@ -3247,10 +3252,11 @@ export default function RenovacaoCiclosPage() {
                 Copie nome, CPF e matrícula, confira o agente responsável e acompanhe as flags geradas pelo arquivo retorno.
               </CardDescription>
             </div>
-            <ExportButton
-              onExport={(format) =>
+            <ReportExportDialog
+              hideScope
+              onExport={(_, fmt) =>
                 exportRows(
-                  format,
+                  fmt,
                   `Detalhamento mensal ${selectedCompetenciaLabel}`,
                   sanitizeFileName(`detalhamento-mensal-${selectedCompetencia || "atual"}`),
                   cycleExportColumns(selectedCompetenciaLabel),

@@ -4,6 +4,7 @@ import json
 import tempfile
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
@@ -195,6 +196,65 @@ class RelatoriosViewSetTestCase(TestCase):
                 content = b"".join(download_response.streaming_content)
                 self.assertTrue(content.startswith(b"%PDF-"))
 
+    def test_exportar_aceita_rota_analise_com_rows_customizados(self):
+        response = self.client.post(
+            "/api/v1/relatorios/exportar/",
+            {
+                "rota": "/analise",
+                "formato": "xlsx",
+                "filtros": {
+                    "rows": [
+                        {
+                            "nome": "Maria Analise",
+                            "cpf_cnpj": "123.456.789-01",
+                            "matricula": "MAT-0001",
+                            "contrato_codigo": "CTR-001",
+                            "etapa": "analise",
+                            "status": "aguardando",
+                            "agente": "Agente Teste",
+                            "criado_em": "2026-04-11T10:30:00",
+                        }
+                    ]
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+        payload = response.json()
+
+        download_response = self.client.get(f"/api/v1/relatorios/{payload['id']}/download/")
+        self.assertEqual(download_response.status_code, 200)
+        self.assertEqual(
+            download_response["Content-Type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+    def test_render_pdf_mantem_markup_de_resumo_sem_escapar_tags_html(self):
+        recorded_texts: list[str] = []
+
+        from reportlab.platypus import Paragraph as RealParagraph
+
+        def paragraph_spy(text, style, *args, **kwargs):
+            recorded_texts.append(text)
+            return RealParagraph(text, style, *args, **kwargs)
+
+        with patch("reportlab.platypus.Paragraph", side_effect=paragraph_spy):
+            content = RelatorioService._render_pdf(
+                "/coordenacao/refinanciamento",
+                [],
+                {},
+            )
+
+        self.assertTrue(content.startswith(b"%PDF-"))
+        self.assertTrue(
+            any(text.startswith("<b>Rota:</b>") for text in recorded_texts),
+            recorded_texts,
+        )
+        self.assertFalse(
+            any("&lt;b&gt;Rota:&lt;/b&gt;" in text for text in recorded_texts),
+            recorded_texts,
+        )
+
     def test_definicao_tesouraria_reflete_colunas_da_secao(self):
         definition = RelatorioService._definition_for_route("/tesouraria")
 
@@ -213,3 +273,35 @@ class RelatoriosViewSetTestCase(TestCase):
                 "status",
             ],
         )
+
+    def test_definicao_analise_reflete_colunas_do_dashboard(self):
+        definition = RelatorioService._definition_for_route("/analise")
+
+        self.assertEqual(
+            [column.key for column in definition.columns],
+            [
+                "nome",
+                "cpf_cnpj",
+                "matricula",
+                "contrato_codigo",
+                "etapa",
+                "status",
+                "agente",
+                "criado_em",
+            ],
+        )
+
+    def test_summary_for_route_inclui_totais_customizados(self):
+        summary = RelatorioService._summary_for_route(
+            "/tesouraria",
+            [{"nome": "Maria Teste"}],
+            {
+                "totais": {
+                    "total_auxilio_liberado": "1500.00",
+                    "total_comissao_agente": "120.00",
+                }
+            },
+        )
+
+        self.assertIn(("Total Auxilio Liberado", "1500.00"), summary)
+        self.assertIn(("Total Comissao Agente", "120.00"), summary)

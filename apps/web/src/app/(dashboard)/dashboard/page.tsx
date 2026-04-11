@@ -64,7 +64,7 @@ import SearchableSelect, {
 import StatusBadge from "@/components/custom/status-badge";
 import DashboardDetailDialog from "@/components/shared/dashboard-detail-dialog";
 import type { DataTableColumn } from "@/components/shared/data-table";
-import ExportButton from "@/components/shared/export-button";
+import ReportExportDialog from "@/components/shared/report-export-dialog";
 import { AnalyticsSectionSkeleton } from "@/components/shared/page-skeletons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -99,6 +99,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { Slider } from "@/components/ui/slider";
 import {
   Table,
   TableBody,
@@ -119,7 +120,13 @@ const STATUS_OPTIONS = [
   { value: "inativo", label: "Inativo" },
 ] as const;
 
-const DETAIL_EXPORT_COLUMNS: TableExportColumn<DashboardDetailRow>[] = [
+type DashboardDetailDialogRow = DashboardDetailRow & {
+  valor_associado?: string;
+  valor_agente?: string;
+  valor_total?: string;
+};
+
+const DETAIL_EXPORT_COLUMNS: TableExportColumn<DashboardDetailDialogRow>[] = [
   { header: "Associado", value: (row) => row.associado_nome },
   { header: "CPF/CNPJ", value: (row) => maskCPFCNPJ(row.cpf_cnpj) },
   { header: "Matricula", value: (row) => row.matricula },
@@ -134,9 +141,24 @@ const DETAIL_EXPORT_COLUMNS: TableExportColumn<DashboardDetailRow>[] = [
   { header: "Observacao", value: (row) => row.observacao },
 ];
 
+const TREASURY_PAYOUT_DETAIL_EXPORT_COLUMNS: TableExportColumn<DashboardDetailDialogRow>[] =
+  [
+    { header: "Associado", value: (row) => row.associado_nome },
+    { header: "CPF/CNPJ", value: (row) => maskCPFCNPJ(row.cpf_cnpj) },
+    { header: "Matricula", value: (row) => row.matricula },
+    { header: "Status", value: (row) => row.status },
+    { header: "Agente", value: (row) => row.agente_nome },
+    { header: "Contrato", value: (row) => row.contrato_codigo },
+    { header: "Competencia", value: (row) => row.competencia },
+    { header: "Auxilio", value: (row) => row.valor_associado || row.valor },
+    { header: "Repasse agente", value: (row) => row.valor_agente || "" },
+    { header: "Data referencia", value: (row) => row.data_referencia },
+    { header: "Observacao", value: (row) => row.observacao },
+  ];
+
 function buildDetailColumns(
   onOpenAssociado: (associadoId: number) => void,
-): DataTableColumn<DashboardDetailRow>[] {
+): DataTableColumn<DashboardDetailDialogRow>[] {
   return [
     {
       id: "associado_nome",
@@ -208,6 +230,30 @@ function buildDetailColumns(
       header: "Data",
       cell: (row) =>
         row.data_referencia ? formatDate(row.data_referencia) : "-",
+    },
+  ];
+}
+
+function buildTreasuryPayoutDetailColumns(
+  onOpenAssociado: (associadoId: number) => void,
+): DataTableColumn<DashboardDetailDialogRow>[] {
+  return [
+    ...buildDetailColumns(onOpenAssociado).filter(
+      (column) => column.id !== "valor",
+    ),
+    {
+      id: "valor_associado",
+      header: "Auxilio",
+      cell: (row) =>
+        row.valor_associado || row.valor
+          ? formatCurrency(row.valor_associado || row.valor)
+          : "-",
+    },
+    {
+      id: "valor_agente",
+      header: "Repasse agente",
+      cell: (row) =>
+        row.valor_agente ? formatCurrency(row.valor_agente) : "-",
     },
   ];
 }
@@ -326,26 +372,33 @@ type SectionExportRow = DashboardDetailRow & {
   indicador: string;
 };
 
-const MONTHLY_NEW_ASSOCIADOS_EXPORT_COLUMNS: TableExportColumn<DashboardDetailRow>[] =
+const MONTHLY_NEW_ASSOCIADOS_EXPORT_COLUMNS: TableExportColumn<DashboardDetailDialogRow>[] =
   [
     { header: "Nome", value: (row) => row.associado_nome },
     { header: "CPF", value: (row) => maskCPFCNPJ(row.cpf_cnpj) },
     { header: "Matricula", value: (row) => row.matricula },
     {
       header: "Data de nascimento",
-      value: (row) => (row.data_nascimento ? formatDate(row.data_nascimento) : "-"),
+      value: (row) =>
+        row.data_nascimento ? formatDate(row.data_nascimento) : "-",
+    },
+    {
+      header: "Mensalidade",
+      value: (row) => (row.valor ? formatCurrency(row.valor) : "-"),
     },
     { header: "Agente responsável", value: (row) => row.agente_nome || "-" },
   ];
 
 function buildMonthlyNewAssociadosColumns(
   onOpenAssociado: (associadoId: number) => void,
-): DataTableColumn<DashboardDetailRow>[] {
+): DataTableColumn<DashboardDetailDialogRow>[] {
   return [
     {
       id: "associado_nome",
       header: "Nome",
-      cell: (row) => <p className="font-medium text-foreground">{row.associado_nome}</p>,
+      cell: (row) => (
+        <p className="font-medium text-foreground">{row.associado_nome}</p>
+      ),
     },
     {
       id: "cpf_cnpj",
@@ -360,7 +413,13 @@ function buildMonthlyNewAssociadosColumns(
     {
       id: "data_nascimento",
       header: "Data de nascimento",
-      cell: (row) => (row.data_nascimento ? formatDate(row.data_nascimento) : "-"),
+      cell: (row) =>
+        row.data_nascimento ? formatDate(row.data_nascimento) : "-",
+    },
+    {
+      id: "valor",
+      header: "Mensalidade",
+      cell: (row) => (row.valor ? formatCurrency(row.valor) : "-"),
     },
     {
       id: "agente_nome",
@@ -404,6 +463,48 @@ function normalizeText(value: string) {
     .normalize("NFD")
     .replaceAll(/[\u0300-\u036f]/g, "")
     .toLowerCase();
+}
+
+function parseDashboardCurrencyValue(value: string | number | undefined) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const sanitized = trimmed.replaceAll(/[^\d,.-]/g, "");
+  const normalized = sanitized.includes(",")
+    ? sanitized.replaceAll(".", "").replace(",", ".")
+    : sanitized;
+  const parsed = Number.parseFloat(normalized);
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function matchesDashboardDetailSearch(
+  row: DashboardDetailDialogRow,
+  rawSearch: string,
+) {
+  const normalized = normalizeText(rawSearch.trim());
+  if (!normalized) {
+    return true;
+  }
+
+  return [
+    row.associado_nome,
+    row.cpf_cnpj,
+    row.matricula,
+    row.contrato_codigo,
+    row.origem,
+    row.agente_nome,
+  ].some((value) => normalizeText(String(value ?? "")).includes(normalized));
 }
 
 function formatMetricValue(card: DashboardMetricCard) {
@@ -801,10 +902,18 @@ function DashboardPageContent() {
   );
   const [detailPage, setDetailPage] = React.useState(1);
   const [detailSearch, setDetailSearch] = React.useState("");
-  const [detailAssociadoId, setDetailAssociadoId] = React.useState<number | null>(null);
+  const [detailMensalidadeRange, setDetailMensalidadeRange] = React.useState<
+    [number, number] | null
+  >(null);
+  const [detailAssociadoId, setDetailAssociadoId] = React.useState<
+    number | null
+  >(null);
   const [exportingSection, setExportingSection] =
     React.useState<DashboardSection | null>(null);
   const debouncedDetailSearch = useDebouncedValue(detailSearch, 250);
+  const isMonthlyNewAssociadosDetail = Boolean(
+    detailState?.title && detailState.title.startsWith("Novos associados de "),
+  );
 
   const agentOptionsQuery = useQuery({
     queryKey: ["dashboard-agent-options"],
@@ -851,9 +960,18 @@ function DashboardPageContent() {
       day: toIsoDate(treasuryFilters.day),
       agent_id: treasuryFilters.agentId,
       status:
-        treasuryFilters.status === "todos"
-          ? undefined
-          : treasuryFilters.status,
+        treasuryFilters.status === "todos" ? undefined : treasuryFilters.status,
+    }),
+    [treasuryFilters],
+  );
+  const treasurySummaryDetailQuery = React.useMemo<
+    Record<string, string | undefined>
+  >(
+    () => ({
+      day: toIsoDate(treasuryFilters.day),
+      agent_id: treasuryFilters.agentId,
+      status:
+        treasuryFilters.status === "todos" ? undefined : treasuryFilters.status,
     }),
     [treasuryFilters],
   );
@@ -881,8 +999,7 @@ function DashboardPageContent() {
       date_end: toIsoDate(agentFilters.dateEnd),
       day: toIsoDate(agentFilters.day),
       agent_id: agentFilters.agentId,
-      status:
-        agentFilters.status === "todos" ? undefined : agentFilters.status,
+      status: agentFilters.status === "todos" ? undefined : agentFilters.status,
     }),
     [agentFilters],
   );
@@ -923,18 +1040,38 @@ function DashboardPageContent() {
     queryKey: [
       "dashboard-admin-treasury-summary-table",
       toMonthId(treasuryFilters.competencia),
+      toIsoDate(treasuryFilters.day),
+      treasuryFilters.agentId,
+      treasuryFilters.status,
     ],
     queryFn: () =>
       apiFetch<DashboardResumoMensalAssociacaoPayload>(
         "dashboard/admin/resumo-mensal-associacao",
         {
-          query: {
-            competencia: toMonthId(treasuryFilters.competencia),
-          },
+          query: treasuryQueryParams,
         },
       ),
     ...dashboardRetainedQueryOptions,
   });
+
+  const shouldFocusTreasurySummaryMonth =
+    Boolean(treasuryFilters.day) ||
+    Boolean(treasuryFilters.agentId) ||
+    treasuryFilters.status !== "todos" ||
+    !hasSameMonth(treasuryFilters.competencia, currentMonth);
+  const treasurySummaryRows = React.useMemo(() => {
+    const rows = treasurySummaryQuery.data?.rows ?? [];
+    if (!shouldFocusTreasurySummaryMonth) {
+      return rows;
+    }
+    const selectedMonth = toMonthId(treasuryFilters.competencia);
+    return rows.filter((row) => row.mes.slice(0, 7) === selectedMonth);
+  }, [
+    currentMonth,
+    shouldFocusTreasurySummaryMonth,
+    treasuryFilters.competencia,
+    treasurySummaryQuery.data?.rows,
+  ]);
 
   const newAssociadosQuery = useQuery({
     queryKey: [
@@ -970,7 +1107,12 @@ function DashboardPageContent() {
   });
 
   const detailQuery = useQuery({
-    queryKey: ["dashboard-admin-detail", detailState, detailPage, debouncedDetailSearch],
+    queryKey: [
+      "dashboard-admin-detail",
+      detailState,
+      detailPage,
+      debouncedDetailSearch,
+    ],
     queryFn: () =>
       apiFetch<PaginatedDashboardDetailRowList>("dashboard/admin/detalhes", {
         query: {
@@ -982,7 +1124,22 @@ function DashboardPageContent() {
           ...detailState?.query,
         },
       }),
-    enabled: Boolean(detailState),
+    enabled: Boolean(detailState) && !isMonthlyNewAssociadosDetail,
+    ...dashboardRetainedQueryOptions,
+  });
+
+  const detailAllRowsQuery = useQuery({
+    queryKey: ["dashboard-admin-detail-all", detailState],
+    queryFn: () =>
+      apiFetch<PaginatedDashboardDetailRowList>("dashboard/admin/detalhes", {
+        query: {
+          section: detailState?.section,
+          metric: detailState?.metric,
+          page_size: "all",
+          ...detailState?.query,
+        },
+      }),
+    enabled: Boolean(detailState) && isMonthlyNewAssociadosDetail,
     ...dashboardRetainedQueryOptions,
   });
 
@@ -996,6 +1153,7 @@ function DashboardPageContent() {
     ) => {
       setDetailPage(1);
       setDetailSearch("");
+      setDetailMensalidadeRange(null);
       setDetailState({ section, metric, title, description, query });
     },
     [],
@@ -1042,6 +1200,7 @@ function DashboardPageContent() {
       metrics,
       query,
       exportColumns = SECTION_EXPORT_COLUMNS,
+      rowsOverride,
     }: {
       format: "csv" | "pdf" | "excel" | "xlsx";
       section: DashboardSection;
@@ -1050,6 +1209,7 @@ function DashboardPageContent() {
       metrics: SectionExportMetric[];
       query: Record<string, string | undefined>;
       exportColumns?: TableExportColumn<any>[];
+      rowsOverride?: any[];
     }) => {
       if (!metrics.length) {
         toast.error("Nenhum dado disponivel para exportacao nesta secao.");
@@ -1059,7 +1219,7 @@ function DashboardPageContent() {
       setExportingSection(section);
 
       try {
-        const rows = await fetchDetailRows(section, metrics, query);
+        const rows = rowsOverride ?? (await fetchDetailRows(section, metrics, query));
         if (!rows.length) {
           toast.error("Nenhum registro encontrado para exportacao.");
           return;
@@ -1132,7 +1292,7 @@ function DashboardPageContent() {
       ? 0
       : newAssociadosFilters.dateEnd
         ? 1
-      : 0);
+        : 0);
 
   const agentActiveFilters =
     countActiveFilters({
@@ -1197,7 +1357,9 @@ function DashboardPageContent() {
   }, [treasuryDraft]);
 
   const applyAgentFilters = React.useCallback(() => {
-    if (!isDayCompatibleWithCompetencia(agentDraft.day, agentDraft.competencia)) {
+    if (
+      !isDayCompatibleWithCompetencia(agentDraft.day, agentDraft.competencia)
+    ) {
       toast.error(
         "O filtro por dia da seção de agentes precisa estar dentro da competência selecionada.",
       );
@@ -1206,27 +1368,260 @@ function DashboardPageContent() {
     setAgentFilters(agentDraft);
   }, [agentDraft]);
 
-  const detailRows = detailQuery.data?.results ?? [];
+  const detailRows = (detailQuery.data?.results ??
+    []) as DashboardDetailDialogRow[];
+  const monthlyDetailRows = React.useMemo(
+    () =>
+      ((detailAllRowsQuery.data?.results ?? []) as DashboardDetailDialogRow[]).map(
+        (row) => ({
+          ...row,
+          valor: row.valor,
+        }),
+      ),
+    [detailAllRowsQuery.data?.results],
+  );
+  const monthlyMensalidadeValues = React.useMemo(
+    () =>
+      Array.from(
+        new Set(
+          monthlyDetailRows
+            .map((row) => parseDashboardCurrencyValue(row.valor))
+            .filter((value): value is number => value != null),
+        ),
+      ).sort((left, right) => left - right),
+    [monthlyDetailRows],
+  );
+  const monthlyMensalidadeBounds = React.useMemo(() => {
+    if (!monthlyMensalidadeValues.length) {
+      return null;
+    }
+
+    return {
+      min: monthlyMensalidadeValues[0],
+      max: monthlyMensalidadeValues[monthlyMensalidadeValues.length - 1],
+    };
+  }, [monthlyMensalidadeValues]);
   const detailTotalPages = React.useMemo(
     () => Math.max(1, Math.ceil((detailQuery.data?.count ?? 0) / 20)),
     [detailQuery.data?.count],
   );
-  const isMonthlyNewAssociadosDetail = Boolean(
-    detailState?.title && detailState.title.startsWith("Novos associados de "),
-  );
+  const isTreasuryPayoutDetail =
+    detailState?.section === "treasury" &&
+    detailState.metric === "saidas_agentes_associados";
+
+  React.useEffect(() => {
+    if (!isMonthlyNewAssociadosDetail || !monthlyMensalidadeBounds) {
+      setDetailMensalidadeRange(null);
+      return;
+    }
+
+    setDetailMensalidadeRange((current) => {
+      if (
+        current &&
+        current[0] === monthlyMensalidadeBounds.min &&
+        current[1] === monthlyMensalidadeBounds.max
+      ) {
+        return current;
+      }
+
+      return [monthlyMensalidadeBounds.min, monthlyMensalidadeBounds.max];
+    });
+  }, [
+    detailState?.metric,
+    isMonthlyNewAssociadosDetail,
+    monthlyMensalidadeBounds,
+  ]);
+
+  const monthlyFilteredRows = React.useMemo(() => {
+    if (!isMonthlyNewAssociadosDetail) {
+      return [] as DashboardDetailDialogRow[];
+    }
+
+    return monthlyDetailRows.filter((row) => {
+      if (!matchesDashboardDetailSearch(row, detailSearch)) {
+        return false;
+      }
+
+      if (!detailMensalidadeRange) {
+        return true;
+      }
+
+      const mensalidade = parseDashboardCurrencyValue(row.valor);
+      if (mensalidade == null) {
+        return false;
+      }
+
+      return (
+        mensalidade >= detailMensalidadeRange[0] &&
+        mensalidade <= detailMensalidadeRange[1]
+      );
+    });
+  }, [
+    detailMensalidadeRange,
+    detailSearch,
+    isMonthlyNewAssociadosDetail,
+    monthlyDetailRows,
+  ]);
+  const detailDialogRows = isMonthlyNewAssociadosDetail
+    ? monthlyFilteredRows
+    : detailRows;
+  const detailDialogIsLoading = isMonthlyNewAssociadosDetail
+    ? detailAllRowsQuery.isLoading
+    : detailQuery.isLoading;
+  const detailDialogCurrentPage = isMonthlyNewAssociadosDetail
+    ? undefined
+    : detailPage;
+  const detailDialogTotalPages = isMonthlyNewAssociadosDetail
+    ? undefined
+    : detailTotalPages;
+  const detailDialogOnPageChange = isMonthlyNewAssociadosDetail
+    ? undefined
+    : setDetailPage;
   const detailDialogColumns = React.useMemo(
     () =>
       isMonthlyNewAssociadosDetail
         ? buildMonthlyNewAssociadosColumns(setDetailAssociadoId)
-        : buildDetailColumns(setDetailAssociadoId),
-    [isMonthlyNewAssociadosDetail],
+        : isTreasuryPayoutDetail
+          ? buildTreasuryPayoutDetailColumns(setDetailAssociadoId)
+          : buildDetailColumns(setDetailAssociadoId),
+    [isMonthlyNewAssociadosDetail, isTreasuryPayoutDetail],
   );
   const detailDialogExportColumns = isMonthlyNewAssociadosDetail
     ? MONTHLY_NEW_ASSOCIADOS_EXPORT_COLUMNS
-    : DETAIL_EXPORT_COLUMNS;
+    : isTreasuryPayoutDetail
+      ? TREASURY_PAYOUT_DETAIL_EXPORT_COLUMNS
+      : DETAIL_EXPORT_COLUMNS;
   const detailDialogSearchPlaceholder = isMonthlyNewAssociadosDetail
     ? "Buscar por nome, CPF, matricula ou agente responsável"
     : "Buscar por nome, CPF, matricula ou contrato";
+  const detailDialogToolbarContent =
+    isMonthlyNewAssociadosDetail && monthlyMensalidadeBounds ? (
+      <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">
+              Filtro por mensalidade
+            </p>
+            <p className="text-sm text-foreground">
+              Faixa selecionada:{" "}
+              <span className="font-semibold">
+                {formatCurrency(detailMensalidadeRange?.[0] ?? monthlyMensalidadeBounds.min)}
+              </span>{" "}
+              até{" "}
+              <span className="font-semibold">
+                {formatCurrency(detailMensalidadeRange?.[1] ?? monthlyMensalidadeBounds.max)}
+              </span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Mínimo disponível: {formatCurrency(monthlyMensalidadeBounds.min)}.
+              Máximo disponível: {formatCurrency(monthlyMensalidadeBounds.max)}.
+            </p>
+          </div>
+          <Badge variant="outline" className="rounded-full px-3 py-1">
+            {monthlyFilteredRows.length} associado(s) no recorte
+          </Badge>
+        </div>
+        <div className="mt-4 space-y-3">
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                Valor mínimo
+              </p>
+              <input
+                aria-label="Valor mínimo da mensalidade"
+                type="number"
+                min={monthlyMensalidadeBounds.min}
+                max={detailMensalidadeRange?.[1] ?? monthlyMensalidadeBounds.max}
+                step="0.01"
+                value={detailMensalidadeRange?.[0] ?? monthlyMensalidadeBounds.min}
+                onChange={(event) => {
+                  const nextValue = Number.parseFloat(event.target.value);
+                  if (Number.isNaN(nextValue)) {
+                    return;
+                  }
+
+                  setDetailMensalidadeRange((current) => [
+                    Math.min(
+                      Math.max(nextValue, monthlyMensalidadeBounds.min),
+                      current?.[1] ?? monthlyMensalidadeBounds.max,
+                    ),
+                    current?.[1] ?? monthlyMensalidadeBounds.max,
+                  ]);
+                }}
+                className="flex h-10 w-full rounded-xl border border-border/60 bg-background px-3 text-sm outline-none transition focus-visible:border-primary"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                Valor máximo
+              </p>
+              <input
+                aria-label="Valor máximo da mensalidade"
+                type="number"
+                min={detailMensalidadeRange?.[0] ?? monthlyMensalidadeBounds.min}
+                max={monthlyMensalidadeBounds.max}
+                step="0.01"
+                value={detailMensalidadeRange?.[1] ?? monthlyMensalidadeBounds.max}
+                onChange={(event) => {
+                  const nextValue = Number.parseFloat(event.target.value);
+                  if (Number.isNaN(nextValue)) {
+                    return;
+                  }
+
+                  setDetailMensalidadeRange((current) => [
+                    current?.[0] ?? monthlyMensalidadeBounds.min,
+                    Math.max(
+                      Math.min(nextValue, monthlyMensalidadeBounds.max),
+                      current?.[0] ?? monthlyMensalidadeBounds.min,
+                    ),
+                  ]);
+                }}
+                className="flex h-10 w-full rounded-xl border border-border/60 bg-background px-3 text-sm outline-none transition focus-visible:border-primary"
+              />
+            </div>
+          </div>
+          <Slider
+            value={
+              detailMensalidadeRange ?? [
+                monthlyMensalidadeBounds.min,
+                monthlyMensalidadeBounds.max,
+              ]
+            }
+            min={monthlyMensalidadeBounds.min}
+            max={monthlyMensalidadeBounds.max}
+            step={0.01}
+            onValueChange={(value) => {
+              if (value.length !== 2) {
+                return;
+              }
+
+              setDetailMensalidadeRange([
+                Math.min(value[0] ?? monthlyMensalidadeBounds.min, value[1] ?? monthlyMensalidadeBounds.max),
+                Math.max(value[0] ?? monthlyMensalidadeBounds.min, value[1] ?? monthlyMensalidadeBounds.max),
+              ]);
+            }}
+          />
+          <div className="flex flex-wrap gap-2">
+            {monthlyMensalidadeValues.map((value) => {
+              const inRange =
+                !detailMensalidadeRange ||
+                (value >= detailMensalidadeRange[0] &&
+                  value <= detailMensalidadeRange[1]);
+
+              return (
+                <Badge
+                  key={value}
+                  variant={inRange ? "default" : "outline"}
+                  className="rounded-full px-2.5 py-1"
+                >
+                  {formatCurrency(value)}
+                </Badge>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    ) : null;
 
   return (
     <>
@@ -1335,16 +1730,17 @@ function DashboardPageContent() {
                   </Select>
                 </FilterField>
               </SectionFilterButton>
-              <ExportButton
+              <ReportExportDialog
+                hideScope
                 disabled={
                   !treasuryQuery.data || exportingSection === "treasury"
                 }
                 label={
                   exportingSection === "treasury" ? "Exportando..." : "Exportar"
                 }
-                onExport={(format) =>
+                onExport={(_, fmt) =>
                   void handleSectionExport({
-                    format,
+                    format: fmt,
                     section: "treasury",
                     title: `Tesouraria - ${treasuryTitle}`,
                     filenameBase: `dashboard-tesouraria-${toMonthId(treasuryFilters.competencia)}`,
@@ -1576,14 +1972,19 @@ function DashboardPageContent() {
                 title="Resumo mensal da associação"
                 description="Complementos de receita pagos no mês, saldo positivo calculado como complemento menos despesas operacionais pagas, além de efetivações, desvinculações e renovações."
               >
-                {treasurySummaryQuery.isLoading || !treasurySummaryQuery.data ? (
+                {treasurySummaryQuery.isLoading ||
+                !treasurySummaryQuery.data ? (
                   <div className="rounded-[1.4rem] border border-border/60 bg-background/40 px-4 py-6 text-sm text-muted-foreground">
                     Carregando resumo mensal da associação...
                   </div>
                 ) : (
                   <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      A tabela usa 12 meses até a competência selecionada em tesouraria. O saldo positivo considera apenas complemento de receita menos despesas operacionais pagas do mês.
+                      {shouldFocusTreasurySummaryMonth
+                        ? "Com filtros ativos na tesouraria, a tabela destaca apenas a competência selecionada."
+                        : "A tabela usa 12 meses até a competência selecionada em tesouraria."}{" "}
+                      O saldo positivo considera apenas complemento de receita
+                      menos despesas operacionais pagas do mês.
                     </p>
                     <div className="overflow-hidden rounded-xl border border-border/60">
                       <Table>
@@ -1610,8 +2011,11 @@ function DashboardPageContent() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {treasurySummaryQuery.data.rows.map((row) => (
-                            <TableRow key={row.mes} className="border-border/60">
+                          {treasurySummaryRows.map((row) => (
+                            <TableRow
+                              key={row.mes}
+                              className="border-border/60"
+                            >
                               <TableCell className="px-4 py-3 font-medium">
                                 {formatMonthCell(row.mes)}
                               </TableCell>
@@ -1628,18 +2032,18 @@ function DashboardPageContent() {
                                     variant="ghost"
                                     className="h-auto rounded-xl px-2 py-1 font-semibold text-primary hover:text-primary"
                                     aria-label={`Abrir novos associados de ${formatMonthCell(row.mes)}`}
-                                    onClick={() =>
-                                      {
-                                        const monthDate = new Date(`${row.mes}T12:00:00`);
-                                        openDetail(
-                                          "summary",
-                                          `trend:efetivados:${format(monthDate, "yyyy-MM")}`,
-                                          `Novos associados de ${formatMonthCell(row.mes)}`,
-                                          "Relação completa dos associados efetivados no mês selecionado, com dados cadastrais essenciais para conferência e exportação.",
-                                          {},
-                                        );
-                                      }
-                                    }
+                                    onClick={() => {
+                                      const monthDate = new Date(
+                                        `${row.mes}T12:00:00`,
+                                      );
+                                      openDetail(
+                                        "summary",
+                                        `trend:efetivados:${format(monthDate, "yyyy-MM")}`,
+                                        `Novos associados de ${formatMonthCell(row.mes)}`,
+                                        "Relação completa dos associados efetivados no mês selecionado, com dados cadastrais essenciais para conferência e exportação.",
+                                        treasurySummaryDetailQuery,
+                                      );
+                                    }}
                                   >
                                     {row.novos_associados}
                                   </Button>
@@ -1651,7 +2055,30 @@ function DashboardPageContent() {
                                 {row.desvinculados}
                               </TableCell>
                               <TableCell className="px-4 py-3">
-                                {row.renovacoes_associado}
+                                {row.renovacoes_associado > 0 ? (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    className="h-auto rounded-xl px-2 py-1 font-semibold text-primary hover:text-primary"
+                                    aria-label={`Abrir renovações de ${formatMonthCell(row.mes)}`}
+                                    onClick={() => {
+                                      const monthDate = new Date(
+                                        `${row.mes}T12:00:00`,
+                                      );
+                                      openDetail(
+                                        "summary",
+                                        `trend:renovacoes:${format(monthDate, "yyyy-MM")}`,
+                                        `Renovações de ${formatMonthCell(row.mes)}`,
+                                        "Relação completa dos associados renovados no mês selecionado, com base operacional para conferência e exportação.",
+                                        treasurySummaryDetailQuery,
+                                      );
+                                    }}
+                                  >
+                                    {row.renovacoes_associado}
+                                  </Button>
+                                ) : (
+                                  row.renovacoes_associado
+                                )}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -1776,14 +2203,15 @@ function DashboardPageContent() {
                   </FilterField>
                 </div>
               </SectionFilterButton>
-              <ExportButton
+              <ReportExportDialog
+                hideScope
                 disabled={!summaryQuery.data || exportingSection === "summary"}
                 label={
                   exportingSection === "summary" ? "Exportando..." : "Exportar"
                 }
-                onExport={(format) =>
+                onExport={(_, fmt) =>
                   void handleSectionExport({
-                    format,
+                    format: fmt,
                     section: "summary",
                     title: `Panorama geral - ${summaryTitle}`,
                     filenameBase: `dashboard-panorama-${toMonthId(summaryFilters.competencia)}`,
@@ -2107,7 +2535,8 @@ function DashboardPageContent() {
                   </FilterField>
                 </div>
               </SectionFilterButton>
-              <ExportButton
+              <ReportExportDialog
+                hideScope
                 disabled={
                   !newAssociadosQuery.data ||
                   exportingSection === "new-associados"
@@ -2117,9 +2546,9 @@ function DashboardPageContent() {
                     ? "Exportando..."
                     : "Exportar"
                 }
-                onExport={(format) =>
+                onExport={(_, fmt) =>
                   void handleSectionExport({
-                    format,
+                    format: fmt,
                     section: "new-associados",
                     title: "Novos associados",
                     filenameBase: "dashboard-novos-associados",
@@ -2392,14 +2821,15 @@ function DashboardPageContent() {
                   </FilterField>
                 </div>
               </SectionFilterButton>
-              <ExportButton
+              <ReportExportDialog
+                hideScope
                 disabled={!agentsQuery.data || exportingSection === "agentes"}
                 label={
                   exportingSection === "agentes" ? "Exportando..." : "Exportar"
                 }
-                onExport={(format) =>
+                onExport={(_, fmt) =>
                   void handleSectionExport({
-                    format,
+                    format: fmt,
                     section: "agentes",
                     title: "Ranking de agentes",
                     filenameBase: "dashboard-agentes",
@@ -2425,7 +2855,8 @@ function DashboardPageContent() {
                   </p>
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Volume efetivado, distribuicao por status e renovacoes por agente
+                  Auxilio liberado, distribuicao por status e renovacoes por
+                  agente
                 </p>
               </div>
 
@@ -2451,7 +2882,7 @@ function DashboardPageContent() {
               <div className="grid gap-6 xl:grid-cols-3">
                 <SectionCard
                   title="Ranking por volume financeiro"
-                  description="Top agentes por valor liquido efetivado no recorte selecionado."
+                  description="Top agentes pelo auxilio liberado aos respectivos associados no recorte selecionado."
                   className="xl:col-span-2"
                 >
                   <ChartContainer
@@ -2487,7 +2918,7 @@ function DashboardPageContent() {
                                 "agentes",
                                 item.detail_metric,
                                 `${item.agent_name} no ranking`,
-                                "Contratos efetivados que sustentam o volume financeiro do agente.",
+                                "Contratos efetivados que sustentam o auxilio liberado do agente.",
                                 agentQueryParams,
                               )
                             }
@@ -2507,7 +2938,7 @@ function DashboardPageContent() {
                             "agentes",
                             item.detail_metric,
                             `${item.agent_name} no ranking`,
-                            "Contratos efetivados que sustentam o volume financeiro do agente.",
+                            "Contratos efetivados que sustentam o auxilio liberado do agente.",
                             agentQueryParams,
                           )
                         }
@@ -2529,12 +2960,13 @@ function DashboardPageContent() {
                               {item.agent_name}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {item.efetivados} efetivados · {item.cadastros} cadastros
+                              {item.efetivados} efetivados · {item.cadastros}{" "}
+                              cadastros
                             </p>
                             <p className="text-xs text-muted-foreground">
                               {item.ativo} ativos · {item.inativo} inativos ·{" "}
-                              {item.devolvidos} devolvidos · {item.renovados} renovados ·{" "}
-                              {item.aptos_renovar} para renovar
+                              {item.devolvidos} devolvidos · {item.renovados}{" "}
+                              renovados · {item.aptos_renovar} para renovar
                             </p>
                           </div>
                         </div>
@@ -2548,7 +2980,7 @@ function DashboardPageContent() {
 
                 <SectionCard
                   title="Participacao no volume"
-                  description="Peso relativo de cada agente no volume financeiro efetivado."
+                  description="Peso relativo de cada agente no auxilio liberado efetivado."
                 >
                   <ChartContainer
                     config={{
@@ -2627,12 +3059,19 @@ function DashboardPageContent() {
                       <ChartTooltip
                         content={
                           <ChartTooltipContent
-                            formatter={(value, name) => [String(value), String(name)]}
+                            formatter={(value, name) => [
+                              String(value),
+                              String(name),
+                            ]}
                           />
                         }
                       />
                       <ChartLegend content={<ChartLegendContent />} />
-                      <Bar dataKey="cadastrado" stackId="status" fill="var(--color-cadastrado)">
+                      <Bar
+                        dataKey="cadastrado"
+                        stackId="status"
+                        fill="var(--color-cadastrado)"
+                      >
                         {agentStatusSeries.map((item) => (
                           <Cell
                             key={`cadastrado-${item.agent_id}`}
@@ -2649,7 +3088,11 @@ function DashboardPageContent() {
                           />
                         ))}
                       </Bar>
-                      <Bar dataKey="em_analise" stackId="status" fill="var(--color-em_analise)">
+                      <Bar
+                        dataKey="em_analise"
+                        stackId="status"
+                        fill="var(--color-em_analise)"
+                      >
                         {agentStatusSeries.map((item) => (
                           <Cell
                             key={`em-analise-${item.agent_id}`}
@@ -2666,7 +3109,11 @@ function DashboardPageContent() {
                           />
                         ))}
                       </Bar>
-                      <Bar dataKey="pendente" stackId="status" fill="var(--color-pendente)">
+                      <Bar
+                        dataKey="pendente"
+                        stackId="status"
+                        fill="var(--color-pendente)"
+                      >
                         {agentStatusSeries.map((item) => (
                           <Cell
                             key={`pendente-${item.agent_id}`}
@@ -2683,7 +3130,11 @@ function DashboardPageContent() {
                           />
                         ))}
                       </Bar>
-                      <Bar dataKey="ativo" stackId="status" fill="var(--color-ativo)">
+                      <Bar
+                        dataKey="ativo"
+                        stackId="status"
+                        fill="var(--color-ativo)"
+                      >
                         {agentStatusSeries.map((item) => (
                           <Cell
                             key={`ativo-${item.agent_id}`}
@@ -2721,7 +3172,11 @@ function DashboardPageContent() {
                           />
                         ))}
                       </Bar>
-                      <Bar dataKey="inativo" stackId="status" fill="var(--color-inativo)">
+                      <Bar
+                        dataKey="inativo"
+                        stackId="status"
+                        fill="var(--color-inativo)"
+                      >
                         {agentStatusSeries.map((item) => (
                           <Cell
                             key={`inativo-${item.agent_id}`}
@@ -2742,7 +3197,8 @@ function DashboardPageContent() {
                   </ChartContainer>
                 ) : (
                   <div className="rounded-[1.5rem] border border-border/60 bg-background/40 px-6 py-12 text-center text-sm text-muted-foreground">
-                    Nenhum agente com dados suficientes para o recorte selecionado.
+                    Nenhum agente com dados suficientes para o recorte
+                    selecionado.
                   </div>
                 )}
               </SectionCard>
@@ -2758,6 +3214,7 @@ function DashboardPageContent() {
             setDetailState(null);
             setDetailPage(1);
             setDetailSearch("");
+            setDetailMensalidadeRange(null);
             setDetailAssociadoId(null);
           }
         }}
@@ -2766,7 +3223,7 @@ function DashboardPageContent() {
           detailState?.description ??
           "Tabela detalhada do indicador selecionado."
         }
-        rows={detailRows}
+        rows={detailDialogRows}
         columns={detailDialogColumns}
         exportColumns={detailDialogExportColumns}
         exportTitle={detailState?.title ?? "Detalhamento dashboard"}
@@ -2774,13 +3231,14 @@ function DashboardPageContent() {
           .toLowerCase()
           .replace(/[^\w]+/g, "-")}
         emptyMessage="Nenhum registro encontrado para o recorte selecionado."
-        isLoading={detailQuery.isLoading}
+        isLoading={detailDialogIsLoading}
         searchPlaceholder={detailDialogSearchPlaceholder}
         searchValue={detailSearch}
         onSearchValueChange={setDetailSearch}
-        currentPage={detailPage}
-        totalPages={detailTotalPages}
-        onPageChange={setDetailPage}
+        currentPage={detailDialogCurrentPage}
+        totalPages={detailDialogTotalPages}
+        onPageChange={detailDialogOnPageChange}
+        toolbarContent={detailDialogToolbarContent}
         onExport={(format) =>
           void handleSectionExport({
             format,
@@ -2792,8 +3250,17 @@ function DashboardPageContent() {
             metrics: detailState
               ? [{ label: detailState.title, metric: detailState.metric }]
               : [],
-            query: detailState?.query ?? {},
+            query: {
+              ...(detailState?.query ?? {}),
+              search: detailSearch.trim() || undefined,
+            },
             exportColumns: detailDialogExportColumns,
+            rowsOverride: isMonthlyNewAssociadosDetail
+              ? monthlyFilteredRows.map((row) => ({
+                  ...row,
+                  indicador: detailState?.title ?? "Detalhamento dashboard",
+                }))
+              : undefined,
           })
         }
       />

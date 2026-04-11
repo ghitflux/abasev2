@@ -45,7 +45,7 @@ import DashboardDetailDialog from "@/components/shared/dashboard-detail-dialog";
 import DataTable, {
   type DataTableColumn,
 } from "@/components/shared/data-table";
-import ExportButton from "@/components/shared/export-button";
+import ReportExportDialog from "@/components/shared/report-export-dialog";
 import { InlinePanelSkeleton, MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
@@ -785,10 +785,11 @@ export default function MeusContratosPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <ExportButton
+            <ReportExportDialog
+              hideScope
               disabled={isExporting}
               label={isExporting ? "Exportando..." : "Exportar"}
-              onExport={(format) => void handleExport(format)}
+              onExport={(_, fmt) => void handleExport(fmt)}
             />
             {!isAdmin ? (
               <Button asChild>

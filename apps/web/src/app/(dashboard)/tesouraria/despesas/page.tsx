@@ -45,8 +45,6 @@ import {
   exportRouteReport,
   fetchAllPaginatedRows,
   filterRowsByReportScope,
-  resolveReportReferenceDate,
-  type ReportScope,
 } from "@/lib/reports";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import DatePicker from "@/components/custom/date-picker";
@@ -55,7 +53,9 @@ import InputCurrency from "@/components/custom/input-currency";
 import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
-import ExportButton from "@/components/shared/export-button";
+import ReportExportDialog, {
+  type ReportExportFilters,
+} from "@/components/shared/report-export-dialog";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -627,13 +627,8 @@ export default function TesourariaDespesasPage() {
   const resultadoDetalhe = resultadoDetalheQuery.data;
 
   const handleExport = React.useCallback(
-    async (scope: ReportScope, formatValue: "pdf" | "xlsx") => {
-      const referenceDate = resolveReportReferenceDate({
-        scope,
-        dayReference: competencia,
-        monthReference: tab === "resultado" ? resultadoBaseMonth : competencia,
-      });
-
+    async (exportFilters: ReportExportFilters, formatValue: "pdf" | "xlsx") => {
+      const { scope, referenceDate } = exportFilters;
       setIsExporting(true);
       try {
         if (tab === "resultado") {
@@ -1191,16 +1186,10 @@ export default function TesourariaDespesasPage() {
                 }}
                 className="w-full rounded-2xl bg-card/60 sm:w-56"
               />
-              <ExportButton
+              <ReportExportDialog
                 disabled={isExporting}
                 label={isExporting ? "Exportando..." : "Exportar"}
-                enableScopeSelection
-                onExport={(formatValue) =>
-                  formatValue === "pdf" || formatValue === "xlsx"
-                    ? void handleExport("month", formatValue)
-                    : undefined
-                }
-                onExportScoped={(scope, formatValue) => void handleExport(scope, formatValue)}
+                onExport={handleExport}
               />
               <Button
                 onClick={() => {

@@ -682,36 +682,46 @@ export default function AnalisePage() {
       const { scope, referenceDate, agente: exportAgente } = exportFilters;
       setIsExporting(true);
       try {
+        const sourceQuery = {
+          secao: "ver_todos",
+          search: debouncedSearch || undefined,
+          agente: exportAgente || agenteFilter || undefined,
+          analista: analistaFilter || undefined,
+          etapa: etapaFilter || undefined,
+          status: statusFilter || undefined,
+          data_inicio: formatDateForQuery(dataInicio),
+          data_fim: formatDateForQuery(dataFim),
+        };
         const rows = await fetchAllPaginatedRows<EsteiraItem>({
           sourcePath: "analise/filas",
-          sourceQuery: {
-            secao: "ver_todos",
-            agente: exportAgente || undefined,
-            page_size: 200,
-          },
+          sourceQuery,
         });
         const scopedRows = filterRowsByReportScope({
           rows,
           scope,
           referenceDate,
-          getCandidates: (row) => [row.created_at],
+          getCandidates: (row) => [
+            (row as EsteiraItem & { created_at?: string }).created_at,
+          ],
         });
         const exportRows = scopedRows.map((row) => ({
-          nome: row.nome,
-          cpf_cnpj: maskCPFCNPJ(row.cpf_cnpj),
-          matricula: row.matricula_orgao || row.matricula || "—",
-          contrato_codigo: row.contrato_codigo || "—",
+          nome: row.contrato?.associado_nome ?? "—",
+          cpf_cnpj: maskCPFCNPJ(row.contrato?.cpf_cnpj ?? ""),
+          matricula:
+            row.contrato?.matricula_display ?? row.contrato?.matricula ?? "—",
+          contrato_codigo: row.contrato?.codigo ?? "—",
           etapa: row.etapa_atual,
           status: row.status,
-          agente: row.agente_nome || "—",
-          criado_em: row.created_at,
+          agente: row.agente?.full_name ?? "—",
+          criado_em:
+            (row as EsteiraItem & { created_at?: string }).created_at ?? "",
         }));
         await exportRouteReport({
           route: "/analise",
           format: fmt,
           rows: exportRows,
           filters: {
-            agente: exportAgente || undefined,
+            ...sourceQuery,
             total_registros: exportRows.length,
             ...describeReportScope(scope, referenceDate),
           },
@@ -722,7 +732,15 @@ export default function AnalisePage() {
         setIsExporting(false);
       }
     },
-    [],
+    [
+      agenteFilter,
+      analistaFilter,
+      dataFim,
+      dataInicio,
+      debouncedSearch,
+      etapaFilter,
+      statusFilter,
+    ],
   );
 
   if (status !== "authenticated") {
@@ -981,6 +999,15 @@ export default function AnalisePage() {
             label="Exportar"
             agentOptions={agentOptions}
             showFilters
+            initialScope={
+              dataInicio &&
+              dataFim &&
+              formatDateForQuery(dataInicio) === formatDateForQuery(dataFim)
+                ? "day"
+                : "month"
+            }
+            initialDayRef={dataFim ?? dataInicio}
+            initialMonthRef={dataFim ?? dataInicio}
             onExport={handleExportAnalise}
           />
         </div>

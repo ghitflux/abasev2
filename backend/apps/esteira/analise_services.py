@@ -294,7 +294,7 @@ class AnaliseService:
             return queryset.filter(
                 etapa_atual=EsteiraItem.Etapa.CONCLUIDO
             ).exclude(
-                latest_contract_status=Contrato.Status.CANCELADO
+                associado__status=Associado.Status.INATIVO
             ).order_by("-concluido_em", "-updated_at", "-created_at")
 
         return queryset.filter(

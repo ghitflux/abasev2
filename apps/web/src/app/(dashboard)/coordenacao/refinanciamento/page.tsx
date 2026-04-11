@@ -17,7 +17,12 @@ import type {
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
 import { formatMonthYear } from "@/lib/formatters";
-import { exportPaginatedRouteReport } from "@/lib/reports";
+import {
+  describeReportScope,
+  exportRouteReport,
+  fetchAllPaginatedRows,
+  filterRowsByReportScope,
+} from "@/lib/reports";
 import { RefinanciamentoDetalhesDialog } from "@/components/refinanciamento/refinanciamento-detalhes-dialog";
 import MultiSelect from "@/components/custom/multi-select";
 import SearchableSelect, {
@@ -26,7 +31,9 @@ import SearchableSelect, {
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
-import ExportButton from "@/components/shared/export-button";
+import ReportExportDialog, {
+  type ReportExportFilters,
+} from "@/components/shared/report-export-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -523,35 +530,45 @@ export default function CoordenacaoRefinanciamentoPage() {
   );
 
   const handleExport = React.useCallback(
-    async (format: "csv" | "pdf" | "excel" | "xlsx") => {
-      if (format !== "pdf" && format !== "xlsx") {
-        return;
-      }
-
+    async (exportFilters: ReportExportFilters, format: "pdf" | "xlsx") => {
+      const { scope, referenceDate } = exportFilters;
       setIsExporting(true);
       try {
-        await exportPaginatedRouteReport<RefinanciamentoItem>({
+        const sourceQuery = {
+          search: search || undefined,
+          year: filters.year || undefined,
+          competencia_start: toCompetenciaDate(filters.competenciaStart),
+          competencia_end: toCompetenciaDate(filters.competenciaEnd),
+          agent: filters.agent || undefined,
+          status: filters.statuses,
+          origem: filters.origins,
+          eligibility_band: filters.eligibilityBand || undefined,
+        };
+        const fetchedRows = await fetchAllPaginatedRows<RefinanciamentoItem>({
+          sourcePath: "coordenacao/refinanciamento",
+          sourceQuery,
+        });
+        const rows = filterRowsByReportScope({
+          rows: fetchedRows,
+          scope,
+          referenceDate,
+          getCandidates: (row) => [row.data_solicitacao, row.updated_at],
+        }).map((row) => ({
+          contrato_codigo: row.contrato_codigo,
+          associado_nome: row.associado_nome,
+          status: row.status,
+          analista_note: row.analista_note ?? "",
+          coordenador_note: row.coordenador_note ?? "",
+          data_solicitacao: row.data_solicitacao,
+        }));
+        await exportRouteReport({
           route: "/coordenacao/refinanciamento",
           format,
-          sourcePath: "coordenacao/refinanciamento",
-          sourceQuery: {
-            search: search || undefined,
-            year: filters.year || undefined,
-            competencia_start: toCompetenciaDate(filters.competenciaStart),
-            competencia_end: toCompetenciaDate(filters.competenciaEnd),
-            agent: filters.agent || undefined,
-            status: filters.statuses,
-            origem: filters.origins,
-            eligibility_band: filters.eligibilityBand || undefined,
+          rows,
+          filters: {
+            ...sourceQuery,
+            ...describeReportScope(scope, referenceDate),
           },
-          mapRow: (row) => ({
-            contrato_codigo: row.contrato_codigo,
-            associado_nome: row.associado_nome,
-            status: row.status,
-            analista_note: row.analista_note ?? "",
-            coordenador_note: row.coordenador_note ?? "",
-            data_solicitacao: row.data_solicitacao,
-          }),
         });
       } catch (error) {
         toast.error(
@@ -584,10 +601,17 @@ export default function CoordenacaoRefinanciamentoPage() {
               de validação: {totalCount}
             </p>
           </div>
-          <ExportButton
+          <ReportExportDialog
             disabled={isExporting}
-            label={isExporting ? "Exportando..." : "Exportar"}
-            onExport={(format) => void handleExport(format)}
+            label="Exportar"
+            initialMonthRef={
+              filters.competenciaEnd
+                ? new Date(`${filters.competenciaEnd}-01T12:00:00`)
+                : filters.competenciaStart
+                  ? new Date(`${filters.competenciaStart}-01T12:00:00`)
+                  : undefined
+            }
+            onExport={handleExport}
           />
         </div>
       </section>

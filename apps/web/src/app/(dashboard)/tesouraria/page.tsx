@@ -5,12 +5,17 @@ import { format } from "date-fns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDaysIcon,
+  CheckCircle2Icon,
+  Clock3Icon,
   EyeIcon,
+  HandCoinsIcon,
+  LayoutGridIcon,
   SlidersHorizontalIcon,
   PaperclipIcon,
   LockIcon,
   Trash2Icon,
   UploadIcon,
+  XCircleIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -28,8 +33,6 @@ import {
   exportRouteReport,
   fetchAllPaginatedRows,
   filterRowsByReportScope,
-  resolveReportReferenceDate,
-  type ReportScope,
 } from "@/lib/reports";
 import DatePicker from "@/components/custom/date-picker";
 import SearchableSelect from "@/components/custom/searchable-select";
@@ -39,7 +42,10 @@ import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, {
   type DataTableColumn,
 } from "@/components/shared/data-table";
-import ExportButton from "@/components/shared/export-button";
+import ReportExportDialog, {
+  type ReportExportFilters,
+} from "@/components/shared/report-export-dialog";
+import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -847,12 +853,11 @@ export default function TesourariaPage() {
   );
 
   const handleExport = React.useCallback(
-    async (scope: ReportScope, formatValue: "pdf" | "xlsx") => {
-      const referenceDate = resolveReportReferenceDate({
-        scope,
-        dayReference: dataInicio ?? dataFim,
-        monthReference: dataInicio ?? dataFim,
-      });
+    async (
+      exportFilters: ReportExportFilters,
+      formatValue: "pdf" | "xlsx",
+    ) => {
+      const { scope, referenceDate, agente: exportAgente, status: exportStatus, esteira: exportEsteira } = exportFilters;
 
       setIsExporting(true);
       try {
@@ -864,11 +869,13 @@ export default function TesourariaPage() {
           search: search || undefined,
           data_inicio: toFilterDate(dataInicio),
           data_fim: toFilterDate(dataFim),
-          agente: agenteFiltro || undefined,
+          agente: exportAgente || agenteFiltro || undefined,
           status_contrato:
-            statusContrato === "todos" ? undefined : statusContrato,
+            exportStatus ||
+            (statusContrato !== "todos" ? statusContrato : undefined),
           situacao_esteira:
-            situacaoEsteira === "todos" ? undefined : situacaoEsteira,
+            exportEsteira ||
+            (situacaoEsteira !== "todos" ? situacaoEsteira : undefined),
           ordering,
         };
 
@@ -892,6 +899,12 @@ export default function TesourariaPage() {
           referenceDate,
           getCandidates: (row) => [row.data_solicitacao, row.data_assinatura],
         }).map((row) => buildTesourariaExportRow(row));
+        const scopedRows = filterRowsByReportScope({
+          rows: fetchedRows,
+          scope,
+          referenceDate,
+          getCandidates: (row) => [row.data_solicitacao, row.data_assinatura],
+        });
 
         await exportRouteReport({
           route: "/tesouraria",
@@ -900,6 +913,33 @@ export default function TesourariaPage() {
           filters: {
             ...sharedQuery,
             pagamento: pagamentos,
+            totais: {
+              total_registros: scopedRows.length,
+              total_auxilio_liberado: scopedRows
+                .reduce(
+                  (total, row) =>
+                    total +
+                    Number.parseFloat(String(row.margem_disponivel ?? "0")),
+                  0,
+                )
+                .toFixed(2),
+              total_comissao_agente: scopedRows
+                .reduce(
+                  (total, row) =>
+                    total +
+                    Number.parseFloat(String(row.comissao_agente ?? "0")),
+                  0,
+                )
+                .toFixed(2),
+              total_mensalidade: scopedRows
+                .reduce(
+                  (total, row) =>
+                    total +
+                    Number.parseFloat(String(row.valor_mensalidade ?? "0")),
+                  0,
+                )
+                .toFixed(2),
+            },
             ...describeReportScope(scope, referenceDate),
           },
         });
@@ -976,35 +1016,40 @@ export default function TesourariaPage() {
       label: "Total no filtro",
       tooltip: "Soma das filas operacionais exibidas com o recorte atual.",
       value: totalKpiCount,
-      accentClassName: "text-foreground",
+      tone: "neutral" as const,
+      icon: LayoutGridIcon,
     },
     {
       key: "pendente" as const,
       label: "Pendentes",
       tooltip: "Contratos ainda sem liberação final na tesouraria.",
       value: kpiCounts.pendente,
-      accentClassName: "text-rose-200",
+      tone: "warning" as const,
+      icon: Clock3Icon,
     },
     {
       key: "concluido" as const,
       label: "Efetivados",
       tooltip: "Contratos já liberados pela tesouraria no recorte atual.",
       value: kpiCounts.concluido,
-      accentClassName: "text-emerald-200",
+      tone: "positive" as const,
+      icon: CheckCircle2Icon,
     },
     {
       key: "liquidado" as const,
       label: "Liquidados",
       tooltip: "Contratos encerrados operacionalmente.",
       value: kpiCounts.liquidado,
-      accentClassName: "text-sky-200",
+      tone: "neutral" as const,
+      icon: HandCoinsIcon,
     },
     {
       key: "cancelado" as const,
       label: "Cancelados",
       tooltip: "Contratos cancelados ou desistentes no histórico do recorte.",
       value: kpiCounts.cancelado,
-      accentClassName: "text-amber-200",
+      tone: "warning" as const,
+      icon: XCircleIcon,
     },
   ];
   const agentOptions = React.useMemo(
@@ -1041,13 +1086,14 @@ export default function TesourariaPage() {
         </Card>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           {kpiCards.map((card) => (
-            <TesourariaKpiCard
+            <StatsCard
               key={card.key}
-              label={card.label}
+              title={card.label}
               tooltip={card.tooltip}
-              value={card.value}
-              scope={filterScopeLabel}
-              accentClassName={card.accentClassName}
+              value={String(card.value)}
+              delta={filterScopeLabel}
+              tone={card.tone}
+              icon={card.icon}
               active={visibleSection === card.key}
               onClick={() => setVisibleSection(card.key)}
             />
@@ -1256,18 +1302,33 @@ export default function TesourariaPage() {
             </SheetFooter>
           </SheetContent>
         </Sheet>
-        <ExportButton
+        <ReportExportDialog
           disabled={isExporting}
-          label={isExporting ? "Exportando..." : "Exportar"}
-          enableScopeSelection
-          onExport={(formatValue) =>
-            formatValue === "pdf" || formatValue === "xlsx"
-              ? void handleExport("month", formatValue)
-              : undefined
+          label="Exportar"
+          showFilters
+          agentOptions={agentOptions}
+          statusOptions={[
+            { value: "ativo", label: "Ativo" },
+            { value: "cancelado", label: "Cancelado" },
+            { value: "encerrado", label: "Encerrado" },
+          ]}
+          esteiraOptions={[
+            { value: "cadastro", label: "Cadastro" },
+            { value: "analise", label: "Análise" },
+            { value: "coordenacao", label: "Coordenação" },
+            { value: "tesouraria", label: "Tesouraria" },
+            { value: "concluido", label: "Concluído" },
+          ]}
+          initialScope={
+            dataInicio &&
+            dataFim &&
+            toFilterDate(dataInicio) === toFilterDate(dataFim)
+              ? "day"
+              : "month"
           }
-          onExportScoped={(scope, formatValue) =>
-            void handleExport(scope, formatValue)
-          }
+          initialDayRef={dataFim ?? dataInicio}
+          initialMonthRef={dataFim ?? dataInicio}
+          onExport={handleExport}
         />
       </section>
 
@@ -1588,64 +1649,6 @@ function FilterField({
   );
 }
 
-function TesourariaKpiCard({
-  label,
-  tooltip,
-  value,
-  scope,
-  active,
-  accentClassName,
-  onClick,
-}: {
-  label: string;
-  tooltip?: string;
-  value: number;
-  scope: string;
-  active: boolean;
-  accentClassName?: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      aria-label={`${label}: ${value}`}
-      onClick={onClick}
-      className={[
-        "rounded-[1.5rem] border p-5 text-left transition-colors",
-        active
-          ? "border-primary/60 bg-primary/10 shadow-[0_0_0_1px_rgba(255,255,255,0.04)]"
-          : "border-border/60 bg-card/60 hover:border-primary/30 hover:bg-card/80",
-      ].join(" ")}
-    >
-      {tooltip ? (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <p className="cursor-help text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-              {label}
-            </p>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-72">
-            {tooltip}
-          </TooltipContent>
-        </Tooltip>
-      ) : (
-        <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-          {label}
-        </p>
-      )}
-      <p
-        className={`mt-3 text-3xl font-semibold ${accentClassName ?? "text-foreground"}`}
-      >
-        {value}
-      </p>
-      <p className="mt-2 text-xs text-muted-foreground">{scope}</p>
-      <p className="mt-3 text-xs text-muted-foreground">
-        {active ? "Exibindo esta seção" : "Clique para focar"}
-      </p>
-    </button>
-  );
-}
 
 function ComprovanteSlot({
   label,

@@ -58,7 +58,7 @@ const ROLE_ROUTE_PREFIXES: Record<Role, string[]> = {
   ADMIN: ["/"],
   AGENTE: ["/agentes"],
   ANALISTA: ["/analise"],
-  COORDENADOR: ["/dashboard", "/coordenacao", "/importacao", "/tesouraria"],
+  COORDENADOR: ["/dashboard", "/coordenacao", "/importacao", "/tesouraria", "/renovacao-ciclos"],
   TESOUREIRO: ["/tesouraria", "/renovacao-ciclos"],
 };
 
@@ -414,7 +414,7 @@ export const navigationSections: NavigationSection[] = [
         title: "Dashboard de Ciclos",
         href: "/renovacao-ciclos",
         icon: RefreshCcw,
-        roles: ["ADMIN", "TESOUREIRO"],
+        roles: ["ADMIN", "TESOUREIRO", "COORDENADOR"],
       },
       {
         title: "Relatórios",

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 
 import TesourariaPage from "./page";
 import { apiFetch } from "@/lib/api/client";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 jest.mock("@/lib/api/client", () => ({
   apiFetch: jest.fn(),
@@ -113,9 +114,11 @@ function renderPage() {
   });
 
   return render(
-    <QueryClientProvider client={client}>
-      <TesourariaPage />
-    </QueryClientProvider>,
+    <TooltipProvider>
+      <QueryClientProvider client={client}>
+        <TesourariaPage />
+      </QueryClientProvider>
+    </TooltipProvider>,
   );
 }
 

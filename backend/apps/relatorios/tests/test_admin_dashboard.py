@@ -429,9 +429,9 @@ class AdminDashboardViewSetTestCase(TestCase):
         self.assertEqual(cards["baixas_manuais"]["numeric_value"], 1.0)
         self.assertEqual(cards["inadimplentes_quitados"]["numeric_value"], 1.0)
         self.assertEqual(cards["contratos_novos"]["numeric_value"], 4.0)
-        self.assertEqual(cards["saidas_agentes_associados"]["value"], "40.00")
+        self.assertEqual(cards["saidas_agentes_associados"]["value"], "33.00")
         self.assertEqual(cards["despesas"]["value"], "12.50")
-        self.assertEqual(cards["receita_liquida_associacao"]["value"], "52.50")
+        self.assertEqual(cards["receita_liquida_associacao"]["value"], "59.50")
         self.assertEqual(len(payload["projection_area"]), 3)
         self.assertGreater(cards["projecao_total"]["numeric_value"], 0)
 
@@ -443,7 +443,7 @@ class AdminDashboardViewSetTestCase(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
         cards = {item["key"]: item for item in response.json()["cards"]}
         self.assertEqual(cards["valores_recebidos"]["value"], "0.00")
-        self.assertEqual(cards["saidas_agentes_associados"]["value"], "40.00")
+        self.assertEqual(cards["saidas_agentes_associados"]["value"], "33.00")
         self.assertEqual(cards["despesas"]["value"], "12.50")
 
         invalid = self.client.get(
@@ -498,6 +498,71 @@ class AdminDashboardViewSetTestCase(TestCase):
         self.assertEqual(march["novos_associados"], 3)
         self.assertEqual(march["desvinculados"], 2)
         self.assertEqual(march["renovacoes_associado"], 1)
+
+    def test_resumo_mensal_associacao_alinha_renovacoes_com_detalhamento_filtrado(self):
+        summary = self.client.get(
+            "/api/v1/dashboard/admin/resumo-mensal-associacao/",
+            {
+                "competencia": "2026-03",
+                "agent_id": self.agente_a.id,
+                "status": Associado.Status.ATIVO,
+            },
+        )
+        self.assertEqual(summary.status_code, 200, summary.json())
+        march = next(row for row in summary.json()["rows"] if row["mes"] == "2026-03-01")
+
+        detail = self.client.get(
+            "/api/v1/dashboard/admin/detalhes/",
+            {
+                "section": "summary",
+                "metric": "trend:renovacoes:2026-03",
+                "agent_id": self.agente_a.id,
+                "status": Associado.Status.ATIVO,
+                "page_size": "all",
+            },
+        )
+        self.assertEqual(detail.status_code, 200, detail.json())
+        self.assertEqual(march["renovacoes_associado"], detail.json()["count"])
+
+    def test_tesouraria_considera_liquidacoes_nos_valores_recebidos(self):
+        LiquidacaoContrato.objects.create(
+            contrato=self.active_effective_contract,
+            realizado_por=self.admin,
+            data_liquidacao=date(2026, 3, 20),
+            valor_total=Decimal("30.00"),
+            comprovante=SimpleUploadedFile(
+                "liquidacao-dashboard.pdf",
+                b"pdf",
+                content_type="application/pdf",
+            ),
+            nome_comprovante="liquidacao-dashboard.pdf",
+            origem_solicitacao=LiquidacaoContrato.OrigemSolicitacao.ADMINISTRACAO,
+            observacao="Liquidação para composição do dashboard",
+        )
+
+        response = self.client.get(
+            "/api/v1/dashboard/admin/tesouraria/",
+            {"competencia": "2026-03"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        cards = {item["key"]: item for item in response.json()["cards"]}
+        self.assertEqual(cards["valores_recebidos"]["value"], "135.00")
+
+        detail = self.client.get(
+            "/api/v1/dashboard/admin/detalhes/",
+            {
+                "section": "treasury",
+                "metric": "valores_recebidos",
+                "competencia": "2026-03",
+                "page_size": "all",
+            },
+        )
+        self.assertEqual(detail.status_code, 200, detail.json())
+        payload = detail.json()
+        self.assertEqual(payload["count"], 4)
+        self.assertTrue(
+            any(row["origem"] == "Liquidacao de contrato" for row in payload["results"])
+        )
 
     def test_novos_associados_retorna_cards_e_distribuicao(self):
         response = self.client.get(
@@ -598,6 +663,40 @@ class AdminDashboardViewSetTestCase(TestCase):
         self.assertEqual(
             {row["contrato_codigo"] for row in agent_payload["results"]},
             {"CTR-A1", "CTR-A3"},
+        )
+        self.assertEqual(
+            {row["valor"] for row in agent_payload["results"]},
+            {"30.00"},
+        )
+
+        treasury_saida_response = self.client.get(
+            "/api/v1/dashboard/admin/detalhes/",
+            {
+                "section": "treasury",
+                "metric": "saidas_agentes_associados",
+                "competencia": "2026-03",
+                "page_size": "all",
+            },
+        )
+        self.assertEqual(
+            treasury_saida_response.status_code,
+            200,
+            treasury_saida_response.json(),
+        )
+        treasury_saida_payload = treasury_saida_response.json()
+        self.assertEqual(treasury_saida_payload["count"], 1)
+        self.assertEqual(treasury_saida_payload["results"][0]["valor"], "30.00")
+        self.assertEqual(
+            treasury_saida_payload["results"][0]["valor_associado"],
+            "30.00",
+        )
+        self.assertEqual(
+            treasury_saida_payload["results"][0]["valor_agente"],
+            "3.00",
+        )
+        self.assertEqual(
+            treasury_saida_payload["results"][0]["valor_total"],
+            "33.00",
         )
 
     def test_detalhes_novos_associados_do_mes_retorna_data_nascimento(self):

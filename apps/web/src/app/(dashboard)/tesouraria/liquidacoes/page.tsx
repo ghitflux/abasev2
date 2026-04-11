@@ -37,8 +37,6 @@ import {
   exportRouteReport,
   fetchAllPaginatedRows,
   filterRowsByReportScope,
-  resolveReportReferenceDate,
-  type ReportScope,
 } from "@/lib/reports";
 import DatePicker from "@/components/custom/date-picker";
 import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
@@ -47,7 +45,9 @@ import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
-import ExportButton from "@/components/shared/export-button";
+import ReportExportDialog, {
+  type ReportExportFilters,
+} from "@/components/shared/report-export-dialog";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -325,13 +325,8 @@ export default function LiquidacoesTesourariaPage() {
   });
 
   const handleExport = React.useCallback(
-    async (scope: ReportScope, formatValue: "pdf" | "xlsx") => {
-      const referenceDate = resolveReportReferenceDate({
-        scope,
-        dayReference: dataInicio ?? dataFim,
-        monthReference: dataInicio ?? dataFim,
-      });
-
+    async (exportFilters: ReportExportFilters, formatValue: "pdf" | "xlsx") => {
+      const { scope, referenceDate } = exportFilters;
       setIsExporting(true);
       try {
         const sourceQuery = {
@@ -795,16 +790,10 @@ export default function LiquidacoesTesourariaPage() {
               trilha financeira e reversão administrativa controlada.
             </p>
           </div>
-          <ExportButton
+          <ReportExportDialog
             disabled={isExporting}
             label={isExporting ? "Exportando..." : "Exportar"}
-            enableScopeSelection
-            onExport={(formatValue) =>
-              formatValue === "pdf" || formatValue === "xlsx"
-                ? void handleExport("month", formatValue)
-                : undefined
-            }
-            onExportScoped={(scope, formatValue) => void handleExport(scope, formatValue)}
+            onExport={handleExport}
           />
         </div>
       </section>

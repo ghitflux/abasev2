@@ -533,6 +533,17 @@ def _serialize_refinanciamento(refinanciamento: Refinanciamento) -> dict[str, An
     }
 
 
+def _serialize_refinanciamento_for_editor(
+    refinanciamento: Refinanciamento,
+    contrato: Contrato,
+) -> dict[str, Any]:
+    payload = _serialize_refinanciamento(refinanciamento)
+    margem_disponivel = Decimal(str(contrato.margem_disponivel or "0.00"))
+    if margem_disponivel > 0:
+        payload["valor_refinanciamento"] = str(margem_disponivel)
+    return payload
+
+
 def _serialize_esteira(esteira: EsteiraItem | None) -> dict[str, Any]:
     if esteira is None:
         return {}
@@ -890,6 +901,7 @@ class AdminOverrideService:
         payload_contracts: list[dict[str, Any]] = []
         payload_warnings: list[dict[str, Any]] = []
         for contrato in contratos:
+            refinanciamento_ativo = _active_operational_refinanciamento(contrato)
             projection = AdminOverrideService.build_contract_projection_for_response(
                 contrato,
                 include_documents=True,
@@ -985,8 +997,11 @@ class AdminOverrideService:
                     "meses_nao_pagos": unpaid_payload,
                     "movimentos_financeiros_avulsos": movement_payload,
                     "refinanciamento_ativo": (
-                        _serialize_refinanciamento(_active_operational_refinanciamento(contrato))
-                        if _active_operational_refinanciamento(contrato)
+                        _serialize_refinanciamento_for_editor(
+                            refinanciamento_ativo,
+                            contrato,
+                        )
+                        if refinanciamento_ativo
                         else None
                     ),
                 }

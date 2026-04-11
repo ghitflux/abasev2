@@ -26,7 +26,7 @@ import SearchableSelect, { type SelectOption } from "@/components/custom/searcha
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
-import ExportButton from "@/components/shared/export-button";
+import ReportExportDialog from "@/components/shared/report-export-dialog";
 import { MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
@@ -455,10 +455,11 @@ export default function AnaliseAptosPage() {
               para validação da coordenação. Total filtrado: {resumo.total}
             </p>
           </div>
-          <ExportButton
+          <ReportExportDialog
+            hideScope
             disabled={isExporting}
             label={isExporting ? "Exportando..." : "Exportar"}
-            onExport={(format) => void handleExport(format)}
+            onExport={(_, fmt) => void handleExport(fmt)}
           />
         </div>
       </section>

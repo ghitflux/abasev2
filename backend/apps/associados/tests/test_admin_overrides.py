@@ -13,7 +13,7 @@ from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.models import EsteiraItem
-from apps.refinanciamento.models import Comprovante
+from apps.refinanciamento.models import Comprovante, Refinanciamento
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
@@ -1350,3 +1350,24 @@ class AdminOverrideApiTestCase(TestCase):
         self.assertEqual(comprovante_payload["nome_original"], "manual-layout.pdf")
         self.assertIn("arquivo", comprovante_payload)
         self.assertTrue(comprovante_payload["arquivo"])
+
+    def test_editor_payload_uses_contract_margin_for_active_refinanciamento_value(self):
+        Refinanciamento.objects.create(
+            associado=self.associado,
+            contrato_origem=self.contrato,
+            solicitado_por=self.admin,
+            competencia_solicitada=date(2026, 5, 1),
+            status=Refinanciamento.Status.APTO_A_RENOVAR,
+            valor_refinanciamento=Decimal("10000.00"),
+            repasse_agente=Decimal("63.00"),
+        )
+
+        response = self.admin_client.get(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/editor/"
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        refinanciamento_payload = response.json()["contratos"][0]["refinanciamento_ativo"]
+        self.assertIsNotNone(refinanciamento_payload)
+        self.assertEqual(refinanciamento_payload["valor_refinanciamento"], "900.00")
+        self.assertEqual(refinanciamento_payload["repasse_agente"], "63.00")

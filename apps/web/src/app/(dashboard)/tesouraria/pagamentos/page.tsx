@@ -23,8 +23,6 @@ import {
   exportRouteReport,
   fetchAllPaginatedRows,
   filterRowsByReportScope,
-  resolveReportReferenceDate,
-  type ReportScope,
 } from "@/lib/reports";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import DatePicker from "@/components/custom/date-picker";
@@ -40,7 +38,9 @@ import {
   STATUS_OPTIONS,
 } from "@/components/pagamentos/pagamentos-shared";
 import DataTable from "@/components/shared/data-table";
-import ExportButton from "@/components/shared/export-button";
+import ReportExportDialog, {
+  type ReportExportFilters,
+} from "@/components/shared/report-export-dialog";
 import { MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
@@ -164,12 +164,8 @@ export default function TesourariaPagamentosPage() {
   const activeAdvancedFilters = countActiveAdvancedFilters(filters);
 
   const handleExport = React.useCallback(
-    async (scope: ReportScope, exportFormat: "pdf" | "xlsx") => {
-      const referenceDate = resolveReportReferenceDate({
-        scope,
-        dayReference: filters.dataInicio ?? filters.dataFim,
-        monthReference: filters.competencia ?? filters.dataInicio ?? filters.dataFim,
-      });
+    async (exportFilters: ReportExportFilters, exportFormat: "pdf" | "xlsx") => {
+      const { scope, referenceDate } = exportFilters;
       setIsExporting(true);
       try {
         const sourceQuery = {
@@ -247,16 +243,10 @@ export default function TesourariaPagamentosPage() {
               financeiro.
             </p>
           </div>
-          <ExportButton
+          <ReportExportDialog
             disabled={isExporting}
             label={isExporting ? "Exportando..." : "Exportar"}
-            enableScopeSelection
-            onExport={(exportFormat) =>
-              exportFormat === "pdf" || exportFormat === "xlsx"
-                ? void handleExport("month", exportFormat)
-                : undefined
-            }
-            onExportScoped={(scope, exportFormat) => void handleExport(scope, exportFormat)}
+            onExport={handleExport}
           />
         </div>
       </section>

@@ -4,7 +4,7 @@ import * as React from "react";
 
 import type { DataTableColumn } from "@/components/shared/data-table";
 import DataTable from "@/components/shared/data-table";
-import ExportButton from "@/components/shared/export-button";
+import ReportExportDialog from "@/components/shared/report-export-dialog";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -32,6 +32,7 @@ type DashboardDetailDialogProps<T extends { id: number | string }> = {
   onPageChange?: (page: number) => void;
   pageSize?: number;
   onExport?: (format: "csv" | "pdf" | "excel" | "xlsx") => void | Promise<void>;
+  toolbarContent?: React.ReactNode;
 };
 
 export default function DashboardDetailDialog<T extends { id: number | string }>({
@@ -55,6 +56,7 @@ export default function DashboardDetailDialog<T extends { id: number | string }>
   onPageChange,
   pageSize = 10,
   onExport,
+  toolbarContent,
 }: DashboardDetailDialogProps<T>) {
   const [internalSearch, setInternalSearch] = React.useState("");
   const isControlledSearch =
@@ -85,31 +87,35 @@ export default function DashboardDetailDialog<T extends { id: number | string }>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 flex-1 gap-3">
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder={searchPlaceholder}
-              className="rounded-2xl bg-card/60"
+        <div className="shrink-0 space-y-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 flex-1 gap-3">
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder={searchPlaceholder}
+                className="rounded-2xl bg-card/60"
+              />
+              {search ? (
+                <Button
+                  variant="outline"
+                  className="rounded-2xl"
+                  onClick={() => setSearch("")}
+                >
+                  Limpar
+                </Button>
+              ) : null}
+            </div>
+            <ReportExportDialog
+              hideScope
+              onExport={(_, fmt) =>
+                onExport
+                  ? onExport(fmt)
+                  : exportRows(fmt, exportTitle, exportFilename, exportColumns, filteredRows)
+              }
             />
-            {search ? (
-              <Button
-                variant="outline"
-                className="rounded-2xl"
-                onClick={() => setSearch("")}
-              >
-                Limpar
-              </Button>
-            ) : null}
           </div>
-          <ExportButton
-            onExport={(format) =>
-              onExport
-                ? onExport(format)
-                : exportRows(format, exportTitle, exportFilename, exportColumns, filteredRows)
-            }
-          />
+          {toolbarContent}
         </div>
 
         <div className="min-h-0 overflow-y-auto pr-1">

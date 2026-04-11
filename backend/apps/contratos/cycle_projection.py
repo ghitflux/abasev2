@@ -43,7 +43,8 @@ ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES = {
     Refinanciamento.Status.EM_ANALISE,
     Refinanciamento.Status.APROVADO,
     Refinanciamento.Status.BLOQUEADO,
-    Refinanciamento.Status.DESATIVADO,
+    # DESATIVADO removido: um refinanciamento cancelado não deve sobrescrever
+    # o status visual do ciclo. O status "Inativo" é controlado pelo associado/contrato.
 }
 EFFECTIVE_REFINANCIAMENTO_STATUSES = {
     Refinanciamento.Status.EFETIVADO,

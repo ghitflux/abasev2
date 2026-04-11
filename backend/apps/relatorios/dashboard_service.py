@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 
-from django.db.models import Count, DecimalField, IntegerField, OuterRef, Prefetch, Q, QuerySet, Subquery, Sum, Value
+from django.db.models import Case, Count, DecimalField, F, IntegerField, OuterRef, Prefetch, Q, QuerySet, Subquery, Sum, Value, When
 from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
@@ -23,6 +24,7 @@ from apps.esteira.models import EsteiraItem
 from apps.financeiro.models import Despesa
 from apps.importacao.financeiro import canonicalize_pagamentos
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, PagamentoMensalidade
+from apps.refinanciamento.models import Refinanciamento
 from apps.tesouraria.models import (
     DevolucaoAssociado,
     LiquidacaoContrato,
@@ -77,6 +79,8 @@ class DashboardFilters:
 
 
 class AdminDashboardService:
+    _RENEWAL_ID_PATTERN = re.compile(r"refi\s*#(\d+)", re.IGNORECASE)
+
     @staticmethod
     def build_filters(
         *,
@@ -415,6 +419,36 @@ class AdminDashboardService:
         }
 
     @staticmethod
+    def _detail_row_from_liquidacao(
+        liquidacao: LiquidacaoContrato,
+        *,
+        origem: str,
+        observacao: str = "",
+        valor: Decimal | None = None,
+    ) -> dict[str, object]:
+        contrato = liquidacao.contrato
+        associado = contrato.associado
+        return {
+            "id": f"liquidacao-{liquidacao.id}-{origem}",
+            "associado_id": associado.id,
+            "associado_nome": associado.nome_completo,
+            "cpf_cnpj": associado.cpf_cnpj,
+            "matricula": associado.matricula_orgao or associado.matricula or "-",
+            "status": associado.status,
+            "agente_nome": AdminDashboardService._resolve_agent_name(
+                associado=associado,
+                contrato=contrato,
+            ),
+            "contrato_codigo": contrato.codigo,
+            "etapa": "liquidacao",
+            "competencia": month_label(liquidacao.data_liquidacao.replace(day=1)),
+            "valor": value_or_none(valor if valor is not None else liquidacao.valor_total),
+            "origem": origem,
+            "data_referencia": liquidacao.data_liquidacao.isoformat(),
+            "observacao": observacao or liquidacao.observacao,
+        }
+
+    @staticmethod
     def _detail_row_from_parcela(
         parcela: Parcela,
         *,
@@ -447,11 +481,14 @@ class AdminDashboardService:
         origem: str,
         observacao: str = "",
         valor: Decimal | None = None,
+        valor_associado: Decimal | None = None,
+        valor_agente: Decimal | None = None,
+        valor_total: Decimal | None = None,
     ) -> dict[str, object]:
         associado = pagamento.cadastro
         contrato = AdminDashboardService._resolve_contract_for_associado(associado)
         paid_at = pagamento.paid_at.date() if pagamento.paid_at else None
-        return {
+        payload = {
             "id": f"tesouraria-pagamento-{pagamento.id}-{origem}",
             "associado_id": associado.id,
             "associado_nome": associado.nome_completo,
@@ -467,6 +504,13 @@ class AdminDashboardService:
             "data_referencia": paid_at.isoformat() if paid_at else "",
             "observacao": observacao,
         }
+        if valor_associado is not None:
+            payload["valor_associado"] = value_or_none(valor_associado)
+        if valor_agente is not None:
+            payload["valor_agente"] = value_or_none(valor_agente)
+        if valor_total is not None:
+            payload["valor_total"] = value_or_none(valor_total)
+        return payload
 
     @staticmethod
     def _detail_row_from_devolucao(
@@ -563,6 +607,33 @@ class AdminDashboardService:
             for row in rows
             if AdminDashboardService._renewal_reference_date(row) == day
         ]
+
+    @staticmethod
+    def _renewed_associados_for_month(
+        month: date,
+        *,
+        agent_id: int | None = None,
+        status: str | None = None,
+        day: date | None = None,
+    ) -> set[int]:
+        rows = AdminDashboardService._filter_renewal_rows_by_agent(
+            RenovacaoCicloService.listar_detalhes(
+                competencia=month,
+                status="ciclo_renovado",
+            ),
+            agent_id,
+        )
+        rows = AdminDashboardService._filter_renewal_rows_by_status(
+            rows,
+            status,
+            agent_id,
+        )
+        rows = AdminDashboardService._filter_renewal_rows_by_day(rows, day)
+        return {
+            int(row["associado_id"])
+            for row in rows
+            if row["status_visual"] == "ciclo_renovado" or row["gerou_encerramento"]
+        }
 
     @staticmethod
     def _trend_months(end_month: date, count: int = 6) -> list[date]:
@@ -1084,6 +1155,199 @@ class AdminDashboardService:
     def _payment_is_ok(payment: PagamentoMensalidade) -> bool:
         return AdminDashboardService._payment_is_manual(payment) or AdminDashboardService._payment_is_imported(payment)
 
+    @classmethod
+    def _ok_payments_for_filters(
+        cls,
+        filters: DashboardFilters,
+    ) -> list[PagamentoMensalidade]:
+        return [
+            payment
+            for payment in cls._payments_base(
+                filters.competencia,
+                filters.agent_id,
+                filters.status,
+            )
+            if cls._payment_is_ok(payment)
+            and cls._payment_matches_day(payment, filters.day)
+        ]
+
+    @staticmethod
+    def _liquidacoes_base(filters: DashboardFilters) -> QuerySet[LiquidacaoContrato]:
+        queryset = LiquidacaoContrato.objects.filter(
+            revertida_em__isnull=True,
+            data_liquidacao__year=filters.competencia.year,
+            data_liquidacao__month=filters.competencia.month,
+        ).select_related(
+            "contrato",
+            "contrato__agente",
+            "contrato__associado",
+            "contrato__associado__agente_responsavel",
+        )
+        if filters.agent_id:
+            queryset = queryset.filter(
+                Q(contrato__agente_id=filters.agent_id)
+                | Q(
+                    contrato__agente__isnull=True,
+                    contrato__associado__agente_responsavel_id=filters.agent_id,
+                )
+            ).distinct()
+        if filters.status:
+            queryset = queryset.filter(contrato__associado__status=filters.status)
+        if filters.day:
+            queryset = queryset.filter(data_liquidacao=filters.day)
+        return queryset
+
+    @staticmethod
+    def _contract_auxilio_liberado_value(contrato: Contrato | None) -> Decimal:
+        if contrato is None:
+            return Decimal("0.00")
+        for candidate in (contrato.margem_disponivel, contrato.valor_mensalidade):
+            resolved = Decimal(str(candidate or "0.00"))
+            if resolved > 0:
+                return resolved
+        return Decimal("0.00")
+
+    @staticmethod
+    def _contract_repasse_value(contrato: Contrato | None) -> Decimal:
+        if contrato is None:
+            return Decimal("0.00")
+        repasse = contrato.comissao_agente or contrato.calculate_comissao_agente() or Decimal("0.00")
+        return Decimal(str(repasse or "0.00"))
+
+    @classmethod
+    def _resolve_treasury_payment_context(
+        cls,
+        pagamentos: list[TesourariaPagamento],
+    ) -> dict[int, dict[str, object]]:
+        zero = Decimal("0.00")
+        contract_ids: set[int] = set()
+        contract_codes: set[str] = set()
+        refinancing_ids: set[int] = set()
+        parsed_refs: dict[int, dict[str, int | str | None]] = {}
+
+        for pagamento in pagamentos:
+            refs = (
+                pagamento.referencias_externas
+                if isinstance(pagamento.referencias_externas, dict)
+                else {}
+            )
+            payment_kind = str(refs.get("payment_kind") or "").strip()
+            contract_id_raw = refs.get("contrato_id")
+            refinancing_id_raw = refs.get("refinanciamento_id")
+            contract_id = int(contract_id_raw) if str(contract_id_raw).isdigit() else None
+            refinancing_id = (
+                int(refinancing_id_raw)
+                if str(refinancing_id_raw).isdigit()
+                else None
+            )
+
+            if refinancing_id is None:
+                match = cls._RENEWAL_ID_PATTERN.search(pagamento.notes or "")
+                if match:
+                    refinancing_id = int(match.group(1))
+                    if not payment_kind:
+                        payment_kind = "renovacao"
+
+            if contract_id is not None:
+                contract_ids.add(contract_id)
+            elif pagamento.contrato_codigo:
+                contract_codes.add(pagamento.contrato_codigo)
+
+            if refinancing_id is not None:
+                refinancing_ids.add(refinancing_id)
+
+            parsed_refs[pagamento.id] = {
+                "payment_kind": payment_kind or None,
+                "contract_id": contract_id,
+                "refinancing_id": refinancing_id,
+            }
+
+        contracts = Contrato.objects.select_related("agente", "associado").filter(
+            Q(id__in=contract_ids) | Q(codigo__in=contract_codes)
+        )
+        contracts_by_id = {contrato.id: contrato for contrato in contracts}
+        contracts_by_code = {contrato.codigo: contrato for contrato in contracts}
+
+        refinancings = Refinanciamento.objects.select_related(
+            "contrato_origem",
+            "contrato_origem__agente",
+            "contrato_origem__associado",
+        ).filter(id__in=refinancing_ids)
+        refinancings_by_id = {
+            refinanciamento.id: refinanciamento for refinanciamento in refinancings
+        }
+
+        payload: dict[int, dict[str, object]] = {}
+        for pagamento in pagamentos:
+            refs = parsed_refs.get(pagamento.id, {})
+            refinancing = (
+                refinancings_by_id.get(int(refs["refinancing_id"]))
+                if refs.get("refinancing_id")
+                else None
+            )
+            contract = None
+            if refinancing and refinancing.contrato_origem_id:
+                contract = refinancing.contrato_origem
+            elif refs.get("contract_id"):
+                contract = contracts_by_id.get(int(refs["contract_id"]))
+            elif pagamento.contrato_codigo:
+                contract = contracts_by_code.get(pagamento.contrato_codigo)
+
+            payment_kind = str(refs.get("payment_kind") or "").strip()
+            notes_lower = (pagamento.notes or "").lower()
+            is_renewal = bool(
+                payment_kind == "renovacao"
+                or refinancing is not None
+                or ("renova" in notes_lower and "tesouraria" in notes_lower)
+            )
+
+            if is_renewal:
+                valor_associado = cls._contract_auxilio_liberado_value(contract)
+                if valor_associado <= 0 and refinancing is not None:
+                    valor_associado = Decimal(
+                        str(refinancing.valor_refinanciamento or zero)
+                    )
+                if valor_associado <= 0:
+                    valor_associado = Decimal(
+                        str(
+                            pagamento.contrato_margem_disponivel
+                            or pagamento.valor_pago
+                            or zero
+                        )
+                    )
+                valor_agente = Decimal(
+                    str(
+                        (
+                            refinancing.repasse_agente
+                            if refinancing is not None
+                            else cls._contract_repasse_value(contract)
+                        )
+                        or zero
+                    )
+                )
+            else:
+                valor_associado = cls._contract_auxilio_liberado_value(contract)
+                if valor_associado <= 0:
+                    valor_associado = Decimal(
+                        str(
+                            pagamento.contrato_margem_disponivel
+                            or pagamento.valor_pago
+                            or zero
+                        )
+                    )
+                valor_agente = cls._contract_repasse_value(contract)
+
+            payload[pagamento.id] = {
+                "payment_kind": "renovacao" if is_renewal else "contrato_inicial",
+                "contrato": contract,
+                "refinanciamento": refinancing,
+                "valor_associado": valor_associado,
+                "valor_agente": valor_agente,
+                "valor_total": valor_associado + valor_agente,
+            }
+
+        return payload
+
     @staticmethod
     def tesouraria(filters: DashboardFilters) -> dict[str, object]:
         AdminDashboardService._validate_day_with_competencia(filters, section="tesouraria")
@@ -1097,18 +1361,34 @@ class AdminDashboardService:
             )
             if AdminDashboardService._payment_matches_day(payment, filters.day)
         ]
+        ok_payments = AdminDashboardService._ok_payments_for_filters(filters)
+        liquidacoes = list(AdminDashboardService._liquidacoes_base(filters))
         received_value = sum(
-            (AdminDashboardService._payment_value(payment) for payment in payments),
+            (AdminDashboardService._payment_value(payment) for payment in ok_payments),
+            Decimal("0.00"),
+        ) + sum(
+            (liquidacao.valor_total for liquidacao in liquidacoes),
             Decimal("0.00"),
         )
         import_count = sum(1 for payment in payments if AdminDashboardService._payment_is_imported(payment))
         manual_count = sum(1 for payment in payments if AdminDashboardService._payment_is_manual(payment))
         inadimplentes_quitados = sum(
             1
-            for payment in payments
-            if AdminDashboardService._payment_is_ok(payment)
-            and payment.associado
+            for payment in ok_payments
+            if payment.associado
             and payment.associado.status == Associado.Status.INADIMPLENTE
+        )
+        received_associados = {
+            (
+                f"id:{payment.associado_id}"
+                if payment.associado_id
+                else f"doc:{payment.cpf_cnpj or payment.matricula or payment.id}"
+            )
+            for payment in ok_payments
+        }
+        received_associados_count = len(received_associados)
+        received_associados_label = (
+            "associado" if received_associados_count == 1 else "associados"
         )
 
         contracts_month = AdminDashboardService._contracts_base(filters.agent_id).filter(
@@ -1124,12 +1404,22 @@ class AdminDashboardService:
         new_contracts = contracts_month.count()
 
         treasury_payouts = list(AdminDashboardService._payments_saida_base(filters))
-        devolucoes = list(AdminDashboardService._devolucoes_base(filters))
+        payout_context = AdminDashboardService._resolve_treasury_payment_context(
+            treasury_payouts
+        )
         despesas = AdminDashboardService._despesas_base(filters)
         saidas_value = sum(
-            (pagamento.valor_pago or Decimal("0.00") for pagamento in treasury_payouts),
+            (
+                Decimal(
+                    str(
+                        payout_context.get(pagamento.id, {}).get("valor_total")
+                        or "0.00"
+                    )
+                )
+                for pagamento in treasury_payouts
+            ),
             Decimal("0.00"),
-        ) + sum((devolucao.valor for devolucao in devolucoes), Decimal("0.00"))
+        )
         despesas_value = sum((despesa.valor for despesa in despesas), Decimal("0.00"))
         receita_liquida = received_value - saidas_value - despesas_value
 
@@ -1141,15 +1431,26 @@ class AdminDashboardService:
             month = add_months(filters.competencia, index)
             parcelas = list(AdminDashboardService._projection_parcelas(month, filters.agent_id))
             projected_value = sum((parcela.valor for parcela in parcelas), Decimal("0.00"))
+            month_filters = DashboardFilters(
+                competencia=month,
+                day=filters.day,
+                agent_id=filters.agent_id,
+                status=filters.status,
+            )
             month_received = sum(
                 (
                     AdminDashboardService._payment_value(payment)
-                    for payment in AdminDashboardService._payments_base(
-                        month,
-                        filters.agent_id,
-                        filters.status,
+                    for payment in AdminDashboardService._ok_payments_for_filters(
+                        month_filters
                     )
-                    if AdminDashboardService._payment_matches_day(payment, filters.day)
+                ),
+                Decimal("0.00"),
+            ) + sum(
+                (
+                    liquidacao.valor_total
+                    for liquidacao in AdminDashboardService._liquidacoes_base(
+                        month_filters
+                    )
                 ),
                 Decimal("0.00"),
             )
@@ -1179,7 +1480,10 @@ class AdminDashboardService:
                     value_format="currency",
                     tone="positive",
                     detail_metric="valores_recebidos",
-                    description="Recebimentos consolidados da competencia.",
+                    description=(
+                        "Arquivo retorno, baixas manuais e liquidacoes consolidadas. "
+                        f"{received_associados_count} {received_associados_label} com desconto efetuado ou baixa manual."
+                    ),
                 ),
                 AdminDashboardService._metric_card(
                     key="baixas_importacao",
@@ -1219,7 +1523,7 @@ class AdminDashboardService:
                     value_format="currency",
                     tone="warning",
                     detail_metric="saidas_agentes_associados",
-                    description="Pagamentos operacionais e devolucoes liquidadas na competencia.",
+                    description="Auxilio liberado ao associado somado ao repasse do agente nas saidas liquidadas da competencia.",
                 ),
                 AdminDashboardService._metric_card(
                     key="despesas",
@@ -1237,7 +1541,7 @@ class AdminDashboardService:
                     value_format="currency",
                     tone="positive" if receita_liquida >= 0 else "danger",
                     detail_metric="receita_liquida_associacao",
-                    description="Receita recebida menos saidas a agentes/associados e despesas.",
+                    description="Receita recebida menos saidas liquidadas a agentes/associados e despesas.",
                 ),
                 AdminDashboardService._metric_card(
                     key="projecao_total",
@@ -1345,10 +1649,21 @@ class AdminDashboardService:
             if isinstance(bucket_month, date) and bucket_month in despesas_pagas_por_mes:
                 despesas_pagas_por_mes[bucket_month] = Decimal(str(row["total"] or zero))
 
-        contratos_efetivados = Contrato.objects.filter(
+        contratos_efetivados = AdminDashboardService._contracts_base(
+            filters.agent_id
+        ).filter(
             auxilio_liberado_em__gte=start_month,
             auxilio_liberado_em__lt=end_month,
+            auxilio_liberado_em__isnull=False,
         ).values_list("associado_id", "auxilio_liberado_em")
+        if filters.status:
+            contratos_efetivados = contratos_efetivados.filter(
+                associado__status=filters.status
+            )
+        if filters.day:
+            contratos_efetivados = contratos_efetivados.filter(
+                auxilio_liberado_em=filters.day
+            )
         for associado_id, auxilio_liberado_em in contratos_efetivados:
             if auxilio_liberado_em is None:
                 continue
@@ -1361,17 +1676,36 @@ class AdminDashboardService:
             data_liquidacao__gte=start_month,
             data_liquidacao__lt=end_month,
         ).values_list("contrato__associado_id", "contrato_id", "data_liquidacao")
+        if filters.agent_id:
+            liquidacoes = liquidacoes.filter(
+                Q(contrato__agente_id=filters.agent_id)
+                | Q(contrato__associado__agente_responsavel_id=filters.agent_id)
+            )
+        if filters.status:
+            liquidacoes = liquidacoes.filter(contrato__associado__status=filters.status)
+        if filters.day:
+            liquidacoes = liquidacoes.filter(data_liquidacao=filters.day)
         for associado_id, contrato_id, data_liquidacao in liquidacoes:
             bucket_month = data_liquidacao.replace(day=1)
             if bucket_month in liquidacoes_por_mes:
                 liquidacoes_por_mes[bucket_month]["associados"].add(int(associado_id))
                 liquidacoes_por_mes[bucket_month]["contratos"].add(int(contrato_id))
 
-        contratos_encerrados = Contrato.objects.filter(
+        contratos_encerrados = AdminDashboardService._contracts_base(
+            filters.agent_id
+        ).filter(
             status=Contrato.Status.ENCERRADO,
             updated_at__date__gte=start_month,
             updated_at__date__lt=end_month,
         ).values_list("id", "associado_id", "updated_at")
+        if filters.status:
+            contratos_encerrados = contratos_encerrados.filter(
+                associado__status=filters.status
+            )
+        if filters.day:
+            contratos_encerrados = contratos_encerrados.filter(
+                updated_at__date=filters.day
+            )
         for contrato_id, associado_id, updated_at in contratos_encerrados:
             bucket_month = updated_at.date().replace(day=1)
             if bucket_month not in encerrados_por_mes:
@@ -1380,9 +1714,26 @@ class AdminDashboardService:
             if int(contrato_id) not in liquidated_contract_ids:
                 encerrados_por_mes[bucket_month].add(int(associado_id))
 
-        renewal_snapshot = AdminDashboardService._renewal_snapshot(months)
+        renewal_snapshot = AdminDashboardService._renewal_snapshot(
+            months,
+            agent_id=filters.agent_id,
+            status=filters.status,
+        )
         renovacoes_por_mes = {
-            month: renewal_snapshot["renewed_associados"].get(month, set())
+            month: (
+                AdminDashboardService._renewed_associados_for_month(
+                    month,
+                    agent_id=filters.agent_id,
+                    status=filters.status,
+                    day=filters.day,
+                )
+                if filters.day and month == filters.day.replace(day=1)
+                else (
+                    renewal_snapshot["renewed_associados"].get(month, set())
+                    if not filters.day
+                    else set()
+                )
+            )
             for month in months
         }
 
@@ -1605,7 +1956,13 @@ class AdminDashboardService:
                     auxilio_liberado_em__isnull=False,
                 )
                 .annotate(
-                    resolved_agent_id=Coalesce("agente_id", "associado__agente_responsavel_id")
+                    resolved_agent_id=Coalesce("agente_id", "associado__agente_responsavel_id"),
+                    auxilio_liberado_valor=Case(
+                        When(margem_disponivel__gt=0, then=F("margem_disponivel")),
+                        When(valor_mensalidade__gt=0, then=F("valor_mensalidade")),
+                        default=Value(zero),
+                        output_field=DecimalField(),
+                    ),
                 )
                 .filter(resolved_agent_id__in=agent_ids)
             )
@@ -1619,7 +1976,7 @@ class AdminDashboardService:
                 for row in efetivados_queryset.values("resolved_agent_id").annotate(
                     efetivados=Count("id", distinct=True),
                     volume_financeiro=Coalesce(
-                        Sum("margem_disponivel"),
+                        Sum("auxilio_liberado_valor"),
                         Value(zero),
                         output_field=DecimalField(),
                     ),
@@ -1783,7 +2140,7 @@ class AdminDashboardService:
                     numeric_value=total_volume,
                     value_format="currency",
                     detail_metric="agentes:volume_total",
-                    description="Soma do auxilio liberado efetivado pelos agentes no recorte.",
+                    description="Soma do auxilio liberado aos associados efetivados no recorte.",
                 ),
                 AdminDashboardService._metric_card(
                     key="top_agente_volume",
@@ -2026,7 +2383,10 @@ class AdminDashboardService:
                 ]
             if trend_key == "renovacoes":
                 month_rows = AdminDashboardService._filter_renewal_rows_by_agent(
-                    RenovacaoCicloService.listar_detalhes(competencia=month),
+                    RenovacaoCicloService.listar_detalhes(
+                        competencia=month,
+                        status="ciclo_renovado",
+                    ),
                     filters.agent_id,
                 )
                 month_rows = AdminDashboardService._filter_renewal_rows_by_status(
@@ -2050,16 +2410,14 @@ class AdminDashboardService:
         AdminDashboardService._validate_day_with_competencia(filters, section="tesouraria")
 
         def ok_rows_for_month(month: date) -> list[PagamentoMensalidade]:
-            return [
-                payment
-                for payment in AdminDashboardService._payments_base(
-                    month,
-                    filters.agent_id,
-                    filters.status,
+            return AdminDashboardService._ok_payments_for_filters(
+                DashboardFilters(
+                    competencia=month,
+                    day=filters.day,
+                    agent_id=filters.agent_id,
+                    status=filters.status,
                 )
-                if AdminDashboardService._payment_is_ok(payment)
-                and AdminDashboardService._payment_matches_day(payment, filters.day)
-            ]
+            )
 
         payments = [
             payment
@@ -2071,7 +2429,7 @@ class AdminDashboardService:
             if AdminDashboardService._payment_matches_day(payment, filters.day)
         ]
         if metric == "valores_recebidos":
-            return [
+            rows = [
                 AdminDashboardService._detail_row_from_payment(
                     payment,
                     origem="Valor recebido",
@@ -2081,6 +2439,18 @@ class AdminDashboardService:
                 for payment in payments
                 if AdminDashboardService._payment_is_ok(payment)
             ]
+            rows.extend(
+                [
+                    AdminDashboardService._detail_row_from_liquidacao(
+                        liquidacao,
+                        origem="Liquidacao de contrato",
+                        valor=liquidacao.valor_total,
+                        observacao="Liquidacao consolidada na tesouraria.",
+                    )
+                    for liquidacao in AdminDashboardService._liquidacoes_base(filters)
+                ]
+            )
+            return rows
         if metric == "baixas_importacao":
             return [
                 AdminDashboardService._detail_row_from_payment(
@@ -2177,7 +2547,7 @@ class AdminDashboardService:
             return rows
         if metric.startswith("recebido:"):
             month = parse_competencia_query(metric.split(":", 1)[1])
-            return [
+            rows = [
                 AdminDashboardService._detail_row_from_payment(
                     payment,
                     origem=f"Recebido {month_label(month)}",
@@ -2186,6 +2556,25 @@ class AdminDashboardService:
                 )
                 for payment in ok_rows_for_month(month)
             ]
+            rows.extend(
+                [
+                    AdminDashboardService._detail_row_from_liquidacao(
+                        liquidacao,
+                        origem=f"Liquidacao {month_label(month)}",
+                        valor=liquidacao.valor_total,
+                        observacao="Liquidacao consolidada na serie de tesouraria.",
+                    )
+                    for liquidacao in AdminDashboardService._liquidacoes_base(
+                        DashboardFilters(
+                            competencia=month,
+                            day=filters.day,
+                            agent_id=filters.agent_id,
+                            status=filters.status,
+                        )
+                    )
+                ]
+            )
+            return rows
         if metric.startswith("projetado:"):
             month = parse_competencia_query(metric.split(":", 1)[1])
             return [
@@ -2196,24 +2585,39 @@ class AdminDashboardService:
                 for parcela in AdminDashboardService._projection_parcelas(month, filters.agent_id)
             ]
         if metric == "saidas_agentes_associados":
-            rows = [
-                AdminDashboardService._detail_row_from_tesouraria_pagamento(
-                    pagamento,
-                    origem="Pagamento tesouraria",
-                    observacao="Pagamento efetuado a agente ou associado.",
-                )
-                for pagamento in AdminDashboardService._payments_saida_base(filters)
-            ]
-            rows.extend(
-                [
-                    AdminDashboardService._detail_row_from_devolucao(
-                        devolucao,
-                        origem="Devolucao ao associado",
-                        observacao="Devolucao registrada na tesouraria.",
-                    )
-                    for devolucao in AdminDashboardService._devolucoes_base(filters)
-                ]
+            pagamentos = list(AdminDashboardService._payments_saida_base(filters))
+            payment_context = AdminDashboardService._resolve_treasury_payment_context(
+                pagamentos
             )
+            rows = []
+            for pagamento in pagamentos:
+                context = payment_context.get(pagamento.id, {})
+                valor_associado = Decimal(
+                    str(context.get("valor_associado") or Decimal("0.00"))
+                )
+                valor_agente = Decimal(
+                    str(context.get("valor_agente") or Decimal("0.00"))
+                )
+                origem = (
+                    "Pagamento de renovacao"
+                    if context.get("payment_kind") == "renovacao"
+                    else "Pagamento tesouraria"
+                )
+                rows.append(
+                    AdminDashboardService._detail_row_from_tesouraria_pagamento(
+                        pagamento,
+                        origem=origem,
+                        valor=valor_associado,
+                        valor_associado=valor_associado,
+                        valor_agente=valor_agente,
+                        valor_total=Decimal(
+                            str(context.get("valor_total") or Decimal("0.00"))
+                        ),
+                        observacao=(
+                            "Auxilio liberado ao associado e repasse do agente liquidados na tesouraria."
+                        ),
+                    )
+                )
             return rows
         if metric == "despesas":
             return [
@@ -2237,24 +2641,33 @@ class AdminDashboardService:
             ]
             rows.extend(
                 [
-                    AdminDashboardService._detail_row_from_tesouraria_pagamento(
-                        pagamento,
-                        origem="Saida operacional",
-                        valor=-(pagamento.valor_pago or Decimal("0.00")),
-                        observacao="Pagamento efetuado a agente ou associado.",
+                    AdminDashboardService._detail_row_from_liquidacao(
+                        liquidacao,
+                        origem="Liquidacao",
+                        valor=liquidacao.valor_total,
+                        observacao="Liquidacao consolidada na tesouraria.",
                     )
-                    for pagamento in AdminDashboardService._payments_saida_base(filters)
+                    for liquidacao in AdminDashboardService._liquidacoes_base(filters)
                 ]
+            )
+            pagamentos = list(AdminDashboardService._payments_saida_base(filters))
+            payment_context = AdminDashboardService._resolve_treasury_payment_context(
+                pagamentos
             )
             rows.extend(
                 [
-                    AdminDashboardService._detail_row_from_devolucao(
-                        devolucao,
-                        origem="Devolucao ao associado",
-                        valor=-devolucao.valor,
-                        observacao="Devolucao registrada na tesouraria.",
+                    AdminDashboardService._detail_row_from_tesouraria_pagamento(
+                        pagamento,
+                        origem="Saida operacional",
+                        valor=-Decimal(
+                            str(
+                                payment_context.get(pagamento.id, {}).get("valor_total")
+                                or Decimal("0.00")
+                            )
+                        ),
+                        observacao="Auxilio liberado e repasse do agente liquidados na tesouraria.",
                     )
-                    for devolucao in AdminDashboardService._devolucoes_base(filters)
+                    for pagamento in pagamentos
                 ]
             )
             rows.extend(
@@ -2455,8 +2868,10 @@ class AdminDashboardService:
                 return [
                     AdminDashboardService._detail_row_from_contract(
                         contrato,
-                        origem="Volume financeiro do agente",
-                        valor=contrato.valor_liquido,
+                        origem="Auxilio liberado do agente",
+                        valor=AdminDashboardService._contract_auxilio_liberado_value(
+                            contrato
+                        ),
                         data_referencia=contrato.auxilio_liberado_em,
                     )
                     for contrato in contracts
@@ -2490,7 +2905,10 @@ class AdminDashboardService:
                 ]
             if metric_key == "renovados":
                 rows = AdminDashboardService._filter_renewal_rows_by_agent(
-                    RenovacaoCicloService.listar_detalhes(competencia=filters.competencia),
+                    RenovacaoCicloService.listar_detalhes(
+                        competencia=filters.competencia,
+                        status="ciclo_renovado",
+                    ),
                     int(agent_id),
                 )
                 rows = AdminDashboardService._filter_renewal_rows_by_status(

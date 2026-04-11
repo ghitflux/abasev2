@@ -18,7 +18,13 @@ import type {
   PaginatedResponse,
   RefinanciamentoItem,
   RefinanciamentoResumo,
+  SimpleUser,
 } from "@/lib/api/types";
+
+type AgentFilterUser = SimpleUser & {
+  email?: string;
+  primary_role?: string | null;
+};
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
 import { formatCurrency, formatDateTime, formatMonthYear } from "@/lib/formatters";
@@ -27,15 +33,15 @@ import {
   exportRouteReport,
   fetchAllPaginatedRows,
   filterRowsByReportScope,
-  resolveReportReferenceDate,
-  type ReportScope,
 } from "@/lib/reports";
 import DatePicker from "@/components/custom/date-picker";
 import StatusBadge from "@/components/custom/status-badge";
 import AssociadoDetailsDialog from "@/components/associados/associado-details-dialog";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
-import ExportButton from "@/components/shared/export-button";
+import ReportExportDialog, {
+  type ReportExportFilters,
+} from "@/components/shared/report-export-dialog";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -170,6 +176,26 @@ export default function TesourariaRefinanciamentosPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = React.useState("");
   const [isExporting, setIsExporting] = React.useState(false);
+
+  const agentesQuery = useQuery({
+    queryKey: ["refinanciamentos-agentes"],
+    queryFn: () => apiFetch<AgentFilterUser[]>("tesouraria/contratos/agentes"),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const agentOptions = React.useMemo(
+    () =>
+      (agentesQuery.data ?? []).map((item) => ({
+        value: String(item.id),
+        label: [
+          item.full_name || item.email || `Usuário ${item.id}`,
+          item.primary_role || null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+      })),
+    [agentesQuery.data],
+  );
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [dataInicio, setDataInicio] = React.useState<Date>();
   const [dataFim, setDataFim] = React.useState<Date>();
@@ -644,24 +670,21 @@ export default function TesourariaRefinanciamentosPage() {
   );
 
   const handleExport = React.useCallback(
-    async (scope: ReportScope, exportFormat: "pdf" | "xlsx") => {
-      const referenceDate = resolveReportReferenceDate({
-        scope,
-        dayReference: dataInicio ?? dataFim,
-        monthReference: dataInicio ?? dataFim,
-      });
+    async (exportFilters: ReportExportFilters, exportFormat: "pdf" | "xlsx") => {
+      const { scope, referenceDate, agente: exportAgente, status: exportStatus } = exportFilters;
       setIsExporting(true);
       try {
         const sourceQuery = {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
+          agente: exportAgente || undefined,
         };
         const fetchedRows = await fetchAllPaginatedRows<RefinanciamentoItem>({
           sourcePath: "tesouraria/refinanciamentos",
           sourceQuery,
         });
-        const rows = filterRowsByReportScope({
+        const scopedRows = filterRowsByReportScope({
           rows: fetchedRows,
           scope,
           referenceDate,
@@ -672,18 +695,21 @@ export default function TesourariaRefinanciamentosPage() {
             row.data_ativacao_ciclo,
             row.updated_at,
           ],
-        }).map((row) => ({
-            associado_nome: row.associado_nome,
-            cpf_cnpj: row.cpf_cnpj,
-            contrato_codigo: row.contrato_codigo,
-            competencia_solicitada: row.competencia_solicitada,
-            status: row.status,
-            valor_liberado_associado: row.valor_liberado_associado,
-            repasse_agente: row.repasse_agente,
-            executado_em: row.executado_em,
-            data_ativacao_ciclo: row.data_ativacao_ciclo,
-            updated_at: row.updated_at,
-          }));
+        }).filter((row) => !exportStatus || row.status === exportStatus);
+
+        const rows = scopedRows.map((row) => ({
+          associado_nome: row.associado_nome,
+          cpf_cnpj: row.cpf_cnpj,
+          contrato_codigo: row.contrato_codigo,
+          competencia_solicitada: row.competencia_solicitada,
+          status: row.status,
+          valor_liberado_associado: row.valor_liberado_associado,
+          repasse_agente: row.repasse_agente,
+          executado_em: row.executado_em,
+          data_ativacao_ciclo: row.data_ativacao_ciclo,
+          updated_at: row.updated_at,
+        }));
+
         await exportRouteReport({
           route: "/tesouraria/refinanciamentos",
           format: exportFormat,
@@ -691,6 +717,23 @@ export default function TesourariaRefinanciamentosPage() {
           filters: {
             ...sourceQuery,
             ...describeReportScope(scope, referenceDate),
+            totais: {
+              total_registros: scopedRows.length,
+              total_valor_renovacao: scopedRows
+                .reduce(
+                  (sum, row) =>
+                    sum + Number.parseFloat(String(row.valor_liberado_associado ?? "0")),
+                  0,
+                )
+                .toFixed(2),
+              total_repasse_agente: scopedRows
+                .reduce(
+                  (sum, row) =>
+                    sum + Number.parseFloat(String(row.repasse_agente ?? "0")),
+                  0,
+                )
+                .toFixed(2),
+            },
           },
         });
       } catch (error) {
@@ -718,16 +761,19 @@ export default function TesourariaRefinanciamentosPage() {
               e histórico de efetivação.
             </p>
           </div>
-          <ExportButton
+          <ReportExportDialog
             disabled={isExporting}
-            label={isExporting ? "Exportando..." : "Exportar"}
-            enableScopeSelection
-            onExport={(exportFormat) =>
-              exportFormat === "pdf" || exportFormat === "xlsx"
-                ? void handleExport("month", exportFormat)
-                : undefined
-            }
-            onExportScoped={(scope, exportFormat) => void handleExport(scope, exportFormat)}
+            label="Exportar"
+            showFilters
+            agentOptions={agentOptions}
+            statusOptions={[
+              { value: "aprovado_para_renovacao", label: "Aguardando Pagamento" },
+              { value: "efetivado", label: "Efetivado" },
+              { value: "bloqueado", label: "Bloqueado" },
+              { value: "revertido", label: "Revertido" },
+              { value: "desativado", label: "Desativado" },
+            ]}
+            onExport={handleExport}
           />
         </div>
       </section>

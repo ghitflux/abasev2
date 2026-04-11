@@ -37,7 +37,7 @@ import {
   STATUS_OPTIONS,
 } from "@/components/pagamentos/pagamentos-shared";
 import DataTable from "@/components/shared/data-table";
-import ExportButton from "@/components/shared/export-button";
+import ReportExportDialog from "@/components/shared/report-export-dialog";
 import { MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Button } from "@/components/ui/button";
@@ -429,10 +429,11 @@ export default function PagamentosPage() {
         >
           Limpar
         </Button>
-        <ExportButton
+        <ReportExportDialog
+          hideScope
           disabled={isExporting}
           label={isExporting ? "Exportando..." : "Exportar"}
-          onExport={(format) => void handleExport(format)}
+          onExport={(_, fmt) => void handleExport(fmt)}
         />
       </section>
 

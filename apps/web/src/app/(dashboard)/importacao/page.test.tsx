@@ -121,8 +121,12 @@ const dryRunResultado = {
       descontaram: { count: 1, valor_total: "30.00" },
       nao_descontaram: { count: 1, valor_total: "30.00" },
     },
-    mudancas_status_associado: [{ antes: "inadimplente", depois: "ativo", count: 1 }],
-    mudancas_status_ciclo: [{ antes: "aberto", depois: "apto_a_renovar", count: 1 }],
+    mudancas_status_associado: [
+      { antes: "inadimplente", depois: "ativo", count: 1 },
+    ],
+    mudancas_status_ciclo: [
+      { antes: "aberto", depois: "apto_a_renovar", count: 1 },
+    ],
   },
   items: [
     {
@@ -188,7 +192,9 @@ describe("ImportacaoPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    useV1ImportacaoArquivoRetornoUltimaRetrieve.mockReturnValue({ data: latestImport });
+    useV1ImportacaoArquivoRetornoUltimaRetrieve.mockReturnValue({
+      data: latestImport,
+    });
     useV1ImportacaoArquivoRetornoFinanceiroRetrieve.mockReturnValue({
       data: {
         resumo: latestImport.financeiro,
@@ -221,11 +227,21 @@ describe("ImportacaoPage", () => {
       },
       isLoading: false,
     });
-    useV1ImportacaoArquivoRetornoDescontadosList.mockReturnValue({ data: itemPayload });
-    useV1ImportacaoArquivoRetornoNaoDescontadosList.mockReturnValue({ data: itemPayload });
-    useV1ImportacaoArquivoRetornoPendenciasManuaisList.mockReturnValue({ data: itemPayload });
-    useV1ImportacaoArquivoRetornoEncerramentosList.mockReturnValue({ data: itemPayload });
-    useV1ImportacaoArquivoRetornoNovosCiclosList.mockReturnValue({ data: itemPayload });
+    useV1ImportacaoArquivoRetornoDescontadosList.mockReturnValue({
+      data: itemPayload,
+    });
+    useV1ImportacaoArquivoRetornoNaoDescontadosList.mockReturnValue({
+      data: itemPayload,
+    });
+    useV1ImportacaoArquivoRetornoPendenciasManuaisList.mockReturnValue({
+      data: itemPayload,
+    });
+    useV1ImportacaoArquivoRetornoEncerramentosList.mockReturnValue({
+      data: itemPayload,
+    });
+    useV1ImportacaoArquivoRetornoNovosCiclosList.mockReturnValue({
+      data: itemPayload,
+    });
     mockedApiFetch.mockImplementation(async (path, options) => {
       if (path === "importacao/arquivo-retorno") {
         return historyPayload;
@@ -240,7 +256,9 @@ describe("ImportacaoPage", () => {
         };
       }
 
-      if (path === `importacao/arquivo-retorno/${latestImport.id}/reprocessar`) {
+      if (
+        path === `importacao/arquivo-retorno/${latestImport.id}/reprocessar`
+      ) {
         return {
           ...latestImport,
           status: "processando",
@@ -267,7 +285,9 @@ describe("ImportacaoPage", () => {
 
     expect(screen.getByText("Histórico de importações")).toBeInTheDocument();
     expect(screen.getByText("retorno_etipi_052025.txt")).toBeInTheDocument();
-    expect(screen.getByText("Competência detectada: 05/2025")).toBeInTheDocument();
+    expect(
+      screen.getByText("Competência detectada: 05/2025"),
+    ).toBeInTheDocument();
     expect(screen.getByText("Quitados")).toBeInTheDocument();
     expect(screen.getByText("Mensalidades Recebidas")).toBeInTheDocument();
     expect(screen.getByText("Valores 30/50 Recebidos")).toBeInTheDocument();
@@ -277,24 +297,46 @@ describe("ImportacaoPage", () => {
     const user = userEvent.setup();
 
     renderPage();
-    await user.click(await screen.findByRole("button", { name: /Valores 30\/50 Recebidos/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /Valores 30\/50 Recebidos/i }),
+    );
 
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Valores 30/50 da última importação")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Valores 30/50 da última importação"),
+    ).toBeInTheDocument();
     expect(within(dialog).getByText("José do Nascimento")).toBeInTheDocument();
+  });
+
+  it("abre a tabela correta ao clicar no card de faltando", async () => {
+    const user = userEvent.setup();
+
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /Faltando/i }));
+
+    expect(await screen.findByText("Não descontados")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Itens rejeitados pelo ETIPI com marcação de não descontado.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("entra em polling visual após upload", async () => {
     const user = userEvent.setup();
     const { container } = renderPage();
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const input = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
     const file = new File(["conteudo"], "retorno_etipi_052025.txt", {
       type: "text/plain",
     });
 
     await user.upload(input, file);
 
-    expect(await screen.findByText("Processando arquivo retorno...")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Processando arquivo retorno..."),
+    ).toBeInTheDocument();
   });
 
   it("mostra progresso visual durante o upload do arquivo", async () => {
@@ -323,7 +365,9 @@ describe("ImportacaoPage", () => {
         });
       }
 
-      if (path === `importacao/arquivo-retorno/${latestImport.id}/reprocessar`) {
+      if (
+        path === `importacao/arquivo-retorno/${latestImport.id}/reprocessar`
+      ) {
         return Promise.resolve({
           ...latestImport,
           status: "processando",
@@ -334,7 +378,9 @@ describe("ImportacaoPage", () => {
     });
 
     const { container } = renderPage();
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+    const input = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
     const file = new File(["conteudo"], "retorno_etipi_052025.txt", {
       type: "text/plain",
     });
@@ -342,7 +388,9 @@ describe("ImportacaoPage", () => {
     await user.upload(input, file);
 
     expect(await screen.findByText("50%")).toBeInTheDocument();
-    expect(screen.getByText(/Enviando retorno_etipi_052025.txt/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Enviando retorno_etipi_052025.txt/i),
+    ).toBeInTheDocument();
 
     await act(async () => {
       resolveUpload?.({
@@ -382,16 +430,24 @@ describe("ImportacaoPage", () => {
     });
 
     const { container } = renderPage();
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
-    const file = new File(["conteudo"], "retorno_dry_run.txt", { type: "text/plain" });
+    const input = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["conteudo"], "retorno_dry_run.txt", {
+      type: "text/plain",
+    });
 
     await user.upload(input, file);
 
     expect(await screen.findByText("Prévia da importação")).toBeInTheDocument();
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Total no arquivo")).toBeInTheDocument();
-    expect(within(dialog).getByText("Parcelas R$30 / R$50")).toBeInTheDocument();
-    expect(within(dialog).getByText("Associados importados")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Parcelas R$30 / R$50"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Associados importados"),
+    ).toBeInTheDocument();
   });
 
   it("confirma a importação a partir do modal de dry-run", async () => {
@@ -422,11 +478,17 @@ describe("ImportacaoPage", () => {
     });
 
     const { container } = renderPage();
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
-    const file = new File(["conteudo"], "retorno_dry_run.txt", { type: "text/plain" });
+    const input = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["conteudo"], "retorno_dry_run.txt", {
+      type: "text/plain",
+    });
 
     await user.upload(input, file);
-    await user.click(await screen.findByRole("button", { name: /confirmar importação/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /confirmar importação/i }),
+    );
 
     expect(mockedApiFetch).toHaveBeenCalledWith(
       `importacao/arquivo-retorno/${latestImport.id}/confirmar`,
@@ -462,11 +524,17 @@ describe("ImportacaoPage", () => {
     });
 
     const { container } = renderPage();
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
-    const file = new File(["conteudo"], "retorno_dry_run.txt", { type: "text/plain" });
+    const input = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["conteudo"], "retorno_dry_run.txt", {
+      type: "text/plain",
+    });
 
     await user.upload(input, file);
-    await user.click(await screen.findByRole("button", { name: /^cancelar$/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /^cancelar$/i }),
+    );
 
     expect(mockedApiFetch).toHaveBeenCalledWith(
       `importacao/arquivo-retorno/${latestImport.id}/cancelar`,
@@ -496,8 +564,12 @@ describe("ImportacaoPage", () => {
     });
 
     const { container } = renderPage();
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
-    const file = new File(["conteudo"], "retorno_dry_run.txt", { type: "text/plain" });
+    const input = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["conteudo"], "retorno_dry_run.txt", {
+      type: "text/plain",
+    });
 
     await user.upload(input, file);
     await user.click(await screen.findByRole("button", { name: /^close$/i }));
@@ -535,11 +607,17 @@ describe("ImportacaoPage", () => {
     });
 
     const { container } = renderPage();
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement;
-    const file = new File(["conteudo"], "retorno_dry_run.txt", { type: "text/plain" });
+    const input = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["conteudo"], "retorno_dry_run.txt", {
+      type: "text/plain",
+    });
 
     await user.upload(input, file);
-    await user.click(await screen.findByRole("button", { name: /^cancelar$/i }));
+    await user.click(
+      await screen.findByRole("button", { name: /^cancelar$/i }),
+    );
 
     expect(await screen.findByText("Prévia da importação")).toBeInTheDocument();
     expect(cancelCalls).toBe(1);

@@ -96,12 +96,13 @@ class RelatorioService:
 
     @staticmethod
     def exportar(rota: str, formato: str, filtros: dict[str, object] | None = None) -> RelatorioGerado:
-        rows = RelatorioService._rows_for_route(rota, filtros or {})
+        resolved_filters = filtros or {}
+        rows = RelatorioService._rows_for_route(rota, resolved_filters)
         timestamp = timezone.now().strftime("%Y%m%d%H%M%S")
         file_key = RelatorioService._resolve_route_key(rota).strip("/").replace("/", "_") or "relatorio"
         extension = "xlsx" if formato == "xlsx" else formato
         file_name = f"{file_key}_{timestamp}.{extension}"
-        content = RelatorioService._render_content(rota, rows, formato)
+        content = RelatorioService._render_content(rota, rows, formato, resolved_filters)
 
         relatorio = RelatorioGerado(nome=file_name, formato=formato)
         relatorio.arquivo.save(file_name, ContentFile(content), save=False)
@@ -134,12 +135,17 @@ class RelatorioService:
         }
 
     @staticmethod
-    def _render_content(rota: str, rows: list[dict[str, object]], formato: str) -> bytes:
+    def _render_content(
+        rota: str,
+        rows: list[dict[str, object]],
+        formato: str,
+        filtros: dict[str, object] | None = None,
+    ) -> bytes:
         if formato == "pdf":
-            return RelatorioService._render_pdf(rota, rows)
+            return RelatorioService._render_pdf(rota, rows, filtros or {})
 
         if formato == "xlsx":
-            return RelatorioService._render_xlsx(rota, rows)
+            return RelatorioService._render_xlsx(rota, rows, filtros or {})
 
         if formato == "json":
             return json.dumps(rows, ensure_ascii=True, indent=2, default=str).encode("utf-8")
@@ -283,6 +289,21 @@ class RelatorioService:
     def _definition_for_route(rota: str) -> ReportDefinition:
         route = RelatorioService._resolve_route_key(rota)
         definitions = {
+            "/analise": ReportDefinition(
+                tipo="/analise",
+                title="Relatorio do Dashboard de Analise",
+                description="Fila consolidada da analise operacional conforme os filtros ativos.",
+                columns=(
+                    ReportColumn("nome", "Associado", 2.3),
+                    ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("matricula", "Matricula", 1.2),
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("etapa", "Etapa", 1.0),
+                    ReportColumn("status", "Status", 1.1),
+                    ReportColumn("agente", "Agente", 1.8),
+                    ReportColumn("criado_em", "Criado em", 1.3),
+                ),
+            ),
             "/associados": ReportDefinition(
                 tipo="/associados",
                 title="Relatorio de Associados",
@@ -425,14 +446,27 @@ class RelatorioService:
     def _summary_for_route(
         rota: str,
         rows: list[dict[str, object]],
+        filtros: dict[str, object] | None = None,
     ) -> list[tuple[str, str]]:
-        return [
+        summary = [
             ("Rota", RelatorioService._resolve_route_key(rota)),
             ("Total registros", str(len(rows))),
         ]
+        totais = filtros.get("totais") if isinstance(filtros, dict) else None
+        if isinstance(totais, dict):
+            for label, value in totais.items():
+                if value in (None, "", [], {}):
+                    continue
+                pretty_label = str(label).replace("_", " ").strip().title()
+                summary.append((pretty_label, RelatorioService._format_pdf_value(value)))
+        return summary
 
     @staticmethod
-    def _render_pdf(rota: str, rows: list[dict[str, object]]) -> bytes:
+    def _render_pdf(
+        rota: str,
+        rows: list[dict[str, object]],
+        filtros: dict[str, object] | None = None,
+    ) -> bytes:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4, landscape
         from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
@@ -440,7 +474,7 @@ class RelatorioService:
         from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
         definition = RelatorioService._definition_for_route(rota)
-        summary = RelatorioService._summary_for_route(rota, rows)
+        summary = RelatorioService._summary_for_route(rota, rows, filtros or {})
         buffer = BytesIO()
         document = SimpleDocTemplate(
             buffer,
@@ -507,7 +541,12 @@ class RelatorioService:
             summary_rows: list[list[Paragraph]] = []
             chunk: list[Paragraph] = []
             for label, value in summary:
-                chunk.append(Paragraph(escape(f"<b>{label}:</b> {value}"), meta_style))
+                chunk.append(
+                    Paragraph(
+                        f"<b>{escape(str(label))}:</b> {escape(RelatorioService._format_pdf_value(value))}",
+                        meta_style,
+                    )
+                )
                 if len(chunk) == 2:
                     summary_rows.append(chunk)
                     chunk = []
@@ -578,11 +617,41 @@ class RelatorioService:
             )
         )
         story.append(table)
+        if summary:
+            footer_summary_table = Table(
+                summary_rows,
+                colWidths=[document.width / 2, document.width / 2],
+            )
+            footer_summary_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
+                        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+                        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E2E8F0")),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                        ("TOPPADDING", (0, 0), (-1, -1), 6),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                    ]
+                )
+            )
+            story.extend(
+                [
+                    Spacer(1, 5 * mm),
+                    Paragraph("Totais do relatório", description_style),
+                    Spacer(1, 2 * mm),
+                    footer_summary_table,
+                ]
+            )
         document.build(story)
         return buffer.getvalue()
 
     @staticmethod
-    def _render_xlsx(rota: str, rows: list[dict[str, object]]) -> bytes:
+    def _render_xlsx(
+        rota: str,
+        rows: list[dict[str, object]],
+        filtros: dict[str, object] | None = None,
+    ) -> bytes:
         definition = RelatorioService._definition_for_route(rota)
         workbook = Workbook()
         sheet = workbook.active
@@ -596,6 +665,12 @@ class RelatorioService:
                     for column in definition.columns
                 ]
             )
+        summary = RelatorioService._summary_for_route(rota, rows, filtros or {})
+        if summary:
+            sheet.append([])
+            sheet.append(["Totais do relatório", ""])
+            for label, value in summary:
+                sheet.append([label, value])
         buffer = BytesIO()
         workbook.save(buffer)
         return buffer.getvalue()

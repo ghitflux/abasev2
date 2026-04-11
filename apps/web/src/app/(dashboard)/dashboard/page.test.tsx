@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import DashboardPage from "./page";
@@ -100,18 +100,26 @@ jest.mock("@/components/shared/dashboard-detail-dialog", () => {
       open,
       title,
       rows,
+      columns,
       onExport,
+      toolbarContent,
     }: {
       open: boolean;
       title: string;
       rows: Array<{ id: string; associado_nome: string }>;
+      columns?: Array<{ id: string; header: unknown }>;
       onExport?: (format: "csv" | "pdf" | "excel" | "xlsx") => void;
+      toolbarContent?: unknown;
     }) =>
       open
         ? React.createElement(
             "div",
             { role: "dialog" },
             React.createElement("h2", null, title),
+            ...(columns ?? []).map((column) =>
+              React.createElement("div", { key: column.id }, column.header),
+            ),
+            toolbarContent,
             React.createElement(
               "button",
               { onClick: () => onExport?.("csv") },
@@ -208,7 +216,8 @@ const treasuryPayload = {
       numeric_value: 35,
       format: "currency" as const,
       tone: "warning" as const,
-      description: "Pagamentos operacionais e devolucoes liquidadas na competencia.",
+      description:
+        "Pagamentos operacionais e devolucoes liquidadas na competencia.",
       detail_metric: "saidas_agentes_associados",
     },
     {
@@ -358,7 +367,8 @@ const agentsPayload = {
       numeric_value: 1,
       format: "integer" as const,
       tone: "neutral" as const,
-      description: "Base atual de associados inativos vinculados aos agentes filtrados.",
+      description:
+        "Base atual de associados inativos vinculados aos agentes filtrados.",
       detail_metric: "agentes:inativos",
     },
     {
@@ -456,8 +466,52 @@ const detailPayload = {
       etapa: "concluido",
       competencia: "03/2026",
       valor: "30.00",
+      valor_associado: "30.00",
+      valor_agente: "5.00",
       origem: "Associado cadastrado",
       data_referencia: "2026-03-01",
+      observacao: "",
+    },
+  ],
+};
+
+const monthlyDetailPayload = {
+  count: 2,
+  next: null,
+  previous: null,
+  results: [
+    {
+      id: "associado-1",
+      associado_id: 1,
+      associado_nome: "Maria Ativa",
+      cpf_cnpj: "11111111111",
+      matricula: "MAT-1111",
+      data_nascimento: "1990-03-10",
+      status: "ativo",
+      agente_nome: "Alice ABASE",
+      contrato_codigo: "CTR-A1",
+      etapa: "concluido",
+      competencia: "03/2026",
+      valor: "30.00",
+      origem: "Efetivado 03/2026",
+      data_referencia: "2026-03-01",
+      observacao: "",
+    },
+    {
+      id: "associado-2",
+      associado_id: 2,
+      associado_nome: "João Premium",
+      cpf_cnpj: "22222222222",
+      matricula: "MAT-2222",
+      data_nascimento: "1988-08-08",
+      status: "ativo",
+      agente_nome: "Bruno ABASE",
+      contrato_codigo: "CTR-B2",
+      etapa: "concluido",
+      competencia: "03/2026",
+      valor: "75.00",
+      origem: "Efetivado 03/2026",
+      data_referencia: "2026-03-02",
       observacao: "",
     },
   ],
@@ -496,7 +550,7 @@ describe("DashboardPage", () => {
       },
     });
 
-    mockedApiFetch.mockImplementation(async (path) => {
+    mockedApiFetch.mockImplementation(async (path, options) => {
       if (path === "configuracoes/usuarios") {
         return {
           count: 0,
@@ -518,7 +572,12 @@ describe("DashboardPage", () => {
       if (path === "dashboard/admin/novos-associados")
         return newAssociadosPayload;
       if (path === "dashboard/admin/agentes") return agentsPayload;
-      if (path === "dashboard/admin/detalhes") return detailPayload;
+      if (path === "dashboard/admin/detalhes") {
+        if (options?.query?.metric === "trend:efetivados:2026-03") {
+          return monthlyDetailPayload;
+        }
+        return detailPayload;
+      }
 
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
@@ -601,9 +660,15 @@ describe("DashboardPage", () => {
     expect(screen.getByText("KPIs gerais")).toBeInTheDocument();
     expect(screen.getByText("Novos associados")).toBeInTheDocument();
     expect(screen.getByText("Agentes")).toBeInTheDocument();
-    expect(await screen.findByText("Resumo mensal da associação")).toBeInTheDocument();
-    expect(await screen.findByText("Complementos de receita")).toBeInTheDocument();
-    expect((await screen.findAllByText("março de 2026")).length).toBeGreaterThan(0);
+    expect(
+      await screen.findByText("Resumo mensal da associação"),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("Complementos de receita"),
+    ).toBeInTheDocument();
+    expect(
+      (await screen.findAllByText("março de 2026")).length,
+    ).toBeGreaterThan(0);
 
     await user.click(
       await screen.findByRole("button", { name: "Associados cadastrados" }),
@@ -618,7 +683,9 @@ describe("DashboardPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText("Resumo mensal da associação")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Resumo mensal da associação"),
+    ).toBeInTheDocument();
 
     await user.click(
       await screen.findByRole("button", {
@@ -627,7 +694,9 @@ describe("DashboardPage", () => {
     );
 
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
-    expect(await screen.findByText("Novos associados de março de 2026")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Novos associados de março de 2026"),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Exportar detalhes" }));
 
@@ -643,6 +712,100 @@ describe("DashboardPage", () => {
         }),
       );
     });
+  });
+
+  it("filtra novos associados por mensalidade no modal mensal e exporta apenas o recorte selecionado", async () => {
+    const user = userEvent.setup();
+    let exportedBlob: Blob | null = null;
+
+    (URL.createObjectURL as jest.Mock).mockImplementation((blob: Blob) => {
+      exportedBlob = blob;
+      return "blob:dashboard-export-filtered";
+    });
+
+    renderPage();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Abrir novos associados de março de 2026",
+      }),
+    );
+
+    expect(await screen.findByText("Mensalidade")).toBeInTheDocument();
+    expect((await screen.findAllByText("R$ 30,00")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("R$ 75,00")).length).toBeGreaterThan(0);
+
+    const maxInput = screen.getByLabelText("Valor máximo da mensalidade");
+    fireEvent.change(maxInput, { target: { value: "30" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("Maria Ativa")).toBeInTheDocument();
+      expect(screen.queryByText("João Premium")).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Exportar detalhes" }));
+
+    await waitFor(() => expect(exportedBlob).not.toBeNull());
+    const exportedContent = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result ?? ""));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(exportedBlob!);
+    });
+    expect(exportedContent).toContain("Maria Ativa");
+    expect(exportedContent).not.toContain("João Premium");
+    expect(exportedContent).toContain("Mensalidade");
+  });
+
+  it("abre o modal de renovações a partir da tabela mensal", async () => {
+    const user = userEvent.setup();
+
+    renderPage();
+
+    expect(
+      await screen.findByText("Resumo mensal da associação"),
+    ).toBeInTheDocument();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Abrir renovações de março de 2026",
+      }),
+    );
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Renovações de março de 2026"),
+    ).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(
+        mockedApiFetch.mock.calls.some(
+          ([path, options]) =>
+            path === "dashboard/admin/detalhes" &&
+            options?.query?.section === "summary" &&
+            options?.query?.metric === "trend:renovacoes:2026-03" &&
+            options?.query?.page === 1,
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it("abre o modal de saídas com colunas separadas de auxilio e repasse", async () => {
+    const user = userEvent.setup();
+
+    renderPage();
+
+    expect(await screen.findByText("Tesouraria")).toBeInTheDocument();
+
+    await user.click(
+      await screen.findByRole("button", {
+        name: "Saidas a agentes/associados",
+      }),
+    );
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByText("Auxilio")).toBeInTheDocument();
+    expect(await screen.findByText("Repasse agente")).toBeInTheDocument();
   });
 
   it("reaplica a consulta da secao ao alterar o filtro de status do panorama geral", async () => {
@@ -675,17 +838,19 @@ describe("DashboardPage", () => {
 
     await screen.findByText("KPIs gerais");
     await user.click(screen.getAllByRole("button", { name: /Exportar/i })[1]);
+    await user.click(
+      await screen.findByRole("button", { name: "Exportar PDF" }),
+    );
 
     await waitFor(() => {
-      expect(mockedApiFetch).toHaveBeenCalledWith(
-        "dashboard/admin/detalhes",
-        expect.objectContaining({
-          query: expect.objectContaining({
-            section: "summary",
-            page_size: "all",
-          }),
-        }),
-      );
+      expect(
+        mockedApiFetch.mock.calls.some(
+          ([path, options]) =>
+            path === "dashboard/admin/detalhes" &&
+            options?.query?.section === "summary" &&
+            options?.query?.page_size === "all",
+        ),
+      ).toBe(true);
     });
     expect(mockedApiFetch).toHaveBeenCalledWith(
       "dashboard/admin/resumo-mensal-associacao",
@@ -695,6 +860,5 @@ describe("DashboardPage", () => {
         }),
       }),
     );
-    expect(URL.createObjectURL).toHaveBeenCalled();
   });
 });

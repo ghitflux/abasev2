@@ -391,6 +391,7 @@ class RenovacaoCicloService:
         search: str | None = None,
         status: str | None = None,
     ) -> list[dict[str, object]]:
+        renewal_only = status == "ciclo_renovado"
         item_prefetch = Prefetch(
             "itens_retorno",
             queryset=ArquivoRetornoItem.objects.filter(
@@ -449,6 +450,20 @@ class RenovacaoCicloService:
             )
             .order_by("ciclo__contrato__associado__nome_completo")
         )
+        if renewal_only:
+            parcelas = parcelas.filter(
+                Q(ciclo__status=Ciclo.Status.CICLO_RENOVADO)
+                | Q(
+                    itens_retorno__arquivo_retorno__competencia=competencia,
+                    itens_retorno__arquivo_retorno__status=ArquivoRetorno.Status.CONCLUIDO,
+                    itens_retorno__gerou_novo_ciclo=True,
+                )
+                | Q(
+                    itens_retorno__arquivo_retorno__competencia=competencia,
+                    itens_retorno__arquivo_retorno__status=ArquivoRetorno.Status.CONCLUIDO,
+                    itens_retorno__gerou_encerramento=True,
+                )
+            ).distinct()
 
         search_value = (search or "").strip()
         if search_value:
@@ -496,6 +511,10 @@ class RenovacaoCicloService:
                 "-id",
             )
         )
+        if renewal_only:
+            itens_suplementares = itens_suplementares.filter(
+                Q(gerou_novo_ciclo=True) | Q(gerou_encerramento=True)
+            )
         for import_item in itens_suplementares:
             contrato = import_item.parcela.ciclo.contrato
             if contrato.status not in [Contrato.Status.ATIVO, Contrato.Status.ENCERRADO]:
@@ -556,18 +575,19 @@ class RenovacaoCicloService:
                 | Q(codigo__icontains=search_value)
             )
 
-        for contrato in contratos_suplementares:
-            projection = build_contract_cycle_projection(contrato)
-            row = RenovacaoCicloService._build_projection_only_row(
-                contrato=contrato,
-                competencia=competencia,
-                projection=projection,
-            )
-            if row is None:
-                continue
-            if status and row["status_visual"] != status:
-                continue
-            rows.append(row)
+        if not renewal_only:
+            for contrato in contratos_suplementares:
+                projection = build_contract_cycle_projection(contrato)
+                row = RenovacaoCicloService._build_projection_only_row(
+                    contrato=contrato,
+                    competencia=competencia,
+                    projection=projection,
+                )
+                if row is None:
+                    continue
+                if status and row["status_visual"] != status:
+                    continue
+                rows.append(row)
 
         return RenovacaoCicloService._dedupe_rows_by_associado(rows)
 

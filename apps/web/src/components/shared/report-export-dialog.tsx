@@ -47,6 +47,9 @@ type ReportExportDialogProps = {
   showFilters?: boolean;
   /** Oculta o seletor de período/data — use quando os dados já estão filtrados externamente */
   hideScope?: boolean;
+  initialScope?: ReportScope;
+  initialDayRef?: Date;
+  initialMonthRef?: Date;
   onExport: (
     filters: ReportExportFilters,
     format: "pdf" | "xlsx",
@@ -61,13 +64,17 @@ export default function ReportExportDialog({
   esteiraOptions = [],
   showFilters = false,
   hideScope = false,
+  initialScope = "month",
+  initialDayRef,
+  initialMonthRef,
   onExport,
 }: ReportExportDialogProps) {
   const [open, setOpen] = React.useState(false);
-  const [scope, setScope] = React.useState<ReportScope>("month");
-  const [dayRef, setDayRef] = React.useState<Date>(new Date());
+  const [scope, setScope] = React.useState<ReportScope>(initialScope);
+  const [dayRef, setDayRef] = React.useState<Date>(initialDayRef ?? new Date());
   const [monthRef, setMonthRef] = React.useState<Date>(
-    new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    initialMonthRef ??
+      new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   );
   const [agente, setAgente] = React.useState("");
   const [status, setStatus] = React.useState("todos");
@@ -76,6 +83,19 @@ export default function ReportExportDialog({
 
   const referenceDate = scope === "day" ? dayRef : monthRef;
   const referenceDateValid = hideScope || isValid(referenceDate);
+
+  React.useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    setScope(initialScope);
+    setDayRef(initialDayRef ?? new Date());
+    setMonthRef(
+      initialMonthRef ??
+        new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+    );
+  }, [initialDayRef, initialMonthRef, initialScope, open]);
 
   const handleExport = async (fmt: "pdf" | "xlsx") => {
     if (!referenceDateValid) return;
@@ -163,13 +183,16 @@ export default function ReportExportDialog({
                   {scope === "day" ? "Data de referência" : "Mês de referência"}
                 </Label>
                 {scope === "day" ? (
-                  <DatePicker value={dayRef} onChange={setDayRef} />
-                ) : (
-                  <CalendarCompetencia
-                    value={monthRef}
-                    onChange={setMonthRef}
-                    placeholder="Selecionar mês"
+                  <DatePicker
+                    value={dayRef}
+                    onChange={(value) => {
+                      if (value) {
+                        setDayRef(value);
+                      }
+                    }}
                   />
+                ) : (
+                  <CalendarCompetencia value={monthRef} onChange={setMonthRef} />
                 )}
                 <p className="text-xs text-muted-foreground">
                   Referência selecionada:{" "}
