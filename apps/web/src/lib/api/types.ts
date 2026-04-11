@@ -643,6 +643,7 @@ export type EsteiraContrato = {
   cpf_cnpj: string;
   matricula: string;
   matricula_display?: string;
+  valor_mensalidade: string | null;
 };
 
 export type EsteiraItem = {

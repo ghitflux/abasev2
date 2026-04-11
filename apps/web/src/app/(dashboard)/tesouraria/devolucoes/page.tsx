@@ -33,8 +33,6 @@ import {
   exportRouteReport,
   fetchAllPaginatedRows,
   filterRowsByReportScope,
-  resolveReportReferenceDate,
-  type ReportScope,
 } from "@/lib/reports";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import StatusBadge from "@/components/custom/status-badge";
@@ -42,8 +40,12 @@ import DevolucaoFormDialog, {
   type DevolucaoFormState,
 } from "@/components/tesouraria/devolucao-form-dialog";
 import DuplicidadesFinanceirasPanel from "@/components/tesouraria/duplicidades-financeiras-panel";
-import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
-import ExportButton from "@/components/shared/export-button";
+import DataTable, {
+  type DataTableColumn,
+} from "@/components/shared/data-table";
+import ReportExportDialog, {
+  type ReportExportFilters,
+} from "@/components/shared/report-export-dialog";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -76,7 +78,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 
-type ListingTab = "registrar" | "pos_liquidacao" | "duplicidades" | "historico";
+type ListingTab = "duplicidades" | "historico";
 type RegisterResponse = PaginatedResponse<DevolucaoContratoItem> & {
   kpis: DevolucaoKpis;
 };
@@ -135,7 +137,7 @@ function buildCreateState(
     tipo:
       row?.tipo_sugerido === "desistencia_pos_liquidacao"
         ? "desistencia_pos_liquidacao"
-        : defaultTipo ?? "pagamento_indevido",
+        : (defaultTipo ?? "pagamento_indevido"),
     dataDevolucao: new Date(),
     quantidadeParcelas: 1,
     valor: null,
@@ -168,10 +170,13 @@ function buildEditState(row: DevolucaoAssociadoItem): DevolucaoFormState {
       status_contrato: row.status_contrato,
       data_contrato: row.data_devolucao,
       mes_averbacao: row.competencia_referencia,
-      tipo_sugerido: row.tipo === "desistencia_pos_liquidacao" ? row.tipo : undefined,
+      tipo_sugerido:
+        row.tipo === "desistencia_pos_liquidacao" ? row.tipo : undefined,
     },
     tipo: row.tipo as DevolucaoFormState["tipo"],
-    dataDevolucao: row.data_devolucao ? new Date(`${row.data_devolucao}T12:00:00`) : undefined,
+    dataDevolucao: row.data_devolucao
+      ? new Date(`${row.data_devolucao}T12:00:00`)
+      : undefined,
     quantidadeParcelas: row.quantidade_parcelas,
     valor: Math.round(Number.parseFloat(row.valor) * 100),
     motivo: row.motivo,
@@ -235,10 +240,9 @@ export default function DevolucoesAssociadoPage() {
   const canEdit = hasAnyRole(["ADMIN", "COORDENADOR", "TESOUREIRO"]);
   const initialTab = React.useMemo<ListingTab>(() => {
     const requestedTab = searchParams.get("tab");
-    if (requestedTab === "pos_liquidacao") return "pos_liquidacao";
     if (requestedTab === "duplicidades") return "duplicidades";
     if (requestedTab === "historico") return "historico";
-    return "registrar";
+    return "historico";
   }, [searchParams]);
 
   const [tab, setTab] = React.useState<ListingTab>(initialTab);
@@ -249,19 +253,24 @@ export default function DevolucoesAssociadoPage() {
   const [tipo, setTipo] = React.useState("todos");
   const [status, setStatus] = React.useState("todos");
   const [filtersOpen, setFiltersOpen] = React.useState(false);
-  const [draftCompetencia, setDraftCompetencia] = React.useState<Date | undefined>();
+  const [draftCompetencia, setDraftCompetencia] = React.useState<
+    Date | undefined
+  >();
   const [draftEstado, setDraftEstado] = React.useState("todos");
   const [draftTipo, setDraftTipo] = React.useState("todos");
   const [draftStatus, setDraftStatus] = React.useState("todos");
   const [isExporting, setIsExporting] = React.useState(false);
-  const [registerState, setRegisterState] = React.useState<DevolucaoFormState | null>(null);
-  const [registerAllowsContractSelection, setRegisterAllowsContractSelection] = React.useState(false);
-  const [registerContractSearch, setRegisterContractSearch] = React.useState("");
-  const [reverterTarget, setReverterTarget] = React.useState<DevolucaoAssociadoItem | null>(
-    null,
-  );
+  const [registerState, setRegisterState] =
+    React.useState<DevolucaoFormState | null>(null);
+  const [registerAllowsContractSelection, setRegisterAllowsContractSelection] =
+    React.useState(false);
+  const [registerContractSearch, setRegisterContractSearch] =
+    React.useState("");
+  const [reverterTarget, setReverterTarget] =
+    React.useState<DevolucaoAssociadoItem | null>(null);
   const [motivoReversao, setMotivoReversao] = React.useState("");
-  const [deleteTarget, setDeleteTarget] = React.useState<DevolucaoAssociadoItem | null>(null);
+  const [deleteTarget, setDeleteTarget] =
+    React.useState<DevolucaoAssociadoItem | null>(null);
   const [motivoExclusao, setMotivoExclusao] = React.useState("");
 
   React.useEffect(() => {
@@ -272,20 +281,6 @@ export default function DevolucoesAssociadoPage() {
     setPage(1);
   }, [tab, search, competencia, estado, tipo, status]);
 
-  const contratosQuery = useDevolucaoContratosQuery({
-    page,
-    search,
-    competencia,
-    estado,
-    fluxo: undefined,
-  });
-  const posLiquidacaoQuery = useDevolucaoContratosQuery({
-    page,
-    search,
-    competencia,
-    estado,
-    fluxo: "desistencia_pos_liquidacao",
-  });
   const historicoQuery = useDevolucaoHistoricoQuery({
     page,
     search,
@@ -294,51 +289,47 @@ export default function DevolucoesAssociadoPage() {
     status,
     fluxo: undefined,
   });
-  const registerFlow = tab === "pos_liquidacao" ? "desistencia_pos_liquidacao" : undefined;
   const manualContractsQuery = useDevolucaoContratosQuery({
     page: 1,
     search: registerContractSearch,
     competencia,
     estado,
-    fluxo: registerFlow,
+    fluxo: undefined,
     enabled: Boolean(registerState && registerAllowsContractSelection),
   });
 
-  const query =
-    tab === "historico"
-      ? historicoQuery
-      : tab === "pos_liquidacao"
-        ? posLiquidacaoQuery
-        : contratosQuery;
+  const query = historicoQuery;
   const totalCount = query.data?.count ?? 0;
   const totalPages = Math.max(1, Math.ceil(totalCount / 20));
 
   const handleExport = React.useCallback(
-    async (scope: ReportScope, formatValue: "pdf" | "xlsx") => {
-      const referenceDate = resolveReportReferenceDate({
-        scope,
-        dayReference: competencia,
-        monthReference: competencia,
-      });
+    async (exportFilters: ReportExportFilters, formatValue: "pdf" | "xlsx") => {
+      const { scope, referenceDate } = exportFilters;
 
       setIsExporting(true);
       try {
         if (tab === "historico") {
           const sourceQuery = {
             search: search || undefined,
-            competencia: competencia ? format(competencia, "yyyy-MM") : undefined,
+            competencia: competencia
+              ? format(competencia, "yyyy-MM")
+              : undefined,
             tipo: tipo !== "todos" ? tipo : undefined,
             status: status !== "todos" ? status : undefined,
           };
-          const fetchedRows = await fetchAllPaginatedRows<DevolucaoAssociadoItem>({
-            sourcePath: "tesouraria/devolucoes",
-            sourceQuery,
-          });
+          const fetchedRows =
+            await fetchAllPaginatedRows<DevolucaoAssociadoItem>({
+              sourcePath: "tesouraria/devolucoes",
+              sourceQuery,
+            });
           const rows = filterRowsByReportScope({
             rows: fetchedRows,
             scope,
             referenceDate,
-            getCandidates: (row) => [row.data_devolucao, row.competencia_referencia],
+            getCandidates: (row) => [
+              row.data_devolucao,
+              row.competencia_referencia,
+            ],
           }).map((row) => ({
             nome: row.nome,
             cpf_cnpj: row.cpf_cnpj,
@@ -371,7 +362,8 @@ export default function DevolucoesAssociadoPage() {
           search: search || undefined,
           competencia: competencia ? format(competencia, "yyyy-MM") : undefined,
           estado: estado !== "todos" ? estado : undefined,
-          fluxo: tab === "pos_liquidacao" ? "desistencia_pos_liquidacao" : undefined,
+          fluxo:
+            tab === "pos_liquidacao" ? "desistencia_pos_liquidacao" : undefined,
         };
         const fetchedRows = await fetchAllPaginatedRows<DevolucaoContratoItem>({
           sourcePath: "tesouraria/devolucoes/contratos",
@@ -406,7 +398,9 @@ export default function DevolucoesAssociadoPage() {
         });
       } catch (error) {
         toast.error(
-          error instanceof Error ? error.message : "Falha ao exportar devoluções.",
+          error instanceof Error
+            ? error.message
+            : "Falha ao exportar devoluções.",
         );
       } finally {
         setIsExporting(false);
@@ -418,12 +412,20 @@ export default function DevolucoesAssociadoPage() {
   const registrarMutation = useMutation({
     mutationFn: async (payload: DevolucaoFormState) => {
       if (!payload.row) {
-        throw new Error("Selecione um contrato elegível antes de registrar a devolução.");
+        throw new Error(
+          "Selecione um contrato elegível antes de registrar a devolução.",
+        );
       }
       const formData = new FormData();
       formData.append("tipo", payload.tipo);
-      formData.append("data_devolucao", format(payload.dataDevolucao as Date, "yyyy-MM-dd"));
-      formData.append("quantidade_parcelas", String(payload.quantidadeParcelas));
+      formData.append(
+        "data_devolucao",
+        format(payload.dataDevolucao as Date, "yyyy-MM-dd"),
+      );
+      formData.append(
+        "quantidade_parcelas",
+        String(payload.quantidadeParcelas),
+      );
       formData.append("valor", ((payload.valor ?? 0) / 100).toFixed(2));
       formData.append("motivo", payload.motivo);
       if (payload.comprovantePrincipal) {
@@ -452,13 +454,17 @@ export default function DevolucoesAssociadoPage() {
       setRegisterAllowsContractSelection(false);
       setRegisterContractSearch("");
       setTab("historico");
-      void queryClient.invalidateQueries({ queryKey: ["tesouraria-devolucoes"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-devolucoes"],
+      });
       void queryClient.invalidateQueries({ queryKey: ["associados"] });
       void queryClient.invalidateQueries({ queryKey: ["contratos"] });
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error ? error.message : "Não foi possível registrar a devolução.",
+        error instanceof Error
+          ? error.message
+          : "Não foi possível registrar a devolução.",
       );
     },
   });
@@ -466,12 +472,20 @@ export default function DevolucoesAssociadoPage() {
   const editarMutation = useMutation({
     mutationFn: async (payload: DevolucaoFormState) => {
       if (!payload.row || !payload.devolucaoId) {
-        throw new Error("A devolução precisa permanecer vinculada a um contrato.");
+        throw new Error(
+          "A devolução precisa permanecer vinculada a um contrato.",
+        );
       }
       const formData = new FormData();
       formData.append("tipo", payload.tipo);
-      formData.append("data_devolucao", format(payload.dataDevolucao as Date, "yyyy-MM-dd"));
-      formData.append("quantidade_parcelas", String(payload.quantidadeParcelas));
+      formData.append(
+        "data_devolucao",
+        format(payload.dataDevolucao as Date, "yyyy-MM-dd"),
+      );
+      formData.append(
+        "quantidade_parcelas",
+        String(payload.quantidadeParcelas),
+      );
       formData.append("valor", ((payload.valor ?? 0) / 100).toFixed(2));
       formData.append("motivo", payload.motivo);
       if (payload.competenciaReferencia) {
@@ -503,34 +517,45 @@ export default function DevolucoesAssociadoPage() {
       setRegisterState(null);
       setRegisterAllowsContractSelection(false);
       setRegisterContractSearch("");
-      void queryClient.invalidateQueries({ queryKey: ["tesouraria-devolucoes"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-devolucoes"],
+      });
       void queryClient.invalidateQueries({ queryKey: ["associados"] });
       void queryClient.invalidateQueries({ queryKey: ["contratos"] });
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error ? error.message : "Não foi possível atualizar a devolução.",
+        error instanceof Error
+          ? error.message
+          : "Não foi possível atualizar a devolução.",
       );
     },
   });
 
   const reverterMutation = useMutation({
     mutationFn: async ({ id, motivo }: { id: number; motivo: string }) =>
-      apiFetch<DevolucaoAssociadoItem>(`tesouraria/devolucoes/${id}/reverter/`, {
-        method: "POST",
-        body: { motivo_reversao: motivo },
-      }),
+      apiFetch<DevolucaoAssociadoItem>(
+        `tesouraria/devolucoes/${id}/reverter/`,
+        {
+          method: "POST",
+          body: { motivo_reversao: motivo },
+        },
+      ),
     onSuccess: () => {
       toast.success("Devolução revertida com sucesso.");
       setReverterTarget(null);
       setMotivoReversao("");
-      void queryClient.invalidateQueries({ queryKey: ["tesouraria-devolucoes"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-devolucoes"],
+      });
       void queryClient.invalidateQueries({ queryKey: ["associados"] });
       void queryClient.invalidateQueries({ queryKey: ["contratos"] });
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error ? error.message : "Não foi possível reverter a devolução.",
+        error instanceof Error
+          ? error.message
+          : "Não foi possível reverter a devolução.",
       );
     },
   });
@@ -545,92 +570,25 @@ export default function DevolucoesAssociadoPage() {
       toast.success("Registro de devolução excluído com sucesso.");
       setDeleteTarget(null);
       setMotivoExclusao("");
-      void queryClient.invalidateQueries({ queryKey: ["tesouraria-devolucoes"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-devolucoes"],
+      });
       void queryClient.invalidateQueries({ queryKey: ["associados"] });
       void queryClient.invalidateQueries({ queryKey: ["contratos"] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Não foi possível excluir a devolução.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível excluir a devolução.",
+      );
     },
   });
 
-  const registerColumns = React.useMemo<DataTableColumn<DevolucaoContratoItem>[]>(
-    () => [
-      {
-        id: "associado",
-        header: "Associado",
-        cell: (row) => (
-          <div>
-            <p className="font-medium">{row.nome}</p>
-            <p className="text-xs text-muted-foreground">
-              {row.cpf_cnpj} · {row.matricula || "Sem matrícula"}
-            </p>
-          </div>
-        ),
-      },
-      {
-        id: "contrato",
-        header: "Contrato / Agente",
-        cell: (row) => (
-          <div>
-            <p className="font-medium">{row.contrato_codigo}</p>
-            <p className="text-xs text-muted-foreground">{row.agente_nome || "Sem agente"}</p>
-          </div>
-        ),
-      },
-      {
-        id: "datas",
-        header: "Datas",
-        cell: (row) => (
-          <div className="space-y-1">
-            <p className="text-sm text-foreground">Contrato em {formatDate(row.data_contrato)}</p>
-            <p className="text-xs text-muted-foreground">
-              Averbação{" "}
-              {row.mes_averbacao ? formatMonthYear(row.mes_averbacao) : "não informada"}
-            </p>
-          </div>
-        ),
-      },
-      {
-        id: "status",
-        header: "Status do contrato",
-        cell: (row) => <StatusBadge status={row.status_contrato} />,
-      },
-      {
-        id: "acoes",
-        header: "Ações",
-        cellClassName: "w-[220px]",
-        cell: (row) => (
-          <div className="flex flex-wrap gap-2">
-            <Button asChild size="sm" variant="outline">
-              <Link href={`/associados/${row.associado_id}`}>Ver cadastro</Link>
-            </Button>
-            <Button
-              size="sm"
-              variant="success"
-              onClick={() => {
-                setRegisterAllowsContractSelection(false);
-                setRegisterContractSearch("");
-                setRegisterState(
-                  buildCreateState(
-                    row,
-                    tab === "pos_liquidacao"
-                      ? "desistencia_pos_liquidacao"
-                      : "pagamento_indevido",
-                  ),
-                );
-              }}
-            >
-              Registrar devolução
-            </Button>
-          </div>
-        ),
-      },
-    ],
-    [tab],
-  );
 
-  const historyColumns = React.useMemo<DataTableColumn<DevolucaoAssociadoItem>[]>(
+  const historyColumns = React.useMemo<
+    DataTableColumn<DevolucaoAssociadoItem>[]
+  >(
     () => [
       {
         id: "associado",
@@ -668,7 +626,8 @@ export default function DevolucoesAssociadoPage() {
           <div>
             <p className="font-semibold">{formatCurrency(row.valor)}</p>
             <p className="text-xs text-muted-foreground">
-              {row.quantidade_parcelas} parcela(s) · {formatDate(row.data_devolucao)}
+              {row.quantidade_parcelas} parcela(s) ·{" "}
+              {formatDate(row.data_devolucao)}
             </p>
           </div>
         ),
@@ -724,7 +683,11 @@ export default function DevolucoesAssociadoPage() {
               </Button>
             ) : null}
             {isAdmin && row.pode_reverter ? (
-              <Button size="sm" variant="outline" onClick={() => setReverterTarget(row)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setReverterTarget(row)}
+              >
                 <RotateCcwIcon className="mr-1.5 size-3.5" />
                 Reverter
               </Button>
@@ -749,16 +712,14 @@ export default function DevolucoesAssociadoPage() {
     [canEdit, isAdmin],
   );
 
-  const registerRows = (contratosQuery.data?.results ?? []) as DevolucaoContratoItem[];
-  const historyRows = (historicoQuery.data?.results ?? []) as DevolucaoAssociadoItem[];
-  const posLiquidacaoRows = (posLiquidacaoQuery.data?.results ?? []) as DevolucaoContratoItem[];
+  const historyRows = (historicoQuery.data?.results ??
+    []) as DevolucaoAssociadoItem[];
   const kpis = query.data?.kpis;
-  const isFlowRegisterTab = tab === "registrar" || tab === "pos_liquidacao";
   const isDuplicidadeTab = tab === "duplicidades";
   const activeFiltersCount =
     Number(Boolean(competencia)) +
-    Number(isFlowRegisterTab ? estado !== "todos" : tipo !== "todos") +
-    Number(tab === "historico" && status !== "todos");
+    Number(tipo !== "todos") +
+    Number(status !== "todos");
 
   return (
     <div className="space-y-6">
@@ -767,21 +728,15 @@ export default function DevolucoesAssociadoPage() {
           <div className="space-y-1">
             <h1 className="text-3xl font-semibold">Devoluções</h1>
             <p className="text-sm text-muted-foreground">
-              Registre devoluções por pagamento ou desconto indevido e trate duplicidades
-              financeiras vindas do arquivo retorno sem alterar parcelas, ciclos ou baixa
-              financeira do contrato.
+              Registre devoluções por pagamento ou desconto indevido e acompanhe
+              o histórico operacional e o histórico formal de devoluções sem
+              alterar parcelas, ciclos ou a baixa financeira do contrato.
             </p>
           </div>
-          <ExportButton
+          <ReportExportDialog
             disabled={isExporting || isDuplicidadeTab}
             label={isExporting ? "Exportando..." : "Exportar"}
-            enableScopeSelection
-            onExport={(formatValue) =>
-              formatValue === "pdf" || formatValue === "xlsx"
-                ? void handleExport("month", formatValue)
-                : undefined
-            }
-            onExportScoped={(scope, formatValue) => void handleExport(scope, formatValue)}
+            onExport={handleExport}
           />
         </div>
       </section>
@@ -789,17 +744,9 @@ export default function DevolucoesAssociadoPage() {
       {!isDuplicidadeTab ? (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatsCard
-            title={isFlowRegisterTab ? "Contratos disponíveis" : "Registros"}
-            value={String(
-              isFlowRegisterTab ? kpis?.total_contratos ?? 0 : kpis?.total_registros ?? 0,
-            )}
-            delta={
-              tab === "pos_liquidacao"
-                ? "Renovações liquidadas prontas para desistência"
-                : isFlowRegisterTab
-                  ? "Base para registrar devoluções"
-                  : "Histórico total"
-            }
+            title="Registros"
+            value={String(kpis?.total_registros ?? 0)}
+            delta="Histórico de devolução no recorte"
             icon={ReceiptTextIcon}
             tone="neutral"
           />
@@ -811,28 +758,16 @@ export default function DevolucoesAssociadoPage() {
             tone="neutral"
           />
           <StatsCard
-            title={isFlowRegisterTab ? "Contratos ativos" : "Valor total"}
-            value={
-              isFlowRegisterTab
-                ? String(kpis?.ativos ?? 0)
-                : formatCurrency(kpis?.valor_total ?? "0")
-            }
-            delta={
-              isFlowRegisterTab
-                ? `${kpis?.encerrados ?? 0} encerrado(s) no recorte`
-                : `${kpis?.registradas ?? 0} devolução(ões) ativa(s)`
-            }
+            title="Valor total"
+            value={formatCurrency(kpis?.valor_total ?? "0")}
+            delta={`${kpis?.registradas ?? 0} devolução(ões) ativa(s)`}
             icon={HandCoinsIcon}
-            tone={isFlowRegisterTab ? "neutral" : "positive"}
+            tone="positive"
           />
           <StatsCard
-            title={isFlowRegisterTab ? "Cancelados" : "Revertidas"}
-            value={String(isFlowRegisterTab ? kpis?.cancelados ?? 0 : kpis?.revertidas ?? 0)}
-            delta={
-              isFlowRegisterTab
-                ? "Contratos cancelados disponíveis para consulta"
-                : "Registros revertidos por administração"
-            }
+            title="Revertidas"
+            value={String(kpis?.revertidas ?? 0)}
+            delta="Registros revertidos por administração"
             icon={CalendarCheck2Icon}
             tone="warning"
           />
@@ -845,10 +780,8 @@ export default function DevolucoesAssociadoPage() {
         className="space-y-6"
       >
         <TabsList variant="line" className="justify-start">
-          <TabsTrigger value="registrar">Registrar</TabsTrigger>
-          <TabsTrigger value="pos_liquidacao">Pós-liquidação</TabsTrigger>
-          <TabsTrigger value="duplicidades">Duplicidades</TabsTrigger>
-          <TabsTrigger value="historico">Histórico</TabsTrigger>
+          <TabsTrigger value="duplicidades">Histórico geral</TabsTrigger>
+          <TabsTrigger value="historico">Histórico de devolução</TabsTrigger>
         </TabsList>
 
         {!isDuplicidadeTab ? (
@@ -865,20 +798,13 @@ export default function DevolucoesAssociadoPage() {
             </div>
             <div className="flex items-end justify-end">
               <div className="flex flex-wrap items-end justify-end gap-3">
-                {isFlowRegisterTab ? (
+                {tab === "historico" ? (
                   <Button
                     className="h-11 rounded-xl"
                     onClick={() => {
                       setRegisterAllowsContractSelection(true);
                       setRegisterContractSearch("");
-                      setRegisterState(
-                        buildCreateState(
-                          null,
-                          tab === "pos_liquidacao"
-                            ? "desistencia_pos_liquidacao"
-                            : "pagamento_indevido",
-                        ),
-                      );
+                      setRegisterState(buildCreateState(null, "pagamento_indevido"));
                     }}
                   >
                     <PlusIcon className="size-4" />
@@ -909,103 +835,97 @@ export default function DevolucoesAssociadoPage() {
                     </Button>
                   </SheetTrigger>
                   <SheetContent className="w-full border-l border-border/60 sm:max-w-xl">
-                  <SheetHeader>
-                    <SheetTitle>Filtros avançados</SheetTitle>
-                    <SheetDescription>
-                      Ajuste competência e filtros específicos para registrar ou revisar devoluções.
-                    </SheetDescription>
-                  </SheetHeader>
+                    <SheetHeader>
+                      <SheetTitle>Filtros avançados</SheetTitle>
+                      <SheetDescription>
+                        Ajuste competência e filtros específicos para registrar
+                        ou revisar devoluções.
+                      </SheetDescription>
+                    </SheetHeader>
 
-                  <div className="space-y-5 overflow-y-auto px-4 pb-4">
-                    <div className="space-y-2">
-                      <Label>Competência</Label>
-                      <CalendarCompetencia
-                        value={draftCompetencia}
-                        onChange={setDraftCompetencia}
-                      />
-                    </div>
-
-                    {isFlowRegisterTab ? (
+                    <div className="space-y-5 overflow-y-auto px-4 pb-4">
                       <div className="space-y-2">
-                        <Label>Status do contrato</Label>
-                        <Select value={draftEstado} onValueChange={setDraftEstado}>
+                        <Label>Competência</Label>
+                        <CalendarCompetencia
+                          value={draftCompetencia}
+                          onChange={setDraftCompetencia}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Tipo</Label>
+                        <Select
+                          value={draftTipo}
+                          onValueChange={setDraftTipo}
+                        >
                           <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/50">
                             <SelectValue placeholder="Todos" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="todos">Todos</SelectItem>
-                            <SelectItem value="ativo">Ativo</SelectItem>
-                            <SelectItem value="encerrado">Encerrado</SelectItem>
-                            <SelectItem value="cancelado">Cancelado</SelectItem>
-                            <SelectItem value="em_analise">Em análise</SelectItem>
-                            <SelectItem value="rascunho">Rascunho</SelectItem>
+                            <SelectItem value="pagamento_indevido">
+                              Pagamento indevido
+                            </SelectItem>
+                            <SelectItem value="desconto_indevido">
+                              Desconto indevido
+                            </SelectItem>
+                            <SelectItem value="desistencia_pos_liquidacao">
+                              Desistência pós-liquidação
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
-                    ) : (
-                      <>
-                        <div className="space-y-2">
-                          <Label>Tipo</Label>
-                          <Select value={draftTipo} onValueChange={setDraftTipo}>
-                            <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/50">
-                              <SelectValue placeholder="Todos" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="todos">Todos</SelectItem>
-                              <SelectItem value="pagamento_indevido">Pagamento indevido</SelectItem>
-                              <SelectItem value="desconto_indevido">Desconto indevido</SelectItem>
-                              <SelectItem value="desistencia_pos_liquidacao">
-                                Desistência pós-liquidação
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Status</Label>
-                          <Select value={draftStatus} onValueChange={setDraftStatus}>
-                            <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/50">
-                              <SelectValue placeholder="Todos" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="todos">Todos</SelectItem>
-                              <SelectItem value="registrada">Registrada</SelectItem>
-                              <SelectItem value="revertida">Revertida</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </>
-                    )}
-                  </div>
+                      <div className="space-y-2">
+                        <Label>Status</Label>
+                        <Select
+                          value={draftStatus}
+                          onValueChange={setDraftStatus}
+                        >
+                          <SelectTrigger className="h-11 rounded-xl border-border/60 bg-background/50">
+                            <SelectValue placeholder="Todos" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="todos">Todos</SelectItem>
+                            <SelectItem value="registrada">
+                              Registrada
+                            </SelectItem>
+                            <SelectItem value="revertida">
+                              Revertida
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
 
-                  <SheetFooter>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        setDraftCompetencia(undefined);
-                        setDraftEstado("todos");
-                        setDraftTipo("todos");
-                        setDraftStatus("todos");
-                        setCompetencia(undefined);
-                        setEstado("todos");
-                        setTipo("todos");
-                        setStatus("todos");
-                        setFiltersOpen(false);
-                      }}
-                    >
-                      Limpar
-                    </Button>
-                    <Button
-                      onClick={() => {
-                        setCompetencia(draftCompetencia);
-                        setEstado(draftEstado);
-                        setTipo(draftTipo);
-                        setStatus(draftStatus);
-                        setFiltersOpen(false);
-                      }}
-                    >
-                      Aplicar
-                    </Button>
-                  </SheetFooter>
+                    <SheetFooter>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setDraftCompetencia(undefined);
+                          setDraftEstado("todos");
+                          setDraftTipo("todos");
+                          setDraftStatus("todos");
+                          setCompetencia(undefined);
+                          setEstado("todos");
+                          setTipo("todos");
+                          setStatus("todos");
+                          setFiltersOpen(false);
+                        }}
+                      >
+                        Limpar
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setCompetencia(draftCompetencia);
+                          setEstado(draftEstado);
+                          setTipo(draftTipo);
+                          setStatus(draftStatus);
+                          setFiltersOpen(false);
+                        }}
+                      >
+                        Aplicar
+                      </Button>
+                    </SheetFooter>
                   </SheetContent>
                 </Sheet>
               </div>
@@ -1013,36 +933,8 @@ export default function DevolucoesAssociadoPage() {
           </div>
         ) : null}
 
-        <TabsContent value="registrar" className="mt-0">
-          <DataTable
-            columns={registerColumns}
-            data={registerRows}
-            loading={contratosQuery.isLoading}
-            currentPage={page}
-            totalPages={totalPages}
-            onPageChange={setPage}
-            pageSize={20}
-            emptyMessage="Nenhum contrato encontrado para registrar devolução."
-          />
-        </TabsContent>
-
-        <TabsContent value="pos_liquidacao" className="mt-0">
-          <DataTable
-            columns={registerColumns}
-            data={posLiquidacaoRows}
-            loading={posLiquidacaoQuery.isLoading}
-            currentPage={page}
-            totalPages={totalPages}
-            onPageChange={setPage}
-            pageSize={20}
-            emptyMessage="Nenhuma renovação liquidada disponível para devolução pós-liquidação."
-          />
-        </TabsContent>
-
         <TabsContent value="duplicidades" className="mt-0">
-          <DuplicidadesFinanceirasPanel
-            emptyMessage="Nenhuma duplicidade financeira pendente ou histórica encontrada para a tesouraria."
-          />
+          <DuplicidadesFinanceirasPanel emptyMessage="Nenhum evento operacional pendente ou histórico encontrado para a tesouraria." />
         </TabsContent>
 
         <TabsContent value="historico" className="mt-0">
@@ -1054,7 +946,7 @@ export default function DevolucoesAssociadoPage() {
             totalPages={totalPages}
             onPageChange={setPage}
             pageSize={20}
-            emptyMessage="Nenhuma devolução registrada no histórico."
+            emptyMessage="Nenhuma devolução registrada no histórico de devolução."
           />
         </TabsContent>
       </Tabs>
@@ -1086,7 +978,10 @@ export default function DevolucoesAssociadoPage() {
         contractSearchLoading={manualContractsQuery.isFetching}
       />
 
-      <Dialog open={!!reverterTarget} onOpenChange={(open) => !open && setReverterTarget(null)}>
+      <Dialog
+        open={!!reverterTarget}
+        onOpenChange={(open) => !open && setReverterTarget(null)}
+      >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Reverter devolução</DialogTitle>
@@ -1099,7 +994,8 @@ export default function DevolucoesAssociadoPage() {
               <div className="rounded-2xl border border-border/60 bg-background/40 p-4">
                 <p className="font-medium">{reverterTarget.nome}</p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {reverterTarget.contrato_codigo} · {formatCurrency(reverterTarget.valor)}
+                  {reverterTarget.contrato_codigo} ·{" "}
+                  {formatCurrency(reverterTarget.valor)}
                 </p>
               </div>
               <div className="space-y-2">
@@ -1126,7 +1022,11 @@ export default function DevolucoesAssociadoPage() {
             </Button>
             <Button
               variant="outline"
-              disabled={!motivoReversao.trim() || reverterMutation.isPending || !reverterTarget}
+              disabled={
+                !motivoReversao.trim() ||
+                reverterMutation.isPending ||
+                !reverterTarget
+              }
               onClick={() =>
                 reverterTarget &&
                 reverterMutation.mutate({
@@ -1156,7 +1056,8 @@ export default function DevolucoesAssociadoPage() {
             <DialogDescription>
               {deleteTarget ? (
                 <>
-                  O registro de devolução de <strong>{deleteTarget.nome}</strong> será removido do
+                  O registro de devolução de{" "}
+                  <strong>{deleteTarget.nome}</strong> será removido do
                   histórico ativo da tesouraria.
                 </>
               ) : null}
@@ -1199,7 +1100,11 @@ export default function DevolucoesAssociadoPage() {
             </Button>
             <Button
               variant="destructive"
-              disabled={deleteMutation.isPending || !deleteTarget || !motivoExclusao.trim()}
+              disabled={
+                deleteMutation.isPending ||
+                !deleteTarget ||
+                !motivoExclusao.trim()
+              }
               onClick={() => {
                 if (!deleteTarget || !motivoExclusao.trim()) {
                   return;

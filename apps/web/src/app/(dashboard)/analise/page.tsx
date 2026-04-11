@@ -31,6 +31,13 @@ import type {
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
+import { maskCPFCNPJ } from "@/lib/masks";
+import {
+  describeReportScope,
+  exportRouteReport,
+  fetchAllPaginatedRows,
+  filterRowsByReportScope,
+} from "@/lib/reports";
 import {
   dashboardOptionsQueryOptions,
   dashboardRetainedQueryOptions,
@@ -40,6 +47,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import DatePicker from "@/components/custom/date-picker";
 import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
+import AssociadoDetailsDialog from "@/components/associados/associado-details-dialog";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, {
   type DataTableColumn,
@@ -50,6 +58,9 @@ import {
   MetricCardSkeleton,
   WorklistRouteSkeleton,
 } from "@/components/shared/page-skeletons";
+import ReportExportDialog, {
+  type ReportExportFilters,
+} from "@/components/shared/report-export-dialog";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -263,7 +274,11 @@ export default function AnalisePage() {
   >();
   const [draftDataFim, setDraftDataFim] = React.useState<Date | undefined>();
   const [dialogState, setDialogState] = React.useState<DialogState>(null);
+  const [detailTarget, setDetailTarget] = React.useState<EsteiraItem | null>(
+    null
+  );
   const [observacao, setObservacao] = React.useState("");
+  const [isExporting, setIsExporting] = React.useState(false);
   const debouncedSearch = useDebouncedValue(search, 300);
   const documentoItemId =
     dialogState?.mode === "documentos" ? dialogState.item.id : null;
@@ -509,6 +524,22 @@ export default function AnalisePage() {
         ),
       },
       {
+        id: "mensalidade",
+        header: "Mensalidade",
+        cell: (row) => {
+          const val = row.contrato?.valor_mensalidade;
+          if (!val) return <span className="text-muted-foreground">—</span>;
+          return (
+            <span className="font-medium tabular-nums">
+              {Number(val).toLocaleString("pt-BR", {
+                style: "currency",
+                currency: "BRL",
+              })}
+            </span>
+          );
+        },
+      },
+      {
         id: "documentacao",
         header: "Documentação",
         cell: (row) => <StatusBadge status={row.status_documentacao} />,
@@ -551,8 +582,12 @@ export default function AnalisePage() {
         header: "Ações",
         cell: (row) => (
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" asChild>
-              <Link href={`/associados/${row.associado_id}`}>Ver detalhes</Link>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setDetailTarget(row)}
+            >
+              Ver detalhes
             </Button>
             {row.etapa_atual === "analise" &&
             row.status_documentacao === "reenvio_pendente" ? (
@@ -641,6 +676,54 @@ export default function AnalisePage() {
 
     return options;
   }, [analistasQuery.data?.results, hasAnyRole, user]);
+
+  const handleExportAnalise = React.useCallback(
+    async (exportFilters: ReportExportFilters, fmt: "pdf" | "xlsx") => {
+      const { scope, referenceDate, agente: exportAgente } = exportFilters;
+      setIsExporting(true);
+      try {
+        const rows = await fetchAllPaginatedRows<EsteiraItem>({
+          sourcePath: "analise/filas",
+          sourceQuery: {
+            secao: "ver_todos",
+            agente: exportAgente || undefined,
+            page_size: 200,
+          },
+        });
+        const scopedRows = filterRowsByReportScope({
+          rows,
+          scope,
+          referenceDate,
+          getCandidates: (row) => [row.created_at],
+        });
+        const exportRows = scopedRows.map((row) => ({
+          nome: row.nome,
+          cpf_cnpj: maskCPFCNPJ(row.cpf_cnpj),
+          matricula: row.matricula_orgao || row.matricula || "—",
+          contrato_codigo: row.contrato_codigo || "—",
+          etapa: row.etapa_atual,
+          status: row.status,
+          agente: row.agente_nome || "—",
+          criado_em: row.created_at,
+        }));
+        await exportRouteReport({
+          route: "/analise",
+          format: fmt,
+          rows: exportRows,
+          filters: {
+            agente: exportAgente || undefined,
+            total_registros: exportRows.length,
+            ...describeReportScope(scope, referenceDate),
+          },
+        });
+      } catch {
+        // handled by sonner globally
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [],
+  );
 
   if (status !== "authenticated") {
     return <WorklistRouteSkeleton />;
@@ -893,10 +976,17 @@ export default function AnalisePage() {
           >
             Limpar
           </Button>
+          <ReportExportDialog
+            disabled={isExporting}
+            label="Exportar"
+            agentOptions={agentOptions}
+            showFilters
+            onExport={handleExportAnalise}
+          />
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+      <section className="grid gap-4 grid-cols-2 xl:grid-cols-4">
         {summaryQuery.isLoading && !summaryQuery.data
           ? Array.from({ length: FILA_SECTIONS.length }).map((_, index) => (
               <MetricCardSkeleton key={index} />
@@ -1249,6 +1339,13 @@ export default function AnalisePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AssociadoDetailsDialog
+        open={!!detailTarget}
+        onOpenChange={(open) => !open && setDetailTarget(null)}
+        associadoId={detailTarget?.associado_id ?? null}
+        description="Consulta expandida do associado, contratos e ciclos diretamente na fila de análise."
+      />
     </div>
   );
 }

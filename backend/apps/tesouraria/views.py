@@ -343,7 +343,9 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
             )
         return {
             "total": queryset.count(),
-            "efetivados": queryset.filter(auxilio_liberado_em__isnull=False).count(),
+            "efetivados": queryset.filter(auxilio_liberado_em__isnull=False).exclude(
+                associado__status=Associado.Status.INATIVO
+            ).count(),
             "com_anexos": queryset.filter(comprovantes__refinanciamento__isnull=True)
             .distinct()
             .count(),
@@ -495,7 +497,10 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
         resumo = {
             "total": len(contratos),
             "efetivados": sum(
-                1 for contrato in contratos if contrato.auxilio_liberado_em is not None
+                1
+                for contrato in contratos
+                if contrato.auxilio_liberado_em is not None
+                and getattr(contrato.associado, "status", "") != Associado.Status.INATIVO
             ),
             "com_anexos": sum(
                 1
@@ -632,23 +637,29 @@ class BaixaManualViewSet(mixins.ListModelMixin, GenericViewSet):
         detail=False,
         methods=["post"],
         url_path="inativar-associado",
-        parser_classes=[MultiPartParser],
+        parser_classes=[MultiPartParser, FormParser],
+        permission_classes=[permissions.IsAuthenticated],
     )
     def inativar_associado(self, request):
         payload = InativarAssociadoBaixaSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
+        comprovante = payload.validated_data.get("comprovante")
         result = BaixaManualService.inativar_associado_com_baixa(
             payload.validated_data["associado_id"],
-            comprovante=payload.validated_data["comprovante"],
+            comprovante=comprovante,
             observacao=payload.validated_data.get("observacao", ""),
             user=request.user,
         )
+        if result["parcelas_baixadas"]:
+            message = "Associado inativado e parcelas vencidas baixadas com sucesso."
+        else:
+            message = "Associado inativado sem baixa de parcelas."
         return Response(
             {
                 "associado_id": result["associado_id"],
                 "parcelas_baixadas": result["parcelas_baixadas"],
                 "total_baixado": result["total_baixado"],
-                "message": "Associado inativado e parcelas vencidas baixadas com sucesso.",
+                "message": message,
             },
             status=201,
         )

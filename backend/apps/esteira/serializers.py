@@ -34,6 +34,9 @@ class ContratoEsteiraSerializer(serializers.Serializer):
     cpf_cnpj = serializers.CharField(read_only=True)
     matricula = serializers.CharField(read_only=True)
     matricula_display = serializers.CharField(read_only=True)
+    valor_mensalidade = serializers.DecimalField(
+        max_digits=12, decimal_places=2, allow_null=True, read_only=True
+    )
 
 
 class DocumentoEsteiraSerializer(serializers.Serializer):
@@ -214,6 +217,7 @@ class EsteiraListSerializer(serializers.ModelSerializer):
                 "cpf_cnpj": obj.associado.cpf_cnpj,
                 "matricula": obj.associado.matricula,
                 "matricula_display": obj.associado.matricula_display,
+                "valor_mensalidade": contrato.valor_mensalidade,
             }
         ).data
 

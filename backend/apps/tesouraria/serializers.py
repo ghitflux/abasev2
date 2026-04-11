@@ -711,7 +711,7 @@ class DarBaixaManualSerializer(serializers.Serializer):
 
 class InativarAssociadoBaixaSerializer(serializers.Serializer):
     associado_id = serializers.IntegerField(required=True)
-    comprovante = serializers.FileField(required=True)
+    comprovante = serializers.FileField(required=False, allow_null=True, allow_empty_file=False)
     observacao = serializers.CharField(required=False, allow_blank=True, default="")
 
 

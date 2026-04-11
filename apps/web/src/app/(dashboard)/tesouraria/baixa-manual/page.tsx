@@ -27,8 +27,6 @@ import {
   exportRouteReport,
   fetchAllPaginatedRows,
   filterRowsByReportScope,
-  resolveReportReferenceDate,
-  type ReportScope,
 } from "@/lib/reports";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import DatePicker from "@/components/custom/date-picker";
@@ -36,8 +34,12 @@ import FileUploadDropzone from "@/components/custom/file-upload-dropzone";
 import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
-import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
-import ExportButton from "@/components/shared/export-button";
+import DataTable, {
+  type DataTableColumn,
+} from "@/components/shared/data-table";
+import ReportExportDialog, {
+  type ReportExportFilters,
+} from "@/components/shared/report-export-dialog";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -135,6 +137,7 @@ type AssociadoGroup = {
   total_parcelas: number;
   valor_total: number;
   ultima_baixa: string | null;
+  possuiQuitacaoDisponivel: boolean;
   possuiParcelaBaixavel: boolean;
 };
 
@@ -183,7 +186,10 @@ function resolveItemAmount(item: BaixaManualItem, listing: ListingTab) {
   return parseCurrencyValue(item.valor);
 }
 
-function groupByAssociado(items: BaixaManualItem[], listing: ListingTab): AssociadoGroup[] {
+function groupByAssociado(
+  items: BaixaManualItem[],
+  listing: ListingTab,
+): AssociadoGroup[] {
   const map = new Map<number, AssociadoGroup>();
 
   for (const item of items) {
@@ -194,8 +200,11 @@ function groupByAssociado(items: BaixaManualItem[], listing: ListingTab): Associ
       existing.parcelas.push(item);
       existing.total_parcelas += 1;
       existing.valor_total += value;
+      existing.possuiQuitacaoDisponivel =
+        existing.possuiQuitacaoDisponivel || Boolean(item.pode_dar_baixa);
       existing.possuiParcelaBaixavel =
-        existing.possuiParcelaBaixavel || Boolean(item.pode_dar_baixa && item.parcela_id);
+        existing.possuiParcelaBaixavel ||
+        Boolean(item.pode_dar_baixa && item.parcela_id);
       if (listing === "quitados" && item.data_baixa) {
         existing.ultima_baixa =
           !existing.ultima_baixa || item.data_baixa > existing.ultima_baixa
@@ -216,6 +225,7 @@ function groupByAssociado(items: BaixaManualItem[], listing: ListingTab): Associ
       total_parcelas: 1,
       valor_total: value,
       ultima_baixa: listing === "quitados" ? item.data_baixa : null,
+      possuiQuitacaoDisponivel: Boolean(item.pode_dar_baixa),
       possuiParcelaBaixavel: Boolean(item.pode_dar_baixa && item.parcela_id),
     });
   }
@@ -224,7 +234,8 @@ function groupByAssociado(items: BaixaManualItem[], listing: ListingTab): Associ
 }
 
 function countActiveAdvancedFilters(filters: AdvancedFilters) {
-  return [filters.agente, filters.dataInicio, filters.dataFim].filter(Boolean).length;
+  return [filters.agente, filters.dataInicio, filters.dataFim].filter(Boolean)
+    .length;
 }
 
 export default function BaixaManualPage() {
@@ -245,12 +256,15 @@ export default function BaixaManualPage() {
     dataInicio: undefined,
     dataFim: undefined,
   });
-  const [darBaixaState, setDarBaixaState] = React.useState<DarBaixaState | null>(null);
+  const [darBaixaState, setDarBaixaState] =
+    React.useState<DarBaixaState | null>(null);
   const [inativarAssociadoState, setInativarAssociadoState] =
     React.useState<InativarAssociadoState | null>(null);
   const [navigatingId, setNavigatingId] = React.useState<number | null>(null);
 
-  const competenciaParam = competencia ? format(competencia, "yyyy-MM") : undefined;
+  const competenciaParam = competencia
+    ? format(competencia, "yyyy-MM")
+    : undefined;
   const activeAdvancedFiltersCount = countActiveAdvancedFilters({
     agente,
     dataInicio,
@@ -273,7 +287,15 @@ export default function BaixaManualPage() {
 
   React.useEffect(() => {
     setPage(1);
-  }, [listing, search, statusFilter, competenciaParam, agente, dataInicio, dataFim]);
+  }, [
+    listing,
+    search,
+    statusFilter,
+    competenciaParam,
+    agente,
+    dataInicio,
+    dataFim,
+  ]);
 
   const query = useQuery({
     queryKey: [
@@ -295,22 +317,22 @@ export default function BaixaManualPage() {
           listing,
           search: search || undefined,
           status:
-            listing === "pendentes" && statusFilter !== "todos" ? statusFilter : undefined,
+            listing === "pendentes" && statusFilter !== "todos"
+              ? statusFilter
+              : undefined,
           competencia: competenciaParam,
           agente: agente || undefined,
-          data_inicio: dataInicio ? format(dataInicio, "yyyy-MM-dd") : undefined,
+          data_inicio: dataInicio
+            ? format(dataInicio, "yyyy-MM-dd")
+            : undefined,
           data_fim: dataFim ? format(dataFim, "yyyy-MM-dd") : undefined,
         },
       }),
   });
 
   const handleExport = React.useCallback(
-    async (scope: ReportScope, formatValue: "pdf" | "xlsx") => {
-      const referenceDate = resolveReportReferenceDate({
-        scope,
-        dayReference: dataInicio ?? dataFim,
-        monthReference: competencia ?? dataInicio ?? dataFim,
-      });
+    async (exportFilters: ReportExportFilters, formatValue: "pdf" | "xlsx") => {
+      const { scope, referenceDate } = exportFilters;
 
       setIsExporting(true);
       try {
@@ -318,10 +340,14 @@ export default function BaixaManualPage() {
           listing,
           search: search || undefined,
           status:
-            listing === "pendentes" && statusFilter !== "todos" ? statusFilter : undefined,
+            listing === "pendentes" && statusFilter !== "todos"
+              ? statusFilter
+              : undefined,
           competencia: competenciaParam,
           agente: agente || undefined,
-          data_inicio: dataInicio ? format(dataInicio, "yyyy-MM-dd") : undefined,
+          data_inicio: dataInicio
+            ? format(dataInicio, "yyyy-MM-dd")
+            : undefined,
           data_fim: dataFim ? format(dataFim, "yyyy-MM-dd") : undefined,
         };
         const fetchedRows = await fetchAllPaginatedRows<BaixaManualItem>({
@@ -364,7 +390,9 @@ export default function BaixaManualPage() {
         });
       } catch (error) {
         toast.error(
-          error instanceof Error ? error.message : "Falha ao exportar inadimplentes.",
+          error instanceof Error
+            ? error.message
+            : "Falha ao exportar inadimplentes.",
         );
       } finally {
         setIsExporting(false);
@@ -408,11 +436,17 @@ export default function BaixaManualPage() {
     onSuccess: () => {
       toast.success("Baixa manual registrada com sucesso.");
       setDarBaixaState(null);
-      void queryClient.invalidateQueries({ queryKey: ["tesouraria-baixa-manual"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-baixa-manual"],
+      });
       void queryClient.invalidateQueries({ queryKey: ["agente-pagamentos"] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao registrar baixa manual.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao registrar baixa manual.",
+      );
     },
   });
 
@@ -423,12 +457,14 @@ export default function BaixaManualPage() {
       observacao,
     }: {
       associadoId: number;
-      comprovante: File;
+      comprovante: File | null;
       observacao: string;
     }) => {
       const fd = new FormData();
       fd.append("associado_id", String(associadoId));
-      fd.append("comprovante", comprovante);
+      if (comprovante) {
+        fd.append("comprovante", comprovante);
+      }
       if (observacao) {
         fd.append("observacao", observacao);
       }
@@ -442,11 +478,15 @@ export default function BaixaManualPage() {
       });
     },
     onSuccess: (payload) => {
-      toast.success(
-        `Associado inativado e ${payload.parcelas_baixadas} parcela(s) baixada(s).`,
-      );
+      const msg =
+        payload.parcelas_baixadas > 0
+          ? `Associado inativado e ${payload.parcelas_baixadas} parcela(s) baixada(s).`
+          : "Associado inativado sem baixa de parcelas.";
+      toast.success(msg);
       setInativarAssociadoState(null);
-      void queryClient.invalidateQueries({ queryKey: ["tesouraria-baixa-manual"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-baixa-manual"],
+      });
       void queryClient.invalidateQueries({ queryKey: ["associado"] });
     },
     onError: (error) => {
@@ -479,7 +519,10 @@ export default function BaixaManualPage() {
   const kpis = query.data?.kpis;
   const rows = query.data?.results ?? [];
   const totalCount = query.data?.count ?? 0;
-  const groups = React.useMemo(() => groupByAssociado(rows, listing), [listing, rows]);
+  const groups = React.useMemo(
+    () => groupByAssociado(rows, listing),
+    [listing, rows],
+  );
 
   const columns = React.useMemo<DataTableColumn<AssociadoGroup>[]>(() => {
     const baseColumns: DataTableColumn<AssociadoGroup>[] = [
@@ -522,14 +565,21 @@ export default function BaixaManualPage() {
           navigatingId === row.associado_id ? (
             <Skeleton className="h-5 w-20" />
           ) : (
-            <CopySnippet label="Matrícula do Servidor" value={row.matricula} mono inline />
+            <CopySnippet
+              label="Matrícula do Servidor"
+              value={row.matricula}
+              mono
+              inline
+            />
           ),
       },
       {
         id: "agente",
         header: "Agente",
         cell: (row) => (
-          <span className="text-sm text-muted-foreground">{row.agente_nome || "-"}</span>
+          <span className="text-sm text-muted-foreground">
+            {row.agente_nome || "-"}
+          </span>
         ),
       },
     ];
@@ -575,7 +625,6 @@ export default function BaixaManualPage() {
                 size="sm"
                 variant="outline"
                 className="shrink-0"
-                disabled={!row.possuiParcelaBaixavel}
                 onClick={(event) => {
                   event.stopPropagation();
                   setInativarAssociadoState({
@@ -652,13 +701,20 @@ export default function BaixaManualPage() {
                     className="border-b border-border/40 transition-colors last:border-0 hover:bg-white/3"
                   >
                     <td className="px-4 py-3">
-                      <CopySnippet label="Contrato" value={parcela.contrato_codigo} mono inline />
+                      <CopySnippet
+                        label="Contrato"
+                        value={parcela.contrato_codigo}
+                        mono
+                        inline
+                      />
                     </td>
                     <td className="px-4 py-3 font-medium">
                       {formatMonthYear(parcela.referencia_mes)}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {parcela.data_baixa ? formatDate(parcela.data_baixa) : "-"}
+                      {parcela.data_baixa
+                        ? formatDate(parcela.data_baixa)
+                        : "-"}
                     </td>
                     <td className="px-4 py-3 font-semibold tabular-nums">
                       {formatCurrency(parcela.valor_pago ?? parcela.valor)}
@@ -684,7 +740,6 @@ export default function BaixaManualPage() {
             <Button
               size="sm"
               variant="outline"
-              disabled={!group.possuiParcelaBaixavel}
               onClick={() =>
                 setInativarAssociadoState({
                   group,
@@ -732,7 +787,12 @@ export default function BaixaManualPage() {
                   >
                     <td className="px-4 py-3">
                       {parcela.contrato_codigo ? (
-                        <CopySnippet label="Contrato" value={parcela.contrato_codigo} mono inline />
+                        <CopySnippet
+                          label="Contrato"
+                          value={parcela.contrato_codigo}
+                          mono
+                          inline
+                        />
                       ) : (
                         <span className="text-muted-foreground">-</span>
                       )}
@@ -741,7 +801,9 @@ export default function BaixaManualPage() {
                       {formatMonthYear(parcela.referencia_mes)}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {parcela.data_vencimento ? formatDate(parcela.data_vencimento) : "-"}
+                      {parcela.data_vencimento
+                        ? formatDate(parcela.data_vencimento)
+                        : "-"}
                     </td>
                     <td className="px-4 py-3 font-semibold tabular-nums">
                       {formatCurrency(parcela.valor)}
@@ -751,11 +813,13 @@ export default function BaixaManualPage() {
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant="outline">
-                        {parcela.origem === "arquivo_retorno" ? "Arquivo retorno" : "Parcela"}
+                        {parcela.origem === "arquivo_retorno"
+                          ? "Arquivo retorno"
+                          : "Parcela"}
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      {parcela.pode_dar_baixa && parcela.parcela_id ? (
+                      {parcela.pode_dar_baixa ? (
                         <Button
                           size="sm"
                           variant="success"
@@ -773,7 +837,7 @@ export default function BaixaManualPage() {
                         </Button>
                       ) : (
                         <span className="text-xs text-muted-foreground">
-                          Sem parcela vinculada
+                          Quitação indisponível
                         </span>
                       )}
                     </td>
@@ -809,16 +873,10 @@ export default function BaixaManualPage() {
               </TabsList>
             </Tabs>
           </div>
-          <ExportButton
+          <ReportExportDialog
             disabled={isExporting}
             label={isExporting ? "Exportando..." : "Exportar"}
-            enableScopeSelection
-            onExport={(formatValue) =>
-              formatValue === "pdf" || formatValue === "xlsx"
-                ? void handleExport("month", formatValue)
-                : undefined
-            }
-            onExportScoped={(scope, formatValue) => void handleExport(scope, formatValue)}
+            onExport={handleExport}
           />
         </div>
       </section>
@@ -835,7 +893,11 @@ export default function BaixaManualPage() {
             />
             <StatsCard
               title="Valor Total Quitado"
-              value={kpis?.valor_total_quitado ? formatCurrency(kpis.valor_total_quitado) : "-"}
+              value={
+                kpis?.valor_total_quitado
+                  ? formatCurrency(kpis.valor_total_quitado)
+                  : "-"
+              }
               delta="somatório do recorte atual"
               icon={WalletCardsIcon}
               tone="neutral"
@@ -885,7 +947,9 @@ export default function BaixaManualPage() {
             <StatsCard
               title="Valor Total Pendente"
               value={
-                kpis?.valor_total_pendente ? formatCurrency(kpis.valor_total_pendente) : "-"
+                kpis?.valor_total_pendente
+                  ? formatCurrency(kpis.valor_total_pendente)
+                  : "-"
               }
               delta="saldo inadimplente em aberto"
               icon={HandCoinsIcon}
@@ -974,7 +1038,11 @@ export default function BaixaManualPage() {
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label>{listing === "quitados" ? "Baixado de" : "Vencimento de"}</Label>
+                      <Label>
+                        {listing === "quitados"
+                          ? "Baixado de"
+                          : "Vencimento de"}
+                      </Label>
                       <DatePicker
                         value={draftFilters.dataInicio}
                         onChange={(value) =>
@@ -986,7 +1054,11 @@ export default function BaixaManualPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>{listing === "quitados" ? "Baixado até" : "Vencimento até"}</Label>
+                      <Label>
+                        {listing === "quitados"
+                          ? "Baixado até"
+                          : "Vencimento até"}
+                      </Label>
                       <DatePicker
                         value={draftFilters.dataFim}
                         onChange={(value) =>
@@ -1103,7 +1175,9 @@ export default function BaixaManualPage() {
                   maxSize={10 * 1024 * 1024}
                   onUpload={(file) =>
                     setDarBaixaState((current) =>
-                      current ? { ...current, comprovante: file ?? null } : current,
+                      current
+                        ? { ...current, comprovante: file ?? null }
+                        : current,
                     )
                   }
                   isProcessing={false}
@@ -1122,7 +1196,9 @@ export default function BaixaManualPage() {
                   value={darBaixaState.valorPago}
                   onChange={(event) =>
                     setDarBaixaState((current) =>
-                      current ? { ...current, valorPago: event.target.value } : current,
+                      current
+                        ? { ...current, valorPago: event.target.value }
+                        : current,
                     )
                   }
                   placeholder="0.00"
@@ -1139,7 +1215,9 @@ export default function BaixaManualPage() {
                   value={darBaixaState.observacao}
                   onChange={(event) =>
                     setDarBaixaState((current) =>
-                      current ? { ...current, observacao: event.target.value } : current,
+                      current
+                        ? { ...current, observacao: event.target.value }
+                        : current,
                     )
                   }
                   placeholder="Informações adicionais sobre o pagamento..."
@@ -1164,12 +1242,8 @@ export default function BaixaManualPage() {
                 if (!darBaixaState?.comprovante || !darBaixaState.valorPago) {
                   return;
                 }
-                if (!darBaixaState.item.parcela_id) {
-                  toast.error("Esta linha não possui parcela vinculada para baixa manual.");
-                  return;
-                }
                 darBaixaMutation.mutate({
-                  parcelaId: darBaixaState.item.parcela_id,
+                  parcelaId: darBaixaState.item.id,
                   comprovante: darBaixaState.comprovante,
                   valorPago: darBaixaState.valorPago,
                   observacao: darBaixaState.observacao,
@@ -1204,9 +1278,9 @@ export default function BaixaManualPage() {
               {inativarAssociadoState ? (
                 <>
                   <strong>{inativarAssociadoState.group.nome}</strong> com{" "}
-                  {inativarAssociadoState.group.total_parcelas} item(ns) na fila. As
-                  parcelas vencidas com vínculo no sistema serão baixadas com o mesmo
-                  comprovante.
+                  {inativarAssociadoState.group.total_parcelas} item(ns) na
+                  fila. As parcelas vencidas com vínculo no sistema serão
+                  baixadas com o mesmo comprovante.
                 </>
               ) : null}
             </DialogDescription>
@@ -1216,21 +1290,27 @@ export default function BaixaManualPage() {
             <div className="space-y-4">
               <div className="rounded-2xl border border-border/60 bg-card/60 px-4 py-3 text-sm">
                 <p className="font-medium text-foreground">
-                  Total listado: {formatCurrency(inativarAssociadoState.group.valor_total.toFixed(2))}
+                  Total listado:{" "}
+                  {formatCurrency(
+                    inativarAssociadoState.group.valor_total.toFixed(2),
+                  )}
                 </p>
                 <p className="mt-1 text-muted-foreground">
-                  Somente parcelas vencidas com `parcela_id` serão baixadas automaticamente.
+                  O associado será inativado. Se informar um comprovante, as
+                  parcelas vencidas vinculadas serão baixadas automaticamente.
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label>Comprovante de pagamento *</Label>
+                <Label>Comprovante de pagamento (opcional)</Label>
                 <FileUploadDropzone
                   accept={comprovanteAccept}
                   maxSize={10 * 1024 * 1024}
                   onUpload={(file) =>
                     setInativarAssociadoState((current) =>
-                      current ? { ...current, comprovante: file ?? null } : current,
+                      current
+                        ? { ...current, comprovante: file ?? null }
+                        : current,
                     )
                   }
                   isProcessing={false}
@@ -1249,7 +1329,9 @@ export default function BaixaManualPage() {
                   value={inativarAssociadoState.observacao}
                   onChange={(event) =>
                     setInativarAssociadoState((current) =>
-                      current ? { ...current, observacao: event.target.value } : current,
+                      current
+                        ? { ...current, observacao: event.target.value }
+                        : current,
                     )
                   }
                   placeholder="Motivo da inativação e contexto do pagamento..."
@@ -1260,20 +1342,17 @@ export default function BaixaManualPage() {
           ) : null}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setInativarAssociadoState(null)}>
+            <Button
+              variant="outline"
+              onClick={() => setInativarAssociadoState(null)}
+            >
               Cancelar
             </Button>
             <Button
               variant="destructive"
-              disabled={
-                inativarAssociadoMutation.isPending ||
-                !inativarAssociadoState?.comprovante ||
-                !inativarAssociadoState.group.possuiParcelaBaixavel
-              }
+              disabled={inativarAssociadoMutation.isPending}
               onClick={() => {
-                if (!inativarAssociadoState?.comprovante) {
-                  return;
-                }
+                if (!inativarAssociadoState) return;
                 inativarAssociadoMutation.mutate({
                   associadoId: inativarAssociadoState.group.associado_id,
                   comprovante: inativarAssociadoState.comprovante,

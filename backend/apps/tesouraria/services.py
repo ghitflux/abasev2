@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from calendar import monthrange
+from os.path import basename
+from uuid import uuid4
 
+from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Count, DecimalField, Prefetch, Q, Sum, Value
 from django.db.models.functions import Coalesce
+from django.utils.text import slugify
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -21,6 +25,7 @@ from apps.contratos.models import Contrato, Parcela
 from apps.esteira.models import EsteiraItem, Transicao
 from apps.financeiro.models import Despesa
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, PagamentoMensalidade
+from apps.importacao.return_auto_enrollment import build_payment_identity
 from apps.refinanciamento.models import Comprovante, Refinanciamento
 
 from .models import BaixaManual, Confirmacao, DevolucaoAssociado, Pagamento
@@ -836,11 +841,179 @@ class BaixaManualService:
             "nome_comprovante": "",
             "origem": "arquivo_retorno",
             "arquivo_retorno_item_id": item.id,
-            "pode_dar_baixa": bool(item.parcela_id),
+            "pode_dar_baixa": True,
             "_agente_id": agente.id if agente else None,
             "_sort_nome": associado.nome_completo or item.nome_servidor or "",
             "_sort_referencia": referencia,
         }
+
+    @staticmethod
+    def _build_quitado_row_from_manual_payment(
+        pagamento: PagamentoMensalidade,
+    ) -> dict[str, object] | None:
+        associado = pagamento.associado
+        if associado is None:
+            return None
+
+        agente = associado.agente_responsavel
+        data_baixa = pagamento.manual_paid_at.date() if pagamento.manual_paid_at else None
+        valor_pago = pagamento.recebido_manual or pagamento.valor
+        if data_baixa is None or valor_pago is None:
+            return None
+
+        return {
+            "id": -pagamento.id,
+            "parcela_id": None,
+            "associado_id": associado.id,
+            "nome": associado.nome_completo,
+            "cpf_cnpj": associado.cpf_cnpj,
+            "matricula": associado.matricula_orgao or associado.matricula or pagamento.matricula,
+            "agente_nome": agente.full_name if agente else "",
+            "contrato_id": None,
+            "contrato_codigo": "",
+            "referencia_mes": pagamento.referencia_month,
+            "valor": valor_pago,
+            "status": Parcela.Status.DESCONTADO,
+            "data_vencimento": None,
+            "observacao": "",
+            "data_baixa": data_baixa,
+            "valor_pago": valor_pago,
+            "realizado_por_nome": pagamento.manual_by.full_name if pagamento.manual_by else "",
+            "nome_comprovante": basename(pagamento.manual_comprovante_path or ""),
+            "origem": "pagamento_manual",
+            "arquivo_retorno_item_id": None,
+            "pode_dar_baixa": False,
+            "_agente_id": agente.id if agente else None,
+            "_sort_nome": associado.nome_completo or "",
+            "_sort_referencia": pagamento.referencia_month,
+        }
+
+    @staticmethod
+    def _manual_payment_has_related_parcela(pagamento: PagamentoMensalidade) -> bool:
+        if pagamento.associado_id is None:
+            return False
+        return Parcela.objects.filter(
+            associado_id=pagamento.associado_id,
+            referencia_mes=pagamento.referencia_month,
+            deleted_at__isnull=True,
+        ).exclude(status=Parcela.Status.CANCELADO).exists()
+
+    @staticmethod
+    def _store_manual_payment_proof(comprovante) -> str:
+        original_name = getattr(comprovante, "name", "") or "comprovante.pdf"
+        safe_name = slugify(original_name.rsplit(".", 1)[0]) or "comprovante"
+        extension = f".{original_name.rsplit('.', 1)[1]}" if "." in original_name else ""
+        content = comprovante.read()
+        if not content:
+            raise ValidationError("Envie um comprovante válido para registrar a baixa.")
+        file_name = f"baixas_manuais/manual-{timezone.now().strftime('%Y%m%d%H%M%S')}-{uuid4().hex[:8]}-{safe_name}{extension}"
+        return default_storage.save(file_name, ContentFile(content))
+
+    @classmethod
+    def _register_manual_payment_without_parcela(
+        cls,
+        item: ArquivoRetornoItem,
+        *,
+        comprovante,
+        valor_pago,
+        observacao: str,
+        user,
+    ) -> PagamentoMensalidade:
+        associado = item.associado
+        if associado is None:
+            raise ValidationError("O item do retorno não possui associado vinculado para quitação.")
+
+        referencia = cls._parse_item_competencia(item.competencia)
+        if referencia is None:
+            raise ValidationError("Não foi possível identificar a competência do item do retorno.")
+
+        payment_identity = build_payment_identity(
+            cpf_cnpj=associado.cpf_cnpj or item.cpf_cnpj,
+            referencia_month=referencia,
+            matricula=associado.matricula_orgao or associado.matricula or item.matricula_servidor or "",
+        )
+        pagamentos = list(
+            PagamentoMensalidade.objects.filter(
+                cpf_cnpj=payment_identity[0],
+                referencia_month=payment_identity[1],
+            ).select_related("associado", "manual_by")
+        )
+        pagamento = next(
+            (
+                candidate
+                for candidate in pagamentos
+                if build_payment_identity(
+                    cpf_cnpj=candidate.cpf_cnpj,
+                    referencia_month=candidate.referencia_month,
+                    matricula=candidate.matricula or "",
+                )
+                == payment_identity
+            ),
+            None,
+        )
+
+        comprovante_path = cls._store_manual_payment_proof(comprovante)
+        manual_paid_at = timezone.make_aware(datetime.combine(timezone.localdate(), time(12, 0)))
+        default_valor = Decimal(str(item.valor_descontado or valor_pago or "0"))
+
+        if pagamento is None:
+            pagamento = PagamentoMensalidade.objects.create(
+                created_by=user,
+                import_uuid=f"manual-{associado.id}-{referencia.strftime('%Y%m')}",
+                referencia_month=referencia,
+                status_code="M",
+                matricula=associado.matricula_orgao or associado.matricula or item.matricula_servidor or "",
+                orgao_pagto=item.orgao_pagto_nome or "",
+                nome_relatorio=associado.nome_completo or item.nome_servidor or "",
+                cpf_cnpj=associado.cpf_cnpj or item.cpf_cnpj,
+                associado=associado,
+                valor=default_valor,
+                recebido_manual=valor_pago,
+                manual_status=PagamentoMensalidade.ManualStatus.PAGO,
+                manual_paid_at=manual_paid_at,
+                manual_forma_pagamento="baixa_manual",
+                manual_comprovante_path=comprovante_path,
+                manual_by=user,
+                source_file_path=getattr(item.arquivo_retorno, "arquivo_url", "") or "manual/baixa-manual",
+            )
+        else:
+            pagamento.associado = associado
+            pagamento.status_code = "M"
+            pagamento.matricula = associado.matricula_orgao or associado.matricula or item.matricula_servidor or ""
+            pagamento.orgao_pagto = item.orgao_pagto_nome or pagamento.orgao_pagto or ""
+            pagamento.nome_relatorio = associado.nome_completo or item.nome_servidor or pagamento.nome_relatorio
+            pagamento.valor = pagamento.valor or default_valor
+            pagamento.recebido_manual = valor_pago
+            pagamento.manual_status = PagamentoMensalidade.ManualStatus.PAGO
+            pagamento.manual_paid_at = manual_paid_at
+            pagamento.manual_forma_pagamento = "baixa_manual"
+            pagamento.manual_comprovante_path = comprovante_path
+            pagamento.manual_by = user
+            if not pagamento.source_file_path:
+                pagamento.source_file_path = getattr(item.arquivo_retorno, "arquivo_url", "") or "manual/baixa-manual"
+            pagamento.save(
+                update_fields=[
+                    "associado",
+                    "status_code",
+                    "matricula",
+                    "orgao_pagto",
+                    "nome_relatorio",
+                    "valor",
+                    "recebido_manual",
+                    "manual_status",
+                    "manual_paid_at",
+                    "manual_forma_pagamento",
+                    "manual_comprovante_path",
+                    "manual_by",
+                    "source_file_path",
+                    "updated_at",
+                ]
+            )
+
+        item.resultado_processamento = ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA
+        item.observacao = observacao or item.observacao or "Baixa manual registrada sem parcela vinculada."
+        item.save(update_fields=["resultado_processamento", "observacao", "updated_at"])
+        return pagamento
 
     @staticmethod
     def _pending_row_matches_search(row: dict[str, object], search: str | None) -> bool:
@@ -1037,7 +1210,50 @@ class BaixaManualService:
             queryset = queryset.filter(data_baixa__lte=data_fim)
 
         queryset = BaixaManualService._apply_baixa_agent_filter(queryset, agente)
-        return BaixaManualService._apply_baixa_search(queryset, search)
+        rows: list[dict[str, object] | BaixaManual] = list(
+            BaixaManualService._apply_baixa_search(queryset, search)
+        )
+
+        pagamentos = (
+            PagamentoMensalidade.objects.select_related("associado__agente_responsavel", "manual_by")
+            .filter(
+                manual_status=PagamentoMensalidade.ManualStatus.PAGO,
+                associado__isnull=False,
+            )
+            .order_by("-manual_paid_at", "-updated_at", "-id")
+        )
+        if competencia:
+            pagamentos = pagamentos.filter(
+                referencia_month__year=competencia.year,
+                referencia_month__month=competencia.month,
+            )
+        if data_inicio:
+            pagamentos = pagamentos.filter(manual_paid_at__date__gte=data_inicio)
+        if data_fim:
+            pagamentos = pagamentos.filter(manual_paid_at__date__lte=data_fim)
+
+        agent_filter = DespesaService._build_agent_filter(agente)
+        for pagamento in pagamentos:
+            if BaixaManualService._manual_payment_has_related_parcela(pagamento):
+                continue
+            if not DespesaService._matches_pagamento_mensalidade_agent(
+                pagamento,
+                agent_filter,
+            ):
+                continue
+            row = BaixaManualService._build_quitado_row_from_manual_payment(pagamento)
+            if row is None or not BaixaManualService._pending_row_matches_search(row, search):
+                continue
+            rows.append(row)
+
+        rows.sort(
+            key=lambda item: (
+                item.get("data_baixa") if isinstance(item, dict) else item.data_baixa,
+                item.get("id") if isinstance(item, dict) else item.id,
+            ),
+            reverse=True,
+        )
+        return rows
 
     @staticmethod
     def kpis_pendentes(
@@ -1101,39 +1317,44 @@ class BaixaManualService:
         agente: str | None = None,
     ) -> dict:
         hoje = timezone.localdate()
-        base = BaixaManual.objects.filter(
-            parcela__ciclo__contrato__contrato_canonico__isnull=True,
+        rows = BaixaManualService.listar_parcelas_quitadas(
+            competencia=competencia,
+            data_inicio=data_inicio,
+            data_fim=data_fim,
+            agente=agente,
         )
-        if competencia:
-            base = base.filter(
-                parcela__referencia_mes__year=competencia.year,
-                parcela__referencia_mes__month=competencia.month,
+        total_quitados = len(rows)
+        valor_total_quitado = sum(
+            (
+                Decimal(str(
+                    row.get("valor_pago") if isinstance(row, dict) else row.valor_pago
+                ))
+                for row in rows
+            ),
+            Decimal("0.00"),
+        )
+        quitados_mes_rows = [
+            row
+            for row in rows
+            if (
+                (row.get("data_baixa") if isinstance(row, dict) else row.data_baixa).year == hoje.year
+                and (row.get("data_baixa") if isinstance(row, dict) else row.data_baixa).month == hoje.month
             )
-        if data_inicio:
-            base = base.filter(data_baixa__gte=data_inicio)
-        if data_fim:
-            base = base.filter(data_baixa__lte=data_fim)
-        base = BaixaManualService._apply_baixa_agent_filter(base, agente)
-        totals = base.aggregate(
-            total=Count("id"),
-            valor_total=Sum("valor_pago"),
-        )
-        quitados_mes = BaixaManual.objects.filter(
-            data_baixa__year=hoje.year,
-            data_baixa__month=hoje.month,
-            parcela__ciclo__contrato__contrato_canonico__isnull=True,
-        )
-        quitados_mes = BaixaManualService._apply_baixa_agent_filter(quitados_mes, agente)
-        quitados_mes_totals = quitados_mes.aggregate(
-            total=Count("id"),
-            valor_total=Sum("valor_pago"),
-        )
+        ]
         return {
-            "total_quitados": totals["total"] or 0,
-            "valor_total_quitado": str(totals["valor_total"] or Decimal("0")),
-            "quitados_este_mes": quitados_mes_totals["total"] or 0,
+            "total_quitados": total_quitados,
+            "valor_total_quitado": str(valor_total_quitado),
+            "quitados_este_mes": len(quitados_mes_rows),
             "valor_quitado_este_mes": str(
-                quitados_mes_totals["valor_total"] or Decimal("0")
+                sum(
+                    (
+                        Decimal(str(
+                            row.get("valor_pago") if isinstance(row, dict) else row.valor_pago
+                        ))
+                        for row in quitados_mes_rows
+                    ),
+                    Decimal("0.00"),
+                )
             ),
         }
 
@@ -1178,11 +1399,38 @@ class BaixaManualService:
 
     @staticmethod
     @transaction.atomic
-    def dar_baixa(parcela_id: int, comprovante, valor_pago, observacao: str, user):
+    def dar_baixa(item_id: int, comprovante, valor_pago, observacao: str, user):
+        if item_id < 0:
+            try:
+                item = ArquivoRetornoItem.objects.select_related(
+                    "arquivo_retorno",
+                    "associado__agente_responsavel",
+                    "parcela",
+                ).get(pk=abs(item_id))
+            except ArquivoRetornoItem.DoesNotExist as exc:
+                raise ValidationError("Item do retorno não encontrado.") from exc
+
+            if item.parcela_id:
+                return BaixaManualService._registrar_baixa_manual(
+                    item.parcela,
+                    comprovante=comprovante,
+                    valor_pago=valor_pago,
+                    observacao=observacao,
+                    user=user,
+                )
+
+            return BaixaManualService._register_manual_payment_without_parcela(
+                item,
+                comprovante=comprovante,
+                valor_pago=valor_pago,
+                observacao=observacao,
+                user=user,
+            )
+
         try:
             parcela = Parcela.objects.select_related(
                 "ciclo__contrato__associado",
-            ).get(pk=parcela_id)
+            ).get(pk=item_id)
         except Parcela.DoesNotExist as exc:
             raise ValidationError("Parcela não encontrada.") from exc
 
@@ -1199,7 +1447,7 @@ class BaixaManualService:
     def inativar_associado_com_baixa(
         associado_id: int,
         *,
-        comprovante,
+        comprovante=None,
         observacao: str,
         user,
     ) -> dict[str, object]:
@@ -1208,43 +1456,41 @@ class BaixaManualService:
         except Associado.DoesNotExist as exc:
             raise ValidationError("Associado não encontrado.") from exc
 
-        hoje = timezone.localdate()
-        mes_atual = hoje.replace(day=1)
-        parcelas = list(
-            Parcela.objects.select_related("ciclo__contrato__associado")
-            .filter(
-                associado=associado,
-                ciclo__contrato__contrato_canonico__isnull=True,
-                status__in=[Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO],
-                referencia_mes__lt=mes_atual,
-            )
-            .order_by("referencia_mes", "numero", "id")
-        )
-        if not parcelas:
-            raise ValidationError(
-                "O associado não possui parcelas vencidas elegíveis para baixa e inativação."
-            )
-
-        file_name = getattr(comprovante, "name", "comprovante.pdf")
-        file_content = comprovante.read()
-        if not file_content:
-            raise ValidationError("Envie um comprovante válido para registrar a baixa.")
-
         baixas: list[BaixaManual] = []
-        for index, parcela in enumerate(parcelas, start=1):
-            cloned = ContentFile(
-                file_content,
-                name=f"{index:02d}-{parcela.id}-{file_name}",
-            )
-            baixas.append(
-                BaixaManualService._registrar_baixa_manual(
-                    parcela,
-                    comprovante=cloned,
-                    valor_pago=parcela.valor,
-                    observacao=observacao,
-                    user=user,
+
+        if comprovante is not None:
+            hoje = timezone.localdate()
+            mes_atual = hoje.replace(day=1)
+            parcelas = list(
+                Parcela.objects.select_related("ciclo__contrato__associado")
+                .filter(
+                    associado=associado,
+                    ciclo__contrato__contrato_canonico__isnull=True,
+                    status__in=[Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO],
+                    referencia_mes__lt=mes_atual,
                 )
+                .order_by("referencia_mes", "numero", "id")
             )
+
+            file_name = getattr(comprovante, "name", "comprovante.pdf")
+            file_content = comprovante.read()
+            if not file_content:
+                raise ValidationError("Envie um comprovante válido para registrar a baixa.")
+
+            for index, parcela in enumerate(parcelas, start=1):
+                cloned = ContentFile(
+                    file_content,
+                    name=f"{index:02d}-{parcela.id}-{file_name}",
+                )
+                baixas.append(
+                    BaixaManualService._registrar_baixa_manual(
+                        parcela,
+                        comprovante=cloned,
+                        valor_pago=parcela.valor,
+                        observacao=observacao,
+                        user=user,
+                    )
+                )
 
         associado.status = Associado.Status.INATIVO
         associado.save(update_fields=["status", "updated_at"])
