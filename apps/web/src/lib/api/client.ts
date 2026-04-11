@@ -67,7 +67,7 @@ function parseErrorPayload(raw: string, contentType: string) {
 export function extractApiErrorMessage(
   payload: unknown,
   visited = new Set<object>(),
-) {
+): string | null {
   if (typeof payload === "string" && payload.trim() && !isHtmlLikePayload(payload)) {
     return payload.trim();
   }
