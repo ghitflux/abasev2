@@ -649,6 +649,13 @@ export type EsteiraContrato = {
 export type EsteiraItem = {
   id: number;
   associado_id: number;
+  associado?: {
+    id: number;
+    nome_completo: string;
+    cpf_cnpj: string;
+    matricula: string;
+    matricula_display?: string;
+  } | null;
   ordem: number;
   contrato: EsteiraContrato | null;
   data_assinatura: string | null;
@@ -668,6 +675,8 @@ export type EsteiraItem = {
   etapa_atual: string;
   status: string;
   assumido_em: string | null;
+  created_at?: string;
+  updated_at?: string | null;
   documentos?: Documento[];
   pendencias?: Array<{
     id: number;

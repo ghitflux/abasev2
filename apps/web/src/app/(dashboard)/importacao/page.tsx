@@ -65,6 +65,7 @@ import {
   type ArquivoRetornoWithFinanceiro,
 } from "@/lib/importacao-financeiro";
 import { maskCPFCNPJ } from "@/lib/masks";
+import { fetchAllPaginatedRows } from "@/lib/reports";
 import { exportRows, type TableExportColumn } from "@/lib/table-export";
 import { cn } from "@/lib/utils";
 
@@ -85,11 +86,19 @@ type DryRunPreviewState = {
 };
 
 type LatestMetricDialogConfig = {
-  key: "linhas" | "mensalidades" | "valores_30_50";
+  variant: "financeiro" | "itens";
+  key:
+    | "linhas"
+    | "mensalidades"
+    | "valores_30_50"
+    | "descontados"
+    | "nao_descontados";
   title: string;
   description: string;
-  rows: ArquivoRetornoFinanceiroItem[];
   emptyMessage: string;
+  exportFilename: string;
+  rows?: ArquivoRetornoFinanceiroItem[];
+  sourcePath?: string;
 };
 
 function totalPages(count?: number, pageSize = 5) {
@@ -108,13 +117,11 @@ type ItemSectionProps = {
   isLoading?: boolean;
 };
 
-function ItemSection({
-  title,
-  description,
-  data,
-  emptyMessage,
-  isLoading = false,
-}: ItemSectionProps) {
+function buildArquivoRetornoItemColumns({
+  onOpenAssociadoDetails,
+}: {
+  onOpenAssociadoDetails?: (associadoId: number) => void;
+} = {}): DataTableColumn<ArquivoRetornoItem>[] {
   const columns: DataTableColumn<ArquivoRetornoItem>[] = [
     {
       id: "nome",
@@ -163,6 +170,60 @@ function ItemSection({
     },
   ];
 
+  if (onOpenAssociadoDetails) {
+    columns.push({
+      id: "acoes",
+      header: "",
+      cell: (row) =>
+        row.associado_id ? (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onOpenAssociadoDetails(row.associado_id)}
+          >
+            <ExternalLinkIcon className="mr-1.5 size-3.5" />
+            Ver associado
+          </Button>
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            Sem associado vinculado
+          </span>
+        ),
+    });
+  }
+
+  return columns;
+}
+
+function arquivoRetornoItemExportColumns(): TableExportColumn<ArquivoRetornoItem>[] {
+  return [
+    { header: "Servidor", value: (row) => row.nome_servidor || "" },
+    { header: "Matrícula", value: (row) => row.matricula_servidor || "" },
+    { header: "CPF", value: (row) => maskCPFCNPJ(row.cpf_cnpj) },
+    { header: "Órgão", value: (row) => row.orgao_pagto_nome || "" },
+    { header: "Valor", value: (row) => formatCurrency(row.valor_descontado) },
+    { header: "Status ETIPI", value: (row) => row.status_codigo || "" },
+    {
+      header: "Status sistema",
+      value: (row) =>
+        row.status_desconto ?? row.resultado_processamento ?? "pendente",
+    },
+    { header: "Associado", value: (row) => row.associado_nome || "" },
+    {
+      header: "Agente responsável",
+      value: (row) => row.agente_responsavel || "",
+    },
+    { header: "Contrato", value: (row) => row.contrato_codigo || "" },
+  ];
+}
+
+function ItemSection({
+  title,
+  description,
+  data,
+  emptyMessage,
+  isLoading = false,
+}: ItemSectionProps) {
   return (
     <div className="space-y-4">
       <div>
@@ -177,7 +238,11 @@ function ItemSection({
           <Skeleton className="h-14 w-full rounded-xl" />
         </div>
       ) : (
-        <DataTable columns={columns} data={data} emptyMessage={emptyMessage} />
+        <DataTable
+          columns={buildArquivoRetornoItemColumns()}
+          data={data}
+          emptyMessage={emptyMessage}
+        />
       )}
     </div>
   );
@@ -225,6 +290,32 @@ function matchesFinanceiroRowSearch(
     row.agente_responsavel,
     row.categoria,
     row.situacao_label,
+  ]
+    .map(normalizeText)
+    .join(" ");
+  return comparable.includes(searchValue);
+}
+
+function matchesArquivoRetornoItemSearch(
+  row: ArquivoRetornoItem,
+  search: string,
+) {
+  const searchValue = normalizeText(search);
+  if (!searchValue) {
+    return true;
+  }
+
+  const comparable = [
+    row.nome_servidor,
+    row.cpf_cnpj,
+    row.matricula_servidor,
+    row.orgao_pagto_nome,
+    row.associado_nome,
+    row.agente_responsavel,
+    row.contrato_codigo,
+    row.status_codigo,
+    row.status_descricao,
+    row.observacao,
   ]
     .map(normalizeText)
     .join(" ");
@@ -462,11 +553,20 @@ export default function ImportacaoPage() {
     [latestFinanceiroRows],
   );
   const filteredLatestMetricRows = React.useMemo(
-    () =>
-      (latestMetricDialogConfig?.rows ?? []).filter((row) =>
-        matchesFinanceiroRowSearch(row, latestMetricSearch),
-      ),
-    [latestMetricDialogConfig?.rows, latestMetricSearch],
+    () => {
+      if (!latestMetricDialogConfig) {
+        return [];
+      }
+
+      if (latestMetricDialogConfig.variant === "financeiro") {
+        return (latestMetricDialogConfig.rows ?? []).filter((row) =>
+          matchesFinanceiroRowSearch(row, latestMetricSearch),
+        );
+      }
+
+      return [];
+    },
+    [latestMetricDialogConfig, latestMetricSearch],
   );
   const latestFinanceiroColumns = React.useMemo(
     () =>
@@ -476,6 +576,43 @@ export default function ImportacaoPage() {
       }),
     [],
   );
+  const latestImportItemColumns = React.useMemo(
+    () =>
+      buildArquivoRetornoItemColumns({
+        onOpenAssociadoDetails: (associadoId) =>
+          setSelectedAssociadoId(associadoId),
+      }),
+    [],
+  );
+  const latestItemDialogQuery = useQuery({
+    queryKey: [
+      "importacao-arquivo-retorno-dialog",
+      latestMetricDialogConfig?.variant === "itens"
+        ? latestMetricDialogConfig.sourcePath
+        : null,
+    ],
+    queryFn: async () => {
+      if (!latestMetricDialogConfig?.sourcePath) {
+        return [];
+      }
+
+      return fetchAllPaginatedRows<ArquivoRetornoItem>({
+        sourcePath: latestMetricDialogConfig.sourcePath,
+        pageSize: 100,
+      });
+    },
+    enabled:
+      latestMetricDialogConfig?.variant === "itens" &&
+      Boolean(latestMetricDialogConfig.sourcePath),
+    staleTime: 30 * 1000,
+  });
+  const filteredLatestItemRows = React.useMemo(
+    () =>
+      (latestItemDialogQuery.data ?? []).filter((row) =>
+        matchesArquivoRetornoItemSearch(row, latestMetricSearch),
+      ),
+    [latestItemDialogQuery.data, latestMetricSearch],
+  );
 
   const openLatestMetricDialog = React.useCallback(
     (key: keyof typeof latestMetricRows) => {
@@ -484,28 +621,34 @@ export default function ImportacaoPage() {
         Omit<LatestMetricDialogConfig, "rows">
       > = {
         linhas: {
+          variant: "financeiro",
           key: "linhas",
           title: "Linhas conciliadas da última importação",
           description:
             "Listagem financeira consolidada do último arquivo retorno processado.",
           emptyMessage:
             "Nenhuma linha conciliada disponível para a última importação.",
+          exportFilename: "ultima-importacao-linhas-conciliadas",
         },
         mensalidades: {
+          variant: "financeiro",
           key: "mensalidades",
           title: "Mensalidades da última importação",
           description:
             "Associados classificados como mensalidades no detalhamento financeiro do último arquivo.",
           emptyMessage:
             "Nenhuma mensalidade encontrada para a última importação.",
+          exportFilename: "ultima-importacao-mensalidades",
         },
         valores_30_50: {
+          variant: "financeiro",
           key: "valores_30_50",
           title: "Valores 30/50 da última importação",
           description:
             "Associados classificados na faixa de 30/50 reais no último arquivo retorno.",
           emptyMessage:
             "Nenhum associado classificado em 30/50 encontrado na última importação.",
+          exportFilename: "ultima-importacao-valores-30-50",
         },
       };
 
@@ -516,6 +659,43 @@ export default function ImportacaoPage() {
       setLatestMetricSearch("");
     },
     [latestMetricRows],
+  );
+  const openLatestResultDialog = React.useCallback(
+    (key: "descontados" | "nao_descontados") => {
+      if (!latestId) {
+        return;
+      }
+
+      const configMap: Record<
+        "descontados" | "nao_descontados",
+        LatestMetricDialogConfig
+      > = {
+        descontados: {
+          variant: "itens",
+          key: "descontados",
+          title: "Baixas automáticas da última importação",
+          description:
+            "Linhas conciliadas e baixadas automaticamente no arquivo retorno mais recente.",
+          emptyMessage: "Nenhum desconto efetivado nesta importação.",
+          exportFilename: "ultima-importacao-baixas-automaticas",
+          sourcePath: `importacao/arquivo-retorno/${latestId}/descontados`,
+        },
+        nao_descontados: {
+          variant: "itens",
+          key: "nao_descontados",
+          title: "Não descontados da última importação",
+          description:
+            "Itens rejeitados pelo ETIPI com marcação de não descontado no último arquivo retorno.",
+          emptyMessage: "Nenhum não descontado nesta importação.",
+          exportFilename: "ultima-importacao-nao-descontados",
+          sourcePath: `importacao/arquivo-retorno/${latestId}/nao-descontados`,
+        },
+      };
+
+      setLatestMetricDialogConfig(configMap[key]);
+      setLatestMetricSearch("");
+    },
+    [latestId],
   );
 
   React.useEffect(() => {
@@ -536,23 +716,6 @@ export default function ImportacaoPage() {
       setLatestMetricSearch("");
     }
   }, [latestMetricDialogConfig]);
-
-  const focusLatestResultSection = React.useCallback(() => {
-    latestResultSectionRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }, []);
-
-  const openLatestResultTab = React.useCallback(
-    (nextTab: string) => {
-      setActiveTab(nextTab);
-      window.requestAnimationFrame(() => {
-        focusLatestResultSection();
-      });
-    },
-    [focusLatestResultSection],
-  );
 
   function invalidateImportacao() {
     void queryClient.invalidateQueries({
@@ -917,7 +1080,7 @@ export default function ImportacaoPage() {
                   <button
                     type="button"
                     className="rounded-2xl border border-border/60 bg-background/40 p-4 text-left transition-colors hover:bg-background/55"
-                    onClick={() => openLatestResultTab("descontados")}
+                    onClick={() => openLatestResultDialog("descontados")}
                   >
                     <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
                       Quitados
@@ -934,7 +1097,7 @@ export default function ImportacaoPage() {
                   <button
                     type="button"
                     className="rounded-2xl border border-border/60 bg-background/40 p-4 text-left transition-colors hover:bg-background/55"
-                    onClick={() => openLatestResultTab("nao-descontados")}
+                    onClick={() => openLatestResultDialog("nao_descontados")}
                   >
                     <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">
                       Faltando
@@ -1219,39 +1382,74 @@ export default function ImportacaoPage() {
             <Input
               value={latestMetricSearch}
               onChange={(event) => setLatestMetricSearch(event.target.value)}
-              placeholder="Buscar por associado, CPF, matrícula ou agente..."
+              placeholder={
+                latestMetricDialogConfig?.variant === "itens"
+                  ? "Buscar por servidor, CPF, matrícula, contrato ou agente..."
+                  : "Buscar por associado, CPF, matrícula ou agente..."
+              }
               className="rounded-2xl border-border/60 bg-card/60 lg:max-w-lg"
             />
             <ReportExportDialog
               hideScope
               label="Exportar"
+              disabled={
+                latestMetricDialogConfig?.variant === "itens" &&
+                latestItemDialogQuery.isLoading
+              }
               onExport={(_, fmt) =>
-                exportRows(
-                  fmt,
-                  latestMetricDialogConfig?.title ??
-                    "Detalhamento da última importação",
-                  "ultima-importacao-detalhamento",
-                  financeiroExportColumns(),
-                  filteredLatestMetricRows,
-                )
+                latestMetricDialogConfig?.variant === "itens"
+                  ? exportRows(
+                      fmt,
+                      latestMetricDialogConfig.title,
+                      latestMetricDialogConfig.exportFilename,
+                      arquivoRetornoItemExportColumns(),
+                      filteredLatestItemRows,
+                    )
+                  : exportRows(
+                      fmt,
+                      latestMetricDialogConfig?.title ??
+                        "Detalhamento da última importação",
+                      latestMetricDialogConfig?.exportFilename ??
+                        "ultima-importacao-detalhamento",
+                      financeiroExportColumns(),
+                      filteredLatestMetricRows,
+                    )
               }
             />
           </div>
           <div className="min-h-0 overflow-x-auto overflow-y-auto">
-            <DataTable
-              columns={latestFinanceiroColumns}
-              data={filteredLatestMetricRows}
-              pageSize={10}
-              pageSizeOptions={DETAIL_PAGE_SIZE_OPTIONS}
-              className={cn(
-                "rounded-[1.35rem] border border-border/60 bg-background/55 shadow-none",
-              )}
-              tableClassName="min-w-[72rem]"
-              emptyMessage={
-                latestMetricDialogConfig?.emptyMessage ??
-                "Nenhum registro encontrado para o indicador selecionado."
-              }
-            />
+            {latestMetricDialogConfig?.variant === "itens" ? (
+              <DataTable<ArquivoRetornoItem>
+                columns={latestImportItemColumns}
+                data={filteredLatestItemRows}
+                pageSize={10}
+                pageSizeOptions={DETAIL_PAGE_SIZE_OPTIONS}
+                loading={latestItemDialogQuery.isLoading}
+                className={cn(
+                  "rounded-[1.35rem] border border-border/60 bg-background/55 shadow-none",
+                )}
+                tableClassName="min-w-[72rem]"
+                emptyMessage={
+                  latestMetricDialogConfig.emptyMessage ??
+                  "Nenhum registro encontrado para o indicador selecionado."
+                }
+              />
+            ) : (
+              <DataTable<ArquivoRetornoFinanceiroItem>
+                columns={latestFinanceiroColumns}
+                data={filteredLatestMetricRows}
+                pageSize={10}
+                pageSizeOptions={DETAIL_PAGE_SIZE_OPTIONS}
+                className={cn(
+                  "rounded-[1.35rem] border border-border/60 bg-background/55 shadow-none",
+                )}
+                tableClassName="min-w-[72rem]"
+                emptyMessage={
+                  latestMetricDialogConfig?.emptyMessage ??
+                  "Nenhum registro encontrado para o indicador selecionado."
+                }
+              />
+            )}
           </div>
         </DialogContent>
       </Dialog>

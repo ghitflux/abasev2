@@ -60,7 +60,8 @@ export async function fetchAllPaginatedRows<T>({
     },
   });
 
-  const totalPages = Math.max(1, Math.ceil(firstPage.count / pageSize));
+  const resolvedPageSize = Math.max(firstPage.results.length || 0, 1);
+  const totalPages = Math.max(1, Math.ceil(firstPage.count / resolvedPageSize));
   if (totalPages === 1) {
     return firstPage.results;
   }
@@ -148,7 +149,15 @@ function normalizeDateCandidate(value: unknown) {
     return stringValue;
   }
 
-  if (/^\d{4}-\d{2}-\d{2}/.test(stringValue)) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(stringValue)) {
+    return stringValue.slice(0, 10);
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}[T\s]/.test(stringValue)) {
+    const parsedDateTime = new Date(stringValue);
+    if (!Number.isNaN(parsedDateTime.getTime())) {
+      return format(parsedDateTime, "yyyy-MM-dd");
+    }
     return stringValue.slice(0, 10);
   }
 

@@ -689,8 +689,6 @@ export default function AnalisePage() {
           analista: analistaFilter || undefined,
           etapa: etapaFilter || undefined,
           status: statusFilter || undefined,
-          data_inicio: formatDateForQuery(dataInicio),
-          data_fim: formatDateForQuery(dataFim),
         };
         const rows = await fetchAllPaginatedRows<EsteiraItem>({
           sourcePath: "analise/filas",
@@ -700,21 +698,25 @@ export default function AnalisePage() {
           rows,
           scope,
           referenceDate,
-          getCandidates: (row) => [
-            (row as EsteiraItem & { created_at?: string }).created_at,
-          ],
+          getCandidates: (row) => [row.updated_at ?? row.created_at],
         });
         const exportRows = scopedRows.map((row) => ({
-          nome: row.contrato?.associado_nome ?? "—",
-          cpf_cnpj: maskCPFCNPJ(row.contrato?.cpf_cnpj ?? ""),
+          nome:
+            row.contrato?.associado_nome ?? row.associado?.nome_completo ?? "-",
+          cpf_cnpj: maskCPFCNPJ(
+            row.contrato?.cpf_cnpj ?? row.associado?.cpf_cnpj ?? "",
+          ),
           matricula:
-            row.contrato?.matricula_display ?? row.contrato?.matricula ?? "—",
-          contrato_codigo: row.contrato?.codigo ?? "—",
+            row.contrato?.matricula_display ??
+            row.contrato?.matricula ??
+            row.associado?.matricula_display ??
+            row.associado?.matricula ??
+            "-",
+          contrato_codigo: row.contrato?.codigo ?? "-",
           etapa: row.etapa_atual,
           status: row.status,
-          agente: row.agente?.full_name ?? "—",
-          criado_em:
-            (row as EsteiraItem & { created_at?: string }).created_at ?? "",
+          agente: row.agente?.full_name ?? "-",
+          criado_em: row.updated_at ?? row.created_at ?? "",
         }));
         await exportRouteReport({
           route: "/analise",
@@ -735,8 +737,6 @@ export default function AnalisePage() {
     [
       agenteFilter,
       analistaFilter,
-      dataFim,
-      dataInicio,
       debouncedSearch,
       etapaFilter,
       statusFilter,

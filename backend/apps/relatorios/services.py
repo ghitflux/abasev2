@@ -301,7 +301,7 @@ class RelatorioService:
                     ReportColumn("etapa", "Etapa", 1.0),
                     ReportColumn("status", "Status", 1.1),
                     ReportColumn("agente", "Agente", 1.8),
-                    ReportColumn("criado_em", "Criado em", 1.3),
+                    ReportColumn("criado_em", "Atualizado em", 1.3),
                 ),
             ),
             "/associados": ReportDefinition(

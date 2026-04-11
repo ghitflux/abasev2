@@ -200,6 +200,8 @@ class EsteiraListSerializer(serializers.ModelSerializer):
             "etapa_atual",
             "status",
             "assumido_em",
+            "created_at",
+            "updated_at",
         ]
 
     def _get_contrato(self, obj: EsteiraItem):

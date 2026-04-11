@@ -191,6 +191,7 @@ class AnaliseViewSetTestCase(TestCase):
         response = self.analyst_client.get("/api/v1/analise/filas/?secao=novos_contratos")
         self.assertEqual(response.status_code, 200, response.json())
         self.assertEqual(response.json()["results"][0]["id"], novo_contrato.id)
+        self.assertIn("created_at", response.json()["results"][0])
 
         response = self.analyst_client.get("/api/v1/analise/filas/?secao=ver_todos")
         self.assertEqual(response.status_code, 200, response.json())

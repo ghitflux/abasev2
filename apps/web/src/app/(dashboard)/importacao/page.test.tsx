@@ -188,6 +188,40 @@ const itemPayload = {
   ],
 };
 
+const expandedItemPayload = {
+  count: 2,
+  next: null,
+  previous: null,
+  results: [
+    itemPayload.results[0],
+    {
+      id: 2,
+      linha_numero: 2,
+      cpf_cnpj: "11122233344",
+      matricula_servidor: "123456-7",
+      nome_servidor: "JOSE DO NASCIMENTO",
+      cargo: "-",
+      competencia: "05/2025",
+      valor_descontado: "50.00",
+      status_codigo: "2",
+      status_desconto: "rejeitado",
+      status_descricao: "Não descontado",
+      motivo_rejeicao: null,
+      orgao_codigo: "003",
+      orgao_pagto_codigo: "003",
+      orgao_pagto_nome: "SEC. EST. FAZENDA",
+      resultado_processamento: "nao_descontado",
+      observacao: "Linha rejeitada no retorno.",
+      gerou_encerramento: false,
+      gerou_novo_ciclo: false,
+      associado_id: 78,
+      associado_nome: "Jose do Nascimento",
+      agente_responsavel: "Agente Padrão",
+      contrato_codigo: "CTR-002",
+    },
+  ],
+};
+
 describe("ImportacaoPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -245,6 +279,16 @@ describe("ImportacaoPage", () => {
     mockedApiFetch.mockImplementation(async (path, options) => {
       if (path === "importacao/arquivo-retorno") {
         return historyPayload;
+      }
+
+      if (path === `importacao/arquivo-retorno/${latestImport.id}/descontados`) {
+        return expandedItemPayload;
+      }
+
+      if (
+        path === `importacao/arquivo-retorno/${latestImport.id}/nao-descontados`
+      ) {
+        return expandedItemPayload;
       }
 
       if (path === "importacao/arquivo-retorno/upload") {
@@ -308,18 +352,38 @@ describe("ImportacaoPage", () => {
     expect(within(dialog).getByText("José do Nascimento")).toBeInTheDocument();
   });
 
-  it("abre a tabela correta ao clicar no card de faltando", async () => {
+  it("abre a tabela expandida ao clicar no card de quitados", async () => {
+    const user = userEvent.setup();
+
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: /Quitados/i }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText("Baixas automáticas da última importação"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("MARIA DE JESUS SANTANA COSTA"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("JOSE DO NASCIMENTO")).toBeInTheDocument();
+  });
+
+  it("abre a tabela expandida ao clicar no card de faltando", async () => {
     const user = userEvent.setup();
 
     renderPage();
     await user.click(await screen.findByRole("button", { name: /Faltando/i }));
 
-    expect(await screen.findByText("Não descontados")).toBeInTheDocument();
+    const dialog = await screen.findByRole("dialog");
     expect(
-      screen.getByText(
-        "Itens rejeitados pelo ETIPI com marcação de não descontado.",
+      within(dialog).getByText("Não descontados da última importação"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "Itens rejeitados pelo ETIPI com marcação de não descontado no último arquivo retorno.",
       ),
     ).toBeInTheDocument();
+    expect(within(dialog).getByText("JOSE DO NASCIMENTO")).toBeInTheDocument();
   });
 
   it("entra em polling visual após upload", async () => {
