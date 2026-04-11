@@ -14,7 +14,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import type { PaginatedResponse, SimpleUser, TesourariaContratoItem } from "@/lib/api/types";
+import type {
+  PaginatedResponse,
+  SimpleUser,
+  TesourariaContratoItem,
+} from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
 import { formatCurrency, formatDateTime } from "@/lib/formatters";
@@ -32,7 +36,9 @@ import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import AssociadoDetailsDialog from "@/components/associados/associado-details-dialog";
 import CopySnippet from "@/components/shared/copy-snippet";
-import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import DataTable, {
+  type DataTableColumn,
+} from "@/components/shared/data-table";
 import ExportButton from "@/components/shared/export-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -64,6 +70,11 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const comprovanteAccept = {
   "application/pdf": [".pdf"],
@@ -111,7 +122,10 @@ function formatTesourariaAnexos(row: TesourariaContratoItem) {
   const associado = row.comprovantes.find((item) => item.papel === "associado");
   const agente = row.comprovantes.find((item) => item.papel === "agente");
 
-  const formatItem = (label: string, item?: TesourariaContratoItem["comprovantes"][number]) => {
+  const formatItem = (
+    label: string,
+    item?: TesourariaContratoItem["comprovantes"][number],
+  ) => {
     if (!item) {
       return `${label}: sem anexo`;
     }
@@ -124,7 +138,10 @@ function formatTesourariaAnexos(row: TesourariaContratoItem) {
     return `${label}: anexado`;
   };
 
-  return [formatItem("Associado", associado), formatItem("Agente", agente)].join(" | ");
+  return [
+    formatItem("Associado", associado),
+    formatItem("Agente", agente),
+  ].join(" | ");
 }
 
 function formatTesourariaDadosBancarios(row: TesourariaContratoItem) {
@@ -132,7 +149,9 @@ function formatTesourariaDadosBancarios(row: TesourariaContratoItem) {
     return "Sem dados bancários";
   }
   const { banco, agencia, conta, tipo_conta } = row.dados_bancarios;
-  return [banco, `Ag ${agencia}`, `Conta ${conta}`, tipo_conta].filter(Boolean).join(" | ");
+  return [banco, `Ag ${agencia}`, `Conta ${conta}`, tipo_conta]
+    .filter(Boolean)
+    .join(" | ");
 }
 
 function formatTesourariaAcoes(row: TesourariaContratoItem) {
@@ -144,7 +163,10 @@ function formatTesourariaAcoes(row: TesourariaContratoItem) {
 }
 
 function formatTesourariaAgente(row: TesourariaContratoItem) {
-  return [row.agente_nome || "Sem agente", `Repasse: ${row.percentual_repasse}%`].join(" | ");
+  return [
+    row.agente_nome || "Sem agente",
+    `Repasse: ${row.percentual_repasse}%`,
+  ].join(" | ");
 }
 
 function formatTesourariaValores(row: TesourariaContratoItem) {
@@ -157,7 +179,9 @@ function formatTesourariaValores(row: TesourariaContratoItem) {
 function formatTesourariaStatus(row: TesourariaContratoItem) {
   const parts = [toStatusLabel(row.status)];
   if (row.cancelamento_tipo) {
-    parts.push(row.cancelamento_tipo === "desistente" ? "Desistente" : "Cancelado");
+    parts.push(
+      row.cancelamento_tipo === "desistente" ? "Desistente" : "Cancelado",
+    );
   }
   return parts.join(" | ");
 }
@@ -248,20 +272,25 @@ function useTesourariaQuery({
       ordering,
     ],
     queryFn: () =>
-      apiFetch<PaginatedResponse<TesourariaContratoItem>>("tesouraria/contratos", {
-        query: {
-          page,
-          page_size: PAGE_SIZE,
-          pagamento,
-          search: search || undefined,
-          data_inicio: toFilterDate(dataInicio),
-          data_fim: toFilterDate(dataFim),
-          agente: agente || undefined,
-          status_contrato: statusContrato === "todos" ? undefined : statusContrato,
-          situacao_esteira: situacaoEsteira === "todos" ? undefined : situacaoEsteira,
-          ordering,
+      apiFetch<PaginatedResponse<TesourariaContratoItem>>(
+        "tesouraria/contratos",
+        {
+          query: {
+            page,
+            page_size: PAGE_SIZE,
+            pagamento,
+            search: search || undefined,
+            data_inicio: toFilterDate(dataInicio),
+            data_fim: toFilterDate(dataFim),
+            agente: agente || undefined,
+            status_contrato:
+              statusContrato === "todos" ? undefined : statusContrato,
+            situacao_esteira:
+              situacaoEsteira === "todos" ? undefined : situacaoEsteira,
+            ordering,
+          },
         },
-      }),
+      ),
   });
 }
 
@@ -273,32 +302,41 @@ export default function TesourariaPage() {
   const [pagePaid, setPagePaid] = React.useState(1);
   const [pageLiquidated, setPageLiquidated] = React.useState(1);
   const [pageCanceled, setPageCanceled] = React.useState(1);
-  const [visibleSection, setVisibleSection] = React.useState<TesourariaSectionFilter>("todos");
+  const [visibleSection, setVisibleSection] =
+    React.useState<TesourariaSectionFilter>("todos");
   const [dataInicio, setDataInicio] = React.useState<Date | undefined>();
   const [dataFim, setDataFim] = React.useState<Date | undefined>();
   const [agenteFiltro, setAgenteFiltro] = React.useState("");
   const [statusContrato, setStatusContrato] = React.useState("todos");
   const [situacaoEsteira, setSituacaoEsteira] = React.useState("todos");
   const [ordering, setOrdering] = React.useState("-created_at");
-  const [draftAdvancedFilters, setDraftAdvancedFilters] = React.useState<AdvancedFiltersDraft>({
-    dataInicio: undefined,
-    dataFim: undefined,
-    agente: "",
-    statusContrato: "todos",
-    situacaoEsteira: "todos",
-    ordering: "-created_at",
-  });
+  const [draftAdvancedFilters, setDraftAdvancedFilters] =
+    React.useState<AdvancedFiltersDraft>({
+      dataInicio: undefined,
+      dataFim: undefined,
+      agente: "",
+      statusContrato: "todos",
+      situacaoEsteira: "todos",
+      ordering: "-created_at",
+    });
   const [drafts, setDrafts] = React.useState<DraftMap>({});
-  const [freezeTarget, setFreezeTarget] = React.useState<TesourariaContratoItem | null>(null);
+  const [freezeTarget, setFreezeTarget] =
+    React.useState<TesourariaContratoItem | null>(null);
   const [freezeReason, setFreezeReason] = React.useState("");
-  const [cancelTarget, setCancelTarget] = React.useState<TesourariaContratoItem | null>(null);
+  const [cancelTarget, setCancelTarget] =
+    React.useState<TesourariaContratoItem | null>(null);
   const [cancelReason, setCancelReason] = React.useState("");
-  const [cancelType, setCancelType] = React.useState<"cancelado" | "desistente">("cancelado");
-  const [bankTarget, setBankTarget] = React.useState<TesourariaContratoItem | null>(null);
-  const [detailTarget, setDetailTarget] = React.useState<TesourariaContratoItem | null>(null);
+  const [cancelType, setCancelType] = React.useState<
+    "cancelado" | "desistente"
+  >("cancelado");
+  const [bankTarget, setBankTarget] =
+    React.useState<TesourariaContratoItem | null>(null);
+  const [detailTarget, setDetailTarget] =
+    React.useState<TesourariaContratoItem | null>(null);
   const agentesFiltroQuery = useQuery({
     queryKey: ["tesouraria-contratos-agentes"],
-    queryFn: () => apiFetch<TesourariaAgentFilterUser[]>("tesouraria/contratos/agentes"),
+    queryFn: () =>
+      apiFetch<TesourariaAgentFilterUser[]>("tesouraria/contratos/agentes"),
     staleTime: 5 * 60 * 1000,
   });
 
@@ -360,10 +398,13 @@ export default function TesourariaPage() {
       const formData = new FormData();
       formData.set("comprovante_associado", associado);
       formData.set("comprovante_agente", agente);
-      return apiFetch<TesourariaContratoItem>(`tesouraria/contratos/${contratoId}/efetivar`, {
-        method: "POST",
-        formData,
-      });
+      return apiFetch<TesourariaContratoItem>(
+        `tesouraria/contratos/${contratoId}/efetivar`,
+        {
+          method: "POST",
+          formData,
+        },
+      );
     },
     onSuccess: (_, variables) => {
       setDrafts((current) => {
@@ -372,27 +413,70 @@ export default function TesourariaPage() {
         return next;
       });
       toast.success("Contrato efetivado com sucesso.");
-      void queryClient.invalidateQueries({ queryKey: ["tesouraria-contratos"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-contratos"],
+      });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Não foi possível efetivar o contrato.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível efetivar o contrato.",
+      );
     },
   });
 
   const congelarMutation = useMutation({
-    mutationFn: async ({ contratoId, motivo }: { contratoId: number; motivo: string }) =>
-      apiFetch<TesourariaContratoItem>(`tesouraria/contratos/${contratoId}/congelar`, {
-        method: "POST",
-        body: { motivo },
-      }),
+    mutationFn: async ({
+      contratoId,
+      motivo,
+    }: {
+      contratoId: number;
+      motivo: string;
+    }) =>
+      apiFetch<TesourariaContratoItem>(
+        `tesouraria/contratos/${contratoId}/congelar`,
+        {
+          method: "POST",
+          body: { motivo },
+        },
+      ),
     onSuccess: () => {
       toast.success("Contrato congelado.");
       setFreezeTarget(null);
       setFreezeReason("");
-      void queryClient.invalidateQueries({ queryKey: ["tesouraria-contratos"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-contratos"],
+      });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao congelar contrato.");
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao congelar contrato.",
+      );
+    },
+  });
+
+  const averbarMutation = useMutation({
+    mutationFn: async ({ contratoId }: { contratoId: number }) =>
+      apiFetch<TesourariaContratoItem>(
+        `tesouraria/contratos/${contratoId}/averbar`,
+        {
+          method: "POST",
+        },
+      ),
+    onSuccess: () => {
+      toast.success("Contrato averbado com sucesso.");
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-contratos"],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-pagamentos"],
+      });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao averbar contrato.",
+      );
     },
   });
 
@@ -419,11 +503,15 @@ export default function TesourariaPage() {
     },
     onSuccess: () => {
       toast.success("Comprovante substituído.");
-      void queryClient.invalidateQueries({ queryKey: ["tesouraria-contratos"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-contratos"],
+      });
     },
     onError: (error) => {
       toast.error(
-        error instanceof Error ? error.message : "Falha ao substituir o comprovante.",
+        error instanceof Error
+          ? error.message
+          : "Falha ao substituir o comprovante.",
       );
     },
   });
@@ -438,20 +526,27 @@ export default function TesourariaPage() {
       tipo: "cancelado" | "desistente";
       motivo: string;
     }) =>
-      apiFetch<TesourariaContratoItem>(`tesouraria/contratos/${contratoId}/cancelar`, {
-        method: "POST",
-        body: { tipo, motivo },
-      }),
+      apiFetch<TesourariaContratoItem>(
+        `tesouraria/contratos/${contratoId}/cancelar`,
+        {
+          method: "POST",
+          body: { tipo, motivo },
+        },
+      ),
     onSuccess: () => {
       toast.success("Contrato cancelado com sucesso.");
       setCancelTarget(null);
       setCancelReason("");
       setCancelType("cancelado");
-      void queryClient.invalidateQueries({ queryKey: ["tesouraria-contratos"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-contratos"],
+      });
       void queryClient.invalidateQueries({ queryKey: ["contratos"] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao cancelar contrato.");
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao cancelar contrato.",
+      );
     },
   });
 
@@ -464,14 +559,52 @@ export default function TesourariaPage() {
           const associadoComprovante = row.comprovantes.find(
             (item) => item.papel === "associado",
           );
-          const agenteComprovante = row.comprovantes.find((item) => item.papel === "agente");
+          const agenteComprovante = row.comprovantes.find(
+            (item) => item.papel === "agente",
+          );
           const draft = drafts[row.id] ?? {};
-          const canEfetivar = row.status === "pendente" || row.status === "congelado";
+          const canEfetivar =
+            row.status === "pendente" || row.status === "congelado";
+          const dispensaPagamentoInicial = row.dispensa_pagamento_inicial;
           const isEfetivando =
-            efetivarMutation.isPending && efetivarMutation.variables?.contratoId === row.id;
+            efetivarMutation.isPending &&
+            efetivarMutation.variables?.contratoId === row.id;
+          const isAverbando =
+            averbarMutation.isPending &&
+            averbarMutation.variables?.contratoId === row.id;
           const isSubstituindo =
             substituirComprovanteMutation.isPending &&
             substituirComprovanteMutation.variables?.contratoId === row.id;
+
+          if (dispensaPagamentoInicial) {
+            return (
+              <div className="flex min-w-[13rem] flex-col gap-3 rounded-2xl border border-dashed border-border/60 bg-card/40 p-3">
+                <p className="text-sm font-medium">
+                  Fluxo sem pagamento inicial
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Este contrato não exige comprovantes PIX. A ação operacional é
+                  apenas averbar.
+                </p>
+                {canEfetivar ? (
+                  <Button
+                    size="sm"
+                    className="self-start"
+                    onClick={() =>
+                      averbarMutation.mutate({ contratoId: row.id })
+                    }
+                    disabled={isAverbando}
+                  >
+                    Averbar
+                  </Button>
+                ) : (
+                  <Badge variant="outline" className="w-fit rounded-full">
+                    Averbado
+                  </Badge>
+                )}
+              </div>
+            );
+          }
 
           return (
             <div className="flex min-w-[13rem] flex-col gap-2">
@@ -486,8 +619,8 @@ export default function TesourariaPage() {
                   }
                   existingName={associadoComprovante?.nome_original}
                   draftFile={draft.associado}
-                  disabled={isEfetivando || isSubstituindo}
-                  isProcessing={isEfetivando || isSubstituindo}
+                  disabled={isEfetivando || isAverbando || isSubstituindo}
+                  isProcessing={isEfetivando || isAverbando || isSubstituindo}
                   onSelect={(file) => {
                     if (canEfetivar) {
                       setDrafts((current) => ({
@@ -519,8 +652,8 @@ export default function TesourariaPage() {
                   }
                   existingName={agenteComprovante?.nome_original}
                   draftFile={draft.agente}
-                  disabled={isEfetivando || isSubstituindo}
-                  isProcessing={isEfetivando || isSubstituindo}
+                  disabled={isEfetivando || isAverbando || isSubstituindo}
+                  isProcessing={isEfetivando || isAverbando || isSubstituindo}
                   onSelect={(file) => {
                     if (canEfetivar) {
                       setDrafts((current) => ({
@@ -587,12 +720,18 @@ export default function TesourariaPage() {
         id: "acao",
         header: "Ação",
         cell: (row) => {
-          const canFreeze = row.status === "pendente" || row.status === "congelado";
-          const canCancel = row.status === "pendente" || row.status === "congelado";
+          const canFreeze =
+            row.status === "pendente" || row.status === "congelado";
+          const canCancel =
+            row.status === "pendente" || row.status === "congelado";
 
           return (
             <div className="flex min-w-52 flex-wrap gap-2">
-              <Button size="sm" variant="outline" onClick={() => setDetailTarget(row)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setDetailTarget(row)}
+              >
                 <EyeIcon className="size-4" />
                 Ver detalhes
               </Button>
@@ -631,7 +770,12 @@ export default function TesourariaPage() {
           <div className="space-y-1">
             <div>
               {row.matricula ? (
-                <CopySnippet label="Matrícula" value={row.matricula} mono inline />
+                <CopySnippet
+                  label="Matrícula"
+                  value={row.matricula}
+                  mono
+                  inline
+                />
               ) : (
                 <span className="text-muted-foreground">—</span>
               )}
@@ -659,16 +803,20 @@ export default function TesourariaPage() {
       },
       {
         id: "valores",
-        header: "Aux. / Comissão",
+        header: "Auxílio liberado / comissão",
         cell: (row) => (
           <div className="space-y-1">
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="text-muted-foreground">Aux. liberado</span>
-              <span className="font-medium">{formatCurrency(row.margem_disponivel)}</span>
+              <span className="font-medium">
+                {formatCurrency(row.margem_disponivel)}
+              </span>
             </div>
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="text-muted-foreground">Comissão</span>
-              <span className="font-medium">{formatCurrency(row.comissao_agente)}</span>
+              <span className="font-medium">
+                {formatCurrency(row.comissao_agente)}
+              </span>
             </div>
           </div>
         ),
@@ -686,14 +834,16 @@ export default function TesourariaPage() {
             <StatusBadge status={row.status} />
             {row.cancelamento_tipo ? (
               <Badge className="rounded-full bg-rose-500/15 text-rose-200">
-                {row.cancelamento_tipo === "desistente" ? "Desistente" : "Cancelado"}
+                {row.cancelamento_tipo === "desistente"
+                  ? "Desistente"
+                  : "Cancelado"}
               </Badge>
             ) : null}
           </div>
         ),
       },
     ],
-    [drafts, efetivarMutation, substituirComprovanteMutation],
+    [averbarMutation, drafts, efetivarMutation, substituirComprovanteMutation],
   );
 
   const handleExport = React.useCallback(
@@ -715,8 +865,10 @@ export default function TesourariaPage() {
           data_inicio: toFilterDate(dataInicio),
           data_fim: toFilterDate(dataFim),
           agente: agenteFiltro || undefined,
-          status_contrato: statusContrato === "todos" ? undefined : statusContrato,
-          situacao_esteira: situacaoEsteira === "todos" ? undefined : situacaoEsteira,
+          status_contrato:
+            statusContrato === "todos" ? undefined : statusContrato,
+          situacao_esteira:
+            situacaoEsteira === "todos" ? undefined : situacaoEsteira,
           ordering,
         };
 
@@ -752,7 +904,11 @@ export default function TesourariaPage() {
           },
         });
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Falha ao exportar contratos da tesouraria.");
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Falha ao exportar contratos da tesouraria.",
+        );
       } finally {
         setIsExporting(false);
       }
@@ -808,37 +964,45 @@ export default function TesourariaPage() {
     cancelado: canceledQuery.data?.count ?? 0,
   };
   const totalKpiCount =
-    kpiCounts.pendente + kpiCounts.concluido + kpiCounts.liquidado + kpiCounts.cancelado;
+    kpiCounts.pendente +
+    kpiCounts.concluido +
+    kpiCounts.liquidado +
+    kpiCounts.cancelado;
   const shouldShowSection = (section: TesourariaPagamentoFilter) =>
     visibleSection === "todos" || visibleSection === section;
   const kpiCards = [
     {
       key: "todos" as const,
       label: "Total no filtro",
+      tooltip: "Soma das filas operacionais exibidas com o recorte atual.",
       value: totalKpiCount,
       accentClassName: "text-foreground",
     },
     {
       key: "pendente" as const,
       label: "Pendentes",
+      tooltip: "Contratos ainda sem liberação final na tesouraria.",
       value: kpiCounts.pendente,
       accentClassName: "text-rose-200",
     },
     {
       key: "concluido" as const,
       label: "Efetivados",
+      tooltip: "Contratos já liberados pela tesouraria no recorte atual.",
       value: kpiCounts.concluido,
       accentClassName: "text-emerald-200",
     },
     {
       key: "liquidado" as const,
       label: "Liquidados",
+      tooltip: "Contratos encerrados operacionalmente.",
       value: kpiCounts.liquidado,
       accentClassName: "text-sky-200",
     },
     {
       key: "cancelado" as const,
       label: "Cancelados",
+      tooltip: "Contratos cancelados ou desistentes no histórico do recorte.",
       value: kpiCounts.cancelado,
       accentClassName: "text-amber-200",
     },
@@ -869,7 +1033,8 @@ export default function TesourariaPage() {
               </p>
               <h1 className="text-3xl font-semibold">Novos Contratos</h1>
               <p className="text-sm text-muted-foreground">
-                Painel operacional de novos contratos, pagamentos iniciais e histórico da tesouraria.
+                Painel operacional de novos contratos, pagamentos iniciais e
+                histórico da tesouraria.
               </p>
             </div>
           </CardContent>
@@ -879,6 +1044,7 @@ export default function TesourariaPage() {
             <TesourariaKpiCard
               key={card.key}
               label={card.label}
+              tooltip={card.tooltip}
               value={card.value}
               scope={filterScopeLabel}
               accentClassName={card.accentClassName}
@@ -899,16 +1065,16 @@ export default function TesourariaPage() {
         <Sheet
           onOpenChange={(open) => {
             if (open) {
-                  setDraftAdvancedFilters({
-                    dataInicio,
-                    dataFim,
-                    agente: agenteFiltro,
-                    statusContrato,
-                    situacaoEsteira,
-                    ordering,
-                  });
-                }
-              }}
+              setDraftAdvancedFilters({
+                dataInicio,
+                dataFim,
+                agente: agenteFiltro,
+                statusContrato,
+                situacaoEsteira,
+                ordering,
+              });
+            }
+          }}
         >
           <SheetTrigger asChild>
             <Button variant="outline" className="rounded-2xl">
@@ -925,7 +1091,8 @@ export default function TesourariaPage() {
             <SheetHeader>
               <SheetTitle>Filtros avançados</SheetTitle>
               <SheetDescription>
-                Filtre por data de solicitação, agente, status do contrato e situação operacional.
+                Filtre por data de solicitação, agente, status do contrato e
+                situação operacional.
               </SheetDescription>
             </SheetHeader>
 
@@ -961,8 +1128,12 @@ export default function TesourariaPage() {
                       <SelectValue placeholder="Ordem decrescente" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="-created_at">Ordem decrescente</SelectItem>
-                      <SelectItem value="created_at">Ordem crescente</SelectItem>
+                      <SelectItem value="-created_at">
+                        Ordem decrescente
+                      </SelectItem>
+                      <SelectItem value="created_at">
+                        Ordem crescente
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </FilterField>
@@ -1094,33 +1265,45 @@ export default function TesourariaPage() {
               ? void handleExport("month", formatValue)
               : undefined
           }
-          onExportScoped={(scope, formatValue) => void handleExport(scope, formatValue)}
+          onExportScoped={(scope, formatValue) =>
+            void handleExport(scope, formatValue)
+          }
         />
       </section>
 
       {shouldShowSection("pendente") ? (
         <section className="space-y-4">
-        <header className="flex items-center justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.28em] text-muted-foreground">
-              Pendentes
+          <header className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.28em] text-muted-foreground">
+                Pendentes
+              </p>
+              <h2 className="text-xl font-semibold">
+                Aguardando efetivação PIX
+              </h2>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Mostrando{" "}
+              {buildRangeLabel(
+                pagePending,
+                pendingRows.length,
+                pendingQuery.data?.count ?? 0,
+              )}
             </p>
-            <h2 className="text-xl font-semibold">Aguardando efetivação PIX</h2>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            Mostrando {buildRangeLabel(pagePending, pendingRows.length, pendingQuery.data?.count ?? 0)}
-          </p>
-        </header>
-        <DataTable
-          data={pendingRows}
-          columns={columns}
-          currentPage={pagePending}
-          totalPages={Math.max(1, Math.ceil((pendingQuery.data?.count ?? 0) / PAGE_SIZE))}
-          onPageChange={setPagePending}
-          emptyMessage="Nenhum contrato pendente para os filtros informados."
-          loading={pendingQuery.isLoading}
-          skeletonRows={PAGE_SIZE}
-        />
+          </header>
+          <DataTable
+            data={pendingRows}
+            columns={columns}
+            currentPage={pagePending}
+            totalPages={Math.max(
+              1,
+              Math.ceil((pendingQuery.data?.count ?? 0) / PAGE_SIZE),
+            )}
+            onPageChange={setPagePending}
+            emptyMessage="Nenhum contrato pendente para os filtros informados."
+            loading={pendingQuery.isLoading}
+            skeletonRows={PAGE_SIZE}
+          />
         </section>
       ) : null}
 
@@ -1134,14 +1317,22 @@ export default function TesourariaPage() {
               <h2 className="text-xl font-semibold">Contratos efetivados</h2>
             </div>
             <p className="text-sm text-muted-foreground">
-              Mostrando {buildRangeLabel(pagePaid, paidRows.length, paidQuery.data?.count ?? 0)}
+              Mostrando{" "}
+              {buildRangeLabel(
+                pagePaid,
+                paidRows.length,
+                paidQuery.data?.count ?? 0,
+              )}
             </p>
           </header>
           <DataTable
             data={paidRows}
             columns={columns}
             currentPage={pagePaid}
-            totalPages={Math.max(1, Math.ceil((paidQuery.data?.count ?? 0) / PAGE_SIZE))}
+            totalPages={Math.max(
+              1,
+              Math.ceil((paidQuery.data?.count ?? 0) / PAGE_SIZE),
+            )}
             onPageChange={setPagePaid}
             emptyMessage="Nenhum contrato pago para os filtros informados."
             loading={paidQuery.isLoading}
@@ -1160,14 +1351,22 @@ export default function TesourariaPage() {
               <h2 className="text-xl font-semibold">Contratos liquidados</h2>
             </div>
             <p className="text-sm text-muted-foreground">
-              Mostrando {buildRangeLabel(pageLiquidated, liquidatedRows.length, liquidatedQuery.data?.count ?? 0)}
+              Mostrando{" "}
+              {buildRangeLabel(
+                pageLiquidated,
+                liquidatedRows.length,
+                liquidatedQuery.data?.count ?? 0,
+              )}
             </p>
           </header>
           <DataTable
             data={liquidatedRows}
             columns={columns}
             currentPage={pageLiquidated}
-            totalPages={Math.max(1, Math.ceil((liquidatedQuery.data?.count ?? 0) / PAGE_SIZE))}
+            totalPages={Math.max(
+              1,
+              Math.ceil((liquidatedQuery.data?.count ?? 0) / PAGE_SIZE),
+            )}
             onPageChange={setPageLiquidated}
             emptyMessage="Nenhum contrato liquidado para os filtros informados."
             loading={liquidatedQuery.isLoading}
@@ -1183,17 +1382,27 @@ export default function TesourariaPage() {
               <p className="text-xs uppercase tracking-[0.28em] text-rose-300">
                 Cancelados / Desistentes
               </p>
-              <h2 className="text-xl font-semibold">Contratos cancelados / desistentes</h2>
+              <h2 className="text-xl font-semibold">
+                Contratos cancelados / desistentes
+              </h2>
             </div>
             <p className="text-sm text-muted-foreground">
-              Mostrando {buildRangeLabel(pageCanceled, canceledRows.length, canceledQuery.data?.count ?? 0)}
+              Mostrando{" "}
+              {buildRangeLabel(
+                pageCanceled,
+                canceledRows.length,
+                canceledQuery.data?.count ?? 0,
+              )}
             </p>
           </header>
           <DataTable
             data={canceledRows}
             columns={columns}
             currentPage={pageCanceled}
-            totalPages={Math.max(1, Math.ceil((canceledQuery.data?.count ?? 0) / PAGE_SIZE))}
+            totalPages={Math.max(
+              1,
+              Math.ceil((canceledQuery.data?.count ?? 0) / PAGE_SIZE),
+            )}
             onPageChange={setPageCanceled}
             emptyMessage="Nenhum contrato cancelado ou desistente para os filtros informados."
             loading={canceledQuery.isLoading}
@@ -1202,7 +1411,10 @@ export default function TesourariaPage() {
         </section>
       ) : null}
 
-      <Dialog open={!!freezeTarget} onOpenChange={(open) => !open && setFreezeTarget(null)}>
+      <Dialog
+        open={!!freezeTarget}
+        onOpenChange={(open) => !open && setFreezeTarget(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Congelar contrato</DialogTitle>
@@ -1239,20 +1451,39 @@ export default function TesourariaPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!bankTarget} onOpenChange={(open) => !open && setBankTarget(null)}>
+      <Dialog
+        open={!!bankTarget}
+        onOpenChange={(open) => !open && setBankTarget(null)}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Dados bancários</DialogTitle>
             <DialogDescription>
-              Use estas informações para executar a transferência PIX do contrato.
+              Use estas informações para executar a transferência PIX do
+              contrato.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 rounded-2xl border border-border/60 bg-card/60 p-4 text-sm">
-            <InfoLine label="Banco" value={bankTarget?.dados_bancarios?.banco} />
-            <InfoLine label="Agência" value={bankTarget?.dados_bancarios?.agencia} />
-            <InfoLine label="Conta" value={bankTarget?.dados_bancarios?.conta} />
-            <InfoLine label="Tipo" value={bankTarget?.dados_bancarios?.tipo_conta} />
-            <InfoLine label="Chave PIX" value={bankTarget?.dados_bancarios?.chave_pix || "—"} />
+            <InfoLine
+              label="Banco"
+              value={bankTarget?.dados_bancarios?.banco}
+            />
+            <InfoLine
+              label="Agência"
+              value={bankTarget?.dados_bancarios?.agencia}
+            />
+            <InfoLine
+              label="Conta"
+              value={bankTarget?.dados_bancarios?.conta}
+            />
+            <InfoLine
+              label="Tipo"
+              value={bankTarget?.dados_bancarios?.tipo_conta}
+            />
+            <InfoLine
+              label="Chave PIX"
+              value={bankTarget?.dados_bancarios?.chave_pix || "—"}
+            />
           </div>
         </DialogContent>
       </Dialog>
@@ -1271,12 +1502,17 @@ export default function TesourariaPage() {
           <DialogHeader>
             <DialogTitle>Cancelar contrato</DialogTitle>
             <DialogDescription>
-              Escolha se o contrato foi cancelado internamente ou se o cliente desistiu
-              antes da ativação.
+              Escolha se o contrato foi cancelado internamente ou se o cliente
+              desistiu antes da ativação.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
-            <Select value={cancelType} onValueChange={(value) => setCancelType(value as "cancelado" | "desistente")}>
+            <Select
+              value={cancelType}
+              onValueChange={(value) =>
+                setCancelType(value as "cancelado" | "desistente")
+              }
+            >
               <SelectTrigger className="rounded-2xl bg-card/60">
                 <SelectValue placeholder="Tipo do cancelamento" />
               </SelectTrigger>
@@ -1305,7 +1541,11 @@ export default function TesourariaPage() {
             </Button>
             <Button
               variant="destructive"
-              disabled={!cancelTarget || !cancelReason.trim() || cancelarMutation.isPending}
+              disabled={
+                !cancelTarget ||
+                !cancelReason.trim() ||
+                cancelarMutation.isPending
+              }
               onClick={() => {
                 if (!cancelTarget || !cancelReason.trim()) {
                   toast.error("Informe o motivo do cancelamento.");
@@ -1350,6 +1590,7 @@ function FilterField({
 
 function TesourariaKpiCard({
   label,
+  tooltip,
   value,
   scope,
   active,
@@ -1357,6 +1598,7 @@ function TesourariaKpiCard({
   onClick,
 }: {
   label: string;
+  tooltip?: string;
   value: number;
   scope: string;
   active: boolean;
@@ -1376,10 +1618,25 @@ function TesourariaKpiCard({
           : "border-border/60 bg-card/60 hover:border-primary/30 hover:bg-card/80",
       ].join(" ")}
     >
-      <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
-        {label}
-      </p>
-      <p className={`mt-3 text-3xl font-semibold ${accentClassName ?? "text-foreground"}`}>
+      {tooltip ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <p className="cursor-help text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+              {label}
+            </p>
+          </TooltipTrigger>
+          <TooltipContent side="top" className="max-w-72">
+            {tooltip}
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        <p className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
+          {label}
+        </p>
+      )}
+      <p
+        className={`mt-3 text-3xl font-semibold ${accentClassName ?? "text-foreground"}`}
+      >
         {value}
       </p>
       <p className="mt-2 text-xs text-muted-foreground">{scope}</p>
@@ -1443,16 +1700,22 @@ function ComprovanteSlot({
       }
       event?.preventDefault();
       event?.stopPropagation();
-      window.open(buildBackendFileUrl(displayUrl), "_blank", "noopener,noreferrer");
+      window.open(
+        buildBackendFileUrl(displayUrl),
+        "_blank",
+        "noopener,noreferrer",
+      );
     },
     [displayUrl],
   );
 
   return (
     <div
-      className={compact
-        ? "rounded-xl border border-border/60 bg-background/40 p-2"
-        : "rounded-2xl border border-border/60 bg-background/40 p-3"}
+      className={
+        compact
+          ? "rounded-xl border border-border/60 bg-background/40 p-2"
+          : "rounded-2xl border border-border/60 bg-background/40 p-3"
+      }
     >
       <input
         ref={inputRef}
@@ -1497,10 +1760,15 @@ function ComprovanteSlot({
               disabled={!canReplace}
             >
               <UploadIcon className="size-4" />
-            {displayName ? "Substituir" : "Enviar"}
+              {displayName ? "Substituir" : "Enviar"}
             </Button>
             {draftFile ? (
-              <Button size="icon-sm" variant="ghost" onClick={onClear} type="button">
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                onClick={onClear}
+                type="button"
+              >
                 <Trash2Icon className="size-4" />
               </Button>
             ) : null}
@@ -1525,29 +1793,46 @@ function ComprovanteSlot({
               </p>
               {draftFile ? (
                 <p className="text-xs text-muted-foreground">
-                  {(draftFile.size / 1024 / 1024).toFixed(2)} MB pronto para envio.
+                  {(draftFile.size / 1024 / 1024).toFixed(2)} MB pronto para
+                  envio.
                 </p>
               ) : (
-                <p className="text-xs text-muted-foreground">Arquivo já anexado.</p>
+                <p className="text-xs text-muted-foreground">
+                  Arquivo já anexado.
+                </p>
               )}
             </div>
           ) : (
-            <p className="text-xs text-muted-foreground">Nenhum arquivo enviado.</p>
+            <p className="text-xs text-muted-foreground">
+              Nenhum arquivo enviado.
+            </p>
           )}
 
           <div className="flex flex-wrap gap-2">
             {displayUrl ? (
-              <Button type="button" size="sm" variant="outline" onClick={openExistingFile}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={openExistingFile}
+              >
                 <PaperclipIcon className="size-4" />
                 Ver arquivo
               </Button>
             ) : null}
-            <Button size="sm" variant="outline" onClick={openPicker} disabled={!canReplace}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={openPicker}
+              disabled={!canReplace}
+            >
               <UploadIcon className="size-4" />
               {draftFile ? "Trocar" : displayUrl ? "Substituir" : "Enviar"}
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground">PDF, JPG ou PNG até 5 MB.</p>
+          <p className="text-[11px] text-muted-foreground">
+            PDF, JPG ou PNG até 5 MB.
+          </p>
         </div>
       )}
     </div>

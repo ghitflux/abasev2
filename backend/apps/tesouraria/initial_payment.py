@@ -429,7 +429,11 @@ def build_initial_payment_payload(
     paid_at = pagamento.paid_at if pagamento else None
     status = pagamento.status if pagamento else "sem_pagamento_inicial"
     status_label = _payment_status_label(pagamento)
-    if pagamento is None and (evidencias or contrato.auxilio_liberado_em is not None):
+    if (
+        pagamento is None
+        and Decimal(str(contrato.valor_mensalidade or Decimal("0.00"))) > Decimal("0.00")
+        and (evidencias or contrato.auxilio_liberado_em is not None)
+    ):
         status = Pagamento.Status.PAGO
         status_label = Pagamento.Status.PAGO.label
         if evidencias:

@@ -27,18 +27,28 @@ describe("navigation", () => {
     );
 
     const cadastros = sections.find((section) => section.title === "Operação");
-    const financeiro = sections.find((section) => section.title === "Financeiro");
+    const financeiro = sections.find(
+      (section) => section.title === "Financeiro",
+    );
     const cadastroChildren =
-      cadastros?.items.find((item) => item.title === "Cadastros")?.children ?? [];
-    const financeiroChildren = financeiro?.items.flatMap((item) => item.children ?? []) ?? [];
+      cadastros?.items.find((item) => item.title === "Cadastros")?.children ??
+      [];
+    const financeiroChildren =
+      financeiro?.items.flatMap((item) => item.children ?? []) ?? [];
 
-    expect(cadastroChildren.map((entry) => entry.href)).toContain("/agentes/pagamentos");
-    expect(financeiroChildren.map((entry) => entry.href)).not.toContain("/agentes/pagamentos");
+    expect(cadastroChildren.map((entry) => entry.href)).toContain(
+      "/agentes/pagamentos",
+    );
+    expect(financeiroChildren.map((entry) => entry.href)).not.toContain(
+      "/agentes/pagamentos",
+    );
     expect(
-      cadastroChildren.find((entry) => entry.href === "/agentes/refinanciados")?.title,
+      cadastroChildren.find((entry) => entry.href === "/agentes/refinanciados")
+        ?.title,
     ).toBe("Aptos a renovar");
     expect(
-      cadastroChildren.find((entry) => entry.href === "/agentes/pagamentos")?.title,
+      cadastroChildren.find((entry) => entry.href === "/agentes/pagamentos")
+        ?.title,
     ).toBe("Pagamentos");
   });
 
@@ -113,19 +123,44 @@ describe("navigation", () => {
     const agentEntries = getNavigationRouteSearchEntries(["AGENTE"]);
     const adminEntries = getNavigationRouteSearchEntries(["ADMIN"]);
 
-    expect(agentEntries.map((entry) => entry.href)).toContain("/agentes/pagamentos");
-    expect(adminEntries.map((entry) => entry.href)).toContain("/tesouraria/pagamentos");
-    expect(agentEntries.map((entry) => entry.href)).not.toContain("/renovacao-ciclos");
-    expect(adminEntries.map((entry) => entry.href)).toContain("/renovacao-ciclos");
-    expect(adminEntries.map((entry) => entry.href)).toContain("/tesouraria/despesas");
+    expect(agentEntries.map((entry) => entry.href)).toContain(
+      "/agentes/pagamentos",
+    );
+    expect(adminEntries.map((entry) => entry.href)).toContain(
+      "/tesouraria/pagamentos",
+    );
+    expect(agentEntries.map((entry) => entry.href)).not.toContain(
+      "/renovacao-ciclos",
+    );
+    expect(adminEntries.map((entry) => entry.href)).toContain(
+      "/renovacao-ciclos",
+    );
+    expect(adminEntries.map((entry) => entry.href)).toContain(
+      "/tesouraria/despesas",
+    );
     expect(
-      adminEntries.find((entry) => entry.href === "/tesouraria/baixa-manual")?.searchTerms,
-    ).toEqual(expect.arrayContaining(["Inadimplentes", "inadimplentes", "baixa manual"]));
+      adminEntries.find((entry) => entry.href === "/tesouraria/baixa-manual")
+        ?.searchTerms,
+    ).toEqual(
+      expect.arrayContaining([
+        "Inadimplentes",
+        "inadimplentes",
+        "baixa manual",
+      ]),
+    );
     expect(
-      adminEntries.find((entry) => entry.href === "/tesouraria/despesas")?.searchTerms,
-    ).toEqual(expect.arrayContaining(["Despesas", "despesas", "lancamento de despesas"]));
+      adminEntries.find((entry) => entry.href === "/tesouraria/despesas")
+        ?.searchTerms,
+    ).toEqual(
+      expect.arrayContaining([
+        "Despesas",
+        "despesas",
+        "lancamento de despesas",
+      ]),
+    );
     expect(
-      adminEntries.find((entry) => entry.href === "/tesouraria/liquidacoes")?.searchTerms,
+      adminEntries.find((entry) => entry.href === "/tesouraria/liquidacoes")
+        ?.searchTerms,
     ).toEqual(
       expect.arrayContaining([
         "Liquidação",
@@ -135,7 +170,8 @@ describe("navigation", () => {
       ]),
     );
     expect(
-      adminEntries.find((entry) => entry.href === "/tesouraria/devolucoes")?.searchTerms,
+      adminEntries.find((entry) => entry.href === "/tesouraria/devolucoes")
+        ?.searchTerms,
     ).toEqual(
       expect.arrayContaining([
         "Devoluções",
@@ -153,8 +189,7 @@ describe("navigation", () => {
     const analiseChildren =
       analystSections
         .find((section) => section.title === "Operação")
-        ?.items.find((item) => item.title === "Análise")
-        ?.children ?? [];
+        ?.items.find((item) => item.title === "Análise")?.children ?? [];
 
     expect(
       analiseChildren.find((item) => item.href === "/analise/aptos")?.title,
@@ -167,34 +202,53 @@ describe("navigation", () => {
     const tesourariaChildren =
       financeSections
         .find((section) => section.title === "Financeiro")
-        ?.items.find((item) => item.title === "Tesouraria")
-        ?.children ?? [];
+        ?.items.find((item) => item.title === "Tesouraria")?.children ?? [];
 
-    expect(tesourariaChildren.find((item) => item.href === "/tesouraria")?.title).toBe(
-      "Novos Contratos",
-    );
     expect(
-      tesourariaChildren.find((item) => item.href === "/tesouraria/pagamentos")?.title,
+      tesourariaChildren.find((item) => item.href === "/tesouraria")?.title,
+    ).toBe("Novos Contratos");
+    expect(
+      tesourariaChildren.find((item) => item.href === "/tesouraria/pagamentos")
+        ?.title,
     ).toBe("Pagamentos");
     expect(
-      tesourariaChildren.find((item) => item.href === "/tesouraria/refinanciamentos")?.title,
+      tesourariaChildren.find(
+        (item) => item.href === "/tesouraria/confirmacoes",
+      )?.title,
+    ).toBe("Confirmações");
+    expect(
+      tesourariaChildren.find(
+        (item) => item.href === "/tesouraria/refinanciamentos",
+      )?.title,
     ).toBe("Contratos para Renovação");
     expect(
-      tesourariaChildren.find((item) => item.href === "/tesouraria/baixa-manual")?.title,
+      tesourariaChildren.find(
+        (item) => item.href === "/tesouraria/baixa-manual",
+      )?.title,
     ).toBe("Inadimplentes");
     expect(
-      tesourariaChildren.find((item) => item.href === "/tesouraria/liquidacoes")?.title,
+      tesourariaChildren.find((item) => item.href === "/tesouraria/liquidacoes")
+        ?.title,
     ).toBe("Liquidação");
     expect(
-      tesourariaChildren.find((item) => item.href === "/tesouraria/devolucoes")?.title,
+      tesourariaChildren.find((item) => item.href === "/tesouraria/devolucoes")
+        ?.title,
     ).toBe("Devoluções");
-    expect(canAccessPath("/tesouraria/inadimplentes", ["COORDENADOR"])).toBe(true);
-    expect(canAccessPath("/tesouraria/liquidacoes", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/tesouraria/inadimplentes", ["COORDENADOR"])).toBe(
+      true,
+    );
+    expect(canAccessPath("/tesouraria/liquidacoes", ["COORDENADOR"])).toBe(
+      true,
+    );
     expect(canAccessPath("/tesouraria/liquidacao", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/tesouraria/devolucoes", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/tesouraria/devolucao", ["COORDENADOR"])).toBe(true);
-    expect(canAccessPath("/tesouraria/confirmacoes", ["ADMIN"])).toBe(false);
-    expect(canAccessPath("/tesouraria/confirmacoes", ["TESOUREIRO"])).toBe(false);
+    expect(canAccessPath("/tesouraria/confirmacoes", ["COORDENADOR"])).toBe(
+      true,
+    );
+    expect(canAccessPath("/tesouraria/confirmacoes", ["TESOUREIRO"])).toBe(
+      true,
+    );
   });
 
   it("libera associados, usuarios e importacao para coordenador", () => {
@@ -211,33 +265,59 @@ describe("navigation", () => {
     expect(hrefs).toContain("/configuracoes/comissoes");
     expect(hrefs).toContain("/importacao");
     expect(hrefs).toContain("/analise");
+    expect(hrefs).toContain("/tesouraria");
+    expect(hrefs).toContain("/tesouraria/pagamentos");
+    expect(hrefs).toContain("/tesouraria/confirmacoes");
+    expect(hrefs).toContain("/tesouraria/refinanciamentos");
+    expect(hrefs).toContain("/tesouraria/despesas");
     expect(canAccessPath("/dashboard", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/associados", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/associados/123", ["COORDENADOR"])).toBe(true);
-    expect(canAccessPath("/associados/123/editar", ["COORDENADOR"])).toBe(false);
-    expect(canAccessPath("/configuracoes/usuarios", ["COORDENADOR"])).toBe(true);
-    expect(canAccessPath("/configuracoes/comissoes", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/associados/123/editar", ["COORDENADOR"])).toBe(
+      false,
+    );
+    expect(canAccessPath("/configuracoes/usuarios", ["COORDENADOR"])).toBe(
+      true,
+    );
+    expect(canAccessPath("/configuracoes/comissoes", ["COORDENADOR"])).toBe(
+      true,
+    );
     expect(canAccessPath("/importacao", ["COORDENADOR"])).toBe(true);
     expect(canAccessPath("/analise", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/tesouraria", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/tesouraria/pagamentos", ["COORDENADOR"])).toBe(true);
+    expect(canAccessPath("/tesouraria/confirmacoes", ["COORDENADOR"])).toBe(
+      true,
+    );
+    expect(canAccessPath("/tesouraria/refinanciamentos", ["COORDENADOR"])).toBe(
+      true,
+    );
+    expect(canAccessPath("/tesouraria/despesas", ["COORDENADOR"])).toBe(true);
   });
 
   it("separa a secao de coordenacao da visao de analise na sidebar", () => {
     const coordinatorSections = getNavigationForRole("COORDENADOR");
     const operacaoItems =
-      coordinatorSections.find((section) => section.title === "Operação")?.items ?? [];
+      coordinatorSections.find((section) => section.title === "Operação")
+        ?.items ?? [];
 
     expect(operacaoItems.map((item) => item.title)).toContain("Coordenação");
     expect(operacaoItems.map((item) => item.title)).not.toContain("Análise");
 
     const coordenacaoChildren =
-      operacaoItems.find((item) => item.title === "Coordenação")?.children ?? [];
+      operacaoItems.find((item) => item.title === "Coordenação")?.children ??
+      [];
 
-    expect(coordenacaoChildren.find((item) => item.href === "/coordenacao/refinanciamento")?.title).toBe(
-      "Aptos a Renovar",
-    );
-    expect(coordenacaoChildren.find((item) => item.href === "/coordenacao/refinanciados")?.title).toBe(
-      "Refinanciados",
-    );
+    expect(
+      coordenacaoChildren.find(
+        (item) => item.href === "/coordenacao/refinanciamento",
+      )?.title,
+    ).toBe("Validação de Renovação");
+    expect(
+      coordenacaoChildren.find(
+        (item) => item.href === "/coordenacao/refinanciados",
+      )?.title,
+    ).toBe("Refinanciados");
   });
 
   it("renomeia dashboard de ciclos para tesouraria e admin", () => {

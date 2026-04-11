@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, type Resolver, useForm } from "react-hook-form";
 import { z } from "zod";
 import {
   ArrowLeftIcon,
@@ -181,12 +181,16 @@ const schema = z
         .number()
         .nullable()
         .refine((value) => (value ?? 0) > 0, "Informe o valor líquido."),
-      prazo_meses: z.number().min(3, "Prazo inválido.").max(4, "Prazo inválido."),
+      prazo_meses: z
+        .number()
+        .min(3, "Prazo inválido.")
+        .max(4, "Prazo inválido."),
       taxa_antecipacao: z.number().min(0, "Taxa inválida."),
+      sem_mensalidade: z.boolean(),
       mensalidade: z
         .number()
         .nullable()
-        .refine((value) => (value ?? 0) > 0, "Informe a mensalidade."),
+        .refine((value) => (value ?? 0) >= 0, "Informe a mensalidade."),
       data_aprovacao: z.date().optional(),
     }),
     agente_responsavel_id: z.number().nullable().optional(),
@@ -216,6 +220,17 @@ const schema = z
         code: z.ZodIssueCode.custom,
         path: ["cpf_cnpj"],
         message: "CNPJ deve ter 14 dígitos.",
+      });
+    }
+
+    if (
+      !values.contrato.sem_mensalidade &&
+      (values.contrato.mensalidade ?? 0) <= 0
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["contrato", "mensalidade"],
+        message: "Informe a mensalidade.",
       });
     }
   });
@@ -333,6 +348,9 @@ function defaultValues(
         Number.parseFloat(
           contrato?.taxa_antecipacao ?? String(TAXA_ANTECIPACAO_PADRAO),
         ) || TAXA_ANTECIPACAO_PADRAO,
+      sem_mensalidade: contrato
+        ? (decimalToCents(contrato.valor_mensalidade) ?? 0) === 0
+        : false,
       mensalidade: decimalToCents(contrato?.valor_mensalidade),
       data_aprovacao:
         parseIsoDate(contrato?.data_aprovacao) ??
@@ -399,7 +417,7 @@ export default function AssociadoForm({
   const lastDuplicateAlertRef = React.useRef<string>("");
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(schema),
+    resolver: zodResolver(schema) as Resolver<FormValues>,
     defaultValues: defaultValues(initialData, mode),
     shouldUnregister: false,
   });
@@ -427,9 +445,10 @@ export default function AssociadoForm({
 
   const valorBruto = watch("contrato.valor_bruto_total") ?? 0;
   const valorLiquido = watch("contrato.valor_liquido") ?? 0;
+  const semMensalidade = watch("contrato.sem_mensalidade") ?? false;
   const mensalidade = watch("contrato.mensalidade") ?? 0;
-  const prazoMeses =
-    watch("contrato.prazo_meses") ?? PRAZO_ANTECIPACAO_PADRAO;
+  const mensalidadeCalculada = semMensalidade ? 0 : mensalidade;
+  const prazoMeses = watch("contrato.prazo_meses") ?? PRAZO_ANTECIPACAO_PADRAO;
   const taxaAntecipacao =
     watch("contrato.taxa_antecipacao") ?? TAXA_ANTECIPACAO_PADRAO;
   const dataAprovacao = watch("contrato.data_aprovacao");
@@ -437,7 +456,7 @@ export default function AssociadoForm({
   const agenteResponsavelId = watch("agente_responsavel_id");
 
   const bruto30 = Math.round(valorBruto * 0.3);
-  const valorTotalAntecipacao = mensalidade * prazoMeses;
+  const valorTotalAntecipacao = mensalidadeCalculada * prazoMeses;
   const margemLiquido = Math.max(0, valorLiquido - bruto30);
   const margemDisponivel = Math.round(valorTotalAntecipacao * 0.7);
   const doacaoAssociado = valorTotalAntecipacao - margemDisponivel;
@@ -485,7 +504,9 @@ export default function AssociadoForm({
         return agenteSelecionado.full_name;
       }
     }
-    return user?.full_name || initialData?.agente?.full_name || "Agente responsável";
+    return (
+      user?.full_name || initialData?.agente?.full_name || "Agente responsável"
+    );
   }, [
     agenteResponsavelId,
     agentes,
@@ -550,16 +571,28 @@ export default function AssociadoForm({
           5,
         ),
         status: "pendente",
-        valor: mensalidade,
+        valor: mensalidadeCalculada,
       };
     });
   }, [
     contratoAtual?.ciclos,
     contratoDates.dataPrimeiraMensalidade,
-    mensalidade,
+    mensalidadeCalculada,
     mode,
     prazoMeses,
   ]);
+
+  React.useEffect(() => {
+    if (!semMensalidade) {
+      return;
+    }
+    if (mensalidade !== 0) {
+      setValue("contrato.mensalidade", 0, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+    }
+  }, [mensalidade, semMensalidade, setValue]);
 
   React.useEffect(() => {
     if (mode !== "create") {
@@ -592,7 +625,9 @@ export default function AssociadoForm({
         valor_liquido: centsToDecimal(values.contrato.valor_liquido),
         prazo_meses: prazoPayload,
         taxa_antecipacao: taxaPayload.toFixed(2),
-        mensalidade: centsToDecimal(values.contrato.mensalidade),
+        mensalidade: centsToDecimal(
+          values.contrato.sem_mensalidade ? 0 : values.contrato.mensalidade,
+        ),
         margem_disponivel: centsToDecimal(margemDisponivel),
       };
       const payload = {
@@ -650,30 +685,35 @@ export default function AssociadoForm({
             })
           : isAdminEditMode
             ? await (async () => {
-                await apiFetch(`admin-overrides/associados/${editAssociadoId}/core/`, {
-                  method: "POST",
-                  body: {
-                    updated_at: initialData?.updated_at ?? null,
-                    motivo: adminMotivo,
-                    nome_completo: values.nome_completo,
-                    rg: values.rg,
-                    orgao_expedidor: values.orgao_expedidor,
-                    data_nascimento: toIsoDate(values.data_nascimento),
-                    profissao: values.profissao,
-                    estado_civil: values.estado_civil,
-                    endereco: values.endereco,
-                    dados_bancarios: values.dados_bancarios,
-                    contato: values.contato,
-                    ...contractPayload,
-                    ...(canManageAgentAssignment
-                      ? {
-                          agente_responsavel_id: values.agente_responsavel_id,
-                        }
-                      : {}),
+                await apiFetch(
+                  `admin-overrides/associados/${editAssociadoId}/core/`,
+                  {
+                    method: "POST",
+                    body: {
+                      updated_at: initialData?.updated_at ?? null,
+                      motivo: adminMotivo,
+                      nome_completo: values.nome_completo,
+                      rg: values.rg,
+                      orgao_expedidor: values.orgao_expedidor,
+                      data_nascimento: toIsoDate(values.data_nascimento),
+                      profissao: values.profissao,
+                      estado_civil: values.estado_civil,
+                      endereco: values.endereco,
+                      dados_bancarios: values.dados_bancarios,
+                      contato: values.contato,
+                      ...contractPayload,
+                      ...(canManageAgentAssignment
+                        ? {
+                            agente_responsavel_id: values.agente_responsavel_id,
+                          }
+                        : {}),
+                    },
                   },
-                });
+                );
                 try {
-                  return await apiFetch<AssociadoDetail>(`associados/${editAssociadoId}`);
+                  return await apiFetch<AssociadoDetail>(
+                    `associados/${editAssociadoId}`,
+                  );
                 } catch {
                   return {
                     ...(initialData ?? {}),
@@ -814,7 +854,9 @@ export default function AssociadoForm({
           }
         }
         if (canManageAgentAssignment && !values.agente_responsavel_id) {
-          toast.error("Selecione o agente responsável antes de enviar o cadastro.");
+          toast.error(
+            "Selecione o agente responsável antes de enviar o cadastro.",
+          );
           return;
         }
         try {
@@ -1394,7 +1436,10 @@ export default function AssociadoForm({
                               </SelectTrigger>
                               <SelectContent>
                                 {PRAZO_ANTECIPACAO_OPTIONS.map((option) => (
-                                  <SelectItem key={option.value} value={option.value}>
+                                  <SelectItem
+                                    key={option.value}
+                                    value={option.value}
+                                  >
                                     {option.label}
                                   </SelectItem>
                                 ))}
@@ -1444,6 +1489,34 @@ export default function AssociadoForm({
                 <CardContent>
                   <FieldGroup className="grid gap-5 md:grid-cols-4">
                     <Field>
+                      <FieldLabel>Regra de cobrança</FieldLabel>
+                      <FieldContent>
+                        <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-card/40 px-3 py-3">
+                          <Controller
+                            control={control}
+                            name="contrato.sem_mensalidade"
+                            render={({ field }) => (
+                              <Checkbox
+                                checked={field.value}
+                                onCheckedChange={(checked) =>
+                                  field.onChange(Boolean(checked))
+                                }
+                              />
+                            )}
+                          />
+                          <div className="space-y-1">
+                            <p className="text-sm font-medium">
+                              Associado sem mensalidade
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Dispensa pagamento inicial na tesouraria e segue
+                              por averbação direta.
+                            </p>
+                          </div>
+                        </div>
+                      </FieldContent>
+                    </Field>
+                    <Field>
                       <FieldLabel>Mensalidade associativa (R$)</FieldLabel>
                       <FieldContent>
                         <Controller
@@ -1451,8 +1524,9 @@ export default function AssociadoForm({
                           name="contrato.mensalidade"
                           render={({ field }) => (
                             <InputCurrency
-                              value={field.value}
+                              value={semMensalidade ? 0 : field.value}
                               onChange={field.onChange}
+                              disabled={semMensalidade}
                             />
                           )}
                         />
@@ -1540,7 +1614,9 @@ export default function AssociadoForm({
                         <Input
                           readOnly
                           aria-readonly="true"
-                          value={resolveContratoStatusLabel(contratoAtual?.status)}
+                          value={resolveContratoStatusLabel(
+                            contratoAtual?.status,
+                          )}
                           className="rounded-xl bg-card/60"
                         />
                       </FieldContent>
@@ -1551,7 +1627,9 @@ export default function AssociadoForm({
                         <Input
                           readOnly
                           aria-readonly="true"
-                          value={formatLongMonthYear(contratoDates.mesAverbacao)}
+                          value={formatLongMonthYear(
+                            contratoDates.mesAverbacao,
+                          )}
                           className="rounded-xl bg-card/60"
                         />
                       </FieldContent>
@@ -1578,8 +1656,8 @@ export default function AssociadoForm({
                       Antecipações (opcional)
                     </CardTitle>
                     <p className="text-sm text-muted-foreground">
-                      As linhas abaixo são preenchidas automaticamente conforme a
-                      mensalidade e a data da primeira cobrança.
+                      As linhas abaixo são preenchidas automaticamente conforme
+                      a mensalidade e a data da primeira cobrança.
                     </p>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -1631,7 +1709,9 @@ export default function AssociadoForm({
                               <Input
                                 readOnly
                                 aria-readonly="true"
-                                value={resolveParcelaStatusLabel(parcela.status)}
+                                value={resolveParcelaStatusLabel(
+                                  parcela.status,
+                                )}
                                 className="rounded-xl bg-card/60"
                               />
                             </FieldContent>
@@ -1644,7 +1724,9 @@ export default function AssociadoForm({
 
                 <Card className="rounded-[1.5rem] border-border/60 bg-card/50">
                   <CardHeader className="space-y-2">
-                    <CardTitle className="text-base">Agente Responsável</CardTitle>
+                    <CardTitle className="text-base">
+                      Agente Responsável
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     <FieldGroup className="grid gap-5">
@@ -1675,7 +1757,10 @@ export default function AssociadoForm({
                                   </SelectTrigger>
                                   <SelectContent>
                                     {agentes.map((agente) => (
-                                      <SelectItem key={agente.id} value={String(agente.id)}>
+                                      <SelectItem
+                                        key={agente.id}
+                                        value={String(agente.id)}
+                                      >
                                         {agente.full_name}
                                       </SelectItem>
                                     ))}
@@ -1770,7 +1855,9 @@ export default function AssociadoForm({
                                     >
                                       Abrir arquivo atual
                                     </a>
-                                    <StatusBadge status={currentDocument.status} />
+                                    <StatusBadge
+                                      status={currentDocument.status}
+                                    />
                                   </div>
                                   <p className="mt-2 text-xs text-muted-foreground">
                                     Envie um novo arquivo abaixo para substituir
@@ -1810,9 +1897,12 @@ export default function AssociadoForm({
       {isAdminEditMode ? (
         <Card className="glass-panel rounded-[2rem] border-primary/20 bg-primary/5 shadow-xl shadow-black/20">
           <CardHeader>
-            <CardTitle className="text-2xl">Confirmação Administrativa</CardTitle>
+            <CardTitle className="text-2xl">
+              Confirmação Administrativa
+            </CardTitle>
             <p className="mt-2 text-sm text-muted-foreground">
-              Esta alteração será gravada pelo fluxo admin auditado e ficará registrada no histórico do associado.
+              Esta alteração será gravada pelo fluxo admin auditado e ficará
+              registrada no histórico do associado.
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -1830,10 +1920,13 @@ export default function AssociadoForm({
             <label className="flex items-start gap-3 rounded-2xl border border-border/60 bg-background/60 p-4 text-sm">
               <Checkbox
                 checked={adminConfirmado}
-                onCheckedChange={(checked) => setAdminConfirmado(checked === true)}
+                onCheckedChange={(checked) =>
+                  setAdminConfirmado(checked === true)
+                }
               />
               <span>
-                Confirmo que esta alteração deve sobrescrever o cadastro atual e permanecer no histórico administrativo.
+                Confirmo que esta alteração deve sobrescrever o cadastro atual e
+                permanecer no histórico administrativo.
               </span>
             </label>
           </CardContent>
@@ -1851,7 +1944,12 @@ export default function AssociadoForm({
           Voltar
         </Button>
         {step < stepTitles.length - 1 ? (
-          <Button key="btn-next" type="button" onClick={nextStep} disabled={isBusy}>
+          <Button
+            key="btn-next"
+            type="button"
+            onClick={nextStep}
+            disabled={isBusy}
+          >
             Próximo
             <ArrowRightIcon className="size-4" />
           </Button>

@@ -34,6 +34,7 @@ from .models import DocIssue, DocReupload, EsteiraItem, Pendencia
 
 class AnaliseService:
     FILA_SECOES = (
+        "novos_contratos",
         "ver_todos",
         "pendencias",
         "pendencias_corrigidas",
@@ -258,6 +259,17 @@ class AnaliseService:
             ).filter(
                 Q(has_open_pendencia=True)
                 | Q(has_open_doc_issue=True)
+                | (Q(has_documents=False) & Q(has_any_reupload=False))
+            ).order_by("-updated_at", "-created_at")
+
+        if secao == "novos_contratos":
+            return queryset.filter(
+                etapa_atual=EsteiraItem.Etapa.ANALISE
+            ).exclude(
+                Q(has_open_pendencia=True)
+                | Q(has_open_doc_issue=True)
+                | Q(has_received_reupload=True)
+                | Q(resolved_pendencias_count__gt=0)
                 | (Q(has_documents=False) & Q(has_any_reupload=False))
             ).order_by("-updated_at", "-created_at")
 

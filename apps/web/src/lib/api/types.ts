@@ -691,6 +691,7 @@ export type EsteiraItem = {
 };
 
 export type AnaliseSectionKey =
+  | "novos_contratos"
   | "ver_todos"
   | "pendencias"
   | "pendencias_corrigidas"
@@ -912,7 +913,9 @@ export type TesourariaContratoItem = {
   agente_nome: string;
   percentual_repasse: string;
   comissao_agente: string;
+  valor_mensalidade: string;
   margem_disponivel: string;
+  dispensa_pagamento_inicial: boolean;
   comprovantes: ComprovanteResumo[];
   dados_bancarios?: DadosBancarios | null;
   observacao_tesouraria?: string;
@@ -1104,14 +1107,20 @@ export type DespesaResultadoMensalRow = {
   lucro_liquido: string;
 };
 
-export type DespesaResultadoMensalTotais = Omit<DespesaResultadoMensalRow, "mes">;
+export type DespesaResultadoMensalTotais = Omit<
+  DespesaResultadoMensalRow,
+  "mes"
+>;
 
 export type DespesaResultadoMensalPayload = {
   rows: DespesaResultadoMensalRow[];
   totais: DespesaResultadoMensalTotais;
 };
 
-export type DespesaResultadoMensalResumo = Omit<DespesaResultadoMensalRow, "mes">;
+export type DespesaResultadoMensalResumo = Omit<
+  DespesaResultadoMensalRow,
+  "mes"
+>;
 
 export type DespesaResultadoMensalReceitaDetalhe = {
   id: number;

@@ -141,6 +141,12 @@ class AnaliseViewSetTestCase(TestCase):
             resolvida_em=timezone.now(),
             resolvida_por=self.analista,
         )
+        novo_contrato = self._create_item(
+            suffix="1030",
+            etapa=EsteiraItem.Etapa.ANALISE,
+            status=EsteiraItem.Situacao.AGUARDANDO,
+            documentos=1,
+        )
         enviado_coord = self._create_item(
             suffix="104",
             etapa=EsteiraItem.Etapa.COORDENACAO,
@@ -173,13 +179,18 @@ class AnaliseViewSetTestCase(TestCase):
         response = self.analyst_client.get("/api/v1/analise/")
         self.assertEqual(response.status_code, 200, response.json())
         payload = response.json()
-        self.assertEqual(payload["filas"]["ver_todos"], 7)
+        self.assertEqual(payload["filas"]["novos_contratos"], 1)
+        self.assertEqual(payload["filas"]["ver_todos"], 8)
         self.assertEqual(payload["filas"]["pendencias"], 2)
         self.assertEqual(payload["filas"]["pendencias_corrigidas"], 1)
         self.assertEqual(payload["filas"]["enviado_tesouraria"], 1)
         self.assertEqual(payload["filas"]["enviado_coordenacao"], 1)
         self.assertEqual(payload["filas"]["efetivados"], 1)
         self.assertEqual(payload["filas"]["cancelados"], 1)
+
+        response = self.analyst_client.get("/api/v1/analise/filas/?secao=novos_contratos")
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["results"][0]["id"], novo_contrato.id)
 
         response = self.analyst_client.get("/api/v1/analise/filas/?secao=ver_todos")
         self.assertEqual(response.status_code, 200, response.json())
@@ -189,6 +200,7 @@ class AnaliseViewSetTestCase(TestCase):
                 pendente_documentos.id,
                 pendencia_aberta.id,
                 corrigida.id,
+                novo_contrato.id,
                 enviado_coord.id,
                 enviado_tesouraria.id,
                 efetivado.id,

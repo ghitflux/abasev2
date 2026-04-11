@@ -100,6 +100,7 @@ class AdminDashboardViewSetTestCase(TestCase):
             codigo=codigo,
             valor_bruto=Decimal("90.00"),
             valor_liquido=Decimal("90.00"),
+            margem_disponivel=monthly_value,
             valor_mensalidade=monthly_value,
             prazo_meses=3,
             status=contract_status,
@@ -526,15 +527,15 @@ class AdminDashboardViewSetTestCase(TestCase):
         payload = response.json()
 
         cards = {item["key"]: item for item in payload["cards"]}
-        self.assertEqual(cards["volume_total"]["value"], "270.00")
+        self.assertEqual(cards["volume_total"]["value"], "105.00")
         self.assertEqual(cards["com_devolucao"]["numeric_value"], 1.0)
         self.assertEqual(cards["renovados"]["numeric_value"], 1.0)
         self.assertEqual(cards["aptos_renovar"]["numeric_value"], 1.0)
         self.assertEqual(payload["ranking"][0]["agent_name"], self.agente_a.full_name)
-        self.assertEqual(payload["ranking"][0]["volume_financeiro"], 180.0)
+        self.assertEqual(payload["ranking"][0]["volume_financeiro"], 60.0)
         self.assertEqual(payload["ranking"][0]["efetivados"], 2)
         self.assertEqual(payload["ranking"][1]["agent_name"], self.agente_b.full_name)
-        self.assertEqual(payload["ranking"][1]["volume_financeiro"], 90.0)
+        self.assertEqual(payload["ranking"][1]["volume_financeiro"], 45.0)
         self.assertEqual(payload["ranking"][1]["efetivados"], 1)
 
     def test_detalhes_respeita_metricas_paginacao_e_page_size_all(self):

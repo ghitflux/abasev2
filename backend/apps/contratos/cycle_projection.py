@@ -1923,6 +1923,17 @@ def get_contract_visual_status_payload(
     cycles = list(projection.get("cycles", []))
 
     if not cycles:
+        if (
+            contrato.status == Contrato.Status.ATIVO
+            and contrato.auxilio_liberado_em is not None
+        ):
+            return {
+                **_compose_visual_status(phase_slug="ciclo_aberto"),
+                "possui_meses_nao_descontados": False,
+                "meses_nao_descontados_count": 0,
+                "cycle_id": None,
+                "cycle_number": None,
+            }
         return _fallback_visual_status_from_models(
             associado_status=getattr(contrato.associado, "status", ""),
             contrato_status=contrato.status,

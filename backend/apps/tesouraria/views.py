@@ -16,7 +16,6 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from apps.accounts.permissions import (
     IsAgenteOrTesoureiroOrAdmin,
     IsCoordenadorOrTesoureiroOrAdmin,
-    IsTesoureiroOrAdmin,
 )
 from apps.associados.models import Associado
 from apps.associados.serializers import DadosBancariosSerializer
@@ -97,13 +96,23 @@ def parse_date_filter(value: str | None):
         return None
 
 
+class IsTesourariaViewerOrManager(permissions.BasePermission):
+    def has_permission(self, request, view) -> bool:
+        user = request.user
+        if not user or not user.is_authenticated:
+            return False
+        if user.is_superuser or user.has_role("ADMIN", "TESOUREIRO"):
+            return True
+        return request.method in permissions.SAFE_METHODS and user.has_role("COORDENADOR")
+
+
 class TesourariaContratoViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     GenericViewSet,
 ):
     serializer_class = TesourariaContratoListSerializer
-    permission_classes = [permissions.IsAuthenticated, IsTesoureiroOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsTesourariaViewerOrManager]
     pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
@@ -152,6 +161,12 @@ class TesourariaContratoViewSet(
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
+    def averbar(self, request, pk=None):
+        contrato = TesourariaService.averbar_contrato(pk, request.user)
+        serializer = self.get_serializer(contrato)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
     def congelar(self, request, pk=None):
         payload = CongelarContratoSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
@@ -184,7 +199,7 @@ class TesourariaContratoViewSet(
 class ConfirmacaoViewSet(GenericViewSet):
     queryset = Confirmacao.objects.none()
     serializer_class = ConfirmacaoListSerializer
-    permission_classes = [permissions.IsAuthenticated, IsTesoureiroOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsTesourariaViewerOrManager]
     pagination_class = StandardResultsSetPagination
 
     def list(self, request):
@@ -223,49 +238,50 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
     permission_classes = [permissions.IsAuthenticated, IsAgenteOrTesoureiroOrAdmin]
     pagination_class = StandardResultsSetPagination
 
+    def _base_queryset(self):
+        return Contrato.objects.select_related("associado", "agente").order_by(
+            "-created_at"
+        ).distinct()
+
+    def _enriched_queryset(self, queryset):
+        return queryset.prefetch_related(
+            Prefetch(
+                "comprovantes",
+                queryset=Comprovante.objects.filter(
+                    refinanciamento__isnull=True
+                ).select_related("enviado_por"),
+            ),
+            Prefetch(
+                "ciclos",
+                queryset=Ciclo.objects.prefetch_related(
+                    Prefetch(
+                        "parcelas",
+                        queryset=Parcela.objects.prefetch_related(
+                            Prefetch(
+                                "itens_retorno",
+                                queryset=ArquivoRetornoItem.objects.select_related(
+                                    "arquivo_retorno"
+                                ).order_by("-created_at"),
+                            )
+                        ).order_by("numero"),
+                    )
+                ).order_by("numero"),
+            ),
+            Prefetch(
+                "associado__pagamentos_mensalidades",
+                queryset=PagamentoMensalidade.objects.order_by("-referencia_month"),
+            ),
+            Prefetch(
+                "associado__tesouraria_pagamentos",
+                queryset=Pagamento.all_objects.order_by("created_at", "id"),
+            ),
+        )
+
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return Contrato.objects.none()
 
-        competencia = parse_month_filter(self.request.query_params.get("mes"))
-        queryset = (
-            Contrato.objects.select_related("associado", "agente")
-            .prefetch_related(
-                Prefetch(
-                    "comprovantes",
-                    queryset=Comprovante.objects.filter(
-                        refinanciamento__isnull=True
-                    ).select_related("enviado_por"),
-                ),
-                Prefetch(
-                    "ciclos",
-                    queryset=Ciclo.objects.prefetch_related(
-                        Prefetch(
-                            "parcelas",
-                            queryset=Parcela.objects.prefetch_related(
-                                Prefetch(
-                                    "itens_retorno",
-                                    queryset=ArquivoRetornoItem.objects.select_related(
-                                        "arquivo_retorno"
-                                    ).order_by("-created_at"),
-                                )
-                            ).order_by("numero"),
-                        )
-                    ).order_by("numero"),
-                ),
-                Prefetch(
-                    "associado__pagamentos_mensalidades",
-                    queryset=PagamentoMensalidade.objects.order_by("-referencia_month"),
-                ),
-                Prefetch(
-                    "associado__tesouraria_pagamentos",
-                    queryset=Pagamento.all_objects.order_by("created_at", "id"),
-                ),
-            )
-            .order_by("-created_at")
-            .distinct()
-        )
-
+        queryset = self._base_queryset()
         user = self.request.user
         if user.has_role("AGENTE") and not user.has_role("ADMIN"):
             queryset = queryset.filter(agente=user)
@@ -318,16 +334,28 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
             )
         return PagamentoNotificacao.objects.none()
 
+    def _build_resumo(self, queryset, *, competencia: date | None = None):
+        parcelas_queryset = Parcela.objects.filter(ciclo__contrato__in=queryset)
+        if competencia is not None:
+            parcelas_queryset = parcelas_queryset.filter(
+                referencia_mes__year=competencia.year,
+                referencia_mes__month=competencia.month,
+            )
+        return {
+            "total": queryset.count(),
+            "efetivados": queryset.filter(auxilio_liberado_em__isnull=False).count(),
+            "com_anexos": queryset.filter(comprovantes__refinanciamento__isnull=True)
+            .distinct()
+            .count(),
+            "parcelas_pagas": parcelas_queryset.filter(
+                status=Parcela.Status.DESCONTADO
+            ).count(),
+            "parcelas_total": parcelas_queryset.count(),
+        }
+
     def list(self, request, *args, **kwargs):  # noqa: A003
         queryset = self.filter_queryset(self.get_queryset())
         competencia = parse_month_filter(request.query_params.get("mes"))
-
-        contratos = list(queryset)
-        projection_cache = {
-            contrato.id: build_contract_cycle_projection(contrato)
-            for contrato in contratos
-        }
-        self._contract_projection_cache = projection_cache
         initial_payment_status = (request.query_params.get("pagamento_inicial_status") or "").strip()
         ciclos_filter = (request.query_params.get("numero_ciclos") or "").strip()
         data_inicio = self.request.query_params.get("data_inicio")
@@ -342,6 +370,51 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
                 referencia_mes.year == competencia.year
                 and referencia_mes.month == competencia.month
             )
+
+        can_paginate_before_projection = not any(
+            [
+                competencia is not None,
+                bool(initial_payment_status),
+                ciclos_filter.isdigit(),
+                bool(data_inicio or data_fim),
+                bool(preset),
+            ]
+        )
+
+        if can_paginate_before_projection:
+            resumo = self._build_resumo(queryset)
+            page = self.paginate_queryset(queryset)
+            page_rows = list(page) if page is not None else list(queryset)
+            ordered_ids = [contrato.id for contrato in page_rows]
+            contratos = list(
+                self._enriched_queryset(Contrato.objects.filter(id__in=ordered_ids))
+            )
+            contracts_by_id = {contrato.id: contrato for contrato in contratos}
+            contratos = [
+                contracts_by_id[contrato_id]
+                for contrato_id in ordered_ids
+                if contrato_id in contracts_by_id
+            ]
+            self._contract_projection_cache = {
+                contrato.id: build_contract_cycle_projection(contrato)
+                for contrato in contratos
+            }
+            serializer = self.get_serializer(
+                contratos,
+                many=True,
+            )
+            if page is not None:
+                response = self.get_paginated_response(serializer.data)
+                response.data["resumo"] = resumo
+                return response
+            return Response({"results": serializer.data, "resumo": resumo})
+
+        contratos = list(self._enriched_queryset(queryset))
+        projection_cache = {
+            contrato.id: build_contract_cycle_projection(contrato)
+            for contrato in contratos
+        }
+        self._contract_projection_cache = projection_cache
 
         if competencia is not None:
             contratos = [
@@ -469,7 +542,7 @@ class AgentePagamentoViewSet(mixins.ListModelMixin, GenericViewSet):
 
 
 class TesourariaPagamentoViewSet(AgentePagamentoViewSet):
-    permission_classes = [permissions.IsAuthenticated, IsTesoureiroOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsTesourariaViewerOrManager]
 
     def _notification_queryset(self):
         return PagamentoNotificacao.objects.none()
@@ -917,7 +990,7 @@ class DevolucaoAssociadoViewSet(mixins.ListModelMixin, GenericViewSet):
 
 class DespesaViewSet(ModelViewSet):
     queryset = Despesa.objects.none()
-    permission_classes = [permissions.IsAuthenticated, IsTesoureiroOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsTesourariaViewerOrManager]
     pagination_class = StandardResultsSetPagination
     parser_classes = [MultiPartParser, FormParser]
 

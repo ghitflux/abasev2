@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 from datetime import date, datetime
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
@@ -27,6 +28,10 @@ class AgentePagamentosViewSetTestCase(TestCase):
             codigo="TESOUREIRO",
             nome="Tesoureiro",
         )
+        cls.role_coordenador = Role.objects.create(
+            codigo="COORDENADOR",
+            nome="Coordenador",
+        )
 
         cls.admin = cls._create_user("admin@abase.local", cls.role_admin, "Admin")
         cls.agente = cls._create_user("agente@abase.local", cls.role_agente, "Agente")
@@ -39,6 +44,11 @@ class AgentePagamentosViewSetTestCase(TestCase):
             "tes@abase.local",
             cls.role_tesoureiro,
             "Tesoureiro",
+        )
+        cls.coordenador = cls._create_user(
+            "coord@abase.local",
+            cls.role_coordenador,
+            "Coordenador",
         )
 
     @classmethod
@@ -62,6 +72,9 @@ class AgentePagamentosViewSetTestCase(TestCase):
 
         self.tes_client = APIClient()
         self.tes_client.force_authenticate(self.tesoureiro)
+
+        self.coord_client = APIClient()
+        self.coord_client.force_authenticate(self.coordenador)
 
     @staticmethod
     def _aware(value: datetime):
@@ -445,3 +458,55 @@ class AgentePagamentosViewSetTestCase(TestCase):
         self.assertGreaterEqual(payload["count"], 1)
         codigos = {row["contrato_codigo"] for row in payload["results"]}
         self.assertIn(contrato.codigo, codigos)
+
+    def test_tesouraria_pagamentos_expoe_sem_pagamento_inicial_para_contrato_sem_mensalidade(self):
+        contrato = self._create_contract(
+            cpf="14141414141",
+            nome="Associado Sem Mensalidade",
+            agente=self.agente,
+        )
+        contrato.valor_mensalidade = Decimal("0.00")
+        contrato.auxilio_liberado_em = date(2026, 1, 12)
+        contrato.save(update_fields=["valor_mensalidade", "auxilio_liberado_em", "updated_at"])
+
+        response = self.tes_client.get("/api/v1/tesouraria/pagamentos/")
+        self.assertEqual(response.status_code, 200, response.json())
+        row = next(
+            item
+            for item in response.json()["results"]
+            if item["contrato_codigo"] == contrato.codigo
+        )
+        self.assertEqual(row["pagamento_inicial_status"], "sem_pagamento_inicial")
+        self.assertEqual(row["pagamento_inicial_status_label"], "Sem pagamento inicial")
+        self.assertEqual(row["status_visual_label"], "Ativo")
+
+    def test_coordenador_pode_consultar_pagamentos_da_tesouraria(self):
+        contrato = self._create_contract(
+            cpf="15151515151",
+            nome="Associado Coordenação",
+            agente=self.agente,
+        )
+
+        response = self.coord_client.get("/api/v1/tesouraria/pagamentos/")
+        self.assertEqual(response.status_code, 200, response.json())
+        codigos = {row["contrato_codigo"] for row in response.json()["results"]}
+        self.assertIn(contrato.codigo, codigos)
+
+    def test_pagamentos_pagina_antes_de_projetar_quando_nao_ha_filtros_complexos(self):
+        contrato = self._create_contract(
+            cpf="16161616161",
+            nome="Associado Paginação",
+            agente=self.agente,
+        )
+
+        with patch("apps.tesouraria.views.build_contract_cycle_projection") as projection_mock:
+            projection_mock.return_value = {
+                "cycles": [],
+                "possui_meses_nao_descontados": False,
+                "meses_nao_descontados_count": 0,
+            }
+            response = self.tes_client.get("/api/v1/tesouraria/pagamentos/", {"page_size": 1})
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(projection_mock.call_count, 1)
+        self.assertEqual(response.json()["results"][0]["contrato_codigo"], contrato.codigo)

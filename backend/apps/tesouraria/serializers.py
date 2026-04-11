@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 from drf_spectacular.utils import extend_schema_field
@@ -99,9 +100,13 @@ class TesourariaContratoListSerializer(serializers.Serializer):
     comissao_agente = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True
     )
+    valor_mensalidade = serializers.DecimalField(
+        max_digits=10, decimal_places=2, read_only=True
+    )
     margem_disponivel = serializers.DecimalField(
         max_digits=10, decimal_places=2, read_only=True
     )
+    dispensa_pagamento_inicial = serializers.SerializerMethodField()
     comprovantes = serializers.SerializerMethodField()
     dados_bancarios = serializers.SerializerMethodField()
     observacao_tesouraria = serializers.CharField(
@@ -123,6 +128,8 @@ class TesourariaContratoListSerializer(serializers.Serializer):
             return "cancelado"
         if obj.status == obj.Status.ENCERRADO:
             return "liquidado"
+        if obj.auxilio_liberado_em is not None:
+            return "concluido"
         if esteira and esteira.etapa_atual == "concluido":
             return "concluido"
         if esteira and esteira.status == "pendenciado":
@@ -136,6 +143,9 @@ class TesourariaContratoListSerializer(serializers.Serializer):
     def get_percentual_repasse(self, obj) -> str:
         associado = obj.associado
         return f"{associado.auxilio_taxa:.2f}"
+
+    def get_dispensa_pagamento_inicial(self, obj) -> bool:
+        return Decimal(str(obj.valor_mensalidade or Decimal("0.00"))) <= Decimal("0.00")
 
     @extend_schema_field(TesourariaComprovanteResumoSerializer(many=True))
     def get_comprovantes(self, obj):

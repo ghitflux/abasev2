@@ -47,6 +47,10 @@ def shift_month(base_date: date, offset: int) -> date:
 
 class TesourariaService:
     @staticmethod
+    def dispensa_pagamento_inicial(contrato: Contrato) -> bool:
+        return Decimal(str(contrato.valor_mensalidade or Decimal("0.00"))) <= Decimal("0.00")
+
+    @staticmethod
     def listar_usuarios_filtro_agente() -> list[dict[str, object]]:
         linked_queryset = Contrato.objects.filter(
             Q(
@@ -137,10 +141,11 @@ class TesourariaService:
         if pagamento == "pendente":
             queryset = queryset.filter(
                 associado__esteira_item__etapa_atual=EsteiraItem.Etapa.TESOURARIA
-            )
+            ).filter(auxilio_liberado_em__isnull=True)
         elif pagamento == "concluido":
             queryset = queryset.filter(
-                associado__esteira_item__etapa_atual=EsteiraItem.Etapa.CONCLUIDO
+                Q(associado__esteira_item__etapa_atual=EsteiraItem.Etapa.CONCLUIDO)
+                | Q(auxilio_liberado_em__isnull=False)
             ).exclude(status__in=[Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO])
         elif pagamento == "liquidado":
             queryset = queryset.filter(status=Contrato.Status.ENCERRADO)
@@ -346,6 +351,53 @@ class TesourariaService:
             para_situacao=EsteiraItem.Situacao.APROVADO,
             realizado_por=user,
             observacao="Contrato efetivado pela tesouraria.",
+        )
+        return contrato
+
+    @staticmethod
+    @transaction.atomic
+    def averbar_contrato(contrato_id, user):
+        contrato = TesourariaService._get_contrato(int(contrato_id))
+        esteira_item = getattr(contrato.associado, "esteira_item", None)
+        if not esteira_item or esteira_item.etapa_atual != EsteiraItem.Etapa.TESOURARIA:
+            raise ValidationError("Contrato não está disponível para averbação na tesouraria.")
+        if not TesourariaService.dispensa_pagamento_inicial(contrato):
+            raise ValidationError("A averbação direta só está disponível para contratos sem mensalidade.")
+
+        today = timezone.localdate()
+        now = timezone.now()
+        contrato.status = Contrato.Status.ATIVO
+        contrato.auxilio_liberado_em = today
+        if not contrato.data_aprovacao:
+            contrato.data_aprovacao = today
+        contrato.save(
+            update_fields=[
+                "status",
+                "auxilio_liberado_em",
+                "data_aprovacao",
+                "updated_at",
+            ]
+        )
+
+        contrato.associado.status = Associado.Status.ATIVO
+        contrato.associado.save(update_fields=["status", "updated_at"])
+
+        de_situacao = esteira_item.status
+        esteira_item.etapa_atual = EsteiraItem.Etapa.CONCLUIDO
+        esteira_item.status = EsteiraItem.Situacao.APROVADO
+        esteira_item.tesoureiro_responsavel = user
+        esteira_item.concluido_em = now
+        esteira_item.save()
+
+        Transicao.objects.create(
+            esteira_item=esteira_item,
+            acao="averbar",
+            de_status=EsteiraItem.Etapa.TESOURARIA,
+            para_status=EsteiraItem.Etapa.CONCLUIDO,
+            de_situacao=de_situacao,
+            para_situacao=EsteiraItem.Situacao.APROVADO,
+            realizado_por=user,
+            observacao="Contrato sem mensalidade averbado pela tesouraria.",
         )
         return contrato
 

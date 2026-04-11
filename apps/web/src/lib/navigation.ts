@@ -58,14 +58,18 @@ const ROLE_ROUTE_PREFIXES: Record<Role, string[]> = {
   ADMIN: ["/"],
   AGENTE: ["/agentes"],
   ANALISTA: ["/analise"],
-  COORDENADOR: ["/dashboard", "/coordenacao", "/importacao"],
+  COORDENADOR: ["/dashboard", "/coordenacao", "/importacao", "/tesouraria"],
   TESOUREIRO: ["/tesouraria", "/renovacao-ciclos"],
 };
 
 const ROUTE_SEARCH_ALIASES: Partial<Record<string, string[]>> = {
   "/dashboard": ["inicio", "painel", "visao geral"],
   "/agentes/meus-contratos": ["contratos", "meus contratos", "cadastros"],
-  "/associados/novo": ["novo associado", "cadastro associado", "cadastrar associado"],
+  "/associados/novo": [
+    "novo associado",
+    "cadastro associado",
+    "cadastrar associado",
+  ],
   "/agentes/cadastrar-associado": [
     "novo associado",
     "cadastro associado",
@@ -85,9 +89,17 @@ const ROUTE_SEARCH_ALIASES: Partial<Record<string, string[]>> = {
     "contratos para renovação",
     "renovacao analise",
   ],
-  "/coordenacao/refinanciamento": ["refinanciamento", "coordenacao refinanciamento"],
+  "/coordenacao/refinanciamento": [
+    "refinanciamento",
+    "coordenacao refinanciamento",
+  ],
   "/coordenacao/refinanciados": ["coordenacao refinanciados", "refinanciados"],
-  "/agentes/pagamentos": ["pagamentos", "meus pagamentos", "financeiro", "cadastros"],
+  "/agentes/pagamentos": [
+    "pagamentos",
+    "meus pagamentos",
+    "financeiro",
+    "cadastros",
+  ],
   "/tesouraria/pagamentos": [
     "pagamentos",
     "tesouraria pagamentos",
@@ -101,7 +113,12 @@ const ROUTE_SEARCH_ALIASES: Partial<Record<string, string[]>> = {
     "aptos",
     "refinanciados",
   ],
-  "/tesouraria": ["novos contratos", "dashboard contratos", "tesouraria", "contratos"],
+  "/tesouraria": [
+    "novos contratos",
+    "dashboard contratos",
+    "tesouraria",
+    "contratos",
+  ],
   "/tesouraria/refinanciamentos": [
     "refinanciamentos",
     "contratos para renovacao",
@@ -110,7 +127,12 @@ const ROUTE_SEARCH_ALIASES: Partial<Record<string, string[]>> = {
     "renovacoes de ciclos",
     "tesouraria refinanciamentos",
   ],
-  "/tesouraria/baixa-manual": ["inadimplentes", "baixa manual", "baixa", "manual"],
+  "/tesouraria/baixa-manual": [
+    "inadimplentes",
+    "baixa manual",
+    "baixa",
+    "manual",
+  ],
   "/tesouraria/liquidacoes": [
     "liquidacao",
     "liquidação",
@@ -130,7 +152,19 @@ const ROUTE_SEARCH_ALIASES: Partial<Record<string, string[]>> = {
     "desconto indevido",
     "pagamento indevido",
   ],
-  "/tesouraria/despesas": ["despesas", "tesouraria despesas", "lancamento de despesas"],
+  "/tesouraria/despesas": [
+    "despesas",
+    "tesouraria despesas",
+    "lancamento de despesas",
+  ],
+  "/tesouraria/confirmacoes": [
+    "confirmacoes",
+    "confirmações",
+    "ligacao",
+    "ligação",
+    "averbacao",
+    "averbação",
+  ],
   "/importacao": ["importacao", "arquivo retorno", "importar retorno"],
   "/renovacao-ciclos": [
     "dashboard de ciclos",
@@ -140,7 +174,11 @@ const ROUTE_SEARCH_ALIASES: Partial<Record<string, string[]>> = {
     "renovacoes",
   ],
   "/relatorios": ["relatorios", "exportacoes"],
-  "/configuracoes/usuarios": ["usuarios", "configuracoes usuarios", "gestao de usuarios"],
+  "/configuracoes/usuarios": [
+    "usuarios",
+    "configuracoes usuarios",
+    "gestao de usuarios",
+  ],
   "/configuracoes/comissoes": [
     "comissoes",
     "comissões",
@@ -192,6 +230,10 @@ function isCoordenadorDevolucoesPath(pathname: string) {
     "/tesouraria/devolucoes",
     "/tesouraria/devolucao",
   ]);
+}
+
+function isCoordenadorTesourariaPath(pathname: string) {
+  return matchesAnyPathPrefix(pathname, ["/tesouraria"]);
 }
 
 export const navigationSections: NavigationSection[] = [
@@ -289,7 +331,7 @@ export const navigationSections: NavigationSection[] = [
             roles: ["COORDENADOR", "ADMIN"],
           },
           {
-            title: "Aptos a Renovar",
+            title: "Validação de Renovação",
             href: "/coordenacao/refinanciamento",
             icon: RefreshCcw,
             roles: ["COORDENADOR", "ADMIN"],
@@ -316,19 +358,25 @@ export const navigationSections: NavigationSection[] = [
             title: "Novos Contratos",
             href: "/tesouraria",
             icon: BriefcaseBusiness,
-            roles: ["TESOUREIRO", "ADMIN"],
+            roles: ["TESOUREIRO", "COORDENADOR", "ADMIN"],
           },
           {
             title: "Pagamentos",
             href: "/tesouraria/pagamentos",
             icon: ReceiptText,
-            roles: ["TESOUREIRO", "ADMIN"],
+            roles: ["TESOUREIRO", "COORDENADOR", "ADMIN"],
+          },
+          {
+            title: "Confirmações",
+            href: "/tesouraria/confirmacoes",
+            icon: ClipboardCheck,
+            roles: ["TESOUREIRO", "COORDENADOR", "ADMIN"],
           },
           {
             title: "Contratos para Renovação",
             href: "/tesouraria/refinanciamentos",
             icon: HandCoins,
-            roles: ["TESOUREIRO", "ADMIN"],
+            roles: ["TESOUREIRO", "COORDENADOR", "ADMIN"],
           },
           {
             title: "Inadimplentes",
@@ -352,7 +400,7 @@ export const navigationSections: NavigationSection[] = [
             title: "Despesas",
             href: "/tesouraria/despesas",
             icon: ClipboardCheck,
-            roles: ["TESOUREIRO", "ADMIN"],
+            roles: ["TESOUREIRO", "COORDENADOR", "ADMIN"],
           },
         ],
       },
@@ -440,7 +488,9 @@ function buildRouteSearchTerms({
         sectionTitle,
         parentTitle,
         parentTitle ? `${parentTitle} ${title}` : null,
-        parentTitle ? `${sectionTitle} ${parentTitle} ${title}` : `${sectionTitle} ${title}`,
+        parentTitle
+          ? `${sectionTitle} ${parentTitle} ${title}`
+          : `${sectionTitle} ${title}`,
         href.replaceAll("/", " ").replaceAll("-", " ").trim(),
         ...(ROUTE_SEARCH_ALIASES[href] ?? []),
       ].filter((value): value is string => Boolean(value)),
@@ -529,9 +579,6 @@ export function canAccessPath(path: string, roles: Role[] = []) {
   }
 
   const pathname = new URL(normalized, "http://localhost").pathname;
-  if (matchesPathPrefix(pathname, "/tesouraria/confirmacoes")) {
-    return false;
-  }
   if (roles.includes("ADMIN")) {
     return true;
   }
@@ -569,7 +616,10 @@ export function canAccessPath(path: string, roles: Role[] = []) {
     return true;
   }
 
-  if (roles.includes("COORDENADOR") && isCoordenadorUserManagementPath(pathname)) {
+  if (
+    roles.includes("COORDENADOR") &&
+    isCoordenadorUserManagementPath(pathname)
+  ) {
     return true;
   }
 
@@ -577,7 +627,10 @@ export function canAccessPath(path: string, roles: Role[] = []) {
     return true;
   }
 
-  if (roles.includes("TESOUREIRO") && isTesoureiroAssociadoDetailPath(pathname)) {
+  if (
+    roles.includes("TESOUREIRO") &&
+    isTesoureiroAssociadoDetailPath(pathname)
+  ) {
     return true;
   }
 
@@ -590,6 +643,10 @@ export function canAccessPath(path: string, roles: Role[] = []) {
   }
 
   if (roles.includes("COORDENADOR") && isCoordenadorDevolucoesPath(pathname)) {
+    return true;
+  }
+
+  if (roles.includes("COORDENADOR") && isCoordenadorTesourariaPath(pathname)) {
     return true;
   }
 

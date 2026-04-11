@@ -10,6 +10,7 @@ type InputCurrencyProps = {
   onChange?: (value: number | null) => void;
   className?: string;
   placeholder?: string;
+  disabled?: boolean;
 };
 
 export default function InputCurrency({
@@ -17,6 +18,7 @@ export default function InputCurrency({
   onChange,
   className,
   placeholder = "R$ 0,00",
+  disabled = false,
 }: InputCurrencyProps) {
   const [displayValue, setDisplayValue] = React.useState(
     value ? maskCurrency(value) : "",
@@ -32,6 +34,7 @@ export default function InputCurrency({
       className={className}
       inputMode="numeric"
       placeholder={placeholder}
+      disabled={disabled}
       onChange={(event) => {
         const cents = unmaskCurrency(event.target.value);
         setDisplayValue(cents ? maskCurrency(cents) : "");

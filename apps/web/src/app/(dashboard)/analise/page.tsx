@@ -41,7 +41,9 @@ import DatePicker from "@/components/custom/date-picker";
 import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
-import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import DataTable, {
+  type DataTableColumn,
+} from "@/components/shared/data-table";
 import EmptyState from "@/components/shared/empty-state";
 import {
   InlinePanelSkeleton,
@@ -51,7 +53,13 @@ import {
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -83,12 +91,26 @@ import { Textarea } from "@/components/ui/textarea";
 const FILA_SECTIONS: Array<{
   key: AnaliseSectionKey;
   title: string;
+  tooltip?: string;
   description: string;
   emptyMessage: string;
   tone: "positive" | "warning" | "neutral";
   icon: typeof SearchIcon;
   delta: (summary: AnaliseResumo | undefined) => string;
 }> = [
+  {
+    key: "novos_contratos",
+    title: "Novos Contratos",
+    tooltip:
+      "Entradas novas da análise sem pendência aberta e ainda não encaminhadas.",
+    description:
+      "Entradas novas da análise sem pendência documental aberta e prontas para triagem inicial.",
+    emptyMessage: "Nenhum novo contrato aguardando triagem no momento.",
+    tone: "neutral",
+    icon: FileTextIcon,
+    delta: (summary) =>
+      `${summary?.filas.pendencias ?? 0} seguem com pendência documental`,
+  },
   {
     key: "ver_todos",
     title: "Ver todos",
@@ -97,11 +119,14 @@ const FILA_SECTIONS: Array<{
     emptyMessage: "Nenhum item encontrado no fluxo consolidado.",
     tone: "neutral",
     icon: SearchIcon,
-    delta: (summary) => `${summary?.filas.pendencias ?? 0} ainda exigem ação do analista`,
+    delta: (summary) =>
+      `${summary?.filas.pendencias ?? 0} ainda exigem ação do analista`,
   },
   {
     key: "pendencias",
     title: "Pendências",
+    tooltip:
+      "Casos com documento faltando, pendência aberta ou cadastro sem documentação válida.",
     description:
       "Pendências documentais abertas ou cadastros ainda sem documentação inicial.",
     emptyMessage: "Nenhuma pendência aberta no momento.",
@@ -113,16 +138,23 @@ const FILA_SECTIONS: Array<{
   {
     key: "pendencias_corrigidas",
     title: "Pendências Corrigidas",
-    description: "Itens corrigidos pelo agente e reenviados para nova validação do analista.",
+    tooltip:
+      "Casos reenviados após correção e aguardando nova conferência do analista.",
+    description:
+      "Itens corrigidos pelo agente e reenviados para nova validação do analista.",
     emptyMessage: "Nenhuma pendência corrigida aguardando validação.",
     tone: "positive",
     icon: FileTextIcon,
-    delta: (summary) => `${summary?.filas.pendencias ?? 0} ainda seguem em pendência`,
+    delta: (summary) =>
+      `${summary?.filas.pendencias ?? 0} ainda seguem em pendência`,
   },
   {
     key: "enviado_tesouraria",
     title: "Enviado para Tesouraria",
-    description: "Itens já aprovados na análise e aguardando a etapa financeira.",
+    tooltip:
+      "Casos aprovados pela análise e já encaminhados para a etapa financeira.",
+    description:
+      "Itens já aprovados na análise e aguardando a etapa financeira.",
     emptyMessage: "Nenhum item aguardando tesouraria.",
     tone: "neutral",
     icon: WalletIcon,
@@ -131,7 +163,10 @@ const FILA_SECTIONS: Array<{
   {
     key: "enviado_coordenacao",
     title: "Enviado para Coordenação",
-    description: "Itens encaminhados para coordenação antes da liberação financeira.",
+    tooltip:
+      "Casos que ainda dependem de validação da coordenação antes da etapa financeira.",
+    description:
+      "Itens encaminhados para coordenação antes da liberação financeira.",
     emptyMessage: "Nenhum item aguardando coordenação.",
     tone: "neutral",
     icon: ExternalLinkIcon,
@@ -140,7 +175,8 @@ const FILA_SECTIONS: Array<{
   {
     key: "efetivados",
     title: "Efetivados",
-    description: "Fluxos concluídos com contrato liberado e sem cancelamento posterior.",
+    description:
+      "Fluxos concluídos com contrato liberado e sem cancelamento posterior.",
     emptyMessage: "Nenhum fluxo efetivado encontrado.",
     tone: "positive",
     icon: ShieldCheckIcon,
@@ -192,8 +228,12 @@ function SummaryCard({
 }) {
   return (
     <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
-      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{label}</p>
-      <div className="mt-3 space-y-2 text-sm font-medium text-foreground">{children}</div>
+      <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+        {label}
+      </p>
+      <div className="mt-3 space-y-2 text-sm font-medium text-foreground">
+        {children}
+      </div>
     </div>
   );
 }
@@ -204,9 +244,9 @@ export default function AnalisePage() {
   const isAnalistaEnabled = hasAnyRole(["ANALISTA", "COORDENADOR", "ADMIN"]);
   const [search, setSearch] = React.useState("");
   const [pageSize, setPageSize] = React.useState("5");
-  const [filaPages, setFilaPages] = React.useState<Record<AnaliseSectionKey, number>>(
-    getInitialSectionPages,
-  );
+  const [filaPages, setFilaPages] = React.useState<
+    Record<AnaliseSectionKey, number>
+  >(getInitialSectionPages);
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [agenteFilter, setAgenteFilter] = React.useState("");
   const [analistaFilter, setAnalistaFilter] = React.useState("");
@@ -218,12 +258,15 @@ export default function AnalisePage() {
   const [draftAnalistaFilter, setDraftAnalistaFilter] = React.useState("");
   const [draftEtapaFilter, setDraftEtapaFilter] = React.useState("");
   const [draftStatusFilter, setDraftStatusFilter] = React.useState("");
-  const [draftDataInicio, setDraftDataInicio] = React.useState<Date | undefined>();
+  const [draftDataInicio, setDraftDataInicio] = React.useState<
+    Date | undefined
+  >();
   const [draftDataFim, setDraftDataFim] = React.useState<Date | undefined>();
   const [dialogState, setDialogState] = React.useState<DialogState>(null);
   const [observacao, setObservacao] = React.useState("");
   const debouncedSearch = useDebouncedValue(search, 300);
-  const documentoItemId = dialogState?.mode === "documentos" ? dialogState.item.id : null;
+  const documentoItemId =
+    dialogState?.mode === "documentos" ? dialogState.item.id : null;
 
   const formatDateForQuery = React.useCallback((value?: Date) => {
     if (!value) return undefined;
@@ -317,28 +360,30 @@ export default function AnalisePage() {
         formatDateForQuery(dataFim),
       ],
       queryFn: () =>
-        apiFetch<PaginatedMetaResponse<EsteiraItem, { secao: AnaliseSectionKey }>>(
-          "analise/filas",
-          {
-            query: {
-              secao: section.key,
-              page: filaPages[section.key],
-              page_size: Number(pageSize),
-              search: debouncedSearch,
-              agente: agenteFilter || undefined,
-              analista: analistaFilter || undefined,
-              etapa: etapaFilter || undefined,
-              status: statusFilter || undefined,
-              data_inicio: formatDateForQuery(dataInicio),
-              data_fim: formatDateForQuery(dataFim),
-            },
+        apiFetch<
+          PaginatedMetaResponse<EsteiraItem, { secao: AnaliseSectionKey }>
+        >("analise/filas", {
+          query: {
+            secao: section.key,
+            page: filaPages[section.key],
+            page_size: Number(pageSize),
+            search: debouncedSearch,
+            agente: agenteFilter || undefined,
+            analista: analistaFilter || undefined,
+            etapa: etapaFilter || undefined,
+            status: statusFilter || undefined,
+            data_inicio: formatDateForQuery(dataInicio),
+            data_fim: formatDateForQuery(dataFim),
           },
-        ),
+        }),
       enabled: isAnalistaEnabled,
       ...dashboardRetainedQueryOptions,
     })),
   }) as Array<
-    UseQueryResult<PaginatedMetaResponse<EsteiraItem, { secao: AnaliseSectionKey }>, Error>
+    UseQueryResult<
+      PaginatedMetaResponse<EsteiraItem, { secao: AnaliseSectionKey }>,
+      Error
+    >
   >;
 
   const detalheQuery = useQuery({
@@ -354,7 +399,11 @@ export default function AnalisePage() {
       payload,
     }: {
       item: EsteiraItem;
-      action: "assumir" | "aprovar" | "validar-documento" | "solicitar-correcao";
+      action:
+        | "assumir"
+        | "aprovar"
+        | "validar-documento"
+        | "solicitar-correcao";
       payload?: Record<string, string>;
     }) => {
       await apiFetch(`esteira/${item.id}/${action}`, {
@@ -368,12 +417,18 @@ export default function AnalisePage() {
       setObservacao("");
       invalidateAnaliseQueries();
       if (variables.action === "aprovar") {
-        void queryClient.invalidateQueries({ queryKey: ["tesouraria-contratos"] });
-        void queryClient.invalidateQueries({ queryKey: ["dashboard-tesouraria"] });
+        void queryClient.invalidateQueries({
+          queryKey: ["tesouraria-contratos"],
+        });
+        void queryClient.invalidateQueries({
+          queryKey: ["dashboard-tesouraria"],
+        });
       }
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao executar ação.");
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao executar ação.",
+      );
     },
   });
 
@@ -390,7 +445,11 @@ export default function AnalisePage() {
       invalidateAnaliseQueries();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao excluir solicitação.");
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao excluir solicitação.",
+      );
     },
   });
 
@@ -400,8 +459,12 @@ export default function AnalisePage() {
         id: "assumir",
         header: "Assumir",
         cell: (row) =>
-          row.etapa_atual === "analise" && row.acoes_disponiveis.includes("assumir") ? (
-            <Button size="sm" onClick={() => setDialogState({ mode: "assumir", item: row })}>
+          row.etapa_atual === "analise" &&
+          row.acoes_disponiveis.includes("assumir") ? (
+            <Button
+              size="sm"
+              onClick={() => setDialogState({ mode: "assumir", item: row })}
+            >
               Assumir
             </Button>
           ) : (
@@ -423,7 +486,12 @@ export default function AnalisePage() {
         id: "cpf",
         header: "CPF",
         cell: (row) => (
-          <CopySnippet label="CPF" value={row.contrato?.cpf_cnpj ?? "-"} mono inline />
+          <CopySnippet
+            label="CPF"
+            value={row.contrato?.cpf_cnpj ?? "-"}
+            mono
+            inline
+          />
         ),
       },
       {
@@ -432,7 +500,9 @@ export default function AnalisePage() {
         cell: (row) => (
           <CopySnippet
             label="Matrícula"
-            value={row.contrato?.matricula_display ?? row.contrato?.matricula ?? "-"}
+            value={
+              row.contrato?.matricula_display ?? row.contrato?.matricula ?? "-"
+            }
             mono
             inline
           />
@@ -489,13 +559,22 @@ export default function AnalisePage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => actionMutation.mutate({ item: row, action: "validar-documento" })}
+                onClick={() =>
+                  actionMutation.mutate({
+                    item: row,
+                    action: "validar-documento",
+                  })
+                }
               >
                 Validar revisto
               </Button>
             ) : null}
-            {row.etapa_atual === "analise" && row.acoes_disponiveis.includes("aprovar") ? (
-              <Button size="sm" onClick={() => setDialogState({ mode: "aprovar", item: row })}>
+            {row.etapa_atual === "analise" &&
+            row.acoes_disponiveis.includes("aprovar") ? (
+              <Button
+                size="sm"
+                onClick={() => setDialogState({ mode: "aprovar", item: row })}
+              >
                 Aprovar
               </Button>
             ) : null}
@@ -551,7 +630,12 @@ export default function AnalisePage() {
             label: item.full_name,
           }))
         : user
-          ? [{ value: String(user.id), label: `${user.full_name} · meus casos` }]
+          ? [
+              {
+                value: String(user.id),
+                label: `${user.full_name} · meus casos`,
+              },
+            ]
           : []),
     ];
 
@@ -571,14 +655,17 @@ export default function AnalisePage() {
     );
   }
 
-  const documentoItem = dialogState?.mode === "documentos" ? dialogState.item : null;
+  const documentoItem =
+    dialogState?.mode === "documentos" ? dialogState.item : null;
   const detalheItem = detalheQuery.data ?? documentoItem;
   const pendenciasAbertas =
-    detalheQuery.data?.pendencias?.filter((pendencia) => pendencia.status === "aberta").length ??
-    0;
+    detalheQuery.data?.pendencias?.filter(
+      (pendencia) => pendencia.status === "aberta",
+    ).length ?? 0;
   const pendenciasResolvidas =
-    detalheQuery.data?.pendencias?.filter((pendencia) => pendencia.status === "resolvida")
-      .length ?? 0;
+    detalheQuery.data?.pendencias?.filter(
+      (pendencia) => pendencia.status === "resolvida",
+    ).length ?? 0;
 
   return (
     <div className="space-y-8">
@@ -587,10 +674,13 @@ export default function AnalisePage() {
           <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">
             Análise operacional
           </p>
-          <h1 className="text-3xl font-semibold text-foreground">Dashboard de análise</h1>
+          <h1 className="text-3xl font-semibold text-foreground">
+            Dashboard de análise
+          </h1>
           <p className="max-w-4xl text-sm text-muted-foreground">
-            Painel consolidado das filas da esteira para revisar documentação, acompanhar
-            encaminhamentos, excluir solicitações elegíveis e entrar no detalhe completo de cada associado.
+            Painel consolidado das filas da esteira para revisar documentação,
+            acompanhar encaminhamentos, excluir solicitações elegíveis e entrar
+            no detalhe completo de cada associado.
           </p>
         </div>
 
@@ -652,7 +742,8 @@ export default function AnalisePage() {
               <SheetHeader>
                 <SheetTitle>Filtros avançados</SheetTitle>
                 <SheetDescription>
-                  Refine a fila por analista responsável, agente, etapa, status e janela de criação.
+                  Refine a fila por analista responsável, agente, etapa, status
+                  e janela de criação.
                 </SheetDescription>
               </SheetHeader>
 
@@ -684,7 +775,12 @@ export default function AnalisePage() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Etapa</Label>
-                    <Select value={draftEtapaFilter || "todos"} onValueChange={(value) => setDraftEtapaFilter(value === "todos" ? "" : value)}>
+                    <Select
+                      value={draftEtapaFilter || "todos"}
+                      onValueChange={(value) =>
+                        setDraftEtapaFilter(value === "todos" ? "" : value)
+                      }
+                    >
                       <SelectTrigger className="rounded-xl border-border/60 bg-card/60">
                         <SelectValue placeholder="Todas as etapas" />
                       </SelectTrigger>
@@ -701,14 +797,21 @@ export default function AnalisePage() {
 
                   <div className="space-y-2">
                     <Label>Status</Label>
-                    <Select value={draftStatusFilter || "todos"} onValueChange={(value) => setDraftStatusFilter(value === "todos" ? "" : value)}>
+                    <Select
+                      value={draftStatusFilter || "todos"}
+                      onValueChange={(value) =>
+                        setDraftStatusFilter(value === "todos" ? "" : value)
+                      }
+                    >
                       <SelectTrigger className="rounded-xl border-border/60 bg-card/60">
                         <SelectValue placeholder="Todos os status" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="todos">Todos</SelectItem>
                         <SelectItem value="aguardando">Aguardando</SelectItem>
-                        <SelectItem value="em_andamento">Em andamento</SelectItem>
+                        <SelectItem value="em_andamento">
+                          Em andamento
+                        </SelectItem>
                         <SelectItem value="pendenciado">Pendenciado</SelectItem>
                         <SelectItem value="aprovado">Aprovado</SelectItem>
                         <SelectItem value="rejeitado">Rejeitado</SelectItem>
@@ -720,11 +823,17 @@ export default function AnalisePage() {
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label>Data inicial</Label>
-                    <DatePicker value={draftDataInicio} onChange={setDraftDataInicio} />
+                    <DatePicker
+                      value={draftDataInicio}
+                      onChange={setDraftDataInicio}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Data final</Label>
-                    <DatePicker value={draftDataFim} onChange={setDraftDataFim} />
+                    <DatePicker
+                      value={draftDataFim}
+                      onChange={setDraftDataFim}
+                    />
                   </div>
                 </div>
               </div>
@@ -788,29 +897,29 @@ export default function AnalisePage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
-        {summaryQuery.isLoading && !summaryQuery.data ? (
-          Array.from({ length: FILA_SECTIONS.length }).map((_, index) => (
-            <MetricCardSkeleton key={index} />
-          ))
-        ) : (
-          FILA_SECTIONS.map((section) => (
-            <StatsCard
-              key={section.key}
-              title={section.title}
-              value={String(summaryQuery.data?.filas[section.key] ?? 0)}
-              delta={section.delta(summaryQuery.data)}
-              tone={section.tone}
-              icon={section.icon}
-              onClick={() => scrollToSection(section.key)}
-            />
-          ))
-        )}
+        {summaryQuery.isLoading && !summaryQuery.data
+          ? Array.from({ length: FILA_SECTIONS.length }).map((_, index) => (
+              <MetricCardSkeleton key={index} />
+            ))
+          : FILA_SECTIONS.map((section) => (
+              <StatsCard
+                key={section.key}
+                title={section.title}
+                tooltip={section.tooltip}
+                value={String(summaryQuery.data?.filas[section.key] ?? 0)}
+                delta={section.delta(summaryQuery.data)}
+                tone={section.tone}
+                icon={section.icon}
+                onClick={() => scrollToSection(section.key)}
+              />
+            ))}
       </section>
 
       <section className="space-y-6">
         {FILA_SECTIONS.map((section, index) => {
           const query = filaQueries[index];
-          const count = summaryQuery.data?.filas[section.key] ?? query.data?.count ?? 0;
+          const count =
+            summaryQuery.data?.filas[section.key] ?? query.data?.count ?? 0;
 
           return (
             <Card
@@ -878,9 +987,9 @@ export default function AnalisePage() {
                   ? "Confirmar aprovação"
                   : dialogState?.mode === "excluir"
                     ? "Excluir solicitação"
-                  : dialogState?.mode === "correcao"
-                    ? "Solicitar correção"
-                    : "Documentos e formulário"}
+                    : dialogState?.mode === "correcao"
+                      ? "Solicitar correção"
+                      : "Documentos e formulário"}
             </DialogTitle>
             <DialogDescription>
               {dialogState?.mode === "assumir"
@@ -889,9 +998,9 @@ export default function AnalisePage() {
                   ? `Confirme a aprovação do contrato ${dialogState.item.contrato?.codigo} para a próxima etapa da esteira.`
                   : dialogState?.mode === "excluir"
                     ? `Confirme a exclusão lógica da solicitação ${dialogState.item.contrato?.codigo}. O associado, a esteira e a árvore contratual ativa serão removidos das filas operacionais.`
-                  : dialogState?.mode === "correcao"
-                    ? "Informe a observação que deve ser enviada ao agente."
-                    : "Documentos anexados e resumo rápido do cadastro em análise."}
+                    : dialogState?.mode === "correcao"
+                      ? "Informe a observação que deve ser enviada ao agente."
+                      : "Documentos anexados e resumo rápido do cadastro em análise."}
             </DialogDescription>
           </DialogHeader>
 
@@ -911,7 +1020,9 @@ export default function AnalisePage() {
                       </p>
                     </SummaryCard>
                     <SummaryCard label="Contrato">
-                      <p className="break-all">{detalheItem?.contrato?.codigo ?? "-"}</p>
+                      <p className="break-all">
+                        {detalheItem?.contrato?.codigo ?? "-"}
+                      </p>
                       <p className="text-muted-foreground">
                         Assumido em{" "}
                         {detalheItem?.assumido_em
@@ -936,14 +1047,24 @@ export default function AnalisePage() {
                     </SummaryCard>
                     <SummaryCard label="Status do fluxo">
                       <div className="flex flex-wrap gap-2">
-                        <StatusBadge status={detalheItem?.status_documentacao ?? "incompleta"} />
-                        <StatusBadge status={detalheItem?.status ?? "aguardando"} />
+                        <StatusBadge
+                          status={
+                            detalheItem?.status_documentacao ?? "incompleta"
+                          }
+                        />
+                        <StatusBadge
+                          status={detalheItem?.status ?? "aguardando"}
+                        />
                       </div>
                     </SummaryCard>
                     <SummaryCard label="Pendências">
                       <div className="flex flex-wrap gap-2">
-                        <Badge variant="outline">{pendenciasAbertas} abertas</Badge>
-                        <Badge variant="outline">{pendenciasResolvidas} resolvidas</Badge>
+                        <Badge variant="outline">
+                          {pendenciasAbertas} abertas
+                        </Badge>
+                        <Badge variant="outline">
+                          {pendenciasResolvidas} resolvidas
+                        </Badge>
                       </div>
                       <p className="text-muted-foreground">
                         {detalheQuery.data?.pendencias?.length
@@ -958,15 +1079,25 @@ export default function AnalisePage() {
                   <div className="border-b border-border/60 px-6 py-5">
                     <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground">Documentos anexados</p>
+                        <p className="text-sm font-medium text-foreground">
+                          Documentos anexados
+                        </p>
                         <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-                          Revise os arquivos do cadastro e siga para o detalhe completo quando
-                          precisar analisar o histórico inteiro do associado.
+                          Revise os arquivos do cadastro e siga para o detalhe
+                          completo quando precisar analisar o histórico inteiro
+                          do associado.
                         </p>
                       </div>
                       {detalheItem?.associado_id ? (
-                        <Button asChild variant="outline" size="sm" className="shrink-0">
-                          <Link href={`/associados/${detalheItem.associado_id}`}>
+                        <Button
+                          asChild
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0"
+                        >
+                          <Link
+                            href={`/associados/${detalheItem.associado_id}`}
+                          >
                             Ver detalhes completos
                           </Link>
                         </Button>
@@ -1000,10 +1131,18 @@ export default function AnalisePage() {
                                     </p>
                                   ) : null}
                                 </div>
-                                {documento.arquivo_disponivel_localmente && documento.arquivo ? (
-                                  <Button asChild size="sm" variant="outline" className="w-full">
+                                {documento.arquivo_disponivel_localmente &&
+                                documento.arquivo ? (
+                                  <Button
+                                    asChild
+                                    size="sm"
+                                    variant="outline"
+                                    className="w-full"
+                                  >
                                     <a
-                                      href={buildBackendFileUrl(documento.arquivo)}
+                                      href={buildBackendFileUrl(
+                                        documento.arquivo,
+                                      )}
                                       target="_blank"
                                       rel="noreferrer"
                                     >
@@ -1057,16 +1196,32 @@ export default function AnalisePage() {
             </Button>
             {dialogState?.mode === "documentos" && detalheItem?.associado_id ? (
               <Button asChild>
-                <Link href={`/associados/${detalheItem.associado_id}`}>Ver detalhes completos</Link>
+                <Link href={`/associados/${detalheItem.associado_id}`}>
+                  Ver detalhes completos
+                </Link>
               </Button>
             ) : null}
             {dialogState?.mode === "assumir" ? (
-              <Button onClick={() => actionMutation.mutate({ item: dialogState.item, action: "assumir" })}>
+              <Button
+                onClick={() =>
+                  actionMutation.mutate({
+                    item: dialogState.item,
+                    action: "assumir",
+                  })
+                }
+              >
                 Confirmar
               </Button>
             ) : null}
             {dialogState?.mode === "aprovar" ? (
-              <Button onClick={() => actionMutation.mutate({ item: dialogState.item, action: "aprovar" })}>
+              <Button
+                onClick={() =>
+                  actionMutation.mutate({
+                    item: dialogState.item,
+                    action: "aprovar",
+                  })
+                }
+              >
                 Aprovar e encaminhar
               </Button>
             ) : null}

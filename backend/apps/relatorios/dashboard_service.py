@@ -1619,7 +1619,7 @@ class AdminDashboardService:
                 for row in efetivados_queryset.values("resolved_agent_id").annotate(
                     efetivados=Count("id", distinct=True),
                     volume_financeiro=Coalesce(
-                        Sum("valor_liquido"),
+                        Sum("margem_disponivel"),
                         Value(zero),
                         output_field=DecimalField(),
                     ),
@@ -1783,7 +1783,7 @@ class AdminDashboardService:
                     numeric_value=total_volume,
                     value_format="currency",
                     detail_metric="agentes:volume_total",
-                    description="Soma do valor liquido efetivado pelos agentes no recorte.",
+                    description="Soma do auxilio liberado efetivado pelos agentes no recorte.",
                 ),
                 AdminDashboardService._metric_card(
                     key="top_agente_volume",
@@ -1800,7 +1800,7 @@ class AdminDashboardService:
                     numeric_value=avg_volume,
                     value_format="currency",
                     detail_metric="agentes:volume_total",
-                    description="Media de volume financeiro entre os agentes monitorados.",
+                    description="Media de auxilio liberado entre os agentes monitorados.",
                 ),
                 AdminDashboardService._metric_card(
                     key="associados_inativos",

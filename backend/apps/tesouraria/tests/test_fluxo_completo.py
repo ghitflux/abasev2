@@ -76,6 +76,7 @@ class TestFluxoCompleto(TestCase):
         cpf: str = "12345678901",
         *,
         data_aprovacao: str | None = None,
+        mensalidade: str = "500.00",
     ):
         payload = {
             "tipo_documento": "CPF",
@@ -114,7 +115,7 @@ class TestFluxoCompleto(TestCase):
             "valor_liquido": "1200.00",
             "prazo_meses": 3,
             "taxa_antecipacao": "1.50",
-            "mensalidade": "500.00",
+            "mensalidade": mensalidade,
             "margem_disponivel": "900.00",
         }
         if data_aprovacao:
@@ -126,10 +127,15 @@ class TestFluxoCompleto(TestCase):
         cpf: str = "12345678901",
         *,
         data_aprovacao: str | None = None,
+        mensalidade: str = "500.00",
     ) -> Associado:
         response = self.admin_client.post(
             "/api/v1/associados/",
-            self._cadastro_payload(cpf, data_aprovacao=data_aprovacao),
+            self._cadastro_payload(
+                cpf,
+                data_aprovacao=data_aprovacao,
+                mensalidade=mensalidade,
+            ),
             format="json",
         )
         self.assertEqual(response.status_code, 201, response.json())
@@ -241,6 +247,29 @@ class TestFluxoCompleto(TestCase):
         ids = {row["id"] for row in response.json()["results"]}
         self.assertIn(contrato_no_recorte.id, ids)
         self.assertNotIn(contrato_fora_recorte.id, ids)
+
+    def test_tesouraria_lista_efetivado_mesmo_sem_mover_esteira_para_concluido(self):
+        associado = self._criar_associado("17345678932")
+        contrato = self._levar_para_tesouraria(associado)
+        contrato.status = Contrato.Status.ATIVO
+        contrato.auxilio_liberado_em = date(2026, 4, 12)
+        contrato.save(update_fields=["status", "auxilio_liberado_em", "updated_at"])
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/contratos/",
+            {"competencia": "2026-04", "pagamento": "concluido"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        ids = {row["id"] for row in response.json()["results"]}
+        self.assertIn(contrato.id, ids)
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/contratos/",
+            {"competencia": "2026-04", "pagamento": "pendente"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        ids = {row["id"] for row in response.json()["results"]}
+        self.assertNotIn(contrato.id, ids)
 
     def test_tesouraria_separa_concluidos_e_cancelados(self):
         associado_pago = self._criar_associado("17345678904")
@@ -698,3 +727,44 @@ class TestFluxoCompleto(TestCase):
         )
         self.assertEqual(ligacao.status, Confirmacao.Status.CONFIRMADO)
         self.assertEqual(averbacao.status, Confirmacao.Status.CONFIRMADO)
+
+    def test_contrato_sem_mensalidade_pode_ser_averbado_diretamente(self):
+        associado = self._criar_associado("62345678902", mensalidade="0.00")
+        contrato = self._levar_para_tesouraria(associado)
+
+        response = self.tes_client.post(f"/api/v1/tesouraria/contratos/{contrato.id}/averbar/")
+        self.assertEqual(response.status_code, 200, response.json())
+
+        contrato.refresh_from_db()
+        associado.refresh_from_db()
+        associado.esteira_item.refresh_from_db()
+        self.assertEqual(contrato.status, Contrato.Status.ATIVO)
+        self.assertIsNotNone(contrato.auxilio_liberado_em)
+        self.assertEqual(associado.status, Associado.Status.ATIVO)
+        self.assertEqual(associado.esteira_item.etapa_atual, EsteiraItem.Etapa.CONCLUIDO)
+
+    def test_coordenacao_tem_acesso_de_leitura_as_rotas_da_tesouraria(self):
+        associado = self._criar_associado("62345678903")
+        contrato = self._levar_para_tesouraria(associado)
+
+        contratos = self.coord_client.get("/api/v1/tesouraria/contratos/")
+        self.assertEqual(contratos.status_code, 200, contratos.json())
+
+        pagamentos = self.coord_client.get("/api/v1/tesouraria/pagamentos/")
+        self.assertEqual(pagamentos.status_code, 200, pagamentos.json())
+
+        confirmacoes = self.coord_client.get(
+            "/api/v1/tesouraria/confirmacoes/",
+            {"competencia": timezone.localdate().strftime("%Y-%m")},
+        )
+        self.assertEqual(confirmacoes.status_code, 200, confirmacoes.json())
+
+        despesas = self.coord_client.get("/api/v1/tesouraria/despesas/")
+        self.assertEqual(despesas.status_code, 200, despesas.json())
+
+        cancelar = self.coord_client.post(
+            f"/api/v1/tesouraria/contratos/{contrato.id}/cancelar/",
+            {"tipo": "cancelado", "motivo": "sem permissao"},
+            format="json",
+        )
+        self.assertEqual(cancelar.status_code, 403)
