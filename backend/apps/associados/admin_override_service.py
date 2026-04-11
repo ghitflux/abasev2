@@ -1781,15 +1781,18 @@ class AdminOverrideService:
 
         with transaction.atomic():
             existing_cycle_list = all_cycles
-            for index, ciclo in enumerate(existing_cycle_list, start=1):
-                temporary_number = 1000 + index
+            for ciclo in existing_cycle_list:
+                # Usar ciclo.id como base garante unicidade mesmo com múltiplos ciclos
+                temporary_number = 100000 + ciclo.id
                 if ciclo.numero != temporary_number:
                     ciclo.numero = temporary_number
                     ciclo.save(update_fields=["numero", "updated_at"])
 
             existing_parcela_list = all_parcelas
-            for index, parcela in enumerate(existing_parcela_list, start=1):
-                temporary_number = 1000 + index
+            for parcela in existing_parcela_list:
+                # Usar parcela.id como base garante unicidade global, evitando
+                # colisão de constraint (ciclo_id, numero) durante renumeração temporária
+                temporary_number = 100000 + parcela.id
                 if parcela.numero != temporary_number:
                     parcela.numero = temporary_number
                     parcela.save(update_fields=["numero", "updated_at"])
