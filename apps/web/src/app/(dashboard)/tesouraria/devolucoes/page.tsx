@@ -362,8 +362,7 @@ export default function DevolucoesAssociadoPage() {
           search: search || undefined,
           competencia: competencia ? format(competencia, "yyyy-MM") : undefined,
           estado: estado !== "todos" ? estado : undefined,
-          fluxo:
-            tab === "pos_liquidacao" ? "desistencia_pos_liquidacao" : undefined,
+          fluxo: undefined,
         };
         const fetchedRows = await fetchAllPaginatedRows<DevolucaoContratoItem>({
           sourcePath: "tesouraria/devolucoes/contratos",
