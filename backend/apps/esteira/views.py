@@ -190,6 +190,15 @@ class EsteiraViewSet(
         )
         return Response(EsteiraDetailSerializer(esteira_item, context=self.get_serializer_context()).data)
 
+    @action(detail=True, methods=["post"])
+    def reprovar(self, request, pk=None):
+        EsteiraService.reprovar(
+            self.get_object(),
+            request.user,
+            request.data.get("observacao", ""),
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=True, methods=["get"], url_path="correcao")
     def correcao(self, request, pk=None):
         esteira_item = self.get_object()

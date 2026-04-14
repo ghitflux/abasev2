@@ -209,6 +209,7 @@ type DialogState =
   | { mode: "aprovar"; item: EsteiraItem }
   | { mode: "documentos"; item: EsteiraItem }
   | { mode: "excluir"; item: EsteiraItem }
+  | { mode: "reprovar"; item: EsteiraItem }
   | { mode: "correcao"; item: EsteiraItem }
   | null;
 
@@ -249,6 +250,34 @@ function SummaryCard({
   );
 }
 
+function getEtapaLabel(etapa: string) {
+  if (etapa === "analise") return "Análise";
+  if (etapa === "coordenacao") return "Coordenação";
+  if (etapa === "tesouraria") return "Tesouraria";
+  if (etapa === "cadastro") return "Cadastro";
+  if (etapa === "concluido") return "Concluído";
+  return etapa.replaceAll("_", " ");
+}
+
+function getSituacaoLabel(row: EsteiraItem) {
+  if (row.etapa_atual === "concluido" && row.status === "aprovado") {
+    return "Efetivado";
+  }
+  if (row.etapa_atual === "cadastro" && row.status === "pendenciado") {
+    return "Em correção";
+  }
+  if (row.etapa_atual === "coordenacao" && row.status === "aguardando") {
+    return "Aguardando coordenação";
+  }
+  if (row.etapa_atual === "tesouraria" && row.status === "aguardando") {
+    return "Aguardando tesouraria";
+  }
+  if (row.etapa_atual === "analise" && row.status === "aguardando") {
+    return "Aguardando triagem";
+  }
+  return row.status.replaceAll("_", " ");
+}
+
 export default function AnalisePage() {
   const queryClient = useQueryClient();
   const { hasAnyRole, hasRole, status, user } = usePermissions();
@@ -275,7 +304,7 @@ export default function AnalisePage() {
   const [draftDataFim, setDraftDataFim] = React.useState<Date | undefined>();
   const [dialogState, setDialogState] = React.useState<DialogState>(null);
   const [detailTarget, setDetailTarget] = React.useState<EsteiraItem | null>(
-    null
+    null,
   );
   const [observacao, setObservacao] = React.useState("");
   const [isExporting, setIsExporting] = React.useState(false);
@@ -417,6 +446,7 @@ export default function AnalisePage() {
       action:
         | "assumir"
         | "aprovar"
+        | "reprovar"
         | "validar-documento"
         | "solicitar-correcao";
       payload?: Record<string, string>;
@@ -547,7 +577,25 @@ export default function AnalisePage() {
       {
         id: "fluxo",
         header: "Status",
-        cell: (row) => <StatusBadge status={row.status} />,
+        cellClassName: "min-w-[16rem]",
+        cell: (row) => (
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-2">
+              <StatusBadge
+                status={row.etapa_atual}
+                label={getEtapaLabel(row.etapa_atual)}
+              />
+              <StatusBadge status={row.status} label={getSituacaoLabel(row)} />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {row.status_documentacao === "reenvio_pendente"
+                ? "Há reenvio aguardando nova conferência."
+                : row.status_documentacao === "incompleta"
+                  ? "Documentação incompleta para seguir no fluxo."
+                  : "Fluxo operacional consistente para a etapa atual."}
+            </p>
+          </div>
+        ),
       },
       {
         id: "agente",
@@ -621,6 +669,16 @@ export default function AnalisePage() {
                 onClick={() => setDialogState({ mode: "correcao", item: row })}
               >
                 Solicitar correção
+              </Button>
+            ) : null}
+            {row.etapa_atual === "analise" &&
+            row.acoes_disponiveis.includes("reprovar") ? (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => setDialogState({ mode: "reprovar", item: row })}
+              >
+                Reprovar
               </Button>
             ) : null}
             {row.acoes_disponiveis.includes("excluir") ? (
@@ -734,13 +792,7 @@ export default function AnalisePage() {
         setIsExporting(false);
       }
     },
-    [
-      agenteFilter,
-      analistaFilter,
-      debouncedSearch,
-      etapaFilter,
-      statusFilter,
-    ],
+    [agenteFilter, analistaFilter, debouncedSearch, etapaFilter, statusFilter],
   );
 
   if (status !== "authenticated") {
@@ -1102,22 +1154,26 @@ export default function AnalisePage() {
                 ? "Assumir análise"
                 : dialogState?.mode === "aprovar"
                   ? "Confirmar aprovação"
-                  : dialogState?.mode === "excluir"
-                    ? "Excluir solicitação"
-                    : dialogState?.mode === "correcao"
-                      ? "Solicitar correção"
-                      : "Documentos e formulário"}
+                  : dialogState?.mode === "reprovar"
+                    ? "Reprovar cadastro"
+                    : dialogState?.mode === "excluir"
+                      ? "Excluir solicitação"
+                      : dialogState?.mode === "correcao"
+                        ? "Solicitar correção"
+                        : "Documentos e formulário"}
             </DialogTitle>
             <DialogDescription>
               {dialogState?.mode === "assumir"
                 ? `Deseja assumir a análise do contrato ${dialogState.item.contrato?.codigo}?`
                 : dialogState?.mode === "aprovar"
                   ? `Confirme a aprovação do contrato ${dialogState.item.contrato?.codigo} para a próxima etapa da esteira.`
-                  : dialogState?.mode === "excluir"
-                    ? `Confirme a exclusão lógica da solicitação ${dialogState.item.contrato?.codigo}. O associado, a esteira e a árvore contratual ativa serão removidos das filas operacionais.`
-                    : dialogState?.mode === "correcao"
-                      ? "Informe a observação que deve ser enviada ao agente."
-                      : "Documentos anexados e resumo rápido do cadastro em análise."}
+                  : dialogState?.mode === "reprovar"
+                    ? `A reprovação do contrato ${dialogState.item.contrato?.codigo} removerá o cadastro do associado e toda a árvore contratual das filas operacionais.`
+                    : dialogState?.mode === "excluir"
+                      ? `Confirme a exclusão lógica da solicitação ${dialogState.item.contrato?.codigo}. O associado, a esteira e a árvore contratual ativa serão removidos das filas operacionais.`
+                      : dialogState?.mode === "correcao"
+                        ? "Informe a observação que deve ser enviada ao agente."
+                        : "Documentos anexados e resumo rápido do cadastro em análise."}
             </DialogDescription>
           </DialogHeader>
 
@@ -1164,6 +1220,12 @@ export default function AnalisePage() {
                     </SummaryCard>
                     <SummaryCard label="Status do fluxo">
                       <div className="flex flex-wrap gap-2">
+                        <StatusBadge
+                          status={detalheItem?.etapa_atual ?? "analise"}
+                          label={getEtapaLabel(
+                            detalheItem?.etapa_atual ?? "analise",
+                          )}
+                        />
                         <StatusBadge
                           status={
                             detalheItem?.status_documentacao ?? "incompleta"
@@ -1292,11 +1354,16 @@ export default function AnalisePage() {
             )
           ) : null}
 
-          {dialogState?.mode === "correcao" ? (
+          {dialogState?.mode === "correcao" ||
+          dialogState?.mode === "reprovar" ? (
             <Textarea
               value={observacao}
               onChange={(event) => setObservacao(event.target.value)}
-              placeholder="Descreva a correção necessária..."
+              placeholder={
+                dialogState?.mode === "reprovar"
+                  ? "Motivo da reprovação do cadastro..."
+                  : "Descreva a correção necessária..."
+              }
               className="min-h-32"
             />
           ) : null}
@@ -1340,6 +1407,20 @@ export default function AnalisePage() {
                 }
               >
                 Aprovar e encaminhar
+              </Button>
+            ) : null}
+            {dialogState?.mode === "reprovar" ? (
+              <Button
+                variant="destructive"
+                onClick={() =>
+                  actionMutation.mutate({
+                    item: dialogState.item,
+                    action: "reprovar",
+                    payload: observacao.trim() ? { observacao } : undefined,
+                  })
+                }
+              >
+                Reprovar e excluir cadastro
               </Button>
             ) : null}
             {dialogState?.mode === "correcao" ? (

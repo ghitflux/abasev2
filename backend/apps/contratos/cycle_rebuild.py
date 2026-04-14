@@ -44,6 +44,9 @@ def _active_operational_refis(contrato: Contrato) -> list[Refinanciamento]:
         _effective_refinanciamento_queryset(contrato).filter(
             legacy_refinanciamento_id__isnull=True,
             origem=Refinanciamento.Origem.OPERACIONAL,
+            ciclo_destino__isnull=True,
+            data_ativacao_ciclo__isnull=True,
+            executado_em__isnull=True,
             status__in=[
                 Refinanciamento.Status.APTO_A_RENOVAR,
                 Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
@@ -58,7 +61,7 @@ def _active_operational_refis(contrato: Contrato) -> list[Refinanciamento]:
                 Refinanciamento.Status.APROVADO,
                 Refinanciamento.Status.CONCLUIDO,
             ]
-        )
+        ).order_by("-created_at", "-id")
     )
 
 

@@ -480,6 +480,65 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         self.assertIn(Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO, tipos)
         self.assertNotIn(Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE, tipos)
 
+    def test_novo_ciclo_cria_nova_renovacao_sem_sobrescrever_historico_anterior(self):
+        contrato = self._create_contrato("62345678951")
+        self._create_pagamento(contrato, date(2026, 1, 1))
+        self._create_pagamento(contrato, date(2026, 2, 1))
+        self._create_pagamento(contrato, date(2026, 3, 1))
+
+        primeiro_request = self._solicitar_refinanciamento(contrato)
+        self.assertEqual(primeiro_request.status_code, 201, primeiro_request.json())
+        primeiro_id = primeiro_request.json()["id"]
+
+        self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{primeiro_id}/assumir_analise/"
+        )
+        self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{primeiro_id}/aprovar_analise/",
+            {"observacao": "Primeiro ciclo validado."},
+            format="json",
+        )
+        self.coord_client.post(f"/api/v1/refinanciamentos/{primeiro_id}/aprovar/")
+        efetivacao = self.tes_client.post(
+            f"/api/v1/refinanciamentos/{primeiro_id}/efetivar/",
+            {
+                "comprovante_associado": SimpleUploadedFile(
+                    "associado-primeiro.pdf",
+                    b"arquivo associado",
+                    content_type="application/pdf",
+                ),
+            },
+            format="multipart",
+        )
+        self.assertEqual(efetivacao.status_code, 200, efetivacao.json())
+
+        primeiro = Refinanciamento.objects.get(pk=primeiro_id)
+        primeiro.status = Refinanciamento.Status.CONCLUIDO
+        primeiro.save(update_fields=["status", "updated_at"])
+
+        self._create_pagamento(contrato, date(2026, 4, 1))
+        self._create_pagamento(contrato, date(2026, 5, 1))
+
+        segundo_request = self._solicitar_refinanciamento(contrato)
+        self.assertEqual(segundo_request.status_code, 201, segundo_request.json())
+        segundo_id = segundo_request.json()["id"]
+        self.assertNotEqual(segundo_id, primeiro_id)
+
+        primeiro.refresh_from_db()
+        segundo = Refinanciamento.objects.get(pk=segundo_id)
+
+        self.assertEqual(primeiro.status, Refinanciamento.Status.EFETIVADO)
+        self.assertEqual(primeiro.cycle_key, "2026-01|2026-02|2026-03")
+        self.assertEqual(segundo.status, Refinanciamento.Status.EM_ANALISE_RENOVACAO)
+        self.assertEqual(segundo.cycle_key, "2026-04|2026-05|2026-06")
+        self.assertEqual(
+            Refinanciamento.objects.filter(
+                contrato_origem=contrato,
+                deleted_at__isnull=True,
+            ).count(),
+            2,
+        )
+
     def test_coordenacao_lista_retorna_motivo_apto_e_filtro_por_agente(self):
         contrato = self._create_contrato("72345678901")
         self._create_pagamento(contrato, date(2026, 1, 1))

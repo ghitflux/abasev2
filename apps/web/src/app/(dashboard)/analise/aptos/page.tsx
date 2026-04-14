@@ -6,6 +6,7 @@ import {
   BadgeCheckIcon,
   EyeIcon,
   ForwardIcon,
+  LoaderCircleIcon,
   PlayIcon,
   ShieldCheckIcon,
   SlidersHorizontalIcon,
@@ -13,6 +14,7 @@ import {
 import { toast } from "sonner";
 
 import type {
+  AssociadoDetail,
   PaginatedResponse,
   RefinanciamentoItem,
   RefinanciamentoResumo,
@@ -20,12 +22,24 @@ import type {
 import { apiFetch } from "@/lib/api/client";
 import { formatMonthYear } from "@/lib/formatters";
 import { exportPaginatedRouteReport } from "@/lib/reports";
+import {
+  AssociadoContractsOverview,
+  AssociadoSnapshotSummary,
+} from "@/components/associados/associado-contracts-overview";
 import { RefinanciamentoDetalhesDialog } from "@/components/refinanciamento/refinanciamento-detalhes-dialog";
+import {
+  ParcelaDetalheDialog,
+  type ParcelaDetailTarget,
+} from "@/components/contratos/parcela-detalhe-dialog";
 import MultiSelect from "@/components/custom/multi-select";
-import SearchableSelect, { type SelectOption } from "@/components/custom/searchable-select";
+import SearchableSelect, {
+  type SelectOption,
+} from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
-import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import DataTable, {
+  type DataTableColumn,
+} from "@/components/shared/data-table";
 import ReportExportDialog, {
   type ReportExportFilters,
 } from "@/components/shared/report-export-dialog";
@@ -55,6 +69,7 @@ import { Textarea } from "@/components/ui/textarea";
 type AnaliseAdvancedFilters = {
   competenciaStart: string;
   competenciaEnd: string;
+  cycleKey: string;
   agent: string;
   statuses: string[];
   origins: string[];
@@ -90,6 +105,7 @@ const ASSIGNMENT_OPTIONS: SelectOption[] = [
 const INITIAL_FILTERS: AnaliseAdvancedFilters = {
   competenciaStart: "",
   competenciaEnd: "",
+  cycleKey: "",
   agent: "",
   statuses: [],
   origins: [],
@@ -100,6 +116,7 @@ function countActiveFilters(filters: AnaliseAdvancedFilters) {
   return [
     filters.competenciaStart,
     filters.competenciaEnd,
+    filters.cycleKey,
     filters.agent,
     filters.statuses.length ? "status" : "",
     filters.origins.length ? "origem" : "",
@@ -138,13 +155,18 @@ export default function AnaliseAptosPage() {
   const [search, setSearch] = React.useState("");
   const [isExporting, setIsExporting] = React.useState(false);
   const [sheetOpen, setSheetOpen] = React.useState(false);
-  const [filters, setFilters] = React.useState<AnaliseAdvancedFilters>(INITIAL_FILTERS);
-  const [draftFilters, setDraftFilters] = React.useState<AnaliseAdvancedFilters>(INITIAL_FILTERS);
-  const [selected, setSelected] = React.useState<RefinanciamentoItem | null>(null);
+  const [filters, setFilters] =
+    React.useState<AnaliseAdvancedFilters>(INITIAL_FILTERS);
+  const [draftFilters, setDraftFilters] =
+    React.useState<AnaliseAdvancedFilters>(INITIAL_FILTERS);
+  const [selected, setSelected] = React.useState<RefinanciamentoItem | null>(
+    null,
+  );
   const [dialogAction, setDialogAction] = React.useState<
     "aprovar" | "devolver_agente" | null
   >(null);
-  const [detailItem, setDetailItem] = React.useState<RefinanciamentoItem | null>(null);
+  const [detailItem, setDetailItem] =
+    React.useState<RefinanciamentoItem | null>(null);
   const [observacao, setObservacao] = React.useState("");
   const [activeKpi, setActiveKpi] = React.useState<KpiFilterKey>("total");
 
@@ -172,6 +194,7 @@ export default function AnaliseAptosPage() {
       search,
       filters.competenciaStart,
       filters.competenciaEnd,
+      filters.cycleKey,
       filters.agent,
       resolvedStatuses.join(","),
       filters.origins.join(","),
@@ -179,19 +202,24 @@ export default function AnaliseAptosPage() {
       activeKpi,
     ],
     queryFn: () =>
-      apiFetch<PaginatedResponse<RefinanciamentoItem>>("analise/refinanciamentos", {
-        query: {
-          page,
-          page_size: 20,
-          search: search || undefined,
-          competencia_start: toCompetenciaDate(filters.competenciaStart),
-          competencia_end: toCompetenciaDate(filters.competenciaEnd),
-          agent: filters.agent || undefined,
-          status: resolvedStatuses,
-          origem: filters.origins,
-          assignment: resolvedAssignment !== "todas" ? resolvedAssignment : undefined,
+      apiFetch<PaginatedResponse<RefinanciamentoItem>>(
+        "analise/refinanciamentos",
+        {
+          query: {
+            page,
+            page_size: 20,
+            search: search || undefined,
+            competencia_start: toCompetenciaDate(filters.competenciaStart),
+            competencia_end: toCompetenciaDate(filters.competenciaEnd),
+            cycle_key: filters.cycleKey || undefined,
+            agent: filters.agent || undefined,
+            status: resolvedStatuses,
+            origem: filters.origins,
+            assignment:
+              resolvedAssignment !== "todas" ? resolvedAssignment : undefined,
+          },
         },
-      }),
+      ),
   });
 
   const resumoQuery = useQuery({
@@ -200,6 +228,7 @@ export default function AnaliseAptosPage() {
       search,
       filters.competenciaStart,
       filters.competenciaEnd,
+      filters.cycleKey,
       filters.agent,
       filters.statuses.join(","),
       filters.origins.join(","),
@@ -211,10 +240,12 @@ export default function AnaliseAptosPage() {
           search: search || undefined,
           competencia_start: toCompetenciaDate(filters.competenciaStart),
           competencia_end: toCompetenciaDate(filters.competenciaEnd),
+          cycle_key: filters.cycleKey || undefined,
           agent: filters.agent || undefined,
           status: filters.statuses,
           origem: filters.origins,
-          assignment: filters.assignment !== "todas" ? filters.assignment : undefined,
+          assignment:
+            filters.assignment !== "todas" ? filters.assignment : undefined,
         },
       }),
   });
@@ -226,53 +257,58 @@ export default function AnaliseAptosPage() {
       }),
     onSuccess: () => {
       toast.success("Renovação assumida na análise.");
-      void queryClient.invalidateQueries({ queryKey: ["analise-refinanciamentos"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["analise-refinanciamentos"],
+      });
       void queryClient.invalidateQueries({
         queryKey: ["analise-refinanciamentos-resumo"],
       });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao assumir renovação.");
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao assumir renovação.",
+      );
     },
   });
 
   const aprovarMutation = useMutation({
-    mutationFn: async ({
-      id,
-      note,
-    }: {
-      id: number;
-      note: string;
-    }) => {
-      return apiFetch<RefinanciamentoItem>(`refinanciamentos/${id}/aprovar_analise`, {
-        method: "POST",
-        body: { observacao: note },
-      });
+    mutationFn: async ({ id, note }: { id: number; note: string }) => {
+      return apiFetch<RefinanciamentoItem>(
+        `refinanciamentos/${id}/aprovar_analise`,
+        {
+          method: "POST",
+          body: { observacao: note },
+        },
+      );
     },
     onSuccess: () => {
-      toast.success("Renovação aprovada e enviada para validação da coordenação.");
+      toast.success(
+        "Renovação aprovada e enviada para validação da coordenação.",
+      );
       setSelected(null);
       setObservacao("");
-      void queryClient.invalidateQueries({ queryKey: ["analise-refinanciamentos"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["analise-refinanciamentos"],
+      });
       void queryClient.invalidateQueries({
         queryKey: ["analise-refinanciamentos-resumo"],
       });
-      void queryClient.invalidateQueries({ queryKey: ["coordenacao-refinanciamento"] });
-      void queryClient.invalidateQueries({ queryKey: ["agente-refinanciados"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["coordenacao-refinanciamento"],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["agente-refinanciados"],
+      });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao aprovar renovação.");
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao aprovar renovação.",
+      );
     },
   });
 
   const devolverAgenteMutation = useMutation({
-    mutationFn: async ({
-      id,
-      note,
-    }: {
-      id: number;
-      note: string;
-    }) =>
+    mutationFn: async ({ id, note }: { id: number; note: string }) =>
       apiFetch<RefinanciamentoItem>(`refinanciamentos/${id}/devolver-agente`, {
         method: "POST",
         body: { observacao: note },
@@ -282,14 +318,20 @@ export default function AnaliseAptosPage() {
       setSelected(null);
       setDialogAction(null);
       setObservacao("");
-      void queryClient.invalidateQueries({ queryKey: ["analise-refinanciamentos"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["analise-refinanciamentos"],
+      });
       void queryClient.invalidateQueries({
         queryKey: ["analise-refinanciamentos-resumo"],
       });
-      void queryClient.invalidateQueries({ queryKey: ["agente-refinanciados"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["agente-refinanciados"],
+      });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao devolver renovação.");
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao devolver renovação.",
+      );
     },
   });
 
@@ -323,13 +365,29 @@ export default function AnaliseAptosPage() {
         ),
       },
       {
+        id: "ciclo",
+        header: "Ciclo",
+        cellClassName: "min-w-[14rem]",
+        cell: (row) => (
+          <div className="space-y-1">
+            <Badge variant="outline" className="rounded-full border-border/60">
+              Ciclo {row.numero_ciclos}
+            </Badge>
+            <p className="font-mono text-xs text-muted-foreground">
+              {row.ciclo_key || "Sem assinatura de ciclo"}
+            </p>
+          </div>
+        ),
+      },
+      {
         id: "status",
         header: "Status",
         cell: (row) => (
           <div className="space-y-1">
             <StatusBadge status={row.status} />
             <p className="text-xs text-muted-foreground">
-              {row.mensalidades_pagas}/{row.mensalidades_total} parcelas quitadas
+              {row.mensalidades_pagas}/{row.mensalidades_total} parcelas
+              quitadas
             </p>
           </div>
         ),
@@ -359,11 +417,17 @@ export default function AnaliseAptosPage() {
         header: "Ações",
         cell: (row) => (
           <div className="flex flex-wrap gap-2">
-            <Button size="sm" variant="outline" onClick={() => setDetailItem(row)}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setDetailItem(row)}
+            >
               <EyeIcon className="size-4" />
               Detalhes
             </Button>
-            {["em_analise_renovacao", "pendente_termo_analista"].includes(row.status) ? (
+            {["em_analise_renovacao", "pendente_termo_analista"].includes(
+              row.status,
+            ) ? (
               <Button
                 size="sm"
                 variant="outline"
@@ -373,7 +437,9 @@ export default function AnaliseAptosPage() {
                 Assumir
               </Button>
             ) : null}
-            {["em_analise_renovacao", "pendente_termo_analista"].includes(row.status) ? (
+            {["em_analise_renovacao", "pendente_termo_analista"].includes(
+              row.status,
+            ) ? (
               <Button
                 size="sm"
                 onClick={() => {
@@ -385,7 +451,9 @@ export default function AnaliseAptosPage() {
                 Aprovar
               </Button>
             ) : null}
-            {["em_analise_renovacao", "pendente_termo_analista"].includes(row.status) ? (
+            {["em_analise_renovacao", "pendente_termo_analista"].includes(
+              row.status,
+            ) ? (
               <Button
                 size="sm"
                 variant="outline"
@@ -424,10 +492,12 @@ export default function AnaliseAptosPage() {
             search: search || undefined,
             competencia_start: toCompetenciaDate(filters.competenciaStart),
             competencia_end: toCompetenciaDate(filters.competenciaEnd),
+            cycle_key: filters.cycleKey || undefined,
             agent: filters.agent || undefined,
             status: resolvedStatuses,
             origem: filters.origins,
-            assignment: resolvedAssignment !== "todas" ? resolvedAssignment : undefined,
+            assignment:
+              resolvedAssignment !== "todas" ? resolvedAssignment : undefined,
             pagamento_feito: pagamentoFeito,
           },
           mapRow: (row) => ({
@@ -445,12 +515,25 @@ export default function AnaliseAptosPage() {
           },
         });
       } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Falha ao exportar a fila da análise.");
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Falha ao exportar a fila da análise.",
+        );
       } finally {
         setIsExporting(false);
       }
     },
-    [filters.agent, filters.competenciaEnd, filters.competenciaStart, filters.origins, resolvedAssignment, resolvedStatuses, search],
+    [
+      filters.agent,
+      filters.competenciaEnd,
+      filters.competenciaStart,
+      filters.cycleKey,
+      filters.origins,
+      resolvedAssignment,
+      resolvedStatuses,
+      search,
+    ],
   );
 
   return (
@@ -463,8 +546,9 @@ export default function AnaliseAptosPage() {
             </p>
             <h1 className="text-3xl font-semibold">Contratos para Renovação</h1>
             <p className="text-sm text-muted-foreground">
-              Fila do analista para revisar solicitações enviadas pelo agente e encaminhá-las
-              para validação da coordenação. Total filtrado: {resumo.total}
+              Fila do analista para revisar solicitações enviadas pelo agente e
+              encaminhá-las para validação da coordenação. Total filtrado:{" "}
+              {resumo.total}
             </p>
           </div>
           <ReportExportDialog
@@ -482,7 +566,9 @@ export default function AnaliseAptosPage() {
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {resumoQuery.isLoading && !resumoQuery.data ? (
-          Array.from({ length: 4 }).map((_, index) => <MetricCardSkeleton key={index} />)
+          Array.from({ length: 4 }).map((_, index) => (
+            <MetricCardSkeleton key={index} />
+          ))
         ) : (
           <>
             <StatsCard
@@ -544,7 +630,7 @@ export default function AnaliseAptosPage() {
             setSearch(event.target.value);
             setPage(1);
           }}
-          placeholder="Buscar por associado, CPF ou contrato"
+          placeholder="Buscar por associado, CPF, contrato ou ciclo"
           className="rounded-2xl border-border/60 bg-card/60"
         />
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
@@ -587,6 +673,19 @@ export default function AnaliseAptosPage() {
                       setDraftFilters((current) => ({
                         ...current,
                         competenciaEnd: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <p className="text-sm font-medium">Filtro por ciclo</p>
+                  <Input
+                    type="month"
+                    value={draftFilters.cycleKey}
+                    onChange={(event) =>
+                      setDraftFilters((current) => ({
+                        ...current,
+                        cycleKey: event.target.value,
                       }))
                     }
                   />
@@ -693,9 +792,15 @@ export default function AnaliseAptosPage() {
         </section>
       ) : null}
 
+      <section className="rounded-[1.5rem] border border-border/60 bg-card/50 px-4 py-3 text-sm text-muted-foreground">
+        Expanda a linha do associado para auditar contratos, ciclos e parcelas
+        sem sair da fila.
+      </section>
+
       <DataTable
         data={rows}
         columns={columns}
+        renderExpanded={(row) => <AnaliseRenewalHistoryPanel row={row} />}
         currentPage={page}
         totalPages={Math.max(1, Math.ceil(totalCount / 20))}
         onPageChange={setPage}
@@ -787,5 +892,77 @@ export default function AnaliseAptosPage() {
         }}
       />
     </div>
+  );
+}
+
+function AnaliseRenewalHistoryPanel({ row }: { row: RefinanciamentoItem }) {
+  const [selectedTarget, setSelectedTarget] =
+    React.useState<ParcelaDetailTarget | null>(null);
+  const associadoQuery = useQuery({
+    queryKey: ["analise-refinanciamento-associado", row.associado_id],
+    queryFn: () => apiFetch<AssociadoDetail>(`associados/${row.associado_id}`),
+  });
+
+  if (associadoQuery.isLoading) {
+    return (
+      <div className="flex min-h-40 items-center justify-center rounded-[1.5rem] border border-border/60 bg-background/40">
+        <LoaderCircleIcon className="size-5 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (associadoQuery.isError || !associadoQuery.data) {
+    return (
+      <div className="rounded-[1.5rem] border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+        {associadoQuery.error instanceof Error
+          ? associadoQuery.error.message
+          : "Falha ao carregar o histórico completo do associado."}
+      </div>
+    );
+  }
+
+  const associado = associadoQuery.data;
+
+  return (
+    <>
+      <div className="space-y-4 rounded-[1.5rem] border border-border/60 bg-background/30 p-4">
+        <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-foreground">
+              Histórico auditável do associado
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Solicitação atual no ciclo {row.numero_ciclos} com assinatura{" "}
+              {row.ciclo_key}.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <StatusBadge status={row.status} />
+            <Badge variant="outline" className="rounded-full border-border/60">
+              {row.mensalidades_pagas}/{row.mensalidades_total} parcelas
+              quitadas
+            </Badge>
+          </div>
+        </div>
+
+        <AssociadoSnapshotSummary associado={associado} />
+        <AssociadoContractsOverview
+          associado={associado}
+          defaultOpenContractId={row.contrato_id}
+          onParcelaClick={setSelectedTarget}
+          showDocuments={false}
+        />
+      </div>
+
+      <ParcelaDetalheDialog
+        associadoId={row.associado_id}
+        target={selectedTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedTarget(null);
+          }
+        }}
+      />
+    </>
   );
 }

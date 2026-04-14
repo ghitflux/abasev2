@@ -23,6 +23,19 @@ REFINANCIAMENTO_ACTIVE_STATUSES = (
 )
 
 
+def _is_effective_refinanciamento(refinanciamento: Refinanciamento) -> bool:
+    return bool(
+        refinanciamento.status
+        in {
+            Refinanciamento.Status.EFETIVADO,
+            Refinanciamento.Status.CONCLUIDO,
+        }
+        or refinanciamento.executado_em is not None
+        or refinanciamento.data_ativacao_ciclo is not None
+        or refinanciamento.ciclo_destino_id is not None
+    )
+
+
 def normalize_document(value: str | None) -> str:
     return re.sub(r"\D", "", value or "")
 
@@ -37,10 +50,15 @@ def paid_pagamento_filter(prefix: str = "") -> Q:
 
 def has_active_refinanciamento(contrato: Contrato) -> bool:
     cpf_cnpj = normalize_document(contrato.associado.cpf_cnpj)
-    return Refinanciamento.objects.filter(
+    refinanciamentos = Refinanciamento.objects.filter(
         associado__cpf_cnpj=cpf_cnpj,
         status__in=REFINANCIAMENTO_ACTIVE_STATUSES,
-    ).exists()
+        deleted_at__isnull=True,
+    ).only("status", "executado_em", "data_ativacao_ciclo", "ciclo_destino_id")
+    return any(
+        not _is_effective_refinanciamento(refinanciamento)
+        for refinanciamento in refinanciamentos
+    )
 
 
 def free_paid_pagamentos_queryset(

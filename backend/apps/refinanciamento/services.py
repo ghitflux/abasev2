@@ -356,6 +356,9 @@ class RefinanciamentoService:
                 deleted_at__isnull=True,
                 legacy_refinanciamento_id__isnull=True,
                 origem=Refinanciamento.Origem.OPERACIONAL,
+                ciclo_destino__isnull=True,
+                data_ativacao_ciclo__isnull=True,
+                executado_em__isnull=True,
                 status__in=_OPERATIONAL_ACTIVE_STATUSES,
             )
             .order_by("-created_at", "-id")

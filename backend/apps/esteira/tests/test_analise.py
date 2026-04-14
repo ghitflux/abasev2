@@ -525,6 +525,39 @@ class AnaliseViewSetTestCase(TestCase):
         response = self.analyst_client.delete(f"/api/v1/esteira/{item.id}/")
         self.assertEqual(response.status_code, 400, response.json())
 
+    def test_reprovar_item_em_analise_remove_cadastro_completo(self):
+        item = self._create_item(
+            suffix="4024",
+            documentos=1,
+            status=EsteiraItem.Situacao.EM_ANDAMENTO,
+            analista=self.analista,
+        )
+        contrato = item.associado.contratos.get()
+        ciclos = list(contrato.ciclos.all())
+        parcelas = [parcela for ciclo in ciclos for parcela in ciclo.parcelas.all()]
+
+        fila = self.analyst_client.get("/api/v1/analise/filas/?secao=ver_todos")
+        self.assertEqual(fila.status_code, 200, fila.json())
+        row = next(registro for registro in fila.json()["results"] if registro["id"] == item.id)
+        self.assertIn("reprovar", row["acoes_disponiveis"])
+
+        response = self.analyst_client.post(
+            f"/api/v1/esteira/{item.id}/reprovar/",
+            {"observacao": "Cadastro inconsistente para aprovação."},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 204)
+
+        self.assertFalse(EsteiraItem.objects.filter(pk=item.id).exists())
+        self.assertIsNotNone(EsteiraItem.all_objects.get(pk=item.id).deleted_at)
+        self.assertFalse(Associado.objects.filter(pk=item.associado_id).exists())
+        self.assertIsNotNone(Associado.all_objects.get(pk=item.associado_id).deleted_at)
+        self.assertIsNotNone(Contrato.all_objects.get(pk=contrato.id).deleted_at)
+        for ciclo in ciclos:
+            self.assertIsNotNone(type(ciclo).all_objects.get(pk=ciclo.id).deleted_at)
+        for parcela in parcelas:
+            self.assertIsNotNone(type(parcela).all_objects.get(pk=parcela.id).deleted_at)
+
     def test_agente_reenvia_correcao_e_item_volta_para_analise(self):
         item = self._create_item(
             suffix="403",

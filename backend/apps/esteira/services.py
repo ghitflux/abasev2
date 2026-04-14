@@ -19,7 +19,12 @@ class EsteiraService:
 
     TRANSICOES_VALIDAS = {
         ("analise", "aguardando"): ["assumir"],
-        ("analise", "em_andamento"): ["aprovar", "pendenciar", "solicitar_correcao"],
+        ("analise", "em_andamento"): [
+            "aprovar",
+            "pendenciar",
+            "solicitar_correcao",
+            "reprovar",
+        ],
         ("coordenacao", "aguardando"): ["assumir"],
         ("coordenacao", "em_andamento"): ["aprovar", "pendenciar", "rejeitar"],
         ("tesouraria", "aguardando"): ["efetivar"],
@@ -273,13 +278,7 @@ class EsteiraService:
         )
 
     @staticmethod
-    @transaction.atomic
-    def excluir_solicitacao(esteira_item: EsteiraItem) -> None:
-        if not EsteiraService.can_delete(esteira_item):
-            raise ValidationError(
-                "Somente itens aguardando, sem assunção e sem responsáveis podem ser excluídos."
-            )
-
+    def _soft_delete_solicitacao_package(esteira_item: EsteiraItem) -> None:
         associado = esteira_item.associado
 
         for pendencia in esteira_item.pendencias.filter(deleted_at__isnull=True):
@@ -300,6 +299,41 @@ class EsteiraService:
 
         esteira_item.soft_delete()
         associado.soft_delete()
+
+    @staticmethod
+    @transaction.atomic
+    def excluir_solicitacao(esteira_item: EsteiraItem) -> None:
+        if not EsteiraService.can_delete(esteira_item):
+            raise ValidationError(
+                "Somente itens aguardando, sem assunção e sem responsáveis podem ser excluídos."
+            )
+
+        EsteiraService._soft_delete_solicitacao_package(esteira_item)
+
+    @staticmethod
+    @transaction.atomic
+    def reprovar(esteira_item: EsteiraItem, user, observacao: str = "") -> None:
+        EsteiraService._validar_acao(esteira_item, "reprovar")
+
+        if esteira_item.etapa_atual != EsteiraItem.Etapa.ANALISE:
+            raise ValidationError("A reprovação só está disponível na etapa de análise.")
+        if (
+            esteira_item.analista_responsavel_id
+            and esteira_item.analista_responsavel_id != user.id
+        ):
+            raise ValidationError("Este item foi assumido por outro analista.")
+
+        EsteiraService._registrar_transicao(
+            esteira_item,
+            user,
+            "reprovar",
+            esteira_item.etapa_atual,
+            EsteiraItem.Etapa.CONCLUIDO,
+            esteira_item.status,
+            EsteiraItem.Situacao.REJEITADO,
+            observacao or "Cadastro reprovado na análise e removido da operação.",
+        )
+        EsteiraService._soft_delete_solicitacao_package(esteira_item)
 
     @staticmethod
     @transaction.atomic

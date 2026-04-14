@@ -12,7 +12,12 @@ import {
 } from "@/lib/formatters";
 import { ParcelaDetailTarget } from "@/components/contratos/parcela-detalhe-dialog";
 import StatusBadge from "@/components/custom/status-badge";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type AssociadoSnapshot = Pick<
@@ -86,7 +91,9 @@ function CycleDocumentLink({
     <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 p-3">
       <p className="text-sm font-medium">{label}</p>
       <p className="mt-1 text-xs text-muted-foreground">{title}</p>
-      <p className="mt-1 text-[11px] text-amber-200">Referência de arquivo legado</p>
+      <p className="mt-1 text-[11px] text-amber-200">
+        Referência de arquivo legado
+      </p>
     </div>
   );
 }
@@ -229,7 +236,9 @@ export function AssociadoDocumentCard({
         className="rounded-2xl border border-border/60 bg-background/60 p-4 transition hover:border-primary/50"
       >
         <div className="flex items-center justify-between gap-3">
-          <p className="font-medium capitalize">{documento.tipo.replaceAll("_", " ")}</p>
+          <p className="font-medium capitalize">
+            {documento.tipo.replaceAll("_", " ")}
+          </p>
           <StatusBadge status={documento.status} />
         </div>
         <p className="mt-2 text-sm text-muted-foreground">{title}</p>
@@ -240,7 +249,9 @@ export function AssociadoDocumentCard({
   return (
     <div className="rounded-2xl border border-dashed border-border/60 bg-background/40 p-4">
       <div className="flex items-center justify-between gap-3">
-        <p className="font-medium capitalize">{documento.tipo.replaceAll("_", " ")}</p>
+        <p className="font-medium capitalize">
+          {documento.tipo.replaceAll("_", " ")}
+        </p>
         <StatusBadge status={documento.status} />
       </div>
       <p className="mt-2 text-sm text-muted-foreground">{title}</p>
@@ -265,7 +276,9 @@ export function AssociadoDocumentsGrid({
           <AssociadoDocumentCard key={documento.id} documento={documento} />
         ))
       ) : (
-        <p className="text-sm text-muted-foreground">Nenhum documento anexado.</p>
+        <p className="text-sm text-muted-foreground">
+          Nenhum documento anexado.
+        </p>
       )}
     </div>
   );
@@ -322,7 +335,11 @@ export function AssociadoContractsOverview({
 
   return (
     <div className="space-y-4">
-      <Accordion type="multiple" defaultValue={defaultValue} className="space-y-4">
+      <Accordion
+        type="multiple"
+        defaultValue={defaultValue}
+        className="space-y-4"
+      >
         {associado.contratos.map((contrato) => (
           <AccordionItem
             key={contrato.id}
@@ -334,8 +351,9 @@ export function AssociadoContractsOverview({
                 <div className="text-left">
                   <CardTitle className="text-lg">{contrato.codigo}</CardTitle>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Contrato em {formatDate(contrato.data_contrato)} com mensalidade de{" "}
-                    {formatCurrency(contrato.valor_mensalidade)}
+                    Contrato em {formatDate(contrato.data_contrato)} com
+                    mensalidade de {formatCurrency(contrato.valor_mensalidade)}{" "}
+                    e doação de {formatCurrency(contrato.doacao_associado)}
                   </p>
                 </div>
                 <div className="text-right">
@@ -345,7 +363,8 @@ export function AssociadoContractsOverview({
                   />
                   {contrato.possui_meses_nao_descontados ? (
                     <p className="mt-2 text-xs text-amber-200">
-                      {contrato.meses_nao_descontados_count} mês(es) não descontado(s)
+                      {contrato.meses_nao_descontados_count} mês(es) não
+                      descontado(s)
                     </p>
                   ) : null}
                 </div>
@@ -355,27 +374,46 @@ export function AssociadoContractsOverview({
               {agentRestricted ? null : (
                 <>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <DetailItem label="Valor bruto" value={formatCurrency(contrato.valor_bruto)} />
-                    <DetailItem label="Valor líquido" value={formatCurrency(contrato.valor_liquido)} />
+                    <DetailItem
+                      label="Valor bruto"
+                      value={formatCurrency(contrato.valor_bruto)}
+                    />
+                    <DetailItem
+                      label="Valor líquido"
+                      value={formatCurrency(contrato.valor_liquido)}
+                    />
                     <DetailItem
                       label="Mensalidade associativa"
                       value={formatCurrency(contrato.valor_mensalidade)}
                     />
                     <DetailItem
+                      label="Doação do associado"
+                      value={formatCurrency(contrato.doacao_associado)}
+                    />
+                    <DetailItem
                       label="Taxa de antecipação"
                       value={`${contrato.taxa_antecipacao}%`}
                     />
-                    <DetailItem label="Disponível" value={formatCurrency(contrato.margem_disponivel)} />
+                    <DetailItem
+                      label="Disponível"
+                      value={formatCurrency(contrato.margem_disponivel)}
+                    />
                     <DetailItem
                       label="Valor total antecipação"
                       value={formatCurrency(contrato.valor_total_antecipacao)}
                     />
-                    <DetailItem label="Prazo (meses)" value={String(contrato.prazo_meses)} />
+                    <DetailItem
+                      label="Prazo (meses)"
+                      value={String(contrato.prazo_meses)}
+                    />
                     <DetailItem
                       label="Comissão do agente"
                       value={formatCurrency(contrato.comissao_agente)}
                     />
-                    <DetailItem label="Data de aprovação" value={formatDate(contrato.data_aprovacao)} />
+                    <DetailItem
+                      label="Data de aprovação"
+                      value={formatDate(contrato.data_aprovacao)}
+                    />
                     <DetailItem
                       label="Primeira mensalidade"
                       value={formatDate(contrato.data_primeira_mensalidade)}
@@ -393,7 +431,9 @@ export function AssociadoContractsOverview({
                   <Card className="rounded-[1.5rem] border-border/60 bg-card/60">
                     <CardHeader>
                       <div className="flex flex-wrap items-center justify-between gap-3">
-                        <CardTitle className="text-base">Pagamento da efetivação</CardTitle>
+                        <CardTitle className="text-base">
+                          Pagamento da efetivação
+                        </CardTitle>
                         <StatusBadge
                           status={contrato.pagamento_inicial_status}
                           label={contrato.pagamento_inicial_status_label}
@@ -414,20 +454,29 @@ export function AssociadoContractsOverview({
                           label="Recebido em"
                           value={
                             contrato.pagamento_inicial_paid_at
-                              ? formatDateTime(contrato.pagamento_inicial_paid_at)
+                              ? formatDateTime(
+                                  contrato.pagamento_inicial_paid_at,
+                                )
                               : "Aguardando tesouraria"
                           }
                         />
                         <DetailItem
                           label="Evidências"
-                          value={String(contrato.pagamento_inicial_evidencias.length)}
+                          value={String(
+                            contrato.pagamento_inicial_evidencias.length,
+                          )}
                         />
                       </div>
                       {contrato.pagamento_inicial_evidencias.length ? (
                         <div className="grid gap-3 md:grid-cols-2">
-                          {contrato.pagamento_inicial_evidencias.map((arquivo) => (
-                            <InitialPaymentEvidenceCard key={arquivo.id} arquivo={arquivo} />
-                          ))}
+                          {contrato.pagamento_inicial_evidencias.map(
+                            (arquivo) => (
+                              <InitialPaymentEvidenceCard
+                                key={arquivo.id}
+                                arquivo={arquivo}
+                              />
+                            ),
+                          )}
                         </div>
                       ) : (
                         <p className="text-sm text-muted-foreground">
@@ -441,23 +490,34 @@ export function AssociadoContractsOverview({
                     <Card className="rounded-[1.5rem] border-border/60 bg-card/60">
                       <CardHeader>
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                          <CardTitle className="text-base">Liquidação do contrato</CardTitle>
-                          <StatusBadge status={contrato.liquidacao_contrato.status} />
+                          <CardTitle className="text-base">
+                            Liquidação do contrato
+                          </CardTitle>
+                          <StatusBadge
+                            status={contrato.liquidacao_contrato.status}
+                          />
                         </div>
                       </CardHeader>
                       <CardContent className="space-y-4">
                         <div className="grid gap-4 md:grid-cols-3">
                           <DetailItem
                             label="Data da liquidação"
-                            value={formatDate(contrato.liquidacao_contrato.data_liquidacao)}
+                            value={formatDate(
+                              contrato.liquidacao_contrato.data_liquidacao,
+                            )}
                           />
                           <DetailItem
                             label="Valor total"
-                            value={formatCurrency(contrato.liquidacao_contrato.valor_total)}
+                            value={formatCurrency(
+                              contrato.liquidacao_contrato.valor_total,
+                            )}
                           />
                           <DetailItem
                             label="Responsável"
-                            value={contrato.liquidacao_contrato.realizado_por?.full_name}
+                            value={
+                              contrato.liquidacao_contrato.realizado_por
+                                ?.full_name
+                            }
                           />
                         </div>
                         {contrato.liquidacao_contrato.observacao ? (
@@ -480,26 +540,29 @@ export function AssociadoContractsOverview({
                               Parcelas afetadas
                             </p>
                             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                              {contrato.liquidacao_contrato.parcelas.map((parcela) => (
-                                <div
-                                  key={`${contrato.liquidacao_contrato?.id}-${parcela.id}`}
-                                  className="rounded-2xl border border-border/60 bg-background/60 p-4"
-                                >
-                                  <div className="flex items-center justify-between gap-3">
-                                    <p className="font-medium">
-                                      Parcela {parcela.numero}
+                              {contrato.liquidacao_contrato.parcelas.map(
+                                (parcela) => (
+                                  <div
+                                    key={`${contrato.liquidacao_contrato?.id}-${parcela.id}`}
+                                    className="rounded-2xl border border-border/60 bg-background/60 p-4"
+                                  >
+                                    <div className="flex items-center justify-between gap-3">
+                                      <p className="font-medium">
+                                        Parcela {parcela.numero}
+                                      </p>
+                                      <StatusBadge status={parcela.status} />
+                                    </div>
+                                    <p className="mt-2 text-sm text-muted-foreground">
+                                      {formatMonthYear(parcela.referencia_mes)}{" "}
+                                      · {formatCurrency(parcela.valor)}
                                     </p>
-                                    <StatusBadge status={parcela.status} />
+                                    <p className="text-sm text-muted-foreground">
+                                      Pagamento{" "}
+                                      {formatDate(parcela.data_pagamento)}
+                                    </p>
                                   </div>
-                                  <p className="mt-2 text-sm text-muted-foreground">
-                                    {formatMonthYear(parcela.referencia_mes)} ·{" "}
-                                    {formatCurrency(parcela.valor)}
-                                  </p>
-                                  <p className="text-sm text-muted-foreground">
-                                    Pagamento {formatDate(parcela.data_pagamento)}
-                                  </p>
-                                </div>
-                              ))}
+                                ),
+                              )}
                             </div>
                           </div>
                         ) : null}
@@ -511,7 +574,9 @@ export function AssociadoContractsOverview({
                     <Card className="rounded-[1.5rem] border-border/60 bg-card/60">
                       <CardHeader>
                         <div className="flex flex-wrap items-center justify-between gap-3">
-                          <CardTitle className="text-base">Devoluções ao associado</CardTitle>
+                          <CardTitle className="text-base">
+                            Devoluções ao associado
+                          </CardTitle>
                           <StatusBadge
                             status={contrato.devolucoes_associado[0].status}
                             label={`${contrato.devolucoes_associado.length} registro(s)`}
@@ -550,7 +615,9 @@ export function AssociadoContractsOverview({
                                   label="Competência"
                                   value={
                                     devolucao.competencia_referencia
-                                      ? formatMonthYear(devolucao.competencia_referencia)
+                                      ? formatMonthYear(
+                                          devolucao.competencia_referencia,
+                                        )
                                       : "Sem competência"
                                   }
                                 />
@@ -570,11 +637,13 @@ export function AssociadoContractsOverview({
                               ) : null}
                               {devolucao.revertida_em ? (
                                 <div className="rounded-2xl border border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
-                                  Revertida em {formatDateTime(devolucao.revertida_em)}
+                                  Revertida em{" "}
+                                  {formatDateTime(devolucao.revertida_em)}
                                   {devolucao.revertida_por?.full_name
                                     ? ` por ${devolucao.revertida_por.full_name}.`
                                     : "."}{" "}
-                                  {devolucao.motivo_reversao || "Sem motivo informado."}
+                                  {devolucao.motivo_reversao ||
+                                    "Sem motivo informado."}
                                 </div>
                               ) : null}
                             </div>
@@ -586,106 +655,164 @@ export function AssociadoContractsOverview({
                 </>
               )}
 
-              <div className="grid gap-4 xl:grid-cols-3">
-                {contrato.ciclos.map((ciclo) => (
-                  <Card key={ciclo.id} className="rounded-[1.5rem] border-border/60 bg-card/60">
-                    <CardHeader>
-                      <div className="flex items-center justify-between gap-3">
-                        <CardTitle className="text-base">Ciclo {ciclo.numero}</CardTitle>
-                        <StatusBadge
-                          status={ciclo.status_visual_slug}
-                          label={ciclo.status_visual_label}
-                        />
-                      </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="rounded-2xl border border-border/60 bg-background/60 p-4 text-sm">
-                        <p className="font-medium">
-                          Ativado em {formatDate(ciclo.data_ativacao_ciclo)}
-                        </p>
-                        <p className="mt-2 text-muted-foreground">
-                          Origem:{" "}
-                          {ciclo.ativacao_inferida
-                            ? `${ciclo.origem_data_ativacao} (inferida)`
-                            : ciclo.origem_data_ativacao}
-                        </p>
-                        <p className="text-muted-foreground">
-                          Renovação ativada em: {formatDate(ciclo.data_solicitacao_renovacao)}
-                        </p>
-                        {ciclo.data_renovacao ? (
-                          <p className="text-muted-foreground">
-                            Renovado em {formatDateTime(ciclo.data_renovacao)}
-                          </p>
-                        ) : null}
-                        {ciclo.origem_renovacao ? (
-                          <p className="text-muted-foreground">
-                            Origem da renovação: {ciclo.origem_renovacao}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        {ciclo.parcelas.map((parcela) => (
-                          <button
-                            key={parcela.id}
-                            type="button"
-                            onClick={() =>
-                              onParcelaClick?.({
-                                contratoId: contrato.id,
-                                referenciaMes: parcela.referencia_mes,
-                                kind: "cycle",
-                              })
-                            }
-                            className="rounded-2xl border border-border/60 bg-background/60 p-4 text-left transition hover:border-primary/50"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="font-medium">
-                                Parcela {parcela.numero}/{ciclo.parcelas.length}
-                              </p>
-                              <StatusBadge status={parcela.status} />
+              <section className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-foreground">
+                    Histórico de ciclos e renovações
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Expanda cada ciclo para auditar parcelas e anexos
+                    vinculados.
+                  </p>
+                </div>
+                <Accordion
+                  type="multiple"
+                  defaultValue={
+                    contrato.ciclos.length
+                      ? [
+                          `ciclo-${contrato.id}-${contrato.ciclos[contrato.ciclos.length - 1]?.id}`,
+                        ]
+                      : []
+                  }
+                  className="space-y-3"
+                >
+                  {contrato.ciclos.map((ciclo) => (
+                    <AccordionItem
+                      key={ciclo.id}
+                      value={`ciclo-${contrato.id}-${ciclo.id}`}
+                      className="overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/60"
+                    >
+                      <AccordionTrigger className="px-5 py-4 hover:no-underline">
+                        <div className="flex w-full flex-wrap items-center justify-between gap-3 pr-4 text-left">
+                          <div className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <CardTitle className="text-base">
+                                Ciclo {ciclo.numero}
+                              </CardTitle>
+                              <StatusBadge
+                                status={ciclo.status_visual_slug}
+                                label={ciclo.status_visual_label}
+                              />
                             </div>
-                            <p className="mt-2 text-sm text-muted-foreground">
-                              {formatMonthYear(parcela.referencia_mes)} ·{" "}
-                              {formatCurrency(parcela.valor)}
-                            </p>
                             <p className="text-sm text-muted-foreground">
-                              Vencimento {formatDate(parcela.data_vencimento)}
+                              {ciclo.parcelas.length} parcela(s) vinculada(s) ·
+                              ativado em {formatDate(ciclo.data_ativacao_ciclo)}
                             </p>
-                          </button>
-                        ))}
-                      </div>
-                      {ciclo.termo_antecipacao || ciclo.comprovantes_ciclo.length ? (
-                        <div className="space-y-3 pt-1">
-                          <p className="text-sm font-medium text-foreground">
-                            {agentRestricted ? "Comprovantes do agente" : "Documentos do ciclo"}
-                          </p>
-                          <div className="grid gap-3">
-                            {!agentRestricted && ciclo.termo_antecipacao ? (
-                              <CycleDocumentLink
-                                label="Termo de antecipação"
-                                arquivo={ciclo.termo_antecipacao}
-                              />
-                            ) : null}
-                            {ciclo.comprovantes_ciclo.map((arquivo) => (
-                              <CycleDocumentLink
-                                key={`${arquivo.tipo}-${arquivo.arquivo_referencia}`}
-                                label={arquivo.tipo.replaceAll("_", " ")}
-                                arquivo={arquivo}
-                              />
-                            ))}
+                          </div>
+                          <div className="space-y-1 text-right text-xs text-muted-foreground">
+                            <p>
+                              Origem:{" "}
+                              {ciclo.ativacao_inferida
+                                ? `${ciclo.origem_data_ativacao} (inferida)`
+                                : ciclo.origem_data_ativacao}
+                            </p>
+                            <p>
+                              Renovação:{" "}
+                              {ciclo.data_solicitacao_renovacao
+                                ? formatDate(ciclo.data_solicitacao_renovacao)
+                                : "N/I"}
+                            </p>
                           </div>
                         </div>
-                      ) : null}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-4 px-5">
+                        <div className="rounded-2xl border border-border/60 bg-background/60 p-4 text-sm">
+                          <p className="font-medium">
+                            Ativado em {formatDate(ciclo.data_ativacao_ciclo)}
+                          </p>
+                          <p className="mt-2 text-muted-foreground">
+                            Origem:{" "}
+                            {ciclo.ativacao_inferida
+                              ? `${ciclo.origem_data_ativacao} (inferida)`
+                              : ciclo.origem_data_ativacao}
+                          </p>
+                          <p className="text-muted-foreground">
+                            Renovação ativada em:{" "}
+                            {formatDate(ciclo.data_solicitacao_renovacao)}
+                          </p>
+                          {ciclo.data_renovacao ? (
+                            <p className="text-muted-foreground">
+                              Renovado em {formatDateTime(ciclo.data_renovacao)}
+                            </p>
+                          ) : null}
+                          {ciclo.origem_renovacao ? (
+                            <p className="text-muted-foreground">
+                              Origem da renovação: {ciclo.origem_renovacao}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {ciclo.parcelas.map((parcela) => (
+                            <button
+                              key={parcela.id}
+                              type="button"
+                              onClick={() =>
+                                onParcelaClick?.({
+                                  contratoId: contrato.id,
+                                  referenciaMes: parcela.referencia_mes,
+                                  kind: "cycle",
+                                })
+                              }
+                              className="rounded-2xl border border-border/60 bg-background/60 p-4 text-left transition hover:border-primary/50"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="font-medium">
+                                  Parcela {parcela.numero}/
+                                  {ciclo.parcelas.length}
+                                </p>
+                                <StatusBadge status={parcela.status} />
+                              </div>
+                              <p className="mt-2 text-sm text-muted-foreground">
+                                {formatMonthYear(parcela.referencia_mes)} ·{" "}
+                                {formatCurrency(parcela.valor)}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                Vencimento {formatDate(parcela.data_vencimento)}
+                              </p>
+                            </button>
+                          ))}
+                        </div>
+                        {ciclo.termo_antecipacao ||
+                        ciclo.comprovantes_ciclo.length ? (
+                          <div className="space-y-3 pt-1">
+                            <p className="text-sm font-medium text-foreground">
+                              {agentRestricted
+                                ? "Comprovantes do agente"
+                                : "Documentos do ciclo"}
+                            </p>
+                            <div className="grid gap-3">
+                              {!agentRestricted && ciclo.termo_antecipacao ? (
+                                <CycleDocumentLink
+                                  label="Termo de antecipação"
+                                  arquivo={ciclo.termo_antecipacao}
+                                />
+                              ) : null}
+                              {ciclo.comprovantes_ciclo.map((arquivo) => (
+                                <CycleDocumentLink
+                                  key={`${arquivo.tipo}-${arquivo.arquivo_referencia}`}
+                                  label={arquivo.tipo.replaceAll("_", " ")}
+                                  arquivo={arquivo}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </AccordionContent>
+                    </AccordionItem>
+                  ))}
+                </Accordion>
+              </section>
 
               {contrato.meses_nao_pagos.filter(
                 (mes) =>
-                  !["quitada", "descontado", "liquidada"].includes(String(mes.status)),
+                  !["quitada", "descontado", "liquidada"].includes(
+                    String(mes.status),
+                  ),
               ).length ? (
                 <div className="space-y-3">
-                  <p className="text-sm font-medium text-foreground">Parcelas não descontadas</p>
+                  <p className="text-sm font-medium text-foreground">
+                    Parcelas não descontadas
+                  </p>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {contrato.meses_nao_pagos
                       .filter(
@@ -693,47 +820,6 @@ export function AssociadoContractsOverview({
                           !["quitada", "descontado", "liquidada"].includes(
                             String(mes.status),
                           ),
-                      )
-                      .map((mes) => (
-                      <button
-                        key={mes.id}
-                        type="button"
-                        onClick={() =>
-                          onParcelaClick?.({
-                            contratoId: contrato.id,
-                            referenciaMes: mes.referencia_mes,
-                            kind: "unpaid",
-                          })
-                        }
-                        className="rounded-[1.5rem] border border-border/60 bg-card/60 text-left transition hover:border-primary/50"
-                      >
-                        <CardContent className="space-y-2 pt-6">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="font-medium">{formatMonthYear(mes.referencia_mes)}</p>
-                            <StatusBadge status={mes.status} />
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {formatCurrency(mes.valor)}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {mes.observacao || "Sem observação."}
-                          </p>
-                        </CardContent>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {contrato.meses_nao_pagos.filter((mes) =>
-                ["quitada", "descontado", "liquidada"].includes(String(mes.status)),
-              ).length ? (
-                <div className="space-y-3">
-                  <p className="text-sm font-medium text-foreground">Quitadas fora do ciclo</p>
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {contrato.meses_nao_pagos
-                      .filter((mes) =>
-                        ["quitada", "descontado", "liquidada"].includes(String(mes.status)),
                       )
                       .map((mes) => (
                         <button
@@ -750,7 +836,9 @@ export function AssociadoContractsOverview({
                         >
                           <CardContent className="space-y-2 pt-6">
                             <div className="flex items-center justify-between gap-3">
-                              <p className="font-medium">{formatMonthYear(mes.referencia_mes)}</p>
+                              <p className="font-medium">
+                                {formatMonthYear(mes.referencia_mes)}
+                              </p>
                               <StatusBadge status={mes.status} />
                             </div>
                             <p className="text-sm text-muted-foreground">
@@ -766,33 +854,85 @@ export function AssociadoContractsOverview({
                 </div>
               ) : null}
 
-              {!agentRestricted && contrato.movimentos_financeiros_avulsos.length ? (
+              {contrato.meses_nao_pagos.filter((mes) =>
+                ["quitada", "descontado", "liquidada"].includes(
+                  String(mes.status),
+                ),
+              ).length ? (
+                <div className="space-y-3">
+                  <p className="text-sm font-medium text-foreground">
+                    Quitadas fora do ciclo
+                  </p>
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {contrato.meses_nao_pagos
+                      .filter((mes) =>
+                        ["quitada", "descontado", "liquidada"].includes(
+                          String(mes.status),
+                        ),
+                      )
+                      .map((mes) => (
+                        <button
+                          key={mes.id}
+                          type="button"
+                          onClick={() =>
+                            onParcelaClick?.({
+                              contratoId: contrato.id,
+                              referenciaMes: mes.referencia_mes,
+                              kind: "unpaid",
+                            })
+                          }
+                          className="rounded-[1.5rem] border border-border/60 bg-card/60 text-left transition hover:border-primary/50"
+                        >
+                          <CardContent className="space-y-2 pt-6">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="font-medium">
+                                {formatMonthYear(mes.referencia_mes)}
+                              </p>
+                              <StatusBadge status={mes.status} />
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {formatCurrency(mes.valor)}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              {mes.observacao || "Sem observação."}
+                            </p>
+                          </CardContent>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {!agentRestricted &&
+              contrato.movimentos_financeiros_avulsos.length ? (
                 <div className="space-y-3">
                   <p className="text-sm font-medium text-foreground">
                     Movimentos financeiros fora do ciclo
                   </p>
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {contrato.movimentos_financeiros_avulsos.map((movimento) => (
-                      <Card
-                        key={movimento.id}
-                        className="rounded-[1.5rem] border-border/60 bg-card/60"
-                      >
-                        <CardContent className="space-y-2 pt-6">
-                          <div className="flex items-center justify-between gap-3">
-                            <p className="font-medium">
-                              {formatMonthYear(movimento.referencia_mes)}
+                    {contrato.movimentos_financeiros_avulsos.map(
+                      (movimento) => (
+                        <Card
+                          key={movimento.id}
+                          className="rounded-[1.5rem] border-border/60 bg-card/60"
+                        >
+                          <CardContent className="space-y-2 pt-6">
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="font-medium">
+                                {formatMonthYear(movimento.referencia_mes)}
+                              </p>
+                              <StatusBadge status={movimento.status} />
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {formatCurrency(movimento.valor)}
                             </p>
-                            <StatusBadge status={movimento.status} />
-                          </div>
-                          <p className="text-sm text-muted-foreground">
-                            {formatCurrency(movimento.valor)}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            {movimento.observacao || "Sem observação."}
-                          </p>
-                        </CardContent>
-                      </Card>
-                    ))}
+                            <p className="text-sm text-muted-foreground">
+                              {movimento.observacao || "Sem observação."}
+                            </p>
+                          </CardContent>
+                        </Card>
+                      ),
+                    )}
                   </div>
                 </div>
               ) : null}
@@ -803,7 +943,9 @@ export function AssociadoContractsOverview({
 
       {showDocuments && !agentRestricted ? (
         <section className="space-y-3">
-          <p className="text-sm font-medium text-foreground">Documentos do associado</p>
+          <p className="text-sm font-medium text-foreground">
+            Documentos do associado
+          </p>
           <AssociadoDocumentsGrid associado={associado} />
         </section>
       ) : null}

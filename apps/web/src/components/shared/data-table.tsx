@@ -1,7 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDownIcon, ChevronUpIcon, ChevronsLeftIcon, ChevronsRightIcon } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronUpIcon,
+  ChevronsLeftIcon,
+  ChevronsRightIcon,
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -56,22 +61,23 @@ type DataTableProps<T extends { id: number | string }> = {
   skeletonRows?: number;
 };
 
-const SKELETON_WIDTHS = [
-  "w-4/5",
-  "w-3/5",
-  "w-2/3",
-  "w-1/2",
-  "w-5/6",
-  "w-2/5",
-];
+const SKELETON_WIDTHS = ["w-4/5", "w-3/5", "w-2/3", "w-1/2", "w-5/6", "w-2/5"];
 
 function buildPageItems(currentPage: number, totalPages: number) {
   if (totalPages <= 7) {
     return Array.from({ length: totalPages }, (_, index) => index + 1);
   }
 
-  const pages = new Set<number>([1, totalPages, currentPage, currentPage - 1, currentPage + 1]);
-  const sorted = [...pages].filter((page) => page >= 1 && page <= totalPages).sort((a, b) => a - b);
+  const pages = new Set<number>([
+    1,
+    totalPages,
+    currentPage,
+    currentPage - 1,
+    currentPage + 1,
+  ]);
+  const sorted = [...pages]
+    .filter((page) => page >= 1 && page <= totalPages)
+    .sort((a, b) => a - b);
   const items: Array<number | string> = [];
 
   sorted.forEach((page, index) => {
@@ -91,6 +97,16 @@ function normalizePageSizeOption(option: DataTablePageSizeOption) {
   }
 
   return option;
+}
+
+function shouldToggleExpandedRow(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return true;
+  }
+
+  return !target.closest(
+    'button, a, input, textarea, select, [role="button"], [data-prevent-row-toggle="true"]',
+  );
 }
 
 export default function DataTable<T extends { id: number | string }>({
@@ -113,7 +129,9 @@ export default function DataTable<T extends { id: number | string }>({
   const [internalPageSize, setInternalPageSize] = React.useState(pageSize);
   const [sortBy, setSortBy] = React.useState<string | null>(null);
   const [direction, setDirection] = React.useState<"asc" | "desc">("asc");
-  const [expandedRow, setExpandedRow] = React.useState<number | string | null>(null);
+  const [expandedRow, setExpandedRow] = React.useState<number | string | null>(
+    null,
+  );
   const isControlledPagination =
     currentPage !== undefined && totalPages !== undefined && !!onPageChange;
   const normalizedPageSizeOptions = React.useMemo(() => {
@@ -147,7 +165,9 @@ export default function DataTable<T extends { id: number | string }>({
     return [...data].sort((left, right) => {
       const leftValue = String(left[accessor] ?? "");
       const rightValue = String(right[accessor] ?? "");
-      const comparison = leftValue.localeCompare(rightValue, "pt-BR", { numeric: true });
+      const comparison = leftValue.localeCompare(rightValue, "pt-BR", {
+        numeric: true,
+      });
       return direction === "asc" ? comparison : -comparison;
     });
   }, [columns, data, direction, sortBy]);
@@ -184,7 +204,9 @@ export default function DataTable<T extends { id: number | string }>({
     if (
       !isControlledPagination &&
       normalizedPageSizeOptions.length > 0 &&
-      !normalizedPageSizeOptions.some((option) => option.value === internalPageSize)
+      !normalizedPageSizeOptions.some(
+        (option) => option.value === internalPageSize,
+      )
     ) {
       setInternalPageSize(normalizedPageSizeOptions[0].value);
     }
@@ -221,7 +243,9 @@ export default function DataTable<T extends { id: number | string }>({
                     className="inline-flex items-center gap-1"
                     onClick={() => {
                       if (sortBy === column.id) {
-                        setDirection((current) => (current === "asc" ? "desc" : "asc"));
+                        setDirection((current) =>
+                          current === "asc" ? "desc" : "asc",
+                        );
                       } else {
                         setSortBy(column.id);
                         setDirection("asc");
@@ -231,7 +255,11 @@ export default function DataTable<T extends { id: number | string }>({
                   >
                     {column.header}
                     {sortBy === column.id ? (
-                      direction === "asc" ? <ChevronUpIcon className="size-4" /> : <ChevronDownIcon className="size-4" />
+                      direction === "asc" ? (
+                        <ChevronUpIcon className="size-4" />
+                      ) : (
+                        <ChevronDownIcon className="size-4" />
+                      )
                     ) : null}
                   </button>
                 ) : (
@@ -244,7 +272,10 @@ export default function DataTable<T extends { id: number | string }>({
         <TableBody>
           {loading ? (
             skeletonItems.map((_, rowIndex) => (
-              <TableRow key={`loading-${rowIndex}`} className="border-border/60">
+              <TableRow
+                key={`loading-${rowIndex}`}
+                className="border-border/60"
+              >
                 {columns.map((column, columnIndex) => (
                   <TableCell
                     key={column.id}
@@ -253,7 +284,9 @@ export default function DataTable<T extends { id: number | string }>({
                     <Skeleton
                       className={cn(
                         "h-4 rounded-full",
-                        SKELETON_WIDTHS[(rowIndex + columnIndex) % SKELETON_WIDTHS.length],
+                        SKELETON_WIDTHS[
+                          (rowIndex + columnIndex) % SKELETON_WIDTHS.length
+                        ],
                       )}
                     />
                   </TableCell>
@@ -264,17 +297,26 @@ export default function DataTable<T extends { id: number | string }>({
             currentRows.map((row) => (
               <React.Fragment key={row.id}>
                 <TableRow
-                  className={cn("group border-border/60 hover:bg-white/3", renderExpanded && "cursor-pointer")}
+                  className={cn(
+                    "group border-border/60 hover:bg-white/3",
+                    renderExpanded && "cursor-pointer",
+                  )}
                   data-expanded={expandedRow === row.id ? "true" : "false"}
-                  onClick={() => {
+                  onClick={(event) => {
                     if (!renderExpanded) return;
-                    setExpandedRow((current) => (current === row.id ? null : row.id));
+                    if (!shouldToggleExpandedRow(event.target)) return;
+                    setExpandedRow((current) =>
+                      current === row.id ? null : row.id,
+                    );
                   }}
                 >
                   {columns.map((column) => (
                     <TableCell
                       key={column.id}
-                      className={cn("px-5 py-4 align-top", column.cellClassName)}
+                      className={cn(
+                        "px-5 py-4 align-top",
+                        column.cellClassName,
+                      )}
                     >
                       {column.cell
                         ? column.cell(row)
@@ -295,7 +337,10 @@ export default function DataTable<T extends { id: number | string }>({
             ))
           ) : (
             <TableRow className="border-border/60">
-              <TableCell colSpan={columns.length} className="px-5 py-12 text-center text-sm text-muted-foreground">
+              <TableCell
+                colSpan={columns.length}
+                className="px-5 py-12 text-center text-sm text-muted-foreground"
+              >
                 {emptyMessage}
               </TableCell>
             </TableRow>
@@ -311,9 +356,13 @@ export default function DataTable<T extends { id: number | string }>({
               Página {page} de {resolvedTotalPages}
             </p>
           )}
-          {!loading && !isControlledPagination && normalizedPageSizeOptions.length > 0 ? (
+          {!loading &&
+          !isControlledPagination &&
+          normalizedPageSizeOptions.length > 0 ? (
             <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">{pageSizeLabel}</span>
+              <span className="text-sm text-muted-foreground">
+                {pageSizeLabel}
+              </span>
               <Select
                 value={String(resolvedPageSize)}
                 onValueChange={(value) => {
@@ -342,35 +391,60 @@ export default function DataTable<T extends { id: number | string }>({
             ))
           ) : (
             <>
-          <Button variant="outline" size="icon-sm" disabled={page === 1} onClick={() => changePage(1)}>
-            <ChevronsLeftIcon className="size-4" />
-          </Button>
-          <Button variant="outline" size="icon-sm" disabled={page === 1} onClick={() => changePage(Math.max(1, page - 1))}>
-            <ChevronUpIcon className="size-4 rotate-90" />
-          </Button>
-          {pageItems.map((item) =>
-            typeof item === "number" ? (
               <Button
-                key={item}
-                variant={item === page ? "secondary" : "outline"}
+                variant="outline"
                 size="icon-sm"
-                className="rounded-xl"
-                onClick={() => changePage(item)}
+                disabled={page === 1}
+                onClick={() => changePage(1)}
               >
-                {item}
+                <ChevronsLeftIcon className="size-4" />
               </Button>
-            ) : (
-              <span key={item} className="px-1 text-sm text-muted-foreground">
-                ...
-              </span>
-            ),
-          )}
-          <Button variant="outline" size="icon-sm" disabled={page === resolvedTotalPages} onClick={() => changePage(Math.min(resolvedTotalPages, page + 1))}>
-            <ChevronDownIcon className="size-4 -rotate-90" />
-          </Button>
-          <Button variant="outline" size="icon-sm" disabled={page === resolvedTotalPages} onClick={() => changePage(resolvedTotalPages)}>
-            <ChevronsRightIcon className="size-4" />
-          </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                disabled={page === 1}
+                onClick={() => changePage(Math.max(1, page - 1))}
+              >
+                <ChevronUpIcon className="size-4 rotate-90" />
+              </Button>
+              {pageItems.map((item) =>
+                typeof item === "number" ? (
+                  <Button
+                    key={item}
+                    variant={item === page ? "secondary" : "outline"}
+                    size="icon-sm"
+                    className="rounded-xl"
+                    onClick={() => changePage(item)}
+                  >
+                    {item}
+                  </Button>
+                ) : (
+                  <span
+                    key={item}
+                    className="px-1 text-sm text-muted-foreground"
+                  >
+                    ...
+                  </span>
+                ),
+              )}
+              <Button
+                variant="outline"
+                size="icon-sm"
+                disabled={page === resolvedTotalPages}
+                onClick={() =>
+                  changePage(Math.min(resolvedTotalPages, page + 1))
+                }
+              >
+                <ChevronDownIcon className="size-4 -rotate-90" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                disabled={page === resolvedTotalPages}
+                onClick={() => changePage(resolvedTotalPages)}
+              >
+                <ChevronsRightIcon className="size-4" />
+              </Button>
             </>
           )}
         </div>
