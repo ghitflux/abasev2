@@ -564,13 +564,19 @@ class CoordenadorRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
 class AnalistaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
     permission_classes = [permissions.IsAuthenticated, IsAnalistaOrAdmin]
 
+    # Statuses que representam renovações efetivamente enviadas para o analista.
+    # apto_a_renovar / pendente_apto / solicitado = ainda não enviados → excluídos.
+    ANALISTA_STATUSES = [
+        Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+        Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+        Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
+        Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+    ]
+
     def get_queryset(self):
         queryset = super().get_queryset().filter(
-            status__in=[
-                Refinanciamento.Status.EM_ANALISE_RENOVACAO,
-                Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
-                Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
-            ]
+            status__in=self.ANALISTA_STATUSES,
+            deleted_at__isnull=True,
         )
         assignment = self.request.query_params.get("assignment")
         if assignment == "minhas":

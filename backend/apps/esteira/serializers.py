@@ -26,6 +26,7 @@ class EsteiraAssociadoCompatSerializer(serializers.Serializer):
     cpf_cnpj = serializers.CharField(read_only=True)
     matricula = serializers.CharField(read_only=True)
     matricula_display = serializers.CharField(read_only=True)
+    status = serializers.CharField(read_only=True)
 
 
 class ContratoEsteiraSerializer(serializers.Serializer):

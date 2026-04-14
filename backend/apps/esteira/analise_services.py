@@ -263,14 +263,17 @@ class AnaliseService:
             ).order_by("-updated_at", "-created_at")
 
         if secao == "novos_contratos":
+            # Inclui contratos novos na etapa de análise independentemente da
+            # situação documental (com ou sem pendência de documento).
+            # Exclui apenas: pendência aberta pelo analista, ciclo de correção
+            # iniciado (reupload recebido / pendência já resolvida) e associados
+            # já efetivados (ativo / inadimplente / inativo).
             return queryset.filter(
                 etapa_atual=EsteiraItem.Etapa.ANALISE
             ).exclude(
                 Q(has_open_pendencia=True)
-                | Q(has_open_doc_issue=True)
                 | Q(has_received_reupload=True)
                 | Q(resolved_pendencias_count__gt=0)
-                | (Q(has_documents=False) & Q(has_any_reupload=False))
                 | Q(associado__status__in=[
                     Associado.Status.ATIVO,
                     Associado.Status.INADIMPLENTE,

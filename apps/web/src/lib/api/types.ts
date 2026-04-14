@@ -655,6 +655,7 @@ export type EsteiraItem = {
     cpf_cnpj: string;
     matricula: string;
     matricula_display?: string;
+    status?: string | null;
   } | null;
   ordem: number;
   contrato: EsteiraContrato | null;

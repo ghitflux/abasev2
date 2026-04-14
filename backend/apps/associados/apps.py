@@ -6,3 +6,6 @@ class AssociadosConfig(AppConfig):
     name = "apps.associados"
     label = "associados"
     verbose_name = "Associados"
+
+    def ready(self):
+        import apps.associados.signals  # noqa: F401

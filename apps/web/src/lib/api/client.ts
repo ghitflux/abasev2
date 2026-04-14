@@ -167,6 +167,11 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}) {
     throw new Error(detail);
   }
 
+  // 204 No Content / 205 Reset Content — no body to parse
+  if (response.status === 204 || response.status === 205) {
+    return null as T;
+  }
+
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     return (await response.json()) as T;

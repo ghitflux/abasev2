@@ -15,7 +15,6 @@ import {
   SearchIcon,
   SlidersHorizontalIcon,
   ShieldCheckIcon,
-  Trash2Icon,
   WalletIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -182,25 +181,6 @@ const FILA_SECTIONS: Array<{
     tone: "neutral",
     icon: ExternalLinkIcon,
     delta: () => "Aguardando validação da coordenação",
-  },
-  {
-    key: "efetivados",
-    title: "Efetivados",
-    description:
-      "Fluxos concluídos com contrato liberado e sem cancelamento posterior.",
-    emptyMessage: "Nenhum fluxo efetivado encontrado.",
-    tone: "positive",
-    icon: ShieldCheckIcon,
-    delta: () => "Concluídos com sucesso na esteira",
-  },
-  {
-    key: "cancelados",
-    title: "Cancelados",
-    description: "Fluxos cujo contrato atual foi cancelado.",
-    emptyMessage: "Nenhum fluxo cancelado encontrado.",
-    tone: "warning",
-    icon: Trash2Icon,
-    delta: () => "Contrato atual cancelado",
   },
 ];
 
@@ -663,25 +643,20 @@ export default function AnalisePage() {
       {
         id: "fluxo",
         header: "Status",
-        cellClassName: "min-w-[16rem]",
-        cell: (row) => (
-          <div className="space-y-2">
-            <div className="flex flex-wrap gap-2">
-              <StatusBadge
-                status={row.etapa_atual}
-                label={getEtapaLabel(row.etapa_atual)}
-              />
-              <StatusBadge status={row.status} label={getSituacaoLabel(row)} />
+        cellClassName: "min-w-[14rem]",
+        cell: (row) => {
+          const assocStatus = row.associado?.status;
+          return (
+            <div className="space-y-1.5">
+              {assocStatus ? (
+                <StatusBadge status={assocStatus} />
+              ) : null}
+              <p className="text-xs text-muted-foreground">
+                {getEtapaLabel(row.etapa_atual)} · {getSituacaoLabel(row)}
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {row.status_documentacao === "reenvio_pendente"
-                ? "Há reenvio aguardando nova conferência."
-                : row.status_documentacao === "incompleta"
-                  ? "Documentação incompleta para seguir no fluxo."
-                  : "Fluxo operacional consistente para a etapa atual."}
-            </p>
-          </div>
-        ),
+          );
+        },
       },
       {
         id: "agente",
@@ -1065,7 +1040,7 @@ export default function AnalisePage() {
         </div>
       </section>
 
-      <section className="grid gap-4 grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 grid-cols-2 xl:grid-cols-5">
         {summaryQuery.isLoading && !summaryQuery.data
           ? Array.from({ length: FILA_SECTIONS.length }).map((_, index) => (
               <MetricCardSkeleton key={index} />
