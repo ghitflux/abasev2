@@ -927,6 +927,10 @@ export type TesourariaContratoItem = {
   margem_disponivel: string;
   dispensa_pagamento_inicial: boolean;
   comprovantes: ComprovanteResumo[];
+  data_anexo_associado?: string | null;
+  data_anexo_agente?: string | null;
+  data_pagamento_associado?: string | null;
+  data_pagamento_agente?: string | null;
   dados_bancarios?: DadosBancarios | null;
   observacao_tesouraria?: string;
   etapa_atual: string;
@@ -1296,6 +1300,10 @@ export type RefinanciamentoItem = {
     motivo_bloqueio?: string;
   };
   comprovantes: ComprovanteResumo[];
+  data_anexo_associado?: string | null;
+  data_anexo_agente?: string | null;
+  data_pagamento_associado?: string | null;
+  data_pagamento_agente?: string | null;
 };
 
 export type RefinanciamentoResumo = {
@@ -1424,4 +1432,17 @@ export type RelatorioGeradoItem = {
   formato: string;
   created_at: string;
   download_url: string;
+};
+
+export type RelatorioDefinicaoColuna = {
+  key: string;
+  header: string;
+  width: number;
+};
+
+export type RelatorioDefinicao = {
+  tipo: string;
+  title: string;
+  description: string;
+  columns: RelatorioDefinicaoColuna[];
 };

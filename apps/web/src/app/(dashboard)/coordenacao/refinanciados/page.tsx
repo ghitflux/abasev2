@@ -8,7 +8,6 @@ import {
   EyeIcon,
   FileTextIcon,
   Layers3Icon,
-  PrinterIcon,
   SlidersHorizontalIcon,
   XCircleIcon,
 } from "lucide-react";
@@ -22,6 +21,7 @@ import type {
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
 import { formatMonthYear } from "@/lib/formatters";
+import { exportRouteReport, fetchAllPaginatedRows } from "@/lib/reports";
 import { RefinanciamentoDetalhesDialog } from "@/components/refinanciamento/refinanciamento-detalhes-dialog";
 import MultiSelect from "@/components/custom/multi-select";
 import SearchableSelect, {
@@ -31,6 +31,9 @@ import StatusBadge from "@/components/custom/status-badge";
 import { MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
+import ReportExportDialog, {
+  type ReportExportFilters,
+} from "@/components/shared/report-export-dialog";
 import StatsCard from "@/components/shared/stats-card";
 import {
   AlertDialog,
@@ -238,6 +241,7 @@ function SectionTable({
 export default function CoordenacaoRefinanciadosPage() {
   const queryClient = useQueryClient();
   const [search, setSearch] = React.useState("");
+  const [isExporting, setIsExporting] = React.useState(false);
   const [sheetOpen, setSheetOpen] = React.useState(false);
   const [filters, setFilters] = React.useState<CoordAdvancedFilters>(INITIAL_FILTERS);
   const [draftFilters, setDraftFilters] = React.useState<CoordAdvancedFilters>(
@@ -506,6 +510,65 @@ export default function CoordenacaoRefinanciadosPage() {
     [baseColumns],
   );
 
+  const handleExport = React.useCallback(
+    async (exportFilters: ReportExportFilters, format: "pdf" | "xlsx") => {
+      const { pagamentoFeito, columns: selectedColumns } = exportFilters;
+      setIsExporting(true);
+      try {
+        const baseQuery = {
+          ...buildQuery(1, renovadosStatuses),
+          page: undefined,
+          page_size: undefined,
+          pagamento_feito: pagamentoFeito,
+        };
+        const [renovados, processo, liquidacao] = await Promise.all([
+          fetchAllPaginatedRows<RefinanciamentoItem>({
+            sourcePath: "coordenacao/refinanciados",
+            sourceQuery: { ...baseQuery, status: renovadosStatuses },
+          }),
+          fetchAllPaginatedRows<RefinanciamentoItem>({
+            sourcePath: "coordenacao/refinanciados",
+            sourceQuery: { ...baseQuery, status: processoStatuses },
+          }),
+          fetchAllPaginatedRows<RefinanciamentoItem>({
+            sourcePath: "coordenacao/refinanciados",
+            sourceQuery: { ...baseQuery, status: liquidacaoStatuses },
+          }),
+        ]);
+
+        await exportRouteReport({
+          route: "/coordenacao/refinanciados",
+          format,
+          rows: [...renovados, ...processo, ...liquidacao].map((row) => ({
+            contrato_codigo: row.contrato_codigo,
+            associado_nome: row.associado_nome,
+            status: row.status,
+            data_solicitacao: row.data_solicitacao,
+            executado_em: row.executado_em,
+            data_pagamento_associado: row.data_pagamento_associado,
+            valor_refinanciamento: row.valor_liberado_associado,
+            repasse_agente: row.repasse_agente,
+            analista_note: row.analista_note ?? "",
+            coordenador_note: row.coordenador_note ?? "",
+          })),
+          filters: {
+            ...baseQuery,
+            columns: selectedColumns,
+          },
+        });
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Falha ao exportar refinanciados da coordenação.",
+        );
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [buildQuery, liquidacaoStatuses, processoStatuses, renovadosStatuses],
+  );
+
   return (
     <div className="space-y-6">
       <section className="rounded-[1.75rem] border border-border/60 bg-card/70 p-6">
@@ -516,10 +579,16 @@ export default function CoordenacaoRefinanciadosPage() {
             </p>
             <h1 className="text-3xl font-semibold">Refinanciados</h1>
           </div>
-          <Button variant="outline" onClick={() => window.print()}>
-            <PrinterIcon className="size-4" />
-            Imprimir / PDF
-          </Button>
+          <ReportExportDialog
+            hideScope
+            disabled={isExporting}
+            label={isExporting ? "Exportando..." : "Exportar"}
+            paymentOptions={[
+              { value: "sim", label: "Somente pagos" },
+              { value: "nao", label: "Somente não pagos" },
+            ]}
+            onExport={handleExport}
+          />
         </div>
       </section>
 

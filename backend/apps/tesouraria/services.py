@@ -10,7 +10,17 @@ from uuid import uuid4
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import Count, DecimalField, Prefetch, Q, Sum, Value
+from django.db.models import (
+    Count,
+    DateTimeField,
+    DecimalField,
+    OuterRef,
+    Prefetch,
+    Q,
+    Subquery,
+    Sum,
+    Value,
+)
 from django.db.models.functions import Coalesce
 from django.utils.text import slugify
 from django.utils import timezone
@@ -27,6 +37,7 @@ from apps.financeiro.models import Despesa
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, PagamentoMensalidade
 from apps.importacao.return_auto_enrollment import build_payment_identity
 from apps.refinanciamento.models import Comprovante, Refinanciamento
+from apps.tesouraria.initial_payment import get_initial_payment_for_contract
 
 from .models import BaixaManual, Confirmacao, DevolucaoAssociado, Pagamento
 
@@ -107,6 +118,14 @@ class TesourariaService:
         competencia: date | None = None,
         data_inicio: str | None = None,
         data_fim: str | None = None,
+        data_anexo_associado_inicio: str | None = None,
+        data_anexo_associado_fim: str | None = None,
+        data_anexo_agente_inicio: str | None = None,
+        data_anexo_agente_fim: str | None = None,
+        data_pagamento_associado_inicio: str | None = None,
+        data_pagamento_associado_fim: str | None = None,
+        data_pagamento_agente_inicio: str | None = None,
+        data_pagamento_agente_fim: str | None = None,
         search: str | None = None,
         pagamento: str | None = None,
         agente: str | None = None,
@@ -142,6 +161,37 @@ class TesourariaService:
             .order_by(ordering_map.get(ordering or "", "-created_at"))
         )
         queryset = operational_contracts_queryset(queryset)
+        comprovantes_queryset = Comprovante.objects.filter(
+            contrato_id=OuterRef("pk"),
+            refinanciamento__isnull=True,
+            deleted_at__isnull=True,
+        )
+        associado_comprovante = comprovantes_queryset.filter(
+            papel=Comprovante.Papel.ASSOCIADO,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+        ).order_by("-updated_at", "-created_at", "-id")
+        agente_comprovante = comprovantes_queryset.filter(
+            papel=Comprovante.Papel.AGENTE,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+        ).order_by("-updated_at", "-created_at", "-id")
+        queryset = queryset.annotate(
+            data_anexo_associado=Subquery(
+                associado_comprovante.values("updated_at")[:1],
+                output_field=DateTimeField(),
+            ),
+            data_anexo_agente=Subquery(
+                agente_comprovante.values("updated_at")[:1],
+                output_field=DateTimeField(),
+            ),
+            data_pagamento_associado=Subquery(
+                associado_comprovante.values("data_pagamento")[:1],
+                output_field=DateTimeField(),
+            ),
+            data_pagamento_agente=Subquery(
+                agente_comprovante.values("data_pagamento")[:1],
+                output_field=DateTimeField(),
+            ),
+        )
 
         if pagamento == "pendente":
             queryset = queryset.filter(
@@ -195,6 +245,39 @@ class TesourariaService:
 
         if data_fim:
             queryset = queryset.filter(created_at__date__lte=data_fim)
+
+        if data_anexo_associado_inicio:
+            queryset = queryset.filter(
+                data_anexo_associado__date__gte=data_anexo_associado_inicio
+            )
+        if data_anexo_associado_fim:
+            queryset = queryset.filter(
+                data_anexo_associado__date__lte=data_anexo_associado_fim
+            )
+        if data_anexo_agente_inicio:
+            queryset = queryset.filter(
+                data_anexo_agente__date__gte=data_anexo_agente_inicio
+            )
+        if data_anexo_agente_fim:
+            queryset = queryset.filter(
+                data_anexo_agente__date__lte=data_anexo_agente_fim
+            )
+        if data_pagamento_associado_inicio:
+            queryset = queryset.filter(
+                data_pagamento_associado__date__gte=data_pagamento_associado_inicio
+            )
+        if data_pagamento_associado_fim:
+            queryset = queryset.filter(
+                data_pagamento_associado__date__lte=data_pagamento_associado_fim
+            )
+        if data_pagamento_agente_inicio:
+            queryset = queryset.filter(
+                data_pagamento_agente__date__gte=data_pagamento_agente_inicio
+            )
+        if data_pagamento_agente_fim:
+            queryset = queryset.filter(
+                data_pagamento_agente__date__lte=data_pagamento_agente_fim
+            )
 
         if search:
             queryset = queryset.filter(
@@ -262,14 +345,180 @@ class TesourariaService:
             raise ValidationError("Contrato não encontrado.") from exc
 
     @staticmethod
-    @transaction.atomic
-    def efetivar_contrato(contrato_id, comprovante_associado, comprovante_agente, user):
-        contrato = TesourariaService._get_contrato(int(contrato_id))
+    def _payment_tipo_for_papel(papel: str) -> str:
+        return (
+            Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO
+            if papel == Comprovante.Papel.ASSOCIADO
+            else Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE
+        )
+
+    @staticmethod
+    def _latest_contract_payment_comprovante(
+        contrato: Contrato,
+        papel: str,
+    ) -> Comprovante | None:
+        return (
+            contrato.comprovantes.filter(
+                refinanciamento__isnull=True,
+                deleted_at__isnull=True,
+                papel=papel,
+                tipo=TesourariaService._payment_tipo_for_papel(papel),
+            )
+            .order_by("-updated_at", "-created_at", "-id")
+            .first()
+        )
+
+    @staticmethod
+    def _upsert_contract_payment_comprovante(
+        contrato: Contrato,
+        *,
+        papel: str,
+        arquivo,
+        user,
+        data_pagamento: datetime,
+        ciclo=None,
+    ) -> Comprovante:
+        comprovante = TesourariaService._latest_contract_payment_comprovante(
+            contrato,
+            papel,
+        )
+        payload = {
+            "contrato": contrato,
+            "ciclo": ciclo,
+            "refinanciamento": None,
+            "papel": papel,
+            "tipo": TesourariaService._payment_tipo_for_papel(papel),
+            "origem": Comprovante.Origem.EFETIVACAO_CONTRATO,
+            "arquivo": arquivo,
+            "nome_original": getattr(arquivo, "name", ""),
+            "mime": getattr(arquivo, "content_type", "") or "",
+            "size_bytes": getattr(arquivo, "size", None),
+            "arquivo_referencia_path": "",
+            "enviado_por": user,
+            "data_pagamento": data_pagamento,
+            "agente_snapshot": contrato.agente.full_name if contrato.agente else "",
+        }
+        if comprovante is None:
+            return Comprovante.objects.create(**payload)
+
+        for field, value in payload.items():
+            setattr(comprovante, field, value)
+        comprovante.save(
+            update_fields=[
+                "contrato",
+                "ciclo",
+                "papel",
+                "tipo",
+                "origem",
+                "arquivo",
+                "nome_original",
+                "mime",
+                "size_bytes",
+                "arquivo_referencia_path",
+                "enviado_por",
+                "data_pagamento",
+                "agente_snapshot",
+                "updated_at",
+            ]
+        )
+        return comprovante
+
+    @staticmethod
+    def _sync_initial_payment_paths(pagamento: Pagamento, contrato: Contrato) -> Pagamento:
+        comprovante_associado = TesourariaService._latest_contract_payment_comprovante(
+            contrato,
+            Comprovante.Papel.ASSOCIADO,
+        )
+        comprovante_agente = TesourariaService._latest_contract_payment_comprovante(
+            contrato,
+            Comprovante.Papel.AGENTE,
+        )
+        pagamento.comprovante_associado_path = (
+            comprovante_associado.arquivo_referencia if comprovante_associado else ""
+        )
+        pagamento.comprovante_agente_path = (
+            comprovante_agente.arquivo_referencia if comprovante_agente else ""
+        )
+        return pagamento
+
+    @staticmethod
+    def _upsert_initial_payment(
+        contrato: Contrato,
+        *,
+        user,
+        paid_at: datetime,
+    ) -> Pagamento:
+        pagamento = get_initial_payment_for_contract(contrato)
+        if pagamento is None:
+            pagamento = Pagamento(
+                cadastro=contrato.associado,
+                created_by=user,
+                contrato_codigo=contrato.codigo,
+                contrato_valor_antecipacao=(
+                    contrato.valor_liquido or contrato.valor_total_antecipacao
+                ),
+                contrato_margem_disponivel=contrato.margem_disponivel,
+                cpf_cnpj=contrato.associado.cpf_cnpj,
+                full_name=contrato.associado.nome_completo,
+                agente_responsavel=contrato.agente.full_name if contrato.agente else "",
+                origem=Pagamento.Origem.OPERACIONAL,
+                forma_pagamento="pix",
+                referencias_externas={
+                    "payment_kind": "contrato_inicial",
+                    "contrato_id": contrato.id,
+                },
+                notes="Efetivação inicial do contrato pela tesouraria.",
+            )
+
+        pagamento.created_by = pagamento.created_by or user
+        pagamento.contrato_valor_antecipacao = (
+            contrato.valor_liquido or contrato.valor_total_antecipacao
+        )
+        pagamento.contrato_margem_disponivel = contrato.margem_disponivel
+        pagamento.cpf_cnpj = contrato.associado.cpf_cnpj
+        pagamento.full_name = contrato.associado.nome_completo
+        pagamento.agente_responsavel = contrato.agente.full_name if contrato.agente else ""
+        pagamento.origem = Pagamento.Origem.OPERACIONAL
+        pagamento.status = Pagamento.Status.PAGO
+        pagamento.valor_pago = contrato.valor_liquido or contrato.valor_total_antecipacao
+        pagamento.paid_at = paid_at
+        pagamento.forma_pagamento = pagamento.forma_pagamento or "pix"
+        pagamento.referencias_externas = {
+            **(pagamento.referencias_externas or {}),
+            "payment_kind": "contrato_inicial",
+            "contrato_id": contrato.id,
+        }
+        pagamento.notes = "Efetivação inicial do contrato pela tesouraria."
+        pagamento = TesourariaService._sync_initial_payment_paths(pagamento, contrato)
+        pagamento.save()
+        return pagamento
+
+    @staticmethod
+    def _sync_contract_evidence_cycle(contrato: Contrato):
+        ciclo = contrato.ciclos.order_by("numero").first()
+        if ciclo is None:
+            return None
+        contrato.comprovantes.filter(
+            refinanciamento__isnull=True,
+            tipo__in=[
+                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+            ],
+        ).update(ciclo=ciclo, updated_at=timezone.now())
+        return ciclo
+
+    @staticmethod
+    def _finalize_contract_effectivation(
+        contrato: Contrato,
+        *,
+        user,
+        paid_at: datetime,
+    ) -> Contrato:
         esteira_item = getattr(contrato.associado, "esteira_item", None)
         if not esteira_item or esteira_item.etapa_atual != EsteiraItem.Etapa.TESOURARIA:
-            raise ValidationError("Contrato não está disponível para efetivação na tesouraria.")
-        if not comprovante_associado or not comprovante_agente:
-            raise ValidationError("Os comprovantes do associado e do agente são obrigatórios.")
+            raise ValidationError(
+                "Contrato não está disponível para efetivação na tesouraria."
+            )
 
         contrato.status = Contrato.Status.ATIVO
         contrato.auxilio_liberado_em = timezone.localdate()
@@ -287,64 +536,16 @@ class TesourariaService:
         contrato.associado.status = Associado.Status.ATIVO
         contrato.associado.save(update_fields=["status", "updated_at"])
 
-        pagamento = Pagamento.objects.create(
-            cadastro=contrato.associado,
-            created_by=user,
-            contrato_codigo=contrato.codigo,
-            contrato_valor_antecipacao=contrato.valor_liquido or contrato.valor_total_antecipacao,
-            contrato_margem_disponivel=contrato.margem_disponivel,
-            cpf_cnpj=contrato.associado.cpf_cnpj,
-            full_name=contrato.associado.nome_completo,
-            agente_responsavel=contrato.agente.full_name if contrato.agente else "",
-            origem=Pagamento.Origem.OPERACIONAL,
-            status=Pagamento.Status.PAGO,
-            valor_pago=contrato.valor_liquido or contrato.valor_total_antecipacao,
-            paid_at=timezone.now(),
-            forma_pagamento="pix",
-            referencias_externas={
-                "payment_kind": "contrato_inicial",
-                "contrato_id": contrato.id,
-            },
-            comprovante_associado_path=getattr(comprovante_associado, "name", ""),
-            comprovante_agente_path=getattr(comprovante_agente, "name", ""),
-            notes="Efetivação inicial do contrato pela tesouraria.",
-        )
-
         rebuild_contract_cycle_state(contrato, execute=True)
         contrato.refresh_from_db()
-        ciclo = contrato.ciclos.order_by("numero").first()
-
-        for papel, arquivo, tipo in [
-            (
-                Comprovante.Papel.ASSOCIADO,
-                comprovante_associado,
-                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
-            ),
-            (
-                Comprovante.Papel.AGENTE,
-                comprovante_agente,
-                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
-            ),
-        ]:
-            Comprovante.objects.create(
-                contrato=contrato,
-                ciclo=ciclo,
-                refinanciamento=None,
-                papel=papel,
-                tipo=tipo,
-                origem=Comprovante.Origem.EFETIVACAO_CONTRATO,
-                arquivo=arquivo,
-                nome_original=getattr(arquivo, "name", ""),
-                enviado_por=user,
-                data_pagamento=pagamento.paid_at,
-                agente_snapshot=contrato.agente.full_name if contrato.agente else "",
-            )
+        TesourariaService._sync_contract_evidence_cycle(contrato)
+        TesourariaService._upsert_initial_payment(contrato, user=user, paid_at=paid_at)
 
         de_situacao = esteira_item.status
         esteira_item.etapa_atual = EsteiraItem.Etapa.CONCLUIDO
         esteira_item.status = EsteiraItem.Situacao.APROVADO
         esteira_item.tesoureiro_responsavel = user
-        esteira_item.concluido_em = timezone.now()
+        esteira_item.concluido_em = paid_at
         esteira_item.save()
 
         Transicao.objects.create(
@@ -357,7 +558,39 @@ class TesourariaService:
             realizado_por=user,
             observacao="Contrato efetivado pela tesouraria.",
         )
+        contrato.refresh_from_db()
         return contrato
+
+    @staticmethod
+    @transaction.atomic
+    def efetivar_contrato(contrato_id, comprovante_associado, comprovante_agente, user):
+        contrato = TesourariaService._get_contrato(int(contrato_id))
+        if not comprovante_associado:
+            raise ValidationError(
+                {"comprovante_associado": ["O comprovante do associado é obrigatório."]}
+            )
+
+        paid_at = timezone.now()
+        TesourariaService._upsert_contract_payment_comprovante(
+            contrato,
+            papel=Comprovante.Papel.ASSOCIADO,
+            arquivo=comprovante_associado,
+            user=user,
+            data_pagamento=paid_at,
+        )
+        if comprovante_agente:
+            TesourariaService._upsert_contract_payment_comprovante(
+                contrato,
+                papel=Comprovante.Papel.AGENTE,
+                arquivo=comprovante_agente,
+                user=user,
+                data_pagamento=paid_at,
+            )
+        return TesourariaService._finalize_contract_effectivation(
+            contrato,
+            user=user,
+            paid_at=paid_at,
+        )
 
     @staticmethod
     @transaction.atomic
@@ -441,38 +674,44 @@ class TesourariaService:
     @transaction.atomic
     def substituir_comprovante(contrato_id, *, papel: str, arquivo, user):
         contrato = TesourariaService._get_contrato(int(contrato_id))
-        comprovante = (
-            contrato.comprovantes.filter(
-                refinanciamento__isnull=True,
-                origem=Comprovante.Origem.EFETIVACAO_CONTRATO,
-                papel=papel,
+        now = timezone.now()
+        comprovante = TesourariaService._upsert_contract_payment_comprovante(
+            contrato,
+            papel=papel,
+            arquivo=arquivo,
+            user=user,
+            data_pagamento=now,
+        )
+        if papel == Comprovante.Papel.ASSOCIADO:
+            esteira_item = getattr(contrato.associado, "esteira_item", None)
+            if (
+                esteira_item is not None
+                and esteira_item.etapa_atual == EsteiraItem.Etapa.TESOURARIA
+            ):
+                return TesourariaService._finalize_contract_effectivation(
+                    contrato,
+                    user=user,
+                    paid_at=now,
+                )
+            pagamento = TesourariaService._upsert_initial_payment(
+                contrato,
+                user=user,
+                paid_at=now,
             )
-            .order_by("-created_at")
-            .first()
-        )
-        if comprovante is None:
-            raise ValidationError("Comprovante não encontrado para substituição.")
-
-        comprovante.arquivo = arquivo
-        comprovante.nome_original = getattr(arquivo, "name", "")
-        comprovante.mime = getattr(arquivo, "content_type", "") or ""
-        comprovante.size_bytes = getattr(arquivo, "size", None)
-        comprovante.arquivo_referencia_path = ""
-        comprovante.enviado_por = user
-        if comprovante.data_pagamento is None:
-            comprovante.data_pagamento = timezone.now()
-        comprovante.save(
-            update_fields=[
-                "arquivo",
-                "nome_original",
-                "mime",
-                "size_bytes",
-                "arquivo_referencia_path",
-                "enviado_por",
-                "data_pagamento",
-                "updated_at",
-            ]
-        )
+            TesourariaService._sync_initial_payment_paths(pagamento, contrato)
+            pagamento.save(update_fields=["comprovante_associado_path", "comprovante_agente_path", "updated_at"])
+        else:
+            pagamento = get_initial_payment_for_contract(contrato)
+            if pagamento is not None:
+                TesourariaService._sync_initial_payment_paths(pagamento, contrato)
+                pagamento.save(
+                    update_fields=[
+                        "comprovante_associado_path",
+                        "comprovante_agente_path",
+                        "updated_at",
+                    ]
+                )
+        contrato.refresh_from_db()
         return contrato
 
     @staticmethod

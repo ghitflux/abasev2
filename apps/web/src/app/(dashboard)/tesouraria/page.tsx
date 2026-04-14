@@ -81,6 +81,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const comprovanteAccept = {
   "application/pdf": [".pdf"],
@@ -90,7 +91,6 @@ const comprovanteAccept = {
 
 const PAGE_SIZE = 5;
 
-type DraftMap = Record<number, { associado?: File; agente?: File }>;
 type TesourariaPagamentoFilter =
   | "pendente"
   | "concluido"
@@ -203,6 +203,10 @@ function buildTesourariaExportRow(row: TesourariaContratoItem) {
     agente: formatTesourariaAgente(row),
     auxilio_comissao: formatTesourariaValores(row),
     data_solicitacao: formatDateTime(row.data_solicitacao),
+    data_anexo_associado: formatDateTime(row.data_anexo_associado),
+    data_anexo_agente: formatDateTime(row.data_anexo_agente),
+    data_pagamento_associado: formatDateTime(row.data_pagamento_associado),
+    data_pagamento_agente: formatDateTime(row.data_pagamento_agente),
     status: formatTesourariaStatus(row),
   };
 }
@@ -301,6 +305,8 @@ function useTesourariaQuery({
 }
 
 export default function TesourariaPage() {
+  const { hasAnyRole } = usePermissions();
+  const canMutate = hasAnyRole(["ADMIN", "TESOUREIRO"]);
   const queryClient = useQueryClient();
   const [search, setSearch] = React.useState("");
   const [isExporting, setIsExporting] = React.useState(false);
@@ -325,7 +331,6 @@ export default function TesourariaPage() {
       situacaoEsteira: "todos",
       ordering: "-created_at",
     });
-  const [drafts, setDrafts] = React.useState<DraftMap>({});
   const [freezeTarget, setFreezeTarget] =
     React.useState<TesourariaContratoItem | null>(null);
   const [freezeReason, setFreezeReason] = React.useState("");
@@ -389,47 +394,6 @@ export default function TesourariaPage() {
     statusContrato,
     situacaoEsteira,
     ordering,
-  });
-
-  const efetivarMutation = useMutation({
-    mutationFn: async ({
-      contratoId,
-      associado,
-      agente,
-    }: {
-      contratoId: number;
-      associado: File;
-      agente: File;
-    }) => {
-      const formData = new FormData();
-      formData.set("comprovante_associado", associado);
-      formData.set("comprovante_agente", agente);
-      return apiFetch<TesourariaContratoItem>(
-        `tesouraria/contratos/${contratoId}/efetivar`,
-        {
-          method: "POST",
-          formData,
-        },
-      );
-    },
-    onSuccess: (_, variables) => {
-      setDrafts((current) => {
-        const next = { ...current };
-        delete next[variables.contratoId];
-        return next;
-      });
-      toast.success("Contrato efetivado com sucesso.");
-      void queryClient.invalidateQueries({
-        queryKey: ["tesouraria-contratos"],
-      });
-    },
-    onError: (error) => {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível efetivar o contrato.",
-      );
-    },
   });
 
   const congelarMutation = useMutation({
@@ -568,19 +532,16 @@ export default function TesourariaPage() {
           const agenteComprovante = row.comprovantes.find(
             (item) => item.papel === "agente",
           );
-          const draft = drafts[row.id] ?? {};
           const canEfetivar =
             row.status === "pendente" || row.status === "congelado";
           const dispensaPagamentoInicial = row.dispensa_pagamento_inicial;
-          const isEfetivando =
-            efetivarMutation.isPending &&
-            efetivarMutation.variables?.contratoId === row.id;
           const isAverbando =
             averbarMutation.isPending &&
             averbarMutation.variables?.contratoId === row.id;
           const isSubstituindo =
             substituirComprovanteMutation.isPending &&
             substituirComprovanteMutation.variables?.contratoId === row.id;
+          const isBlocked = isAverbando || isSubstituindo;
 
           if (dispensaPagamentoInicial) {
             return (
@@ -599,7 +560,7 @@ export default function TesourariaPage() {
                     onClick={() =>
                       averbarMutation.mutate({ contratoId: row.id })
                     }
-                    disabled={isAverbando}
+                    disabled={isAverbando || !canMutate}
                   >
                     Averbar
                   </Button>
@@ -624,29 +585,16 @@ export default function TesourariaPage() {
                       : undefined
                   }
                   existingName={associadoComprovante?.nome_original}
-                  draftFile={draft.associado}
-                  disabled={isEfetivando || isAverbando || isSubstituindo}
-                  isProcessing={isEfetivando || isAverbando || isSubstituindo}
+                  disabled={isBlocked || !canMutate}
+                  isProcessing={isBlocked}
                   onSelect={(file) => {
-                    if (canEfetivar) {
-                      setDrafts((current) => ({
-                        ...current,
-                        [row.id]: { ...current[row.id], associado: file },
-                      }));
-                      return;
-                    }
                     substituirComprovanteMutation.mutate({
                       contratoId: row.id,
                       papel: "associado",
                       arquivo: file,
                     });
                   }}
-                  onClear={() =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [row.id]: { ...current[row.id], associado: undefined },
-                    }))
-                  }
+                  onClear={() => undefined}
                 />
                 <ComprovanteSlot
                   compact
@@ -657,47 +605,23 @@ export default function TesourariaPage() {
                       : undefined
                   }
                   existingName={agenteComprovante?.nome_original}
-                  draftFile={draft.agente}
-                  disabled={isEfetivando || isAverbando || isSubstituindo}
-                  isProcessing={isEfetivando || isAverbando || isSubstituindo}
+                  disabled={isBlocked || !canMutate}
+                  isProcessing={isBlocked}
                   onSelect={(file) => {
-                    if (canEfetivar) {
-                      setDrafts((current) => ({
-                        ...current,
-                        [row.id]: { ...current[row.id], agente: file },
-                      }));
-                      return;
-                    }
                     substituirComprovanteMutation.mutate({
                       contratoId: row.id,
                       papel: "agente",
                       arquivo: file,
                     });
                   }}
-                  onClear={() =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [row.id]: { ...current[row.id], agente: undefined },
-                    }))
-                  }
+                  onClear={() => undefined}
                 />
               </div>
-              {canEfetivar && draft.associado && draft.agente ? (
-                <Button
-                  size="sm"
-                  className="self-start"
-                  onClick={() =>
-                    efetivarMutation.mutate({
-                      contratoId: row.id,
-                      associado: draft.associado!,
-                      agente: draft.agente!,
-                    })
-                  }
-                  disabled={efetivarMutation.isPending}
-                >
-                  Efetivar agora
-                </Button>
-              ) : null}
+              <p className="text-xs text-muted-foreground">
+                {canEfetivar
+                  ? "O comprovante do associado efetiva automaticamente. O do agente é opcional."
+                  : "Os comprovantes podem ser substituídos a qualquer momento."}
+              </p>
             </div>
           );
         },
@@ -746,7 +670,7 @@ export default function TesourariaPage() {
                 variant="outline"
                 className="border-amber-500/40 text-amber-200"
                 onClick={() => setFreezeTarget(row)}
-                disabled={!canFreeze}
+                disabled={!canFreeze || !canMutate}
               >
                 <LockIcon className="size-4" />
                 Congelar
@@ -756,7 +680,7 @@ export default function TesourariaPage() {
                 variant="outline"
                 className="border-rose-500/40 text-rose-200"
                 onClick={() => setCancelTarget(row)}
-                disabled={!canCancel}
+                disabled={!canCancel || !canMutate}
               >
                 Cancelar contrato
               </Button>
@@ -833,6 +757,26 @@ export default function TesourariaPage() {
         cell: (row) => formatDateTime(row.data_solicitacao),
       },
       {
+        id: "data_anexo_associado",
+        header: "Anexo associado",
+        cell: (row) => formatDateTime(row.data_anexo_associado),
+      },
+      {
+        id: "data_anexo_agente",
+        header: "Anexo agente",
+        cell: (row) => formatDateTime(row.data_anexo_agente),
+      },
+      {
+        id: "data_pagamento_associado",
+        header: "Pagamento associado",
+        cell: (row) => formatDateTime(row.data_pagamento_associado),
+      },
+      {
+        id: "data_pagamento_agente",
+        header: "Pagamento agente",
+        cell: (row) => formatDateTime(row.data_pagamento_agente),
+      },
+      {
         id: "status",
         header: "Status",
         cell: (row) => (
@@ -849,7 +793,7 @@ export default function TesourariaPage() {
         ),
       },
     ],
-    [averbarMutation, drafts, efetivarMutation, substituirComprovanteMutation],
+    [averbarMutation, canMutate, substituirComprovanteMutation],
   );
 
   const handleExport = React.useCallback(
@@ -857,7 +801,14 @@ export default function TesourariaPage() {
       exportFilters: ReportExportFilters,
       formatValue: "pdf" | "xlsx",
     ) => {
-      const { scope, referenceDate, agente: exportAgente, status: exportStatus, esteira: exportEsteira } = exportFilters;
+      const {
+        scope,
+        referenceDate,
+        agente: exportAgente,
+        status: exportStatus,
+        esteira: exportEsteira,
+        columns: selectedColumns,
+      } = exportFilters;
 
       setIsExporting(true);
       try {
@@ -941,6 +892,7 @@ export default function TesourariaPage() {
                 .toFixed(2),
             },
             ...describeReportScope(scope, referenceDate),
+            columns: selectedColumns,
           },
         });
       } catch (error) {

@@ -7,7 +7,6 @@ import {
   DownloadIcon,
   FileCogIcon,
   FileSpreadsheetIcon,
-  FileTextIcon,
   RefreshCcwIcon,
   WalletIcon,
 } from "lucide-react";
@@ -19,6 +18,9 @@ import { formatCurrency, formatDateTime } from "@/lib/formatters";
 import { usePermissions } from "@/hooks/use-permissions";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import EmptyState from "@/components/shared/empty-state";
+import ReportExportDialog, {
+  type ReportExportFilters,
+} from "@/components/shared/report-export-dialog";
 import { ListRouteSkeleton, MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
@@ -49,7 +51,7 @@ const EXPORT_OPTIONS = [
 ];
 
 type ReportType = (typeof EXPORT_OPTIONS)[number]["tipo"];
-type ReportFormat = "csv" | "json" | "pdf";
+type ReportFormat = "csv" | "json" | "pdf" | "xlsx";
 
 const REPORT_LABELS: Record<ReportType, string> = {
   associados: "Associados",
@@ -92,7 +94,11 @@ export default function RelatoriosPage() {
   });
 
   const exportMutation = useMutation({
-    mutationFn: (payload: { tipo: ReportType; formato: ReportFormat }) =>
+    mutationFn: (payload: {
+      tipo: ReportType;
+      formato: ReportFormat;
+      filtros?: Record<string, unknown>;
+    }) =>
       apiFetch<RelatorioGeradoItem>("relatorios/exportar", {
         method: "POST",
         body: payload,
@@ -147,6 +153,23 @@ export default function RelatoriosPage() {
 
   const resumo = resumoQuery.data;
   const historico = historicoQuery.data ?? [];
+
+  const handleStructuredExport = React.useCallback(
+    (tipo: ReportType) =>
+      async (
+        filters: ReportExportFilters,
+        formato: "pdf" | "xlsx",
+      ) => {
+        exportMutation.mutate({
+          tipo,
+          formato,
+          filtros: {
+            columns: filters.columns,
+          },
+        });
+      },
+    [exportMutation],
+  );
 
   if (status !== "authenticated") {
     return <ListRouteSkeleton metricCards={4} />;
@@ -234,14 +257,13 @@ export default function RelatoriosPage() {
               <CardDescription>{option.description}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
-            <Button
-              aria-label={`Exportar ${REPORT_LABELS[option.tipo]} em PDF`}
-              onClick={() => exportMutation.mutate({ tipo: option.tipo, formato: "pdf" })}
+            <ReportExportDialog
+              hideScope
               disabled={exportMutation.isPending}
-            >
-              <FileTextIcon className="size-4" />
-              Exportar PDF
-            </Button>
+              label="Exportar PDF / XLS"
+              reportType={option.tipo}
+              onExport={handleStructuredExport(option.tipo)}
+            />
             <Button
               aria-label={`Exportar ${REPORT_LABELS[option.tipo]} em CSV`}
               onClick={() => exportMutation.mutate({ tipo: option.tipo, formato: "csv" })}

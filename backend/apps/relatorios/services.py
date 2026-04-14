@@ -47,6 +47,203 @@ class RelatorioService:
     }
 
     @staticmethod
+    def _definitions() -> dict[str, ReportDefinition]:
+        return {
+            "/analise": ReportDefinition(
+                tipo="/analise",
+                title="Relatorio do Dashboard de Analise",
+                description="Fila consolidada da analise operacional conforme os filtros ativos.",
+                columns=(
+                    ReportColumn("nome", "Associado", 2.3),
+                    ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("matricula", "Matricula", 1.2),
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("etapa", "Etapa", 1.0),
+                    ReportColumn("status", "Status", 1.1),
+                    ReportColumn("agente", "Agente", 1.8),
+                    ReportColumn("criado_em", "Atualizado em", 1.3),
+                ),
+            ),
+            "/associados": ReportDefinition(
+                tipo="/associados",
+                title="Relatorio de Associados",
+                description="Base cadastral com status do associado, orgao publico e agente responsavel.",
+                columns=(
+                    ReportColumn("nome_completo", "Associado", 2.5),
+                    ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("status", "Status", 1.0),
+                    ReportColumn("orgao_publico", "Orgao", 1.8),
+                    ReportColumn("agente", "Agente responsavel", 2.0),
+                    ReportColumn("created_at", "Criado em", 1.3),
+                ),
+            ),
+            "/tesouraria": ReportDefinition(
+                tipo="/tesouraria",
+                title="Relatorio de Tesouraria",
+                description="Espelha as secoes operacionais de novos contratos da tesouraria com anexos, dados bancarios e status.",
+                columns=(
+                    ReportColumn("anexos", "Anexos", 2.0),
+                    ReportColumn("dados_bancarios", "Dados bancarios", 2.0),
+                    ReportColumn("chave_pix", "Chave PIX", 1.2),
+                    ReportColumn("acao", "Acao", 1.6),
+                    ReportColumn("nome", "Nome", 2.0),
+                    ReportColumn("matricula_cpf", "Matricula / CPF", 1.8),
+                    ReportColumn("agente", "Agente", 1.6),
+                    ReportColumn("auxilio_comissao", "Aux. / Comissao", 1.6),
+                    ReportColumn("data_solicitacao", "Data da solicitacao", 1.5),
+                    ReportColumn("data_anexo_associado", "Anexo associado", 1.3),
+                    ReportColumn("data_anexo_agente", "Anexo agente", 1.3),
+                    ReportColumn("data_pagamento_associado", "Pagamento associado", 1.4),
+                    ReportColumn("data_pagamento_agente", "Pagamento agente", 1.4),
+                    ReportColumn("status", "Status", 1.1),
+                ),
+            ),
+            "/tesouraria/refinanciamentos": ReportDefinition(
+                tipo="/tesouraria/refinanciamentos",
+                title="Relatorio de Refinanciamentos",
+                description="Solicitacoes de refinanciamento com status, valor, repasse e responsavel pela acao.",
+                columns=(
+                    ReportColumn("associado_nome", "Associado", 2.3),
+                    ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("data_solicitacao", "Data da solicitacao", 1.3),
+                    ReportColumn("data_anexo_associado", "Anexo associado", 1.3),
+                    ReportColumn("data_anexo_agente", "Anexo agente", 1.3),
+                    ReportColumn("data_pagamento_associado", "Pagamento associado", 1.4),
+                    ReportColumn("data_pagamento_agente", "Pagamento agente", 1.4),
+                    ReportColumn("status", "Status", 1.2),
+                    ReportColumn("valor_refinanciamento", "Valor", 1.1),
+                    ReportColumn("repasse_agente", "Repasse agente", 1.1),
+                    ReportColumn("pagamento_status", "Pagamento", 1.0),
+                    ReportColumn("data_ativacao_ciclo", "Efetivacao", 1.2),
+                ),
+            ),
+            "/agentes/meus-contratos": ReportDefinition(
+                tipo="/agentes/meus-contratos",
+                title="Relatorio de Meus Contratos",
+                description="Contratos do agente conforme os filtros aplicados na tela.",
+                columns=(
+                    ReportColumn("codigo", "Contrato", 1.4),
+                    ReportColumn("associado", "Associado", 2.4),
+                    ReportColumn("status_visual_label", "Status", 1.2),
+                    ReportColumn("etapa_fluxo", "Fluxo", 1.0),
+                    ReportColumn("valor_disponivel", "Valor disponível", 1.1),
+                    ReportColumn("status_renovacao", "Renovacao", 1.2),
+                    ReportColumn("cancelamento_tipo", "Cancelamento", 1.1),
+                    ReportColumn("cancelamento_motivo", "Motivo", 2.2),
+                ),
+            ),
+            "/agentes/pagamentos": ReportDefinition(
+                tipo="/agentes/pagamentos",
+                title="Relatorio de Pagamentos",
+                description="Pagamentos exibidos na rota de pagamentos do agente ou tesouraria.",
+                columns=(
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("nome", "Associado", 2.3),
+                    ReportColumn("agente_nome", "Agente", 1.8),
+                    ReportColumn("data_solicitacao", "Solicitacao", 1.3),
+                    ReportColumn("status_visual_label", "Status", 1.2),
+                    ReportColumn("pagamento_inicial_status_label", "Pagamento", 1.2),
+                    ReportColumn("pagamento_inicial_valor", "Valor pago", 1.1),
+                    ReportColumn("cancelamento_tipo", "Cancelamento", 1.1),
+                ),
+            ),
+            "/agentes/refinanciados": ReportDefinition(
+                tipo="/agentes/refinanciados",
+                title="Relatorio de Renovações do Agente",
+                description="Solicitacoes e historico de renovacoes do agente.",
+                columns=(
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("associado_nome", "Associado", 2.3),
+                    ReportColumn("status", "Status", 1.2),
+                    ReportColumn("data_solicitacao", "Solicitacao", 1.3),
+                    ReportColumn("valor_refinanciamento", "Valor", 1.1),
+                    ReportColumn("repasse_agente", "Repasse", 1.0),
+                    ReportColumn("analista_note", "Nota analista", 1.8),
+                    ReportColumn("coordenador_note", "Nota coordenacao", 1.8),
+                ),
+            ),
+            "/analise/aptos": ReportDefinition(
+                tipo="/analise/aptos",
+                title="Relatorio de Fila Analítica",
+                description="Renovacoes visiveis para a analise conforme os filtros ativos.",
+                columns=(
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("associado_nome", "Associado", 2.3),
+                    ReportColumn("status", "Status", 1.2),
+                    ReportColumn("motivo_apto_renovacao", "Motivo", 2.4),
+                    ReportColumn("analista_note", "Nota analista", 1.8),
+                    ReportColumn("coordenador_note", "Nota coordenacao", 1.8),
+                    ReportColumn("data_pagamento_associado", "Pagamento associado", 1.4),
+                ),
+            ),
+            "/coordenacao/refinanciamento": ReportDefinition(
+                tipo="/coordenacao/refinanciamento",
+                title="Relatorio de Coordenação de Renovações",
+                description="Fila da coordenação conforme os filtros ativos.",
+                columns=(
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("associado_nome", "Associado", 2.3),
+                    ReportColumn("status", "Status", 1.2),
+                    ReportColumn("analista_note", "Nota analista", 1.8),
+                    ReportColumn("coordenador_note", "Nota coordenacao", 1.8),
+                    ReportColumn("data_solicitacao", "Solicitacao", 1.3),
+                    ReportColumn("data_pagamento_associado", "Pagamento associado", 1.4),
+                ),
+            ),
+            "/coordenacao/refinanciados": ReportDefinition(
+                tipo="/coordenacao/refinanciados",
+                title="Relatorio de Coordenação de Renovados",
+                description="Historico consolidado das renovacoes efetivadas e em liquidacao visiveis para a coordenação.",
+                columns=(
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("associado_nome", "Associado", 2.3),
+                    ReportColumn("status", "Status", 1.2),
+                    ReportColumn("data_solicitacao", "Solicitacao", 1.3),
+                    ReportColumn("executado_em", "Executado em", 1.3),
+                    ReportColumn("data_pagamento_associado", "Pagamento associado", 1.4),
+                    ReportColumn("valor_refinanciamento", "Valor", 1.1),
+                    ReportColumn("repasse_agente", "Repasse", 1.0),
+                    ReportColumn("analista_note", "Nota analista", 1.8),
+                    ReportColumn("coordenador_note", "Nota coordenacao", 1.8),
+                ),
+            ),
+            "/importacao": ReportDefinition(
+                tipo="/importacao",
+                title="Relatorio de Importacao",
+                description="Historico de arquivos retorno com competencia, processamento e inconsistencias.",
+                columns=(
+                    ReportColumn("arquivo_nome", "Arquivo", 2.6),
+                    ReportColumn("competencia", "Competencia", 1.0),
+                    ReportColumn("status", "Status", 1.1),
+                    ReportColumn("total_registros", "Total", 0.8),
+                    ReportColumn("processados", "Processados", 0.9),
+                    ReportColumn("nao_encontrados", "Nao encontrados", 1.1),
+                    ReportColumn("erros", "Erros", 0.7),
+                    ReportColumn("created_at", "Importado em", 1.4),
+                ),
+            ),
+        }
+
+    @staticmethod
+    def definition_payload(
+        rota: str | None = None,
+        tipo: str | None = None,
+    ) -> dict[str, object] | list[dict[str, object]]:
+        definitions = RelatorioService._definitions()
+        if rota or tipo:
+            route = RelatorioService._resolve_route_key(rota or tipo or "")
+            try:
+                definition = definitions[route]
+            except KeyError as exc:
+                raise ValueError(f"Rota de relatorio invalida: {route}") from exc
+            return RelatorioService._serialize_definition(definition)
+        return [
+            RelatorioService._serialize_definition(definition)
+            for definition in definitions.values()
+        ]
+
+    @staticmethod
     def resumo() -> dict[str, object]:
         hoje = timezone.localdate()
         ultima_importacao = ArquivoRetorno.objects.order_by("-created_at").first()
@@ -135,26 +332,83 @@ class RelatorioService:
         }
 
     @staticmethod
+    def _serialize_definition(definition: ReportDefinition) -> dict[str, object]:
+        return {
+            "tipo": definition.tipo,
+            "title": definition.title,
+            "description": definition.description,
+            "columns": [
+                {
+                    "key": column.key,
+                    "header": column.header,
+                    "width": column.width,
+                }
+                for column in definition.columns
+            ],
+        }
+
+    @staticmethod
+    def _selected_columns(
+        rota: str,
+        filtros: dict[str, object] | None = None,
+    ) -> tuple[ReportColumn, ...]:
+        definition = RelatorioService._definition_for_route(rota)
+        raw_columns = filtros.get("columns") if isinstance(filtros, dict) else None
+        if not isinstance(raw_columns, list):
+            return definition.columns
+        available = {column.key: column for column in definition.columns}
+        selected = [
+            available[key]
+            for key in raw_columns
+            if isinstance(key, str) and key in available
+        ]
+        return tuple(selected) or definition.columns
+
+    @staticmethod
+    def _project_rows(
+        rows: list[dict[str, object]],
+        columns: tuple[ReportColumn, ...],
+    ) -> list[dict[str, object]]:
+        return [{column.key: row.get(column.key) for column in columns} for row in rows]
+
+    @staticmethod
     def _render_content(
         rota: str,
         rows: list[dict[str, object]],
         formato: str,
         filtros: dict[str, object] | None = None,
     ) -> bytes:
+        selected_columns = RelatorioService._selected_columns(rota, filtros or {})
+        projected_rows = RelatorioService._project_rows(rows, selected_columns)
         if formato == "pdf":
-            return RelatorioService._render_pdf(rota, rows, filtros or {})
+            return RelatorioService._render_pdf(
+                rota,
+                projected_rows,
+                filtros or {},
+                selected_columns,
+            )
 
         if formato == "xlsx":
-            return RelatorioService._render_xlsx(rota, rows, filtros or {})
+            return RelatorioService._render_xlsx(
+                rota,
+                projected_rows,
+                filtros or {},
+                selected_columns,
+            )
 
         if formato == "json":
-            return json.dumps(rows, ensure_ascii=True, indent=2, default=str).encode("utf-8")
+            return json.dumps(
+                projected_rows,
+                ensure_ascii=True,
+                indent=2,
+                default=str,
+            ).encode("utf-8")
 
-        headers = list(rows[0].keys()) if rows else []
+        headers = [column.key for column in selected_columns]
         output = StringIO()
         writer = csv.DictWriter(output, fieldnames=headers)
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(projected_rows)
         return output.getvalue().encode("utf-8")
 
     @staticmethod
@@ -288,157 +542,8 @@ class RelatorioService:
     @staticmethod
     def _definition_for_route(rota: str) -> ReportDefinition:
         route = RelatorioService._resolve_route_key(rota)
-        definitions = {
-            "/analise": ReportDefinition(
-                tipo="/analise",
-                title="Relatorio do Dashboard de Analise",
-                description="Fila consolidada da analise operacional conforme os filtros ativos.",
-                columns=(
-                    ReportColumn("nome", "Associado", 2.3),
-                    ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
-                    ReportColumn("matricula", "Matricula", 1.2),
-                    ReportColumn("contrato_codigo", "Contrato", 1.3),
-                    ReportColumn("etapa", "Etapa", 1.0),
-                    ReportColumn("status", "Status", 1.1),
-                    ReportColumn("agente", "Agente", 1.8),
-                    ReportColumn("criado_em", "Atualizado em", 1.3),
-                ),
-            ),
-            "/associados": ReportDefinition(
-                tipo="/associados",
-                title="Relatorio de Associados",
-                description="Base cadastral com status do associado, orgao publico e agente responsavel.",
-                columns=(
-                    ReportColumn("nome_completo", "Associado", 2.5),
-                    ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
-                    ReportColumn("status", "Status", 1.0),
-                    ReportColumn("orgao_publico", "Orgao", 1.8),
-                    ReportColumn("agente", "Agente responsavel", 2.0),
-                    ReportColumn("created_at", "Criado em", 1.3),
-                ),
-            ),
-            "/tesouraria": ReportDefinition(
-                tipo="/tesouraria",
-                title="Relatorio de Tesouraria",
-                description="Espelha as secoes operacionais de novos contratos da tesouraria com anexos, dados bancarios e status.",
-                columns=(
-                    ReportColumn("anexos", "Anexos", 2.4),
-                    ReportColumn("dados_bancarios", "Dados bancarios", 2.2),
-                    ReportColumn("chave_pix", "Chave PIX", 1.4),
-                    ReportColumn("acao", "Acao", 1.8),
-                    ReportColumn("nome", "Nome", 2.0),
-                    ReportColumn("matricula_cpf", "Matricula / CPF", 1.8),
-                    ReportColumn("agente", "Agente", 1.8),
-                    ReportColumn("auxilio_comissao", "Aux. / Comissao", 1.7),
-                    ReportColumn("data_solicitacao", "Data da solicitacao", 1.5),
-                    ReportColumn("status", "Status", 1.1),
-                ),
-            ),
-            "/tesouraria/refinanciamentos": ReportDefinition(
-                tipo="/tesouraria/refinanciamentos",
-                title="Relatorio de Refinanciamentos",
-                description="Solicitacoes de refinanciamento com status, valor, repasse e responsavel pela acao.",
-                columns=(
-                    ReportColumn("associado_nome", "Associado", 2.3),
-                    ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
-                    ReportColumn("contrato_codigo", "Contrato", 1.3),
-                    ReportColumn("data_solicitacao", "Data da solicitacao", 1.3),
-                    ReportColumn("status", "Status", 1.2),
-                    ReportColumn("valor_refinanciamento", "Valor", 1.1),
-                    ReportColumn("repasse_agente", "Repasse agente", 1.1),
-                    ReportColumn("pagamento_status", "Pagamento", 1.0),
-                    ReportColumn("data_ativacao_ciclo", "Efetivacao", 1.2),
-                ),
-            ),
-            "/agentes/meus-contratos": ReportDefinition(
-                tipo="/agentes/meus-contratos",
-                title="Relatorio de Meus Contratos",
-                description="Contratos do agente conforme os filtros aplicados na tela.",
-                columns=(
-                    ReportColumn("codigo", "Contrato", 1.4),
-                    ReportColumn("associado", "Associado", 2.4),
-                    ReportColumn("status_visual_label", "Status", 1.2),
-                    ReportColumn("etapa_fluxo", "Fluxo", 1.0),
-                    ReportColumn("valor_disponivel", "Valor disponível", 1.1),
-                    ReportColumn("status_renovacao", "Renovacao", 1.2),
-                    ReportColumn("cancelamento_tipo", "Cancelamento", 1.1),
-                    ReportColumn("cancelamento_motivo", "Motivo", 2.2),
-                ),
-            ),
-            "/agentes/pagamentos": ReportDefinition(
-                tipo="/agentes/pagamentos",
-                title="Relatorio de Pagamentos",
-                description="Pagamentos exibidos na rota de pagamentos do agente ou tesouraria.",
-                columns=(
-                    ReportColumn("contrato_codigo", "Contrato", 1.3),
-                    ReportColumn("nome", "Associado", 2.3),
-                    ReportColumn("agente_nome", "Agente", 1.8),
-                    ReportColumn("data_solicitacao", "Solicitacao", 1.3),
-                    ReportColumn("status_visual_label", "Status", 1.2),
-                    ReportColumn("pagamento_inicial_status_label", "Pagamento", 1.2),
-                    ReportColumn("pagamento_inicial_valor", "Valor pago", 1.1),
-                    ReportColumn("cancelamento_tipo", "Cancelamento", 1.1),
-                ),
-            ),
-            "/agentes/refinanciados": ReportDefinition(
-                tipo="/agentes/refinanciados",
-                title="Relatorio de Renovações do Agente",
-                description="Solicitacoes e historico de renovacoes do agente.",
-                columns=(
-                    ReportColumn("contrato_codigo", "Contrato", 1.3),
-                    ReportColumn("associado_nome", "Associado", 2.3),
-                    ReportColumn("status", "Status", 1.2),
-                    ReportColumn("data_solicitacao", "Solicitacao", 1.3),
-                    ReportColumn("valor_refinanciamento", "Valor", 1.1),
-                    ReportColumn("repasse_agente", "Repasse", 1.0),
-                    ReportColumn("analista_note", "Nota analista", 1.8),
-                    ReportColumn("coordenador_note", "Nota coordenacao", 1.8),
-                ),
-            ),
-            "/analise/aptos": ReportDefinition(
-                tipo="/analise/aptos",
-                title="Relatorio de Fila Analítica",
-                description="Renovacoes visiveis para a analise conforme os filtros ativos.",
-                columns=(
-                    ReportColumn("contrato_codigo", "Contrato", 1.3),
-                    ReportColumn("associado_nome", "Associado", 2.3),
-                    ReportColumn("status", "Status", 1.2),
-                    ReportColumn("motivo_apto_renovacao", "Motivo", 2.4),
-                    ReportColumn("analista_note", "Nota analista", 1.8),
-                    ReportColumn("coordenador_note", "Nota coordenacao", 1.8),
-                ),
-            ),
-            "/coordenacao/refinanciamento": ReportDefinition(
-                tipo="/coordenacao/refinanciamento",
-                title="Relatorio de Coordenação de Renovações",
-                description="Fila da coordenação conforme os filtros ativos.",
-                columns=(
-                    ReportColumn("contrato_codigo", "Contrato", 1.3),
-                    ReportColumn("associado_nome", "Associado", 2.3),
-                    ReportColumn("status", "Status", 1.2),
-                    ReportColumn("analista_note", "Nota analista", 1.8),
-                    ReportColumn("coordenador_note", "Nota coordenacao", 1.8),
-                    ReportColumn("data_solicitacao", "Solicitacao", 1.3),
-                ),
-            ),
-            "/importacao": ReportDefinition(
-                tipo="/importacao",
-                title="Relatorio de Importacao",
-                description="Historico de arquivos retorno com competencia, processamento e inconsistencias.",
-                columns=(
-                    ReportColumn("arquivo_nome", "Arquivo", 2.6),
-                    ReportColumn("competencia", "Competencia", 1.0),
-                    ReportColumn("status", "Status", 1.1),
-                    ReportColumn("total_registros", "Total", 0.8),
-                    ReportColumn("processados", "Processados", 0.9),
-                    ReportColumn("nao_encontrados", "Nao encontrados", 1.1),
-                    ReportColumn("erros", "Erros", 0.7),
-                    ReportColumn("created_at", "Importado em", 1.4),
-                ),
-            ),
-        }
         try:
-            return definitions[route]
+            return RelatorioService._definitions()[route]
         except KeyError as exc:
             raise ValueError(f"Rota de relatorio invalida: {route}") from exc
 
@@ -466,6 +571,7 @@ class RelatorioService:
         rota: str,
         rows: list[dict[str, object]],
         filtros: dict[str, object] | None = None,
+        columns: tuple[ReportColumn, ...] | None = None,
     ) -> bytes:
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import A4, landscape
@@ -474,6 +580,7 @@ class RelatorioService:
         from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
         definition = RelatorioService._definition_for_route(rota)
+        selected_columns = columns or definition.columns
         summary = RelatorioService._summary_for_route(rota, rows, filtros or {})
         buffer = BytesIO()
         document = SimpleDocTemplate(
@@ -573,7 +680,7 @@ class RelatorioService:
         story.append(Spacer(1, 5 * mm))
 
         table_rows: list[list[Paragraph]] = [
-            [Paragraph(escape(column.header), header_style) for column in definition.columns]
+            [Paragraph(escape(column.header), header_style) for column in selected_columns]
         ]
 
         if rows:
@@ -584,20 +691,20 @@ class RelatorioService:
                             escape(RelatorioService._format_pdf_value(row.get(column.key))),
                             cell_style,
                         )
-                        for column in definition.columns
+                        for column in selected_columns
                     ]
                 )
         else:
             table_rows.append(
                 [
                     Paragraph("Nenhum registro encontrado para este relatorio.", cell_style),
-                    *[Paragraph("", cell_style) for _ in definition.columns[1:]],
+                    *[Paragraph("", cell_style) for _ in selected_columns[1:]],
                 ]
             )
 
-        total_weight = sum(column.width for column in definition.columns) or 1
+        total_weight = sum(column.width for column in selected_columns) or 1
         col_widths = [
-            document.width * (column.width / total_weight) for column in definition.columns
+            document.width * (column.width / total_weight) for column in selected_columns
         ]
         table = Table(table_rows, repeatRows=1, colWidths=col_widths)
         table.setStyle(
@@ -651,18 +758,20 @@ class RelatorioService:
         rota: str,
         rows: list[dict[str, object]],
         filtros: dict[str, object] | None = None,
+        columns: tuple[ReportColumn, ...] | None = None,
     ) -> bytes:
         definition = RelatorioService._definition_for_route(rota)
+        selected_columns = columns or definition.columns
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = "Relatorio"
-        headers = [column.header for column in definition.columns]
+        headers = [column.header for column in selected_columns]
         sheet.append(headers)
         for row in rows:
             sheet.append(
                 [
                     RelatorioService._format_pdf_value(row.get(column.key))
-                    for column in definition.columns
+                    for column in selected_columns
                 ]
             )
         summary = RelatorioService._summary_for_route(rota, rows, filtros or {})

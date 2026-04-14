@@ -108,6 +108,10 @@ class TesourariaContratoListSerializer(serializers.Serializer):
     )
     dispensa_pagamento_inicial = serializers.SerializerMethodField()
     comprovantes = serializers.SerializerMethodField()
+    data_anexo_associado = serializers.SerializerMethodField()
+    data_anexo_agente = serializers.SerializerMethodField()
+    data_pagamento_associado = serializers.SerializerMethodField()
+    data_pagamento_agente = serializers.SerializerMethodField()
     dados_bancarios = serializers.SerializerMethodField()
     observacao_tesouraria = serializers.CharField(
         source="associado.esteira_item.observacao", read_only=True
@@ -146,6 +150,54 @@ class TesourariaContratoListSerializer(serializers.Serializer):
 
     def get_dispensa_pagamento_inicial(self, obj) -> bool:
         return Decimal(str(obj.valor_mensalidade or Decimal("0.00"))) <= Decimal("0.00")
+
+    def _latest_contract_comprovante(self, obj, papel: str):
+        comprovantes = [
+            comprovante
+            for comprovante in obj.comprovantes.all()
+            if comprovante.refinanciamento_id is None
+            and comprovante.papel == papel
+            and comprovante.tipo
+            in {
+                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+            }
+        ]
+        if not comprovantes:
+            return None
+        comprovantes.sort(
+            key=lambda item: (
+                item.updated_at or item.created_at,
+                item.created_at,
+                item.id,
+            ),
+            reverse=True,
+        )
+        return comprovantes[0]
+
+    def get_data_anexo_associado(self, obj):
+        comprovante = self._latest_contract_comprovante(obj, Comprovante.Papel.ASSOCIADO)
+        return (
+            comprovante.updated_at or comprovante.created_at
+            if comprovante is not None
+            else None
+        )
+
+    def get_data_anexo_agente(self, obj):
+        comprovante = self._latest_contract_comprovante(obj, Comprovante.Papel.AGENTE)
+        return (
+            comprovante.updated_at or comprovante.created_at
+            if comprovante is not None
+            else None
+        )
+
+    def get_data_pagamento_associado(self, obj):
+        comprovante = self._latest_contract_comprovante(obj, Comprovante.Papel.ASSOCIADO)
+        return comprovante.data_pagamento if comprovante is not None else None
+
+    def get_data_pagamento_agente(self, obj):
+        comprovante = self._latest_contract_comprovante(obj, Comprovante.Papel.AGENTE)
+        return comprovante.data_pagamento if comprovante is not None else None
 
     @extend_schema_field(TesourariaComprovanteResumoSerializer(many=True))
     def get_comprovantes(self, obj):
@@ -194,7 +246,7 @@ class TesourariaContratoListSerializer(serializers.Serializer):
 
 class EfetivarContratoSerializer(serializers.Serializer):
     comprovante_associado = serializers.FileField(required=True)
-    comprovante_agente = serializers.FileField(required=True)
+    comprovante_agente = serializers.FileField(required=False, allow_null=True)
 
 
 class SubstituirComprovanteSerializer(serializers.Serializer):

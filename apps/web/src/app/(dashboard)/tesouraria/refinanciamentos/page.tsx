@@ -20,11 +20,6 @@ import type {
   RefinanciamentoResumo,
   SimpleUser,
 } from "@/lib/api/types";
-
-type AgentFilterUser = SimpleUser & {
-  email?: string;
-  primary_role?: string | null;
-};
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
 import { formatCurrency, formatDateTime, formatMonthYear } from "@/lib/formatters";
@@ -56,8 +51,12 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { usePermissions } from "@/hooks/use-permissions";
 
-type DraftMap = Record<number, { associado?: File; agente?: File }>;
+type AgentFilterUser = SimpleUser & {
+  email?: string;
+  primary_role?: string | null;
+};
 
 const PENDING_STATUS = ["aprovado_para_renovacao"];
 const EFETIVADO_STATUS = ["efetivado"];
@@ -173,6 +172,8 @@ function resolveRenewalAttachments(row: RefinanciamentoItem) {
 }
 
 export default function TesourariaRefinanciamentosPage() {
+  const { hasAnyRole } = usePermissions();
+  const canMutate = hasAnyRole(["ADMIN", "TESOUREIRO"]);
   const queryClient = useQueryClient();
   const [search, setSearch] = React.useState("");
   const [isExporting, setIsExporting] = React.useState(false);
@@ -204,7 +205,6 @@ export default function TesourariaRefinanciamentosPage() {
   const [pagePending, setPagePending] = React.useState(1);
   const [pageEfetivadas, setPageEfetivadas] = React.useState(1);
   const [pageCanceladas, setPageCanceladas] = React.useState(1);
-  const [drafts, setDrafts] = React.useState<DraftMap>({});
   const [detailAssociadoId, setDetailAssociadoId] = React.useState<number | null>(null);
 
   React.useEffect(() => {
@@ -296,21 +296,21 @@ export default function TesourariaRefinanciamentosPage() {
       }),
   });
 
-  const efetivarMutation = useMutation({
+  const substituirComprovanteMutation = useMutation({
     mutationFn: async ({
       refinanciamentoId,
-      associado,
-      agente,
+      papel,
+      arquivo,
     }: {
       refinanciamentoId: number;
-      associado: File;
-      agente: File;
+      papel: "associado" | "agente";
+      arquivo: File;
     }) => {
       const formData = new FormData();
-      formData.set("comprovante_associado", associado);
-      formData.set("comprovante_agente", agente);
+      formData.set("papel", papel);
+      formData.set("arquivo", arquivo);
       return apiFetch<RefinanciamentoItem>(
-        `tesouraria/refinanciamentos/${refinanciamentoId}/efetivar`,
+        `tesouraria/refinanciamentos/${refinanciamentoId}/substituir-comprovante`,
         {
           method: "POST",
           formData,
@@ -318,18 +318,19 @@ export default function TesourariaRefinanciamentosPage() {
       );
     },
     onSuccess: (_, variables) => {
-      setDrafts((current) => {
-        const next = { ...current };
-        delete next[variables.refinanciamentoId];
-        return next;
-      });
-      toast.success("Renovação efetivada com sucesso.");
+      toast.success(
+        variables.papel === "associado"
+          ? "Comprovante do associado atualizado."
+          : "Comprovante do agente atualizado.",
+      );
       void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos"] });
       void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos-resumo"] });
       void queryClient.invalidateQueries({ queryKey: ["agente-refinanciados"] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Falha ao efetivar renovação.");
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao atualizar comprovante.",
+      );
     },
   });
 
@@ -347,7 +348,9 @@ export default function TesourariaRefinanciamentosPage() {
         cell: (row) => {
           const { termoAgente, comprovanteAssociado, comprovanteAgente } =
             resolveRenewalAttachments(row);
-          const draft = drafts[row.id] ?? {};
+          const isProcessing =
+            substituirComprovanteMutation.isPending &&
+            substituirComprovanteMutation.variables?.refinanciamentoId === row.id;
 
           return (
             <div className="space-y-3">
@@ -374,19 +377,15 @@ export default function TesourariaRefinanciamentosPage() {
                   existingReference={comprovanteAssociado?.arquivo_referencia}
                   existingReferenceType={comprovanteAssociado?.tipo_referencia}
                   existingName={comprovanteAssociado?.nome_original}
-                  draftFile={draft.associado}
+                  disabled={!canMutate || isProcessing}
                   onSelect={(file) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [row.id]: { ...current[row.id], associado: file },
-                    }))
+                    substituirComprovanteMutation.mutate({
+                      refinanciamentoId: row.id,
+                      papel: "associado",
+                      arquivo: file,
+                    })
                   }
-                  onClear={() =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [row.id]: { ...current[row.id], associado: undefined },
-                    }))
-                  }
+                  onClear={() => undefined}
                 />
                 <CompactUploadButton
                   id={`renovacao-${row.id}-agente`}
@@ -399,24 +398,20 @@ export default function TesourariaRefinanciamentosPage() {
                   existingReference={comprovanteAgente?.arquivo_referencia}
                   existingReferenceType={comprovanteAgente?.tipo_referencia}
                   existingName={comprovanteAgente?.nome_original}
-                  draftFile={draft.agente}
+                  disabled={!canMutate || isProcessing}
                   onSelect={(file) =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [row.id]: { ...current[row.id], agente: file },
-                    }))
+                    substituirComprovanteMutation.mutate({
+                      refinanciamentoId: row.id,
+                      papel: "agente",
+                      arquivo: file,
+                    })
                   }
-                  onClear={() =>
-                    setDrafts((current) => ({
-                      ...current,
-                      [row.id]: { ...current[row.id], agente: undefined },
-                    }))
-                  }
+                  onClear={() => undefined}
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                Mantenha o termo do agente visível e anexe os comprovantes de pagamento do
-                associado e do agente para liberar a efetivação.
+                O comprovante do associado efetiva automaticamente. O comprovante do agente
+                continua opcional e pode ser anexado depois.
               </p>
             </div>
           );
@@ -425,31 +420,16 @@ export default function TesourariaRefinanciamentosPage() {
       {
         id: "acao",
         header: "Ação",
-        cell: (row) => {
-          const draft = drafts[row.id] ?? {};
-          const canEfetivar = Boolean(draft.associado && draft.agente);
-
-          return (
-            <div className="flex min-w-44 flex-col gap-2">
-              <Button
-                size="sm"
-                disabled={!canEfetivar || efetivarMutation.isPending}
-                onClick={() =>
-                  efetivarMutation.mutate({
-                    refinanciamentoId: row.id,
-                    associado: draft.associado!,
-                    agente: draft.agente!,
-                  })
-                }
-              >
-                Efetivar renovação
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                {canEfetivar ? "Pronto para efetivação." : "Aguardando anexos da tesouraria."}
-              </p>
-            </div>
-          );
-        },
+        cell: () => (
+          <div className="flex min-w-44 flex-col gap-2">
+            <Badge variant="outline" className="w-fit rounded-full">
+              Upload imediato
+            </Badge>
+            <p className="text-xs text-muted-foreground">
+              O anexo do associado conclui a etapa operacional da tesouraria.
+            </p>
+          </div>
+        ),
       },
       {
         id: "associado",
@@ -529,6 +509,26 @@ export default function TesourariaRefinanciamentosPage() {
         cell: (row) => formatDateTime(row.updated_at),
       },
       {
+        id: "data_anexo_associado",
+        header: "Anexo associado",
+        cell: (row) => formatDateTime(row.data_anexo_associado),
+      },
+      {
+        id: "data_anexo_agente",
+        header: "Anexo agente",
+        cell: (row) => formatDateTime(row.data_anexo_agente),
+      },
+      {
+        id: "data_pagamento_associado",
+        header: "Pagamento associado",
+        cell: (row) => formatDateTime(row.data_pagamento_associado),
+      },
+      {
+        id: "data_pagamento_agente",
+        header: "Pagamento agente",
+        cell: (row) => formatDateTime(row.data_pagamento_agente),
+      },
+      {
         id: "status",
         header: "Status",
         cell: (row) => (
@@ -541,7 +541,7 @@ export default function TesourariaRefinanciamentosPage() {
         ),
       },
     ],
-    [drafts, efetivarMutation],
+    [canMutate, substituirComprovanteMutation],
   );
 
   const historyColumns = React.useMemo<DataTableColumn<RefinanciamentoItem>[]>(
@@ -578,7 +578,15 @@ export default function TesourariaRefinanciamentosPage() {
                 existingReference={comprovanteAssociado?.arquivo_referencia}
                 existingReferenceType={comprovanteAssociado?.tipo_referencia}
                 existingName={comprovanteAssociado?.nome_original}
-                disabled
+                disabled={!canMutate}
+                onSelect={(file) =>
+                  substituirComprovanteMutation.mutate({
+                    refinanciamentoId: row.id,
+                    papel: "associado",
+                    arquivo: file,
+                  })
+                }
+                onClear={() => undefined}
               />
               <CompactUploadButton
                 id={`readonly-${row.id}-agente`}
@@ -591,7 +599,15 @@ export default function TesourariaRefinanciamentosPage() {
                 existingReference={comprovanteAgente?.arquivo_referencia}
                 existingReferenceType={comprovanteAgente?.tipo_referencia}
                 existingName={comprovanteAgente?.nome_original}
-                disabled
+                disabled={!canMutate}
+                onSelect={(file) =>
+                  substituirComprovanteMutation.mutate({
+                    refinanciamentoId: row.id,
+                    papel: "agente",
+                    arquivo: file,
+                  })
+                }
+                onClear={() => undefined}
               />
             </div>
           );
@@ -652,6 +668,26 @@ export default function TesourariaRefinanciamentosPage() {
           formatDateTime(row.executado_em || row.data_ativacao_ciclo || row.updated_at),
       },
       {
+        id: "data_anexo_associado",
+        header: "Anexo associado",
+        cell: (row) => formatDateTime(row.data_anexo_associado),
+      },
+      {
+        id: "data_anexo_agente",
+        header: "Anexo agente",
+        cell: (row) => formatDateTime(row.data_anexo_agente),
+      },
+      {
+        id: "data_pagamento_associado",
+        header: "Pagamento associado",
+        cell: (row) => formatDateTime(row.data_pagamento_associado),
+      },
+      {
+        id: "data_pagamento_agente",
+        header: "Pagamento agente",
+        cell: (row) => formatDateTime(row.data_pagamento_agente),
+      },
+      {
         id: "status",
         header: "Status",
         cell: (row) => (
@@ -666,12 +702,18 @@ export default function TesourariaRefinanciamentosPage() {
         ),
       },
     ],
-    [],
+    [canMutate, substituirComprovanteMutation],
   );
 
   const handleExport = React.useCallback(
     async (exportFilters: ReportExportFilters, exportFormat: "pdf" | "xlsx") => {
-      const { scope, referenceDate, agente: exportAgente, status: exportStatus } = exportFilters;
+      const {
+        scope,
+        referenceDate,
+        agente: exportAgente,
+        status: exportStatus,
+        columns: selectedColumns,
+      } = exportFilters;
       setIsExporting(true);
       try {
         const sourceQuery = {
@@ -701,13 +743,19 @@ export default function TesourariaRefinanciamentosPage() {
           associado_nome: row.associado_nome,
           cpf_cnpj: row.cpf_cnpj,
           contrato_codigo: row.contrato_codigo,
-          competencia_solicitada: row.competencia_solicitada,
+          data_solicitacao: formatDateTime(
+            row.data_solicitacao_renovacao || row.data_solicitacao,
+          ),
+          data_anexo_associado: formatDateTime(row.data_anexo_associado),
+          data_anexo_agente: formatDateTime(row.data_anexo_agente),
+          data_pagamento_associado: formatDateTime(row.data_pagamento_associado),
+          data_pagamento_agente: formatDateTime(row.data_pagamento_agente),
           status: row.status,
-          valor_liberado_associado: row.valor_liberado_associado,
+          valor_refinanciamento: formatCurrency(row.valor_liberado_associado),
           repasse_agente: row.repasse_agente,
+          pagamento_status: row.pagamento_status,
           executado_em: row.executado_em,
           data_ativacao_ciclo: row.data_ativacao_ciclo,
-          updated_at: row.updated_at,
         }));
 
         await exportRouteReport({
@@ -734,6 +782,7 @@ export default function TesourariaRefinanciamentosPage() {
                 )
                 .toFixed(2),
             },
+            columns: selectedColumns,
           },
         });
       } catch (error) {

@@ -119,6 +119,10 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
     efetivado_por = SimpleUserSerializer(read_only=True)
     reviewed_by = SimpleUserSerializer(read_only=True)
     comprovantes = serializers.SerializerMethodField()
+    data_anexo_associado = serializers.SerializerMethodField()
+    data_anexo_agente = serializers.SerializerMethodField()
+    data_pagamento_associado = serializers.SerializerMethodField()
+    data_pagamento_agente = serializers.SerializerMethodField()
     ciclo_key = serializers.SerializerMethodField()
     referencias = serializers.SerializerMethodField()
     itens = serializers.SerializerMethodField()
@@ -175,6 +179,10 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
             "pagamento_status",
             "legacy_refinanciamento_id",
             "origem",
+            "data_anexo_associado",
+            "data_anexo_agente",
+            "data_pagamento_associado",
+            "data_pagamento_agente",
             "data_renovacao",
             "origem_renovacao",
             "motivo_apto_renovacao",
@@ -275,6 +283,61 @@ class RefinanciamentoListSerializer(serializers.ModelSerializer):
 
     def _resolve_contrato_origem(self, obj: Refinanciamento):
         return _resolve_contrato(obj)
+
+    def _latest_payment_comprovante(
+        self,
+        obj: Refinanciamento,
+        papel: str,
+    ) -> Comprovante | None:
+        prefetched = getattr(obj, "_prefetched_objects_cache", {})
+        comprovantes = list(prefetched.get("comprovantes", []))
+        if not comprovantes:
+            comprovantes = list(obj.comprovantes.all())
+        comprovantes = [
+            comprovante
+            for comprovante in comprovantes
+            if comprovante.papel == papel
+            and comprovante.tipo
+            in {
+                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+            }
+        ]
+        if not comprovantes:
+            return None
+        comprovantes.sort(
+            key=lambda item: (
+                item.updated_at or item.created_at,
+                item.created_at,
+                item.id,
+            ),
+            reverse=True,
+        )
+        return comprovantes[0]
+
+    def get_data_anexo_associado(self, obj: Refinanciamento):
+        comprovante = self._latest_payment_comprovante(obj, Comprovante.Papel.ASSOCIADO)
+        return (
+            comprovante.updated_at or comprovante.created_at
+            if comprovante is not None
+            else None
+        )
+
+    def get_data_anexo_agente(self, obj: Refinanciamento):
+        comprovante = self._latest_payment_comprovante(obj, Comprovante.Papel.AGENTE)
+        return (
+            comprovante.updated_at or comprovante.created_at
+            if comprovante is not None
+            else None
+        )
+
+    def get_data_pagamento_associado(self, obj: Refinanciamento):
+        comprovante = self._latest_payment_comprovante(obj, Comprovante.Papel.ASSOCIADO)
+        return comprovante.data_pagamento if comprovante is not None else None
+
+    def get_data_pagamento_agente(self, obj: Refinanciamento):
+        comprovante = self._latest_payment_comprovante(obj, Comprovante.Papel.AGENTE)
+        return comprovante.data_pagamento if comprovante is not None else None
 
     def get_mensalidades_total(self, obj: Refinanciamento) -> int:
         if obj.contrato_origem is not None:
@@ -435,7 +498,17 @@ class AprovarRefinanciamentoSerializer(serializers.Serializer):
 
 class EfetivarRefinanciamentoSerializer(serializers.Serializer):
     comprovante_associado = serializers.FileField(required=True)
-    comprovante_agente = serializers.FileField(required=True)
+    comprovante_agente = serializers.FileField(required=False, allow_null=True)
+
+
+class SubstituirComprovanteRefinanciamentoSerializer(serializers.Serializer):
+    papel = serializers.ChoiceField(
+        choices=[
+            Comprovante.Papel.ASSOCIADO,
+            Comprovante.Papel.AGENTE,
+        ]
+    )
+    arquivo = serializers.FileField(required=True)
 
 
 class AprovarAnaliseRefinanciamentoSerializer(serializers.Serializer):

@@ -122,6 +122,30 @@ class TesourariaContratoViewSet(
             competencia=competencia,
             data_inicio=self.request.query_params.get("data_inicio"),
             data_fim=self.request.query_params.get("data_fim"),
+            data_anexo_associado_inicio=self.request.query_params.get(
+                "data_anexo_associado_inicio"
+            ),
+            data_anexo_associado_fim=self.request.query_params.get(
+                "data_anexo_associado_fim"
+            ),
+            data_anexo_agente_inicio=self.request.query_params.get(
+                "data_anexo_agente_inicio"
+            ),
+            data_anexo_agente_fim=self.request.query_params.get(
+                "data_anexo_agente_fim"
+            ),
+            data_pagamento_associado_inicio=self.request.query_params.get(
+                "data_pagamento_associado_inicio"
+            ),
+            data_pagamento_associado_fim=self.request.query_params.get(
+                "data_pagamento_associado_fim"
+            ),
+            data_pagamento_agente_inicio=self.request.query_params.get(
+                "data_pagamento_agente_inicio"
+            ),
+            data_pagamento_agente_fim=self.request.query_params.get(
+                "data_pagamento_agente_fim"
+            ),
             search=self.request.query_params.get("search"),
             pagamento=self.request.query_params.get("pagamento"),
             agente=self.request.query_params.get("agente"),

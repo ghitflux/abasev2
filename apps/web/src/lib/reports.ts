@@ -2,7 +2,11 @@
 
 import { format } from "date-fns";
 
-import type { PaginatedResponse, RelatorioGeradoItem } from "@/lib/api/types";
+import type {
+  PaginatedResponse,
+  RelatorioDefinicao,
+  RelatorioGeradoItem,
+} from "@/lib/api/types";
 
 import { apiFetch } from "@/lib/api/client";
 
@@ -41,6 +45,21 @@ export async function exportRouteReport({
   });
 
   window.open(`/api/backend/relatorios/${relatorio.id}/download`, "_blank", "noopener,noreferrer");
+}
+
+export async function fetchReportDefinition({
+  route,
+  type,
+}: {
+  route?: string;
+  type?: string;
+}) {
+  return apiFetch<RelatorioDefinicao | RelatorioDefinicao[]>("relatorios/definicao", {
+    query: {
+      rota: route,
+      tipo: type,
+    },
+  });
 }
 
 export async function fetchAllPaginatedRows<T>({

@@ -1,17 +1,20 @@
 "use client";
 
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { format, isValid } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { CalendarIcon, DownloadIcon } from "lucide-react";
+import { usePathname } from "next/navigation";
 
-import type { ReportScope } from "@/lib/reports";
+import { fetchReportDefinition, type ReportScope } from "@/lib/reports";
 import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import DatePicker from "@/components/custom/date-picker";
 import SearchableSelect, {
   type SelectOption,
 } from "@/components/custom/searchable-select";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -36,6 +39,8 @@ export type ReportExportFilters = {
   agente?: string;
   status?: string;
   esteira?: string;
+  pagamentoFeito?: string;
+  columns?: string[];
 };
 
 type ReportExportDialogProps = {
@@ -44,12 +49,15 @@ type ReportExportDialogProps = {
   agentOptions?: SelectOption[];
   statusOptions?: Array<{ value: string; label: string }>;
   esteiraOptions?: Array<{ value: string; label: string }>;
+  paymentOptions?: Array<{ value: string; label: string }>;
   showFilters?: boolean;
   /** Oculta o seletor de período/data — use quando os dados já estão filtrados externamente */
   hideScope?: boolean;
   initialScope?: ReportScope;
   initialDayRef?: Date;
   initialMonthRef?: Date;
+  reportRoute?: string;
+  reportType?: string;
   onExport: (
     filters: ReportExportFilters,
     format: "pdf" | "xlsx",
@@ -62,13 +70,18 @@ export default function ReportExportDialog({
   agentOptions = [],
   statusOptions = [],
   esteiraOptions = [],
+  paymentOptions = [],
   showFilters = false,
   hideScope = false,
   initialScope = "month",
   initialDayRef,
   initialMonthRef,
+  reportRoute,
+  reportType,
   onExport,
 }: ReportExportDialogProps) {
+  const pathname = usePathname();
+  const resolvedReportRoute = reportRoute ?? pathname ?? undefined;
   const [open, setOpen] = React.useState(false);
   const [scope, setScope] = React.useState<ReportScope>(initialScope);
   const [dayRef, setDayRef] = React.useState<Date>(initialDayRef ?? new Date());
@@ -79,7 +92,25 @@ export default function ReportExportDialog({
   const [agente, setAgente] = React.useState("");
   const [status, setStatus] = React.useState("todos");
   const [esteira, setEsteira] = React.useState("todos");
+  const [pagamentoFeito, setPagamentoFeito] = React.useState("todos");
+  const [selectedColumns, setSelectedColumns] = React.useState<string[]>([]);
   const [isExporting, setIsExporting] = React.useState(false);
+  const definitionQuery = useQuery({
+    queryKey: ["report-definition", resolvedReportRoute, reportType],
+    queryFn: async () => {
+      try {
+        const payload = await fetchReportDefinition({
+          route: reportType ? undefined : resolvedReportRoute,
+          type: reportType,
+        });
+        return Array.isArray(payload) ? null : payload;
+      } catch {
+        return null;
+      }
+    },
+    enabled: open && Boolean(resolvedReportRoute || reportType),
+    staleTime: 5 * 60 * 1000,
+  });
 
   const referenceDate = scope === "day" ? dayRef : monthRef;
   const referenceDateValid = hideScope || isValid(referenceDate);
@@ -95,7 +126,23 @@ export default function ReportExportDialog({
       initialMonthRef ??
         new Date(new Date().getFullYear(), new Date().getMonth(), 1),
     );
+    setAgente("");
+    setStatus("todos");
+    setEsteira("todos");
+    setPagamentoFeito("todos");
   }, [initialDayRef, initialMonthRef, initialScope, open]);
+
+  React.useEffect(() => {
+    if (!open) {
+      return;
+    }
+    const definition = definitionQuery.data;
+    if (!definition) {
+      setSelectedColumns([]);
+      return;
+    }
+    setSelectedColumns(definition.columns.map((column) => column.key));
+  }, [definitionQuery.data, open]);
 
   const handleExport = async (fmt: "pdf" | "xlsx") => {
     if (!referenceDateValid) return;
@@ -108,6 +155,9 @@ export default function ReportExportDialog({
           agente: agente || undefined,
           status: status === "todos" ? undefined : status,
           esteira: esteira === "todos" ? undefined : esteira,
+          pagamentoFeito:
+            pagamentoFeito === "todos" ? undefined : pagamentoFeito,
+          columns: selectedColumns.length ? selectedColumns : undefined,
         },
         fmt,
       );
@@ -122,6 +172,24 @@ export default function ReportExportDialog({
       ? format(referenceDate, "dd/MM/yyyy")
       : format(referenceDate, "MMMM/yyyy", { locale: ptBR })
     : "—";
+  const definition = definitionQuery.data;
+  const hasCustomColumns = Boolean(definition?.columns.length);
+  const allColumnsSelected =
+    hasCustomColumns &&
+    definition.columns.length > 0 &&
+    selectedColumns.length === definition.columns.length;
+
+  const toggleColumn = (key: string, checked: boolean) => {
+    setSelectedColumns((current) => {
+      if (checked) {
+        return current.includes(key) ? current : [...current, key];
+      }
+      if (current.length === 1) {
+        return current;
+      }
+      return current.filter((item) => item !== key);
+    });
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -256,8 +324,68 @@ export default function ReportExportDialog({
                   </Select>
                 </div>
               )}
+
+              {paymentOptions.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Pagamento feito</Label>
+                  <Select value={pagamentoFeito} onValueChange={setPagamentoFeito}>
+                    <SelectTrigger className="rounded-xl border-border/60 bg-card/60">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      {paymentOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </>
           )}
+
+          {hasCustomColumns ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <Label>Colunas do relatório</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() =>
+                    setSelectedColumns(
+                      allColumnsSelected
+                        ? definition.columns.slice(0, 1).map((column) => column.key)
+                        : definition.columns.map((column) => column.key),
+                    )
+                  }
+                >
+                  {allColumnsSelected ? "Manter mínimas" : "Selecionar todas"}
+                </Button>
+              </div>
+              <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-border/60 bg-card/40 p-3">
+                {definition.columns.map((column) => {
+                  const checked = selectedColumns.includes(column.key);
+                  return (
+                    <label
+                      key={column.key}
+                      className="flex cursor-pointer items-center gap-3 rounded-lg px-1 py-1 text-sm"
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={(value) =>
+                          toggleColumn(column.key, value === true)
+                        }
+                      />
+                      <span>{column.header}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <DialogFooter className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">

@@ -105,6 +105,178 @@ class RefinanciamentoService:
             raise ValidationError("Refinanciamento não encontrado.") from exc
 
     @staticmethod
+    def _payment_tipo_for_papel(papel: str) -> str:
+        return (
+            Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO
+            if papel == Comprovante.Papel.ASSOCIADO
+            else Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE
+        )
+
+    @staticmethod
+    def _latest_payment_comprovante(
+        refinanciamento: Refinanciamento,
+        papel: str,
+    ) -> Comprovante | None:
+        return (
+            refinanciamento.comprovantes.filter(
+                deleted_at__isnull=True,
+                papel=papel,
+                tipo=RefinanciamentoService._payment_tipo_for_papel(papel),
+            )
+            .order_by("-updated_at", "-created_at", "-id")
+            .first()
+        )
+
+    @staticmethod
+    def _upsert_payment_comprovante(
+        refinanciamento: Refinanciamento,
+        *,
+        papel: str,
+        arquivo,
+        user,
+        data_pagamento: datetime,
+    ) -> Comprovante:
+        comprovante = RefinanciamentoService._latest_payment_comprovante(
+            refinanciamento,
+            papel,
+        )
+        contrato = refinanciamento.contrato_origem
+        payload = {
+            "refinanciamento": refinanciamento,
+            "contrato": contrato,
+            "ciclo": refinanciamento.ciclo_destino or refinanciamento.ciclo_origem,
+            "tipo": RefinanciamentoService._payment_tipo_for_papel(papel),
+            "papel": papel,
+            "origem": Comprovante.Origem.TESOURARIA_RENOVACAO,
+            "arquivo": arquivo,
+            "nome_original": getattr(arquivo, "name", ""),
+            "mime": getattr(arquivo, "content_type", "") or "",
+            "size_bytes": getattr(arquivo, "size", None),
+            "arquivo_referencia_path": "",
+            "enviado_por": user,
+            "data_pagamento": data_pagamento,
+            "agente_snapshot": contrato.agente.full_name if contrato and contrato.agente else "",
+        }
+        if comprovante is None:
+            return Comprovante.objects.create(**payload)
+
+        for field, value in payload.items():
+            setattr(comprovante, field, value)
+        comprovante.save(
+            update_fields=[
+                "contrato",
+                "ciclo",
+                "tipo",
+                "papel",
+                "origem",
+                "arquivo",
+                "nome_original",
+                "mime",
+                "size_bytes",
+                "arquivo_referencia_path",
+                "enviado_por",
+                "data_pagamento",
+                "agente_snapshot",
+                "updated_at",
+            ]
+        )
+        return comprovante
+
+    @staticmethod
+    def _get_renewal_payment(refinanciamento: Refinanciamento) -> Pagamento | None:
+        contrato = refinanciamento.contrato_origem
+        if contrato is None:
+            return None
+        return (
+            Pagamento.all_objects.filter(
+                cadastro=contrato.associado,
+                contrato_codigo=contrato.codigo,
+                referencias_externas__refinanciamento_id=refinanciamento.id,
+            )
+            .order_by("created_at", "id")
+            .first()
+        )
+
+    @staticmethod
+    def _sync_renewal_payment_paths(
+        pagamento: Pagamento,
+        refinanciamento: Refinanciamento,
+    ) -> Pagamento:
+        comprovante_associado = RefinanciamentoService._latest_payment_comprovante(
+            refinanciamento,
+            Comprovante.Papel.ASSOCIADO,
+        )
+        comprovante_agente = RefinanciamentoService._latest_payment_comprovante(
+            refinanciamento,
+            Comprovante.Papel.AGENTE,
+        )
+        pagamento.comprovante_associado_path = (
+            comprovante_associado.arquivo_referencia if comprovante_associado else ""
+        )
+        pagamento.comprovante_agente_path = (
+            comprovante_agente.arquivo_referencia if comprovante_agente else ""
+        )
+        return pagamento
+
+    @staticmethod
+    def _upsert_renewal_payment(
+        refinanciamento: Refinanciamento,
+        *,
+        user,
+        paid_at: datetime,
+    ) -> Pagamento:
+        contrato = refinanciamento.contrato_origem
+        if contrato is None:
+            raise ValidationError("Renovação sem contrato de origem.")
+
+        pagamento = RefinanciamentoService._get_renewal_payment(refinanciamento)
+        if pagamento is None:
+            pagamento = Pagamento(
+                cadastro=contrato.associado,
+                created_by=user,
+                contrato_codigo=contrato.codigo,
+                contrato_valor_antecipacao=refinanciamento.valor_refinanciamento,
+                contrato_margem_disponivel=contrato.margem_disponivel,
+                cpf_cnpj=contrato.associado.cpf_cnpj,
+                full_name=contrato.associado.nome_completo,
+                agente_responsavel=contrato.agente.full_name if contrato.agente else "",
+                origem=Pagamento.Origem.OPERACIONAL,
+                forma_pagamento="pix",
+                referencias_externas={
+                    "payment_kind": "renovacao",
+                    "contrato_id": contrato.id,
+                    "refinanciamento_id": refinanciamento.id,
+                },
+            )
+
+        pagamento.created_by = pagamento.created_by or user
+        pagamento.contrato_valor_antecipacao = refinanciamento.valor_refinanciamento
+        pagamento.contrato_margem_disponivel = contrato.margem_disponivel
+        pagamento.cpf_cnpj = contrato.associado.cpf_cnpj
+        pagamento.full_name = contrato.associado.nome_completo
+        pagamento.agente_responsavel = contrato.agente.full_name if contrato.agente else ""
+        pagamento.origem = Pagamento.Origem.OPERACIONAL
+        pagamento.status = Pagamento.Status.PAGO
+        pagamento.valor_pago = refinanciamento.valor_refinanciamento
+        pagamento.paid_at = paid_at
+        pagamento.forma_pagamento = pagamento.forma_pagamento or "pix"
+        pagamento.referencias_externas = {
+            **(pagamento.referencias_externas or {}),
+            "payment_kind": "renovacao",
+            "contrato_id": contrato.id,
+            "refinanciamento_id": refinanciamento.id,
+        }
+        pagamento.notes = (
+            f"Renovação efetivada via tesouraria para refi #{refinanciamento.id}."
+        )
+        pagamento = RefinanciamentoService._sync_renewal_payment_paths(
+            pagamento,
+            refinanciamento,
+        )
+        pagamento.save()
+        return pagamento
+
+    @staticmethod
     def _serialize_pagamento_seed(pagamento: PagamentoMensalidade) -> dict[str, object]:
         return {
             "pagamento_mensalidade_id": pagamento.id,
@@ -799,37 +971,31 @@ class RefinanciamentoService:
             raise ValidationError(
                 "Somente renovações validadas pela coordenação podem ser efetivadas."
             )
-        if not comprovante_associado or not comprovante_agente:
-            raise ValidationError("Os dois comprovantes são obrigatórios.")
+        if not comprovante_associado:
+            raise ValidationError(
+                {"comprovante_associado": ["O comprovante do associado é obrigatório."]}
+            )
 
         contrato = refinanciamento.contrato_origem
         if contrato is None:
             raise ValidationError("Renovação sem contrato de origem.")
 
         executado_em = timezone.now()
-        Pagamento.objects.create(
-            cadastro=contrato.associado,
-            created_by=user,
-            contrato_codigo=contrato.codigo,
-            contrato_valor_antecipacao=refinanciamento.valor_refinanciamento,
-            contrato_margem_disponivel=contrato.margem_disponivel,
-            cpf_cnpj=contrato.associado.cpf_cnpj,
-            full_name=contrato.associado.nome_completo,
-            agente_responsavel=contrato.agente.full_name if contrato.agente else "",
-            origem=Pagamento.Origem.OPERACIONAL,
-            status=Pagamento.Status.PAGO,
-            valor_pago=refinanciamento.valor_refinanciamento,
-            paid_at=executado_em,
-            forma_pagamento="pix",
-            referencias_externas={
-                "payment_kind": "renovacao",
-                "contrato_id": contrato.id,
-                "refinanciamento_id": refinanciamento.id,
-            },
-            comprovante_associado_path=getattr(comprovante_associado, "name", ""),
-            comprovante_agente_path=getattr(comprovante_agente, "name", ""),
-            notes=f"Renovação efetivada via tesouraria para refi #{refinanciamento.id}.",
+        RefinanciamentoService._upsert_payment_comprovante(
+            refinanciamento,
+            papel=Comprovante.Papel.ASSOCIADO,
+            arquivo=comprovante_associado,
+            user=user,
+            data_pagamento=executado_em,
         )
+        if comprovante_agente:
+            RefinanciamentoService._upsert_payment_comprovante(
+                refinanciamento,
+                papel=Comprovante.Papel.AGENTE,
+                arquivo=comprovante_agente,
+                user=user,
+                data_pagamento=executado_em,
+            )
 
         refinanciamento.status = Refinanciamento.Status.EFETIVADO
         refinanciamento.efetivado_por = user
@@ -851,32 +1017,21 @@ class RefinanciamentoService:
 
         rebuild_contract_cycle_state(contrato, execute=True)
         refinanciamento.refresh_from_db()
-
-        for papel, arquivo, tipo in [
-            (
-                Comprovante.Papel.ASSOCIADO,
-                comprovante_associado,
-                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
-            ),
-            (
-                Comprovante.Papel.AGENTE,
-                comprovante_agente,
-                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
-            ),
-        ]:
-            Comprovante.objects.create(
-                refinanciamento=refinanciamento,
-                contrato=contrato,
-                ciclo=refinanciamento.ciclo_destino,
-                tipo=tipo,
-                papel=papel,
-                origem=Comprovante.Origem.TESOURARIA_RENOVACAO,
-                arquivo=arquivo,
-                nome_original=getattr(arquivo, "name", ""),
-                enviado_por=user,
-                data_pagamento=executado_em,
-                agente_snapshot=contrato.agente.full_name if contrato.agente else "",
+        for papel in [Comprovante.Papel.ASSOCIADO, Comprovante.Papel.AGENTE]:
+            comprovante = RefinanciamentoService._latest_payment_comprovante(
+                refinanciamento,
+                papel,
             )
+            if comprovante is None:
+                continue
+            comprovante.ciclo = refinanciamento.ciclo_destino
+            comprovante.save(update_fields=["ciclo", "updated_at"])
+
+        RefinanciamentoService._upsert_renewal_payment(
+            refinanciamento,
+            user=user,
+            paid_at=executado_em,
+        )
 
         RefinanciamentoService._registrar_auditoria(
             contrato,
@@ -884,4 +1039,54 @@ class RefinanciamentoService:
             "efetivar_refinanciamento",
             "Tesouraria anexou comprovantes e materializou o próximo ciclo.",
         )
+        return refinanciamento
+
+    @staticmethod
+    @transaction.atomic
+    def substituir_comprovante(
+        refinanciamento_id: int,
+        *,
+        papel: str,
+        arquivo,
+        user,
+    ) -> Refinanciamento:
+        refinanciamento = RefinanciamentoService._get_refinanciamento(refinanciamento_id)
+        now = timezone.now()
+        RefinanciamentoService._upsert_payment_comprovante(
+            refinanciamento,
+            papel=papel,
+            arquivo=arquivo,
+            user=user,
+            data_pagamento=now,
+        )
+
+        if papel == Comprovante.Papel.ASSOCIADO:
+            if refinanciamento.status != Refinanciamento.Status.EFETIVADO:
+                return RefinanciamentoService.efetivar(
+                    refinanciamento_id,
+                    comprovante_associado=arquivo,
+                    comprovante_agente=None,
+                    user=user,
+                )
+            RefinanciamentoService._upsert_renewal_payment(
+                refinanciamento,
+                user=user,
+                paid_at=now,
+            )
+        else:
+            pagamento = RefinanciamentoService._get_renewal_payment(refinanciamento)
+            if pagamento is not None:
+                RefinanciamentoService._sync_renewal_payment_paths(
+                    pagamento,
+                    refinanciamento,
+                )
+                pagamento.save(
+                    update_fields=[
+                        "comprovante_associado_path",
+                        "comprovante_agente_path",
+                        "updated_at",
+                    ]
+                )
+
+        refinanciamento.refresh_from_db()
         return refinanciamento

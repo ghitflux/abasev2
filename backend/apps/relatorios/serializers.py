@@ -41,6 +41,19 @@ class RelatorioGeradoSerializer(serializers.ModelSerializer):
         return path
 
 
+class RelatorioColunaSerializer(serializers.Serializer):
+    key = serializers.CharField()
+    header = serializers.CharField()
+    width = serializers.FloatField()
+
+
+class RelatorioDefinicaoSerializer(serializers.Serializer):
+    tipo = serializers.CharField()
+    title = serializers.CharField()
+    description = serializers.CharField()
+    columns = RelatorioColunaSerializer(many=True)
+
+
 class RelatorioExportarSerializer(serializers.Serializer):
     tipo = serializers.ChoiceField(
         choices=[

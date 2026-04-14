@@ -531,7 +531,8 @@ export default function CoordenacaoRefinanciamentoPage() {
 
   const handleExport = React.useCallback(
     async (exportFilters: ReportExportFilters, format: "pdf" | "xlsx") => {
-      const { scope, referenceDate } = exportFilters;
+      const { scope, referenceDate, pagamentoFeito, columns: selectedColumns } =
+        exportFilters;
       setIsExporting(true);
       try {
         const sourceQuery = {
@@ -543,6 +544,7 @@ export default function CoordenacaoRefinanciamentoPage() {
           status: filters.statuses,
           origem: filters.origins,
           eligibility_band: filters.eligibilityBand || undefined,
+          pagamento_feito: pagamentoFeito,
         };
         const fetchedRows = await fetchAllPaginatedRows<RefinanciamentoItem>({
           sourcePath: "coordenacao/refinanciamento",
@@ -560,6 +562,7 @@ export default function CoordenacaoRefinanciamentoPage() {
           analista_note: row.analista_note ?? "",
           coordenador_note: row.coordenador_note ?? "",
           data_solicitacao: row.data_solicitacao,
+          data_pagamento_associado: row.data_pagamento_associado,
         }));
         await exportRouteReport({
           route: "/coordenacao/refinanciamento",
@@ -568,6 +571,7 @@ export default function CoordenacaoRefinanciamentoPage() {
           filters: {
             ...sourceQuery,
             ...describeReportScope(scope, referenceDate),
+            columns: selectedColumns,
           },
         });
       } catch (error) {
@@ -604,6 +608,10 @@ export default function CoordenacaoRefinanciamentoPage() {
           <ReportExportDialog
             disabled={isExporting}
             label="Exportar"
+            paymentOptions={[
+              { value: "sim", label: "Somente pagos" },
+              { value: "nao", label: "Somente não pagos" },
+            ]}
             initialMonthRef={
               filters.competenciaEnd
                 ? new Date(`${filters.competenciaEnd}-01T12:00:00`)

@@ -15,6 +15,7 @@ from apps.accounts.permissions import (
     IsAgenteOrAdmin,
     IsAgenteOrAnalistaOrCoordenadorOrAdmin,
     IsAnalistaOrAdmin,
+    IsCoordenadorOrTesoureiroOrAdmin,
     IsCoordenadorOrAdmin,
     IsTesoureiroOrAdmin,
 )
@@ -35,6 +36,7 @@ from .serializers import (
     RefinanciamentoListSerializer,
     SolicitarLiquidacaoRefinanciamentoSerializer,
     SolicitarRefinanciamentoSerializer,
+    SubstituirComprovanteRefinanciamentoSerializer,
 )
 from .services import RefinanciamentoService
 
@@ -94,6 +96,36 @@ class BaseRefinanciamentoViewSet(
             )
             .order_by("-created_at")
         )
+        comprovantes = Comprovante.objects.filter(
+            refinanciamento_id=OuterRef("pk"),
+            deleted_at__isnull=True,
+        )
+        associado_comprovante = comprovantes.filter(
+            papel=Comprovante.Papel.ASSOCIADO,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+        ).order_by("-updated_at", "-created_at", "-id")
+        agente_comprovante = comprovantes.filter(
+            papel=Comprovante.Papel.AGENTE,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+        ).order_by("-updated_at", "-created_at", "-id")
+        queryset = queryset.annotate(
+            data_anexo_associado=Subquery(
+                associado_comprovante.values("updated_at")[:1],
+                output_field=DateTimeField(),
+            ),
+            data_anexo_agente=Subquery(
+                agente_comprovante.values("updated_at")[:1],
+                output_field=DateTimeField(),
+            ),
+            data_pagamento_associado=Subquery(
+                associado_comprovante.values("data_pagamento")[:1],
+                output_field=DateTimeField(),
+            ),
+            data_pagamento_agente=Subquery(
+                agente_comprovante.values("data_pagamento")[:1],
+                output_field=DateTimeField(),
+            ),
+        )
 
         search = self.request.query_params.get("search")
         if search:
@@ -137,6 +169,12 @@ class BaseRefinanciamentoViewSet(
                 | Q(contrato_origem__agente__last_name__icontains=agent_filter)
                 | Q(agente_snapshot__icontains=agent_filter)
             )
+
+        pagamento_feito = (self.request.query_params.get("pagamento_feito") or "").strip().lower()
+        if pagamento_feito in {"1", "true", "sim", "yes"}:
+            queryset = queryset.filter(data_pagamento_associado__isnull=False)
+        elif pagamento_feito in {"0", "false", "nao", "não", "no"}:
+            queryset = queryset.filter(data_pagamento_associado__isnull=True)
 
         eligibility_band = self.request.query_params.get("eligibility_band")
         if eligibility_band == "2_3":
@@ -547,7 +585,10 @@ class AnalistaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
 
 
 class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
-    permission_classes = [permissions.IsAuthenticated, IsTesoureiroOrAdmin]
+    def get_permissions(self):
+        if self.action in {"efetivar", "substituir_comprovante"}:
+            return [permissions.IsAuthenticated(), IsTesoureiroOrAdmin()]
+        return [permissions.IsAuthenticated(), IsCoordenadorOrTesoureiroOrAdmin()]
 
     def get_queryset(self):
         queryset = super().get_queryset().filter(
@@ -570,6 +611,14 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
 
         date_start = self.request.query_params.get("data_inicio")
         date_end = self.request.query_params.get("data_fim")
+        assoc_attach_start = self.request.query_params.get("data_anexo_associado_inicio")
+        assoc_attach_end = self.request.query_params.get("data_anexo_associado_fim")
+        agent_attach_start = self.request.query_params.get("data_anexo_agente_inicio")
+        agent_attach_end = self.request.query_params.get("data_anexo_agente_fim")
+        assoc_paid_start = self.request.query_params.get("data_pagamento_associado_inicio")
+        assoc_paid_end = self.request.query_params.get("data_pagamento_associado_fim")
+        agent_paid_start = self.request.query_params.get("data_pagamento_agente_inicio")
+        agent_paid_end = self.request.query_params.get("data_pagamento_agente_fim")
 
         if status_filters == pending_statuses:
             if date_start:
@@ -604,6 +653,22 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
             queryset = queryset.filter(updated_at__date__gte=date_start)
         if date_end:
             queryset = queryset.filter(updated_at__date__lte=date_end)
+        if assoc_attach_start:
+            queryset = queryset.filter(data_anexo_associado__date__gte=assoc_attach_start)
+        if assoc_attach_end:
+            queryset = queryset.filter(data_anexo_associado__date__lte=assoc_attach_end)
+        if agent_attach_start:
+            queryset = queryset.filter(data_anexo_agente__date__gte=agent_attach_start)
+        if agent_attach_end:
+            queryset = queryset.filter(data_anexo_agente__date__lte=agent_attach_end)
+        if assoc_paid_start:
+            queryset = queryset.filter(data_pagamento_associado__date__gte=assoc_paid_start)
+        if assoc_paid_end:
+            queryset = queryset.filter(data_pagamento_associado__date__lte=assoc_paid_end)
+        if agent_paid_start:
+            queryset = queryset.filter(data_pagamento_agente__date__gte=agent_paid_start)
+        if agent_paid_end:
+            queryset = queryset.filter(data_pagamento_agente__date__lte=agent_paid_end)
 
         return queryset.order_by("-updated_at", "-id")
 
@@ -616,6 +681,21 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
             payload.validated_data["comprovante_associado"],
             payload.validated_data["comprovante_agente"],
             request.user,
+        )
+        serializer = RefinanciamentoDetailSerializer(
+            refinanciamento, context=self.get_serializer_context()
+        )
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], parser_classes=[MultiPartParser], url_path="substituir-comprovante")
+    def substituir_comprovante(self, request, pk=None):
+        payload = SubstituirComprovanteRefinanciamentoSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        refinanciamento = RefinanciamentoService.substituir_comprovante(
+            int(pk),
+            papel=payload.validated_data["papel"],
+            arquivo=payload.validated_data["arquivo"],
+            user=request.user,
         )
         serializer = RefinanciamentoDetailSerializer(
             refinanciamento, context=self.get_serializer_context()

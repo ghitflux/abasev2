@@ -26,7 +26,9 @@ import SearchableSelect, { type SelectOption } from "@/components/custom/searcha
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
-import ReportExportDialog from "@/components/shared/report-export-dialog";
+import ReportExportDialog, {
+  type ReportExportFilters,
+} from "@/components/shared/report-export-dialog";
 import { MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
@@ -403,10 +405,14 @@ export default function AnaliseAptosPage() {
   );
 
   const handleExport = React.useCallback(
-    async (format: "csv" | "pdf" | "excel" | "xlsx") => {
+    async (
+      exportFilters: ReportExportFilters,
+      format: "csv" | "pdf" | "excel" | "xlsx",
+    ) => {
       if (format !== "pdf" && format !== "xlsx") {
         return;
       }
+      const { pagamentoFeito, columns: selectedColumns } = exportFilters;
 
       setIsExporting(true);
       try {
@@ -422,6 +428,7 @@ export default function AnaliseAptosPage() {
             status: resolvedStatuses,
             origem: filters.origins,
             assignment: resolvedAssignment !== "todas" ? resolvedAssignment : undefined,
+            pagamento_feito: pagamentoFeito,
           },
           mapRow: (row) => ({
             contrato_codigo: row.contrato_codigo,
@@ -430,7 +437,12 @@ export default function AnaliseAptosPage() {
             motivo_apto_renovacao: row.motivo_apto_renovacao,
             analista_note: row.analista_note ?? "",
             coordenador_note: row.coordenador_note ?? "",
+            data_pagamento_associado: row.data_pagamento_associado,
           }),
+          filters: {
+            columns: selectedColumns,
+            pagamento_feito: pagamentoFeito,
+          },
         });
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Falha ao exportar a fila da análise.");
@@ -459,7 +471,11 @@ export default function AnaliseAptosPage() {
             hideScope
             disabled={isExporting}
             label={isExporting ? "Exportando..." : "Exportar"}
-            onExport={(_, fmt) => void handleExport(fmt)}
+            paymentOptions={[
+              { value: "sim", label: "Somente pagos" },
+              { value: "nao", label: "Somente não pagos" },
+            ]}
+            onExport={(filters, fmt) => void handleExport(filters, fmt)}
           />
         </div>
       </section>
