@@ -165,7 +165,7 @@ class TesourariaContratoViewSet(
         contrato = TesourariaService.efetivar_contrato(
             pk,
             payload.validated_data["comprovante_associado"],
-            payload.validated_data["comprovante_agente"],
+            payload.validated_data.get("comprovante_agente"),
             request.user,
         )
         serializer = self.get_serializer(contrato)

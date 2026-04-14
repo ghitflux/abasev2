@@ -28,6 +28,18 @@ Esta entrega alterou o fluxo operacional da tesouraria para contratos novos e re
 - O endpoint `POST /api/v1/tesouraria/refinanciamentos/{id}/efetivar/` passou a aceitar `comprovante_agente` como opcional.
 - O backend agora faz `upsert` dos comprovantes de renovação e sincroniza os campos do pagamento correspondente.
 
+## Ajustes Finais do Checklist da Tesouraria
+
+- Corrigido o fallback dos endpoints `efetivar/` de contratos e renovações para não exigir `comprovante_agente` quando ele não for enviado no multipart.
+- Corrigida a cópia de CPF na rota `/tesouraria`: a UI continua exibindo o CPF mascarado, mas o valor copiado agora sai sem pontuação.
+- Corrigida a exclusão de associado em `/associados/[id]` com soft-delete em cascata de:
+  - associado
+  - esteira, pendências e transições
+  - documentos e reuploads
+  - contratos, ciclos e parcelas
+  - pagamentos e notificações
+  - endereço, dados bancários e contato histórico
+
 ## Campos Achatados e Filtros Backend
 
 Listagens de contratos da tesouraria e de refinanciamentos agora expõem:
@@ -85,8 +97,13 @@ Nas filas de análise e coordenação, o filtro `pagamento_feito` passou a ser s
 
 - `python -m py_compile` executado com sucesso nos arquivos backend alterados.
 - `git diff --check` executado com sucesso.
+- Testes direcionados adicionados para:
+  - efetivação de contrato sem comprovante do agente
+  - efetivação de renovação sem comprovante do agente
+  - exclusão em cascata do associado
+- Testes direcionados executados com sucesso no container `abase-v2-backend-1` via `manage.py test`.
 
 ## Pendências Conhecidas
 
 - Os filtros backend por `data_anexo_*` e `data_pagamento_*` estão implementados, mas a UI dos filtros avançados de `/tesouraria` e `/tesouraria/refinanciamentos` ainda não expõe todos esses intervalos como campos dedicados.
-- A suíte Django não foi executada neste ambiente porque a criação do banco de teste falhou com erro de autenticação MySQL.
+- O `type-check` global do frontend continua falhando por erros preexistentes em `src/components/shared/report-export-dialog.tsx`, sem relação com os arquivos alterados nesta entrega.

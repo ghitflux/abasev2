@@ -669,7 +669,7 @@ class TestFluxoCompleto(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("CPF já possui refinanciamento ativo", " ".join(response.json()))
 
-    def test_efetivacao_sem_comprovante_falha(self):
+    def test_efetivacao_sem_comprovante_do_agente_permanece_valida(self):
         associado = self._criar_associado("52345678901")
         contrato = self._levar_para_tesouraria(associado)
 
@@ -683,8 +683,18 @@ class TestFluxoCompleto(TestCase):
             format="multipart",
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("comprovante_agente", response.json())
+        self.assertEqual(response.status_code, 200, response.json())
+        contrato.refresh_from_db()
+        self.assertEqual(contrato.status, Contrato.Status.ATIVO)
+        comprovantes = {
+            comprovante.papel: comprovante
+            for comprovante in contrato.comprovantes.filter(
+                refinanciamento__isnull=True,
+                deleted_at__isnull=True,
+            )
+        }
+        self.assertIn(Comprovante.Papel.ASSOCIADO, comprovantes)
+        self.assertNotIn(Comprovante.Papel.AGENTE, comprovantes)
 
     def test_confirmacao_sequencial(self):
         associado = self._criar_associado("62345678901")

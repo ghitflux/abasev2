@@ -315,11 +315,13 @@ class Pagamento(BaseModel):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         agente_id = getattr(self.cadastro, "agente_responsavel_id", None)
-        if self.status == self.Status.PAGO and agente_id:
-            PagamentoNotificacao.objects.get_or_create(
+        if self.deleted_at is None and self.status == self.Status.PAGO and agente_id:
+            notificacao, _ = PagamentoNotificacao.all_objects.get_or_create(
                 pagamento=self,
                 agente_id=agente_id,
             )
+            if notificacao.deleted_at is not None:
+                notificacao.restore()
 
     def __str__(self) -> str:
         return f"Pagamento #{self.pk} - {self.full_name} - {self.status}"

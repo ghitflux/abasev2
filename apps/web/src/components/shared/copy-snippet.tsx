@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 type CopySnippetProps = {
   label: string;
   value: string;
+  copyValue?: string;
   className?: string;
   mono?: boolean;
   inline?: boolean;
@@ -17,6 +18,7 @@ type CopySnippetProps = {
 export default function CopySnippet({
   label,
   value,
+  copyValue,
   className,
   mono = false,
   inline = false,
@@ -26,7 +28,7 @@ export default function CopySnippet({
   const handleCopy = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     try {
-      await navigator.clipboard.writeText(value);
+      await navigator.clipboard.writeText(copyValue ?? value);
       setCopied(true);
       toast.success(`${label} copiado.`);
       window.setTimeout(() => setCopied(false), 1500);

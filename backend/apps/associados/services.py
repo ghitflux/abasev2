@@ -216,6 +216,41 @@ class AssociadoService:
         return associado
 
     @staticmethod
+    @transaction.atomic
+    def excluir_associado(associado: Associado) -> None:
+        from apps.contratos.soft_delete import soft_delete_contract_tree
+
+        esteira_item = associado._safe_related("esteira_item")
+        if esteira_item is not None:
+            for pendencia in esteira_item.pendencias.filter(deleted_at__isnull=True):
+                pendencia.soft_delete()
+            for transicao in esteira_item.transicoes.filter(deleted_at__isnull=True):
+                transicao.soft_delete()
+            esteira_item.soft_delete()
+
+        for documento in associado.documentos.filter(deleted_at__isnull=True):
+            documento.soft_delete()
+        for issue in associado.doc_issues.filter(deleted_at__isnull=True):
+            issue.soft_delete()
+        for reupload in associado.doc_reuploads.filter(deleted_at__isnull=True):
+            reupload.soft_delete()
+
+        for contrato in associado.contratos.filter(deleted_at__isnull=True).order_by("id"):
+            soft_delete_contract_tree(contrato)
+
+        for pagamento in associado.tesouraria_pagamentos.filter(deleted_at__isnull=True):
+            for notificacao in pagamento.notificacoes.filter(deleted_at__isnull=True):
+                notificacao.soft_delete()
+            pagamento.soft_delete()
+
+        for relation in ("endereco", "dados_bancarios", "contato_historico"):
+            related = associado._safe_related(relation)
+            if related is not None and related.deleted_at is None:
+                related.soft_delete()
+
+        associado.soft_delete()
+
+    @staticmethod
     def buscar_com_contagens(queryset):
         return queryset
 

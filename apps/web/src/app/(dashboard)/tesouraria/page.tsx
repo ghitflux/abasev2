@@ -713,6 +713,7 @@ export default function TesourariaPage() {
             <CopySnippet
               label="CPF"
               value={maskCPFCNPJ(row.cpf_cnpj)}
+              copyValue={row.cpf_cnpj}
               mono
               inline
             />
@@ -797,10 +798,7 @@ export default function TesourariaPage() {
   );
 
   const handleExport = React.useCallback(
-    async (
-      exportFilters: ReportExportFilters,
-      formatValue: "pdf" | "xlsx",
-    ) => {
+    async (exportFilters: ReportExportFilters, formatValue: "pdf" | "xlsx") => {
       const {
         scope,
         referenceDate,
@@ -1600,7 +1598,6 @@ function FilterField({
     </div>
   );
 }
-
 
 function ComprovanteSlot({
   label,

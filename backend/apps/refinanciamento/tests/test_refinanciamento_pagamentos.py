@@ -437,6 +437,49 @@ class RefinanciamentoPagamentosTestCase(TestCase):
             3,
         )
 
+    def test_tesouraria_efetiva_refinanciamento_sem_comprovante_do_agente(self):
+        contrato = self._create_contrato("62345678941")
+        self._create_pagamento(contrato, date(2026, 1, 1))
+        self._create_pagamento(contrato, date(2026, 2, 1))
+        self._create_pagamento(contrato, date(2026, 3, 1))
+        request = self._solicitar_refinanciamento(contrato)
+        self.assertEqual(request.status_code, 201, request.json())
+        refinanciamento_id = request.json()["id"]
+
+        self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/assumir_analise/"
+        )
+        self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar_analise/",
+            {"observacao": "Termo ok"},
+            format="json",
+        )
+        self.coord_client.post(f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar/")
+
+        efetivacao = self.tes_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/efetivar/",
+            {
+                "comprovante_associado": SimpleUploadedFile(
+                    "associado.pdf",
+                    b"arquivo associado",
+                    content_type="application/pdf",
+                ),
+            },
+            format="multipart",
+        )
+        self.assertEqual(efetivacao.status_code, 200, efetivacao.json())
+
+        refinanciamento = Refinanciamento.objects.get(pk=refinanciamento_id)
+        self.assertEqual(refinanciamento.status, Refinanciamento.Status.EFETIVADO)
+        tipos = {
+            comprovante.tipo
+            for comprovante in refinanciamento.comprovantes.filter(
+                deleted_at__isnull=True
+            )
+        }
+        self.assertIn(Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO, tipos)
+        self.assertNotIn(Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE, tipos)
+
     def test_coordenacao_lista_retorna_motivo_apto_e_filtro_por_agente(self):
         contrato = self._create_contrato("72345678901")
         self._create_pagamento(contrato, date(2026, 1, 1))

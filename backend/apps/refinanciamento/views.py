@@ -461,7 +461,7 @@ class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
         refinanciamento = RefinanciamentoService.efetivar(
             int(pk),
             payload.validated_data["comprovante_associado"],
-            payload.validated_data["comprovante_agente"],
+            payload.validated_data.get("comprovante_agente"),
             request.user,
         )
         serializer = RefinanciamentoDetailSerializer(

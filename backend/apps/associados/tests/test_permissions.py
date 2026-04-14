@@ -1,14 +1,18 @@
 import tempfile
+from datetime import date
 from decimal import Decimal
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.test import override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
 from apps.associados.models import Associado, DadosBancarios, Documento, Endereco, ContatoHistorico
-from apps.contratos.models import Contrato
+from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.esteira.models import EsteiraItem, Pendencia, Transicao
+from apps.tesouraria.models import Pagamento, PagamentoNotificacao
 
 
 @override_settings(MEDIA_ROOT=tempfile.mkdtemp())
@@ -481,3 +485,105 @@ class AssociadoPermissionsTestCase(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
         self.associado.refresh_from_db()
         self.assertEqual(self.associado.status, Associado.Status.INATIVO)
+
+    def test_admin_pode_excluir_associado_com_soft_delete_em_cascata(self):
+        documento = self.associado.documentos.first()
+        endereco = Endereco.objects.create(
+            associado=self.associado,
+            cep="64000000",
+            logradouro="Rua Teste",
+            numero="10",
+            bairro="Centro",
+            cidade="Teresina",
+            uf="PI",
+        )
+        dados_bancarios = DadosBancarios.objects.create(
+            associado=self.associado,
+            banco="Banco do Brasil",
+            agencia="1234",
+            conta="12345-6",
+            tipo_conta="corrente",
+            chave_pix="pix@teste.local",
+        )
+        contato_historico = ContatoHistorico.objects.create(
+            associado=self.associado,
+            celular="86999999999",
+            email="associado@teste.local",
+            orgao_publico="SEFAZ",
+            situacao_servidor="ativo",
+            matricula_servidor="MAT-123",
+        )
+        contrato = Contrato.objects.create(
+            associado=self.associado,
+            agente=self.agente,
+            valor_bruto=Decimal("1500.00"),
+            valor_liquido=Decimal("1200.00"),
+            valor_mensalidade=Decimal("500.00"),
+            margem_disponivel=Decimal("900.00"),
+            prazo_meses=3,
+        )
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 31),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("1500.00"),
+        )
+        parcela = Parcela.objects.create(
+            ciclo=ciclo,
+            associado=self.associado,
+            numero=1,
+            referencia_mes=date(2026, 1, 1),
+            valor=Decimal("500.00"),
+            data_vencimento=date(2026, 1, 5),
+            status=Parcela.Status.EM_PREVISAO,
+        )
+        esteira_item = EsteiraItem.objects.create(associado=self.associado)
+        pendencia = Pendencia.objects.create(
+            esteira_item=esteira_item,
+            tipo="documentacao",
+            descricao="Documento pendente",
+        )
+        transicao = Transicao.objects.create(
+            esteira_item=esteira_item,
+            acao="criar",
+            de_status=EsteiraItem.Etapa.CADASTRO,
+            para_status=EsteiraItem.Etapa.CADASTRO,
+            de_situacao=EsteiraItem.Situacao.AGUARDANDO,
+            para_situacao=EsteiraItem.Situacao.AGUARDANDO,
+            realizado_por=self.admin,
+            observacao="Criado",
+        )
+        pagamento = Pagamento.objects.create(
+            cadastro=self.associado,
+            created_by=self.admin,
+            contrato_codigo=contrato.codigo,
+            contrato_valor_antecipacao=contrato.valor_liquido,
+            contrato_margem_disponivel=contrato.margem_disponivel,
+            cpf_cnpj=self.associado.cpf_cnpj,
+            full_name=self.associado.nome_completo,
+            agente_responsavel=self.agente.full_name,
+            status=Pagamento.Status.PAGO,
+            valor_pago=contrato.valor_liquido,
+            paid_at=timezone.now(),
+            forma_pagamento="pix",
+        )
+
+        response = self.admin_client.delete(f"/api/v1/associados/{self.associado.id}/")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertIsNotNone(Associado.all_objects.get(pk=self.associado.id).deleted_at)
+        self.assertIsNotNone(Documento.all_objects.get(pk=documento.id).deleted_at)
+        self.assertIsNotNone(Endereco.all_objects.get(pk=endereco.id).deleted_at)
+        self.assertIsNotNone(DadosBancarios.all_objects.get(pk=dados_bancarios.id).deleted_at)
+        self.assertIsNotNone(ContatoHistorico.all_objects.get(pk=contato_historico.id).deleted_at)
+        self.assertIsNotNone(Contrato.all_objects.get(pk=contrato.id).deleted_at)
+        self.assertIsNotNone(Ciclo.all_objects.get(pk=ciclo.id).deleted_at)
+        self.assertIsNotNone(Parcela.all_objects.get(pk=parcela.id).deleted_at)
+        self.assertIsNotNone(EsteiraItem.all_objects.get(pk=esteira_item.id).deleted_at)
+        self.assertIsNotNone(Pendencia.all_objects.get(pk=pendencia.id).deleted_at)
+        self.assertIsNotNone(Transicao.all_objects.get(pk=transicao.id).deleted_at)
+        self.assertIsNotNone(Pagamento.all_objects.get(pk=pagamento.id).deleted_at)
+        notificacao = PagamentoNotificacao.all_objects.get(pagamento=pagamento)
+        self.assertIsNotNone(notificacao.deleted_at)
