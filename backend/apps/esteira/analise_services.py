@@ -271,6 +271,11 @@ class AnaliseService:
                 | Q(has_received_reupload=True)
                 | Q(resolved_pendencias_count__gt=0)
                 | (Q(has_documents=False) & Q(has_any_reupload=False))
+                | Q(associado__status__in=[
+                    Associado.Status.ATIVO,
+                    Associado.Status.INADIMPLENTE,
+                    Associado.Status.INATIVO,
+                ])
             ).order_by("-updated_at", "-created_at")
 
         if secao == "pendencias_corrigidas":

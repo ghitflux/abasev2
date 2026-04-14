@@ -517,6 +517,92 @@ export default function AnalisePage() {
           ),
       },
       {
+        id: "documentos",
+        header: "Docs",
+        cell: (row) => (
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-2 rounded-xl"
+            onClick={() => setDialogState({ mode: "documentos", item: row })}
+          >
+            <FileTextIcon className="size-4" />
+            Ver docs
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+              {row.documentos_count}
+            </span>
+          </Button>
+        ),
+      },
+      {
+        id: "acoes",
+        header: "Ações",
+        cell: (row) => (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setDetailTarget(row)}
+            >
+              Ver detalhes
+            </Button>
+            {row.etapa_atual === "analise" &&
+            row.status_documentacao === "reenvio_pendente" ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  actionMutation.mutate({
+                    item: row,
+                    action: "validar-documento",
+                  })
+                }
+              >
+                Validar revisto
+              </Button>
+            ) : null}
+            {row.etapa_atual === "analise" &&
+            row.acoes_disponiveis.includes("aprovar") ? (
+              <Button
+                size="sm"
+                onClick={() => setDialogState({ mode: "aprovar", item: row })}
+              >
+                Aprovar
+              </Button>
+            ) : null}
+            {row.etapa_atual === "analise" &&
+            row.acoes_disponiveis.includes("solicitar_correcao") ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setDialogState({ mode: "correcao", item: row })}
+              >
+                Solicitar correção
+              </Button>
+            ) : null}
+            {row.etapa_atual === "analise" &&
+            row.acoes_disponiveis.includes("reprovar") ? (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => setDialogState({ mode: "reprovar", item: row })}
+              >
+                Reprovar
+              </Button>
+            ) : null}
+            {row.acoes_disponiveis.includes("excluir") ? (
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => setDialogState({ mode: "excluir", item: row })}
+              >
+                Excluir
+              </Button>
+            ) : null}
+          </div>
+        ),
+      },
+      {
         id: "nome",
         header: "Nome",
         cell: (row) => (
@@ -606,92 +692,6 @@ export default function AnalisePage() {
         id: "analista",
         header: "Analista responsável",
         cell: (row) => row.analista_responsavel?.full_name ?? "Sem responsável",
-      },
-      {
-        id: "documentos",
-        header: "Docs",
-        cell: (row) => (
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 rounded-xl"
-            onClick={() => setDialogState({ mode: "documentos", item: row })}
-          >
-            <FileTextIcon className="size-4" />
-            Ver docs
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-              {row.documentos_count}
-            </span>
-          </Button>
-        ),
-      },
-      {
-        id: "acoes",
-        header: "Ações",
-        cell: (row) => (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setDetailTarget(row)}
-            >
-              Ver detalhes
-            </Button>
-            {row.etapa_atual === "analise" &&
-            row.status_documentacao === "reenvio_pendente" ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  actionMutation.mutate({
-                    item: row,
-                    action: "validar-documento",
-                  })
-                }
-              >
-                Validar revisto
-              </Button>
-            ) : null}
-            {row.etapa_atual === "analise" &&
-            row.acoes_disponiveis.includes("aprovar") ? (
-              <Button
-                size="sm"
-                onClick={() => setDialogState({ mode: "aprovar", item: row })}
-              >
-                Aprovar
-              </Button>
-            ) : null}
-            {row.etapa_atual === "analise" &&
-            row.acoes_disponiveis.includes("solicitar_correcao") ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setDialogState({ mode: "correcao", item: row })}
-              >
-                Solicitar correção
-              </Button>
-            ) : null}
-            {row.etapa_atual === "analise" &&
-            row.acoes_disponiveis.includes("reprovar") ? (
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => setDialogState({ mode: "reprovar", item: row })}
-              >
-                Reprovar
-              </Button>
-            ) : null}
-            {row.acoes_disponiveis.includes("excluir") ? (
-              <Button
-                size="sm"
-                variant="destructive"
-                onClick={() => setDialogState({ mode: "excluir", item: row })}
-              >
-                Excluir
-              </Button>
-            ) : null}
-          </div>
-        ),
       },
     ],
     [actionMutation],
