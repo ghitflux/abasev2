@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.db.models import Prefetch
 from rest_framework import permissions, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
@@ -158,12 +159,15 @@ class AssociadoViewSet(ModelViewSet):
             return [permissions.IsAuthenticated(), IsOperacionalOrAdmin()]
         if self.action == "inativar":
             return [permissions.IsAuthenticated(), IsCoordenadorOrAdmin()]
+        if self.action == "destroy":
+            return [permissions.IsAuthenticated()]
         return [permissions.IsAuthenticated(), IsAdmin()]
 
     def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        AssociadoService.excluir_associado(instance)
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        raise MethodNotAllowed(
+            "DELETE",
+            detail="Associado não pode ser excluído. Utilize a inativação.",
+        )
 
     @action(detail=True, methods=["post"])
     def inativar(self, request, pk=None):

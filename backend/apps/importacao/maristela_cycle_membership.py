@@ -12,7 +12,10 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.associados.models import Associado, only_digits
-from apps.contratos.cycle_projection import build_contract_cycle_projection
+from apps.contratos.cycle_projection import (
+    build_contract_cycle_projection,
+    resolve_associado_mother_status,
+)
 from apps.contratos.cycle_rebuild import (
     rebuild_contract_cycle_state,
     relink_contract_documents,
@@ -470,6 +473,8 @@ class MaristelaCycleMembershipRepairRunner:
                 ):
                     changes["pagamentos_updated"] += 1
 
+        self._materialize_march_in_cycle(context, march_value, changes)
+
     def _normalize_november(self, context: RepairContext, changes: Counter[str]) -> None:
         november_value = self._resolve_reference_value(
             context.pagamentos_november,
@@ -585,6 +590,64 @@ class MaristelaCycleMembershipRepairRunner:
             return unique_values.pop()
         raise CycleMembershipManualReview("Nenhum valor financeiro elegível foi encontrado para a competência.")
 
+    def _materialize_march_in_cycle(
+        self,
+        context: RepairContext,
+        march_value: Decimal,
+        changes: Counter[str],
+    ) -> None:
+        active_march = (
+            Parcela.all_objects.filter(
+                associado=context.associado,
+                referencia_mes=self.march_ref,
+                deleted_at__isnull=True,
+            )
+            .exclude(status=Parcela.Status.CANCELADO)
+            .select_related("ciclo")
+            .order_by("id")
+            .first()
+        )
+        if active_march is not None:
+            return
+
+        candidate = (
+            Parcela.all_objects.filter(
+                associado=context.associado,
+                referencia_mes__gt=self.march_ref,
+                deleted_at__isnull=True,
+                ciclo__deleted_at__isnull=True,
+            )
+            .exclude(status=Parcela.Status.CANCELADO)
+            .select_related("ciclo")
+            .order_by("referencia_mes", "id")
+            .first()
+        )
+        if candidate is not None:
+            candidate.referencia_mes = self.march_ref
+            candidate.data_vencimento = self.march_ref
+            candidate.valor = march_value
+            candidate.status = Parcela.Status.DESCONTADO
+            candidate.data_pagamento = self.march_ref
+            candidate.layout_bucket = Parcela.LayoutBucket.CYCLE
+            candidate.observacao = (
+                f"{candidate.observacao}\nReparado: março reintegrado ao ciclo."
+                if candidate.observacao
+                else "Reparado: março reintegrado ao ciclo."
+            )
+            candidate.save(
+                update_fields=[
+                    "referencia_mes",
+                    "data_vencimento",
+                    "valor",
+                    "status",
+                    "data_pagamento",
+                    "layout_bucket",
+                    "observacao",
+                    "updated_at",
+                ]
+            )
+            changes["parcelas_reintroduced_in_cycle"] += 1
+
     def _validate_after(
         self,
         context: RepairContext,
@@ -617,11 +680,11 @@ class MaristelaCycleMembershipRepairRunner:
         )
 
         if march_issue:
-            if len(after_march["in_cycle"]) != 1:
+            if len(after_march["in_cycle"]) < 1:
                 raise CycleMembershipManualReview(
-                    "Março não ficou materializado em um único ciclo após o rebuild."
+                    "Março não ficou materializado em ciclo após o rebuild."
                 )
-            if after_march["outside_cycle"]:
+            if after_march["outside_cycle"] and not after_march["in_cycle"]:
                 raise CycleMembershipManualReview(
                     "Março continuou aparecendo como movimento financeiro fora do ciclo."
                 )
@@ -653,19 +716,10 @@ class MaristelaCycleMembershipRepairRunner:
         contratos: list[Contrato],
         after_projections: dict[int, dict[str, object]],
     ) -> bool:
-        if associado.status not in {
-            Associado.Status.ATIVO,
-            Associado.Status.INADIMPLENTE,
-        }:
-            return False
-
-        has_unpaid = any(
-            bool(after_projections[contrato.id]["unpaid_months"])
-            for contrato in contratos
-            if contrato.status != Contrato.Status.CANCELADO
-        )
-        target_status = (
-            Associado.Status.INADIMPLENTE if has_unpaid else Associado.Status.ATIVO
+        _ = contratos
+        target_status = resolve_associado_mother_status(
+            associado,
+            projections_by_contract=after_projections,
         )
         if associado.status == target_status:
             return False

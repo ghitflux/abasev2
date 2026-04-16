@@ -260,6 +260,14 @@ class Parcela(BaseModel):
     )
     data_pagamento = models.DateField(null=True, blank=True)
     observacao = models.TextField(blank=True)
+    descartado_em = models.DateTimeField(null=True, blank=True)
+    descartado_por = models.ForeignKey(
+        "accounts.User",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="parcelas_descartadas",
+    )
 
     objects = ParcelaManager()
     all_objects = ParcelaAllObjectsManager()

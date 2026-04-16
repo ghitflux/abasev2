@@ -11,6 +11,8 @@ from apps.contratos.canonicalization import (
 from apps.contratos.cycle_projection import (
     build_contract_cycle_projection,
     get_associado_visual_status_payload,
+    resolve_associado_mother_status,
+    resolve_associado_status_renovacao,
 )
 from apps.contratos.serializers import CicloDetailSerializer, ContratoResumoSerializer
 from core.file_references import build_storage_reference
@@ -18,7 +20,11 @@ from core.file_references import build_storage_reference
 from .models import Associado, Documento
 from .admin_override_service import AdminOverrideService
 from .services import AssociadoService
-from .strategies import CadastroValidationStrategy, EdicaoValidationStrategy
+from .strategies import (
+    CadastroValidationStrategy,
+    EdicaoValidationStrategy,
+    validate_positive_mensalidade,
+)
 
 
 def _is_agent_restricted(context: dict) -> bool:
@@ -267,6 +273,7 @@ class AssociadoListSerializer(serializers.ModelSerializer):
     agente = SimpleUserSerializer(source="agente_responsavel", read_only=True)
     ciclos_abertos = serializers.SerializerMethodField()
     ciclos_fechados = serializers.SerializerMethodField()
+    status = serializers.SerializerMethodField()
     status_renovacao = serializers.SerializerMethodField()
     status_visual_slug = serializers.SerializerMethodField()
     status_visual_label = serializers.SerializerMethodField()
@@ -310,11 +317,10 @@ class AssociadoListSerializer(serializers.ModelSerializer):
         return self._contagens_ciclos(obj)["ciclos_fechados"]
 
     def get_status_renovacao(self, obj: Associado) -> str:
-        for contrato in self._get_active_contracts(obj):
-            status = str(build_contract_cycle_projection(contrato)["status_renovacao"])
-            if status:
-                return status
-        return ""
+        return resolve_associado_status_renovacao(obj)
+
+    def get_status(self, obj: Associado) -> str:
+        return resolve_associado_mother_status(obj)
 
     def get_status_visual_slug(self, obj: Associado) -> str:
         return str(get_associado_visual_status_payload(obj)["status_visual_slug"])
@@ -346,6 +352,7 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
     contratos = serializers.SerializerMethodField()
     documentos = DocumentoSerializer(many=True, read_only=True)
     esteira = EsteiraItemResumoSerializer(source="esteira_item", read_only=True)
+    status = serializers.SerializerMethodField()
     status_renovacao = serializers.SerializerMethodField()
     status_visual_slug = serializers.SerializerMethodField()
     status_visual_label = serializers.SerializerMethodField()
@@ -442,11 +449,10 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
         ).data
 
     def get_status_renovacao(self, obj: Associado) -> str:
-        for contrato in self._get_active_contracts(obj):
-            status = str(build_contract_cycle_projection(contrato)["status_renovacao"])
-            if status:
-                return status
-        return ""
+        return resolve_associado_status_renovacao(obj)
+
+    def get_status(self, obj: Associado) -> str:
+        return resolve_associado_mother_status(obj)
 
     def get_status_visual_slug(self, obj: Associado) -> str:
         return str(get_associado_visual_status_payload(obj)["status_visual_slug"])
@@ -603,6 +609,9 @@ class AssociadoCreateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "matricula"]
 
+    def validate_mensalidade(self, value):
+        return validate_positive_mensalidade(value, field_name="mensalidade")
+
     def validate(self, attrs):
         agente_responsavel_id = attrs.get("agente_responsavel_id")
         sent_agente_responsavel = "agente_responsavel_id" in self.initial_data
@@ -736,6 +745,9 @@ class AssociadoUpdateSerializer(serializers.ModelSerializer):
             "percentual_repasse",
         ]
         read_only_fields = ["id", "matricula", "cpf_cnpj"]
+
+    def validate_mensalidade(self, value):
+        return validate_positive_mensalidade(value, field_name="mensalidade")
 
     def validate(self, attrs):
         if "percentual_repasse" in self.initial_data:

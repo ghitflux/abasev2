@@ -14,6 +14,8 @@ from apps.contratos.cycle_projection import (
     build_contract_cycle_projection,
     get_associado_visual_status_payload,
     get_contract_visual_status_payload,
+    resolve_associado_mother_status,
+    resolve_associado_status_renovacao,
 )
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, PagamentoMensalidade
@@ -1438,3 +1440,57 @@ class CycleProjectionTestCase(TestCase):
         self.assertTrue(termo["arquivo_disponivel_localmente"])
         self.assertEqual(termo["tipo_referencia"], "local")
         self.assertIn("termo-fallback.pdf", termo["arquivo_referencia"])
+
+    def test_associado_mother_status_is_apto_when_latest_cycle_is_apto(self):
+        associado = self._create_associado("81111111111", "STATUS MAE APTO")
+        contrato = self._create_contrato(
+            associado=associado,
+            data_primeira_mensalidade=date(2026, 1, 1),
+        )
+        self._create_financial_row(contrato, date(2026, 1, 1), status_code="1")
+        self._create_financial_row(contrato, date(2026, 2, 1), status_code="1")
+        self._create_financial_row(contrato, date(2026, 3, 1), status_code="1")
+
+        projection = build_contract_cycle_projection(contrato)
+        self.assertEqual(projection["cycles"][0]["status"], Ciclo.Status.APTO_A_RENOVAR)
+        self.assertEqual(resolve_associado_mother_status(associado), "apto_a_renovar")
+        self.assertEqual(
+            resolve_associado_status_renovacao(associado),
+            Refinanciamento.Status.APTO_A_RENOVAR,
+        )
+
+    def test_associado_mother_status_returns_to_ativo_when_latest_cycle_is_renewed(self):
+        associado = self._create_associado("82222222222", "STATUS MAE ATIVO")
+        contrato = self._create_contrato(
+            associado=associado,
+            data_primeira_mensalidade=date(2025, 10, 1),
+        )
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2025, 10, 1),
+            data_fim=date(2025, 12, 1),
+            status=Ciclo.Status.CICLO_RENOVADO,
+            valor_total=Decimal("900.00"),
+        )
+        for numero, referencia in enumerate(
+            [date(2025, 10, 1), date(2025, 11, 1), date(2025, 12, 1)],
+            start=1,
+        ):
+            Parcela.objects.create(
+                ciclo=ciclo,
+                associado=associado,
+                numero=numero,
+                referencia_mes=referencia,
+                valor=Decimal("300.00"),
+                data_vencimento=referencia,
+                status=Parcela.Status.DESCONTADO,
+                data_pagamento=referencia,
+            )
+        contrato.admin_manual_layout_enabled = True
+        contrato.save(update_fields=["admin_manual_layout_enabled", "updated_at"])
+
+        projection = build_contract_cycle_projection(contrato)
+        latest_cycle = max(projection["cycles"], key=lambda item: item["numero"])
+        self.assertEqual(latest_cycle["status"], Ciclo.Status.CICLO_RENOVADO)
+        self.assertEqual(resolve_associado_mother_status(associado), Associado.Status.ATIVO)

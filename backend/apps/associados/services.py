@@ -217,10 +217,22 @@ class AssociadoService:
 
     @staticmethod
     @transaction.atomic
-    def excluir_associado(associado: Associado) -> None:
+    def excluir_associado(associado: Associado, user=None) -> None:
         from apps.contratos.soft_delete import soft_delete_contract_tree
 
         esteira_item = associado._safe_related("esteira_item")
+        if (
+            esteira_item is not None
+            and user is not None
+            and getattr(user, "is_authenticated", False)
+            and hasattr(user, "has_role")
+            and user.has_role("ADMIN", "COORDENADOR")
+        ):
+            EsteiraService.excluir_solicitacao(esteira_item, user)
+            if associado.deleted_at is not None:
+                return
+            return
+
         if esteira_item is not None:
             for pendencia in esteira_item.pendencias.filter(deleted_at__isnull=True):
                 pendencia.soft_delete()

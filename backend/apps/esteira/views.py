@@ -142,7 +142,7 @@ class EsteiraViewSet(
             )
 
         esteira_item = self.get_object()
-        EsteiraService.excluir_solicitacao(esteira_item)
+        EsteiraService.excluir_solicitacao(esteira_item, request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"])

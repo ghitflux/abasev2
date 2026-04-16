@@ -381,6 +381,141 @@ class RelatoriosViewSetTestCase(TestCase):
         self.assertNotIn("Associado Outro Agente", content)
         self.assertNotIn("Associado Faixa Errada", content)
 
+    def test_exportar_relatorio_de_associados_inativos_pagadores_filtra_por_status_mae(self):
+        hoje = date.today()
+
+        associado_ativo = Associado.objects.create(
+            nome_completo="Associado Ativo",
+            cpf_cnpj="32345678911",
+            status=Associado.Status.ATIVO,
+            agente_responsavel=self.agente,
+        )
+        contrato_ativo = Contrato.objects.create(
+            associado=associado_ativo,
+            agente=self.agente,
+            valor_mensalidade=Decimal("180.00"),
+            status=Contrato.Status.ATIVO,
+        )
+        ciclo_ativo = contrato_ativo.ciclos.create(
+            numero=1,
+            data_inicio=hoje.replace(day=1),
+            data_fim=hoje.replace(day=28),
+            status="aberto",
+            valor_total=Decimal("540.00"),
+        )
+        Parcela.objects.create(
+            ciclo=ciclo_ativo,
+            associado=associado_ativo,
+            numero=1,
+            referencia_mes=hoje.replace(day=1),
+            valor=Decimal("180.00"),
+            data_vencimento=hoje,
+            status=Parcela.Status.DESCONTADO,
+            data_pagamento=hoje,
+        )
+
+        associado_inativo = Associado.objects.create(
+            nome_completo="Associado Inativo",
+            cpf_cnpj="32345678912",
+            status=Associado.Status.INATIVO,
+            agente_responsavel=self.agente,
+        )
+        contrato_inativo = Contrato.objects.create(
+            associado=associado_inativo,
+            agente=self.agente,
+            valor_mensalidade=Decimal("180.00"),
+            status=Contrato.Status.ENCERRADO,
+        )
+        ciclo_inativo = contrato_inativo.ciclos.create(
+            numero=1,
+            data_inicio=hoje.replace(day=1),
+            data_fim=hoje.replace(day=28),
+            status="fechado",
+            valor_total=Decimal("540.00"),
+        )
+        Parcela.objects.create(
+            ciclo=ciclo_inativo,
+            associado=associado_inativo,
+            numero=1,
+            referencia_mes=hoje.replace(day=1),
+            valor=Decimal("180.00"),
+            data_vencimento=hoje,
+            status=Parcela.Status.LIQUIDADA,
+            data_pagamento=hoje,
+        )
+
+        response = self.client.post(
+            "/api/v1/relatorios/exportar/",
+            {
+                "tipo": "associados_inativos_com_1_parcela_paga",
+                "formato": "json",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+        payload = response.json()
+
+        download_response = self.client.get(f"/api/v1/relatorios/{payload['id']}/download/")
+        self.assertEqual(download_response.status_code, 200)
+        content = b"".join(download_response.streaming_content)
+        exported = json.loads(content.decode("utf-8"))
+
+        self.assertEqual([row["nome_completo"] for row in exported], ["Associado Inativo"])
+
+    def test_exportar_relatorio_de_associados_inativos_inclui_contrato_cancelado(self):
+        hoje = date.today()
+
+        associado = Associado.objects.create(
+            nome_completo="Associado Contrato Cancelado",
+            cpf_cnpj="32345678913",
+            status=Associado.Status.ATIVO,
+            agente_responsavel=self.agente,
+        )
+        contrato = Contrato.objects.create(
+            associado=associado,
+            agente=self.agente,
+            valor_mensalidade=Decimal("180.00"),
+            status=Contrato.Status.CANCELADO,
+        )
+        ciclo = contrato.ciclos.create(
+            numero=1,
+            data_inicio=hoje.replace(day=1),
+            data_fim=hoje.replace(day=28),
+            status="fechado",
+            valor_total=Decimal("540.00"),
+        )
+        Parcela.objects.create(
+            ciclo=ciclo,
+            associado=associado,
+            numero=1,
+            referencia_mes=hoje.replace(day=1),
+            valor=Decimal("180.00"),
+            data_vencimento=hoje,
+            status=Parcela.Status.DESCONTADO,
+            data_pagamento=hoje,
+        )
+
+        response = self.client.post(
+            "/api/v1/relatorios/exportar/",
+            {
+                "tipo": "associados_inativos_com_1_parcela_paga",
+                "formato": "json",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+        payload = response.json()
+
+        download_response = self.client.get(f"/api/v1/relatorios/{payload['id']}/download/")
+        self.assertEqual(download_response.status_code, 200)
+        content = b"".join(download_response.streaming_content)
+        exported = json.loads(content.decode("utf-8"))
+
+        self.assertEqual(
+            [row["nome_completo"] for row in exported],
+            ["Associado Contrato Cancelado"],
+        )
+
     def test_exportar_gera_pdf_personalizado_para_todos_os_tipos(self):
         self._seed_operational_data()
 

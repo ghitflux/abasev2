@@ -555,7 +555,7 @@ def rebuild_contract_cycle_state(
     )
 
     cycle_by_number: dict[int, Ciclo] = {}
-    new_parcela_by_reference: dict[object, Parcela] = {}
+    new_parcela_candidates_by_reference: dict[object, list[Parcela]] = {}
     for desired_cycle in desired_cycles:
         existing_cycle = existing_cycles.pop(desired_cycle["numero"], None)
         cycle = _ensure_cycle(contrato, desired_cycle, existing_cycle)
@@ -582,10 +582,15 @@ def rebuild_contract_cycle_state(
                 desired_parcela,
                 existing,
             )
-            new_parcela_by_reference[parcela.referencia_mes] = parcela
+            new_parcela_candidates_by_reference.setdefault(parcela.referencia_mes, []).append(parcela)
         _soft_delete_extra_parcelas(list(current_parcelas.values()), report)
 
     _soft_delete_extra_cycles(list(existing_cycles.values()), report)
+    new_parcela_by_reference = {
+        referencia: parcelas[0]
+        for referencia, parcelas in new_parcela_candidates_by_reference.items()
+        if len(parcelas) == 1
+    }
     _rebind_financial_links(old_reference_by_parcela_id, new_parcela_by_reference, report)
     _sync_refinanciamentos(
         contrato,

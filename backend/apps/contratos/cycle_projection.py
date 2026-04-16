@@ -152,16 +152,94 @@ def _compose_visual_status(
     }
 
 
+def normalize_associado_mother_status(raw_status: str | None) -> str:
+    status = str(raw_status or "").strip()
+    if status == Associado.Status.INATIVO:
+        return Associado.Status.INATIVO
+    if status == "apto_a_renovar":
+        return "apto_a_renovar"
+    return Associado.Status.ATIVO
+
+
+def resolve_associado_mother_status(
+    associado: Associado,
+    *,
+    projections_by_contract: dict[int, dict[str, object]] | None = None,
+) -> str:
+    if normalize_associado_mother_status(associado.status) == Associado.Status.INATIVO:
+        return Associado.Status.INATIVO
+
+    contratos = get_operational_contracts_for_associado(associado)
+    if not contratos:
+        return normalize_associado_mother_status(associado.status)
+
+    latest_cycle: dict[str, object] | None = None
+    for contrato in contratos:
+        projection = (
+            projections_by_contract.get(contrato.id)
+            if projections_by_contract is not None
+            else None
+        ) or build_contract_cycle_projection(contrato)
+        cycles = list(projection.get("cycles") or [])
+        if not cycles:
+            continue
+        cycle = max(cycles, key=lambda item: int(item.get("numero") or 0))
+        if latest_cycle is None or int(cycle.get("numero") or 0) >= int(latest_cycle.get("numero") or 0):
+            latest_cycle = cycle
+
+    if latest_cycle is None:
+        return normalize_associado_mother_status(associado.status)
+
+    latest_cycle_status = str(latest_cycle.get("status") or "")
+    latest_phase = str(latest_cycle.get("fase_ciclo") or "")
+    if latest_cycle_status == Ciclo.Status.APTO_A_RENOVAR or latest_phase == "apto_a_renovar":
+        return "apto_a_renovar"
+    if latest_cycle_status in CONCLUDED_CYCLE_STATUSES:
+        return Associado.Status.ATIVO
+    return Associado.Status.ATIVO
+
+
+def resolve_associado_status_renovacao(
+    associado: Associado,
+    *,
+    projections_by_contract: dict[int, dict[str, object]] | None = None,
+) -> str:
+    mother_status = resolve_associado_mother_status(
+        associado,
+        projections_by_contract=projections_by_contract,
+    )
+    if mother_status == "apto_a_renovar":
+        return Refinanciamento.Status.APTO_A_RENOVAR
+
+    for contrato in get_operational_contracts_for_associado(associado):
+        projection = (
+            projections_by_contract.get(contrato.id)
+            if projections_by_contract is not None
+            else None
+        ) or build_contract_cycle_projection(contrato)
+        status = str(projection.get("status_renovacao") or "")
+        if status:
+            return status
+    return ""
+
+
+def sync_associado_mother_status(associado: Associado) -> bool:
+    target_status = resolve_associado_mother_status(associado)
+    if str(associado.status or "") == target_status:
+        return False
+    associado.status = target_status
+    associado.save(update_fields=["status", "updated_at"])
+    return True
+
+
 def _cycle_financial_status(
     *,
     contrato: Contrato,
     has_unpaid_months: bool,
 ) -> str:
-    associado_status = getattr(contrato.associado, "status", "")
+    associado_status = normalize_associado_mother_status(getattr(contrato.associado, "status", ""))
     if associado_status == Associado.Status.INATIVO or contrato.status == Contrato.Status.CANCELADO:
         return "ciclo_desativado"
-    if has_unpaid_months and associado_status == Associado.Status.INADIMPLENTE:
-        return "ciclo_inadimplente"
     if has_unpaid_months:
         return "ciclo_com_pendencia"
     return "ciclo_em_dia"
@@ -174,7 +252,7 @@ def _cycle_phase_status(
     next_renewal: EffectiveRenewal | None,
     refinanciamento_operacional: Refinanciamento | None,
 ) -> str:
-    associado_status = getattr(contrato.associado, "status", "")
+    associado_status = normalize_associado_mother_status(getattr(contrato.associado, "status", ""))
     if associado_status == Associado.Status.INATIVO or contrato.status == Contrato.Status.CANCELADO:
         return "contrato_desativado"
     if contrato.status == Contrato.Status.ENCERRADO:
@@ -207,8 +285,11 @@ def _fallback_visual_status_from_models(
     associado_status: str,
     contrato_status: str,
 ) -> dict[str, str]:
-    if associado_status == Associado.Status.INATIVO or contrato_status == Contrato.Status.CANCELADO:
+    normalized_status = normalize_associado_mother_status(associado_status)
+    if normalized_status == Associado.Status.INATIVO or contrato_status == Contrato.Status.CANCELADO:
         return _compose_visual_status(phase_slug="contrato_desativado")
+    if normalized_status == "apto_a_renovar":
+        return _compose_visual_status(phase_slug="apto_a_renovar")
     if contrato_status == Contrato.Status.ENCERRADO:
         return _compose_visual_status(phase_slug="contrato_encerrado")
     return _compose_visual_status(phase_slug="em_analise")
@@ -1438,7 +1519,6 @@ def _build_manual_contract_projection(
     parcelas_por_ciclo: dict[int, list[dict[str, object]]] = {}
     unpaid_rows: list[dict[str, object]] = []
     movement_rows: list[dict[str, object]] = []
-    current_month = timezone.localdate().replace(day=1)
 
     def build_row(
         parcela: Parcela,
@@ -1472,13 +1552,6 @@ def _build_manual_contract_projection(
                 hint in observacao for hint in MANUAL_OUTSIDE_CYCLE_HINTS
             ):
                 effective_bucket = Parcela.LayoutBucket.UNPAID
-            elif effective_status == Parcela.Status.EM_PREVISAO and (
-                _month_floor(parcela.referencia_mes) < current_month
-                or parcela.ciclo.numero < latest_cycle_number
-                or parcela.ciclo.status == Ciclo.Status.CICLO_RENOVADO
-            ):
-                effective_bucket = Parcela.LayoutBucket.UNPAID
-                effective_status = Parcela.Status.NAO_DESCONTADO
 
         if effective_bucket == Parcela.LayoutBucket.UNPAID:
             unpaid_rows.append(
@@ -1958,6 +2031,12 @@ def get_contract_visual_status_payload(
 
 
 def get_associado_visual_status_payload(associado: Associado) -> dict[str, object]:
+    mother_status = resolve_associado_mother_status(associado)
+    if mother_status == Associado.Status.INATIVO:
+        return _compose_visual_status(phase_slug="contrato_desativado")
+    if mother_status == "apto_a_renovar":
+        return _compose_visual_status(phase_slug="apto_a_renovar")
+
     contratos = get_operational_contracts_for_associado(associado)
     candidates: list[dict[str, object]] = []
 

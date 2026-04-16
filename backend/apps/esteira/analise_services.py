@@ -251,7 +251,15 @@ class AnaliseService:
         )
 
         if secao == "ver_todos":
-            return queryset.order_by("-updated_at", "-created_at")
+            # Exclui itens que foram removidos operacionalmente via "excluir preservando
+            # histórico" (etapa=CONCLUIDO + status=REJEITADO sem contrato cancelado).
+            # Contratos cancelados têm latest_contract_status=CANCELADO e permanecem
+            # visíveis para rastreabilidade histórica.
+            return queryset.exclude(
+                Q(etapa_atual=EsteiraItem.Etapa.CONCLUIDO)
+                & Q(status=EsteiraItem.Situacao.REJEITADO)
+                & ~Q(latest_contract_status=Contrato.Status.CANCELADO)
+            ).order_by("-updated_at", "-created_at")
 
         if secao == "pendencias":
             return queryset.filter(

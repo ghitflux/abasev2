@@ -18,6 +18,7 @@ from apps.contratos.canonicalization import operational_contracts_queryset
 from apps.contratos.cycle_projection import (
     build_contract_cycle_projection,
     get_contract_visual_status_payload,
+    resolve_associado_mother_status,
 )
 from apps.contratos.cycle_timeline import (
     get_contract_cycle_size,
@@ -67,7 +68,7 @@ def filter_by_status_visual(queryset, status_visual: str):
             continue
 
         if status_visual == "desativado" and (
-            contrato.associado.status == Associado.Status.INATIVO
+            resolve_associado_mother_status(contrato.associado) == Associado.Status.INATIVO
             or contrato.status in {Contrato.Status.ENCERRADO, Contrato.Status.CANCELADO}
         ):
             filtered_ids.append(contrato.id)
@@ -78,6 +79,8 @@ def filter_by_status_visual(queryset, status_visual: str):
             continue
 
         if status_visual == "ativo" and (
+            resolve_associado_mother_status(contrato.associado) != Associado.Status.INATIVO
+            and
             not has_unpaid_months
             and phase_slug
             in {

@@ -15,7 +15,10 @@ from django.utils import timezone
 from openpyxl import Workbook
 
 from apps.associados.models import Associado
-from apps.contratos.canonicalization import resolve_operational_contract_for_associado
+from apps.contratos.canonicalization import (
+    is_shadow_duplicate_contract,
+    resolve_operational_contract_for_associado,
+)
 from apps.contratos.models import Contrato, Parcela
 from apps.contratos.cycle_projection import resolve_associado_mother_status
 from apps.esteira.models import EsteiraItem, Pendencia
@@ -48,6 +51,8 @@ class RelatorioService:
         "importacao": "/importacao",
         "associados_ativos_com_1_parcela_paga": "/relatorios/associados-ativos-com-1-parcela-paga",
         "associados_ativos_com_3_parcelas_pagas": "/relatorios/associados-ativos-com-3-parcelas-pagas",
+        "associados_inativos_com_1_parcela_paga": "/relatorios/associados-inativos-com-1-parcela-paga",
+        "associados_inativos_com_3_parcelas_pagas": "/relatorios/associados-inativos-com-3-parcelas-pagas",
     }
 
     @staticmethod
@@ -248,6 +253,40 @@ class RelatorioService:
                 tipo="/relatorios/associados-ativos-com-3-parcelas-pagas",
                 title="Associados Ativos com 3 Parcelas Pagas",
                 description="Associados com status mãe ativo e no mínimo três parcelas pagas dentro do recorte informado.",
+                columns=(
+                    ReportColumn("nome_completo", "Associado", 2.4),
+                    ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("matricula", "Matricula", 1.2),
+                    ReportColumn("agente", "Agente", 1.8),
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("valor_mensalidade", "Mensalidade", 1.1),
+                    ReportColumn("parcelas_pagas", "Parcelas pagas", 1.0),
+                    ReportColumn("valor_total_pago", "Valor pago", 1.2),
+                    ReportColumn("primeira_parcela_paga", "Primeira paga", 1.3),
+                    ReportColumn("ultima_parcela_paga", "Ultima paga", 1.3),
+                ),
+            ),
+            "/relatorios/associados-inativos-com-1-parcela-paga": ReportDefinition(
+                tipo="/relatorios/associados-inativos-com-1-parcela-paga",
+                title="Associados Inativos com 1 Parcela Paga",
+                description="Associados com status mãe inativo e ao menos uma parcela paga dentro do recorte informado.",
+                columns=(
+                    ReportColumn("nome_completo", "Associado", 2.4),
+                    ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("matricula", "Matricula", 1.2),
+                    ReportColumn("agente", "Agente", 1.8),
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("valor_mensalidade", "Mensalidade", 1.1),
+                    ReportColumn("parcelas_pagas", "Parcelas pagas", 1.0),
+                    ReportColumn("valor_total_pago", "Valor pago", 1.2),
+                    ReportColumn("primeira_parcela_paga", "Primeira paga", 1.3),
+                    ReportColumn("ultima_parcela_paga", "Ultima paga", 1.3),
+                ),
+            ),
+            "/relatorios/associados-inativos-com-3-parcelas-pagas": ReportDefinition(
+                tipo="/relatorios/associados-inativos-com-3-parcelas-pagas",
+                title="Associados Inativos com 3 Parcelas Pagas",
+                description="Associados com status mãe inativo e no mínimo três parcelas pagas dentro do recorte informado.",
                 columns=(
                     ReportColumn("nome_completo", "Associado", 2.4),
                     ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
@@ -506,11 +545,25 @@ class RelatorioService:
         if tipo == "associados_ativos_com_1_parcela_paga":
             return RelatorioService._associados_pagadores_rows(
                 min_paid=1,
+                associado_status=Associado.Status.ATIVO,
                 filtros=active_filters,
             )
         if tipo == "associados_ativos_com_3_parcelas_pagas":
             return RelatorioService._associados_pagadores_rows(
                 min_paid=3,
+                associado_status=Associado.Status.ATIVO,
+                filtros=active_filters,
+            )
+        if tipo == "associados_inativos_com_1_parcela_paga":
+            return RelatorioService._associados_pagadores_rows(
+                min_paid=1,
+                associado_status=Associado.Status.INATIVO,
+                filtros=active_filters,
+            )
+        if tipo == "associados_inativos_com_3_parcelas_pagas":
+            return RelatorioService._associados_pagadores_rows(
+                min_paid=3,
+                associado_status=Associado.Status.INATIVO,
                 filtros=active_filters,
             )
         raise ValueError(f"Tipo de relatorio invalido: {tipo}")
@@ -573,6 +626,7 @@ class RelatorioService:
     def _associados_pagadores_rows(
         *,
         min_paid: int,
+        associado_status: str,
         filtros: dict[str, object],
     ) -> list[dict[str, object]]:
         paid_statuses = {Parcela.Status.DESCONTADO, Parcela.Status.LIQUIDADA}
@@ -589,11 +643,13 @@ class RelatorioService:
         rows: list[dict[str, object]] = []
 
         for associado in queryset:
-            if resolve_associado_mother_status(associado) != Associado.Status.ATIVO:
-                continue
-
-            contrato = resolve_operational_contract_for_associado(associado)
+            contrato = RelatorioService._resolve_report_contract_for_associado(associado)
             if contrato is None:
+                continue
+            if (
+                RelatorioService._resolve_report_status_for_associado(associado, contrato)
+                != associado_status
+            ):
                 continue
 
             resolved_agente = contrato.agente or associado.agente_responsavel
@@ -664,6 +720,42 @@ class RelatorioService:
             )
 
         return rows
+
+    @staticmethod
+    def _resolve_report_contract_for_associado(associado: Associado) -> Contrato | None:
+        contrato = resolve_operational_contract_for_associado(associado)
+        if contrato is not None:
+            return contrato
+
+        cached_contracts = getattr(associado, "_prefetched_objects_cache", {}).get("contratos")
+        if cached_contracts is not None:
+            contratos = list(cached_contracts)
+        else:
+            contratos = list(
+                associado.contratos.select_related("agente").order_by("-created_at", "-id")
+            )
+
+        contratos_visiveis = [
+            item for item in contratos if not is_shadow_duplicate_contract(item)
+        ]
+        if not contratos_visiveis:
+            return None
+        return max(contratos_visiveis, key=lambda item: (item.created_at, item.id))
+
+    @staticmethod
+    def _resolve_report_status_for_associado(
+        associado: Associado,
+        contrato: Contrato | None,
+    ) -> str:
+        if associado.status == Associado.Status.INATIVO:
+            return Associado.Status.INATIVO
+        if contrato is not None and contrato.status == Contrato.Status.CANCELADO:
+            return Associado.Status.INATIVO
+
+        mother_status = resolve_associado_mother_status(associado)
+        if mother_status == Associado.Status.INATIVO:
+            return Associado.Status.INATIVO
+        return Associado.Status.ATIVO
 
     @staticmethod
     def _associados_rows() -> list[dict[str, object]]:

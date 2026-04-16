@@ -69,6 +69,14 @@ class RelatorioExportarSerializer(serializers.Serializer):
                 "associados_ativos_com_3_parcelas_pagas",
                 "Associados ativos com 3 parcelas pagas",
             ),
+            (
+                "associados_inativos_com_1_parcela_paga",
+                "Associados inativos com 1 parcela paga",
+            ),
+            (
+                "associados_inativos_com_3_parcelas_pagas",
+                "Associados inativos com 3 parcelas pagas",
+            ),
         ],
         required=False,
     )

@@ -298,7 +298,9 @@ class EsteiraListSerializer(serializers.ModelSerializer):
 
     @extend_schema_field(serializers.ListField(child=serializers.CharField()))
     def get_acoes_disponiveis(self, obj: EsteiraItem) -> list[str]:
-        return EsteiraService.get_available_actions(obj)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        return EsteiraService.get_available_actions(obj, user=user)
 
 
 class EsteiraDetailSerializer(EsteiraListSerializer):

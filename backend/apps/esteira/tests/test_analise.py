@@ -514,6 +514,69 @@ class AnaliseViewSetTestCase(TestCase):
             [],
         )
 
+    def test_admin_exclui_item_consolidado_preservando_historico(self):
+        item = self._create_item(
+            suffix="40221",
+            etapa=EsteiraItem.Etapa.ANALISE,
+            status=EsteiraItem.Situacao.EM_ANDAMENTO,
+            documentos=1,
+            analista=self.analista,
+            contrato_status=Contrato.Status.ATIVO,
+            associado_status=Associado.Status.ATIVO,
+        )
+        contrato = item.associado.contratos.get()
+        pendencia = Pendencia.objects.create(
+            esteira_item=item,
+            tipo="documentacao",
+            descricao="Aguardando revisão final.",
+        )
+
+        response = self.admin_client.delete(f"/api/v1/esteira/{item.id}/")
+        self.assertEqual(response.status_code, 204)
+
+        item.refresh_from_db()
+        item.associado.refresh_from_db()
+        contrato.refresh_from_db()
+        pendencia.refresh_from_db()
+        self.assertIsNone(item.deleted_at)
+        self.assertEqual(item.etapa_atual, EsteiraItem.Etapa.CONCLUIDO)
+        self.assertEqual(item.status, EsteiraItem.Situacao.APROVADO)
+        self.assertIsNotNone(item.concluido_em)
+        self.assertEqual(item.associado.status, Associado.Status.ATIVO)
+        self.assertEqual(contrato.status, Contrato.Status.ATIVO)
+        self.assertEqual(pendencia.status, Pendencia.Status.CANCELADA)
+        self.assertIsNotNone(pendencia.resolvida_em)
+
+    def test_coordenador_exclui_item_cancelado_preservando_historico(self):
+        item = self._create_item(
+            suffix="40222",
+            etapa=EsteiraItem.Etapa.TESOURARIA,
+            status=EsteiraItem.Situacao.PENDENCIADO,
+            documentos=1,
+            contrato_status=Contrato.Status.CANCELADO,
+            associado_status=Associado.Status.INATIVO,
+        )
+        contrato = item.associado.contratos.get()
+        pendencia = Pendencia.objects.create(
+            esteira_item=item,
+            tipo="documentacao",
+            descricao="Fila inconsistente após cancelamento.",
+        )
+
+        response = self.coord_client.delete(f"/api/v1/esteira/{item.id}/")
+        self.assertEqual(response.status_code, 204)
+
+        item.refresh_from_db()
+        item.associado.refresh_from_db()
+        contrato.refresh_from_db()
+        pendencia.refresh_from_db()
+        self.assertIsNone(item.deleted_at)
+        self.assertEqual(item.etapa_atual, EsteiraItem.Etapa.CONCLUIDO)
+        self.assertEqual(item.status, EsteiraItem.Situacao.REJEITADO)
+        self.assertEqual(item.associado.status, Associado.Status.INATIVO)
+        self.assertEqual(contrato.status, Contrato.Status.CANCELADO)
+        self.assertEqual(pendencia.status, Pendencia.Status.CANCELADA)
+
     def test_excluir_solicitacao_recusa_item_assumido(self):
         item = self._create_item(
             suffix="4023",
@@ -524,6 +587,32 @@ class AnaliseViewSetTestCase(TestCase):
 
         response = self.analyst_client.delete(f"/api/v1/esteira/{item.id}/")
         self.assertEqual(response.status_code, 400, response.json())
+
+    def test_acoes_disponiveis_exibem_excluir_para_coordenador_em_item_consolidado(self):
+        item = self._create_item(
+            suffix="40231",
+            documentos=1,
+            status=EsteiraItem.Situacao.EM_ANDAMENTO,
+            analista=self.analista,
+            contrato_status=Contrato.Status.ATIVO,
+            associado_status=Associado.Status.ATIVO,
+        )
+
+        coord_response = self.coord_client.get("/api/v1/analise/filas/?secao=ver_todos")
+        self.assertEqual(coord_response.status_code, 200, coord_response.json())
+        coord_row = next(
+            row for row in coord_response.json()["results"] if row["id"] == item.id
+        )
+        self.assertIn("excluir", coord_row["acoes_disponiveis"])
+
+        analyst_response = self.analyst_client.get(
+            "/api/v1/analise/filas/?secao=ver_todos"
+        )
+        self.assertEqual(analyst_response.status_code, 200, analyst_response.json())
+        analyst_row = next(
+            row for row in analyst_response.json()["results"] if row["id"] == item.id
+        )
+        self.assertNotIn("excluir", analyst_row["acoes_disponiveis"])
 
     def test_reprovar_item_em_analise_remove_cadastro_completo(self):
         item = self._create_item(

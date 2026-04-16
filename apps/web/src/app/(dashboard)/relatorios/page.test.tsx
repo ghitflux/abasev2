@@ -91,30 +91,6 @@ describe("RelatoriosPage", () => {
     });
 
     mockedApiFetch.mockImplementation(async (path, options) => {
-      if (path === "relatorios/resumo") {
-        return {
-          associados_ativos: 10,
-          associados_em_analise: 2,
-          associados_inadimplentes: 1,
-          contratos_ativos: 8,
-          contratos_em_analise: 1,
-          pendencias_abertas: 3,
-          esteira_aguardando: 4,
-          refinanciamentos_pendentes: 2,
-          refinanciamentos_efetivados: 5,
-          importacoes_concluidas: 7,
-          baixas_mes: 12,
-          valor_baixado_mes: "1234.56",
-          ultima_importacao: {
-            id: 99,
-            arquivo_nome: "retorno_marco.txt",
-            competencia: "03/2026",
-            status: "concluido",
-            processado_em: "2026-03-13T10:00:00Z",
-          },
-        };
-      }
-
       if (path === "relatorios") {
         return [
           {
@@ -174,6 +150,7 @@ describe("RelatoriosPage", () => {
     );
 
     const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /Faixa de período/i }));
     const dateInputs = within(dialog).getAllByPlaceholderText("dd/mm/aaaa");
     fireEvent.change(dateInputs[0], { target: { value: "2026-04-01" } });
     fireEvent.change(dateInputs[1], { target: { value: "2026-04-30" } });
@@ -203,6 +180,39 @@ describe("RelatoriosPage", () => {
               data_fim: "2026-04-30",
               agente_id: "9",
               faixa_mensalidade: ["200_300", "acima_500"],
+            },
+          },
+        }),
+      ),
+    );
+  });
+
+  it("exporta relatorio de associados inativos com periodo maximo sem datas", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    const card = await screen.findByTestId("relatorio-card-associados_inativos_com_1_parcela_paga");
+    await user.click(
+      within(card).getByRole("button", { name: /Exportar CSV \/ PDF \/ XLS/i }),
+    );
+
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: /Período máximo/i }));
+    await user.click(within(dialog).getByRole("button", { name: "CSV" }));
+
+    await waitFor(() =>
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        "relatorios/exportar",
+        expect.objectContaining({
+          method: "POST",
+          body: {
+            tipo: "associados_inativos_com_1_parcela_paga",
+            formato: "csv",
+            filtros: {
+              data_inicio: undefined,
+              data_fim: undefined,
+              agente_id: undefined,
+              faixa_mensalidade: undefined,
             },
           },
         }),

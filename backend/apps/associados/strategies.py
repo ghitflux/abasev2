@@ -8,6 +8,15 @@ from rest_framework.exceptions import ValidationError
 from .models import Associado, only_digits
 
 
+def validate_positive_mensalidade(value, *, field_name: str = "mensalidade"):
+    mensalidade = Decimal(str(value or 0))
+    if mensalidade <= 0:
+        raise ValidationError(
+            {field_name: "A mensalidade deve ser maior que zero."}
+        )
+    return mensalidade
+
+
 def build_duplicate_document_message(associado: Associado) -> str:
     agente = associado.agente_responsavel
     agente_nome = (
@@ -49,7 +58,10 @@ class CadastroValidationStrategy(ValidationStrategy):
             )
 
         contrato = data.setdefault("contrato", {})
-        mensalidade = Decimal(str(contrato.get("mensalidade") or 0))
+        mensalidade = validate_positive_mensalidade(
+            contrato.get("mensalidade"),
+            field_name="mensalidade",
+        )
         prazo_meses = int(contrato.get("prazo_meses") or 3)
         if prazo_meses not in {3, 4}:
             raise ValidationError({"prazo_meses": "O prazo do ciclo deve ser 3 ou 4 meses."})
@@ -90,4 +102,10 @@ class EdicaoValidationStrategy(ValidationStrategy):
             raise ValidationError({"cpf_cnpj": "CPF/CNPJ não pode ser alterado."})
         if "matricula" in data:
             raise ValidationError({"matricula": "Matrícula não pode ser alterada."})
+        contrato = data.get("contrato")
+        if isinstance(contrato, dict) and "valor_mensalidade" in contrato:
+            validate_positive_mensalidade(
+                contrato.get("valor_mensalidade"),
+                field_name="mensalidade",
+            )
         return data

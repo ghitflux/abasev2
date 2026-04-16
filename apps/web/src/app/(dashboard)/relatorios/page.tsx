@@ -3,24 +3,20 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ActivityIcon,
   ChevronDownIcon,
   DownloadIcon,
-  FileSpreadsheetIcon,
-  RefreshCcwIcon,
-  WalletIcon,
 } from "lucide-react";
+import { endOfMonth, format, startOfMonth, subMonths } from "date-fns";
 import { toast } from "sonner";
 
-import type { RelatorioGeradoItem, RelatorioResumo, SimpleUser } from "@/lib/api/types";
+import type { RelatorioGeradoItem, SimpleUser } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
-import { formatCurrency, formatDateTime } from "@/lib/formatters";
+import { formatDateTime } from "@/lib/formatters";
 import { usePermissions } from "@/hooks/use-permissions";
 import SearchableSelect from "@/components/custom/searchable-select";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
 import EmptyState from "@/components/shared/empty-state";
-import { ListRouteSkeleton, MetricCardSkeleton } from "@/components/shared/page-skeletons";
-import StatsCard from "@/components/shared/stats-card";
+import { ListRouteSkeleton } from "@/components/shared/page-skeletons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,20 +41,34 @@ import {
 type ReportFormat = "csv" | "pdf" | "xlsx";
 type AssociadoPagamentoReportType =
   | "associados_ativos_com_1_parcela_paga"
-  | "associados_ativos_com_3_parcelas_pagas";
+  | "associados_ativos_com_3_parcelas_pagas"
+  | "associados_inativos_com_1_parcela_paga"
+  | "associados_inativos_com_3_parcelas_pagas";
 
 const ASSOCIADO_PAGAMENTO_EXPORT_OPTIONS = [
   {
     tipo: "associados_ativos_com_1_parcela_paga" as const,
     title: "Ativos com 1 parcela paga",
     description:
-      "Associados ativos com pelo menos uma parcela paga no período, com filtro por agente e faixa de mensalidade.",
+      "Associados que não estejam inativos e sem contrato cancelado, com pelo menos uma parcela paga no período filtrado.",
   },
   {
     tipo: "associados_ativos_com_3_parcelas_pagas" as const,
     title: "Ativos com 3 parcelas pagas",
     description:
-      "Associados ativos com no mínimo três parcelas pagas no período, com filtro por agente e faixa de mensalidade.",
+      "Associados que não estejam inativos e sem contrato cancelado, com no mínimo três parcelas pagas no período filtrado.",
+  },
+  {
+    tipo: "associados_inativos_com_1_parcela_paga" as const,
+    title: "Inativos com 1 parcela paga",
+    description:
+      "Associados com status inativo ou com contrato cancelado, com pelo menos uma parcela paga no período filtrado.",
+  },
+  {
+    tipo: "associados_inativos_com_3_parcelas_pagas" as const,
+    title: "Inativos com 3 parcelas pagas",
+    description:
+      "Associados com status inativo ou com contrato cancelado, com no mínimo três parcelas pagas no período filtrado.",
   },
 ] as const;
 
@@ -97,12 +107,6 @@ type AgentFilterUser = SimpleUser & {
 export default function RelatoriosPage() {
   const queryClient = useQueryClient();
   const { hasRole, status } = usePermissions();
-
-  const resumoQuery = useQuery({
-    queryKey: ["relatorios-resumo"],
-    queryFn: () => apiFetch<RelatorioResumo>("relatorios/resumo"),
-    enabled: hasRole("ADMIN"),
-  });
 
   const historicoQuery = useQuery({
     queryKey: ["relatorios-historico"],
@@ -175,7 +179,6 @@ export default function RelatoriosPage() {
     [],
   );
 
-  const resumo = resumoQuery.data;
   const historico = historicoQuery.data ?? [];
   const agentOptions = React.useMemo(
     () =>
@@ -232,60 +235,11 @@ export default function RelatoriosPage() {
         <div className="space-y-2">
           <h1 className="text-3xl font-semibold text-foreground">Relatorios operacionais</h1>
           <p className="max-w-3xl text-sm text-muted-foreground">
-            Resumo executivo do sistema e exportacoes persistidas para auditoria, sem rota fantasma
-            e sem placeholder.
+            Exportacoes administrativas com criterios fixos de contagem, filtros por agente e
+            faixa de mensalidade e presets de periodo.
           </p>
         </div>
-        {resumo?.ultima_importacao ? (
-          <div className="rounded-[1.5rem] border border-border/60 bg-card/60 px-4 py-3 text-sm text-muted-foreground">
-            Ultima importacao: <span className="font-medium text-foreground">{resumo.ultima_importacao.arquivo_nome}</span>
-          </div>
-        ) : null}
       </section>
-
-      {resumoQuery.isLoading && !resumo ? (
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <MetricCardSkeleton key={index} />
-          ))}
-        </section>
-      ) : resumo ? (
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatsCard
-            title="Associados ativos"
-            value={String(resumo.associados_ativos)}
-            delta={`${resumo.associados_em_analise} em analise`}
-            tone="positive"
-            icon={ActivityIcon}
-          />
-          <StatsCard
-            title="Contratos ativos"
-            value={String(resumo.contratos_ativos)}
-            delta={`${resumo.contratos_em_analise} em analise`}
-            tone="neutral"
-            icon={WalletIcon}
-          />
-          <StatsCard
-            title="Refinanciamentos"
-            value={String(resumo.refinanciamentos_efetivados)}
-            delta={`${resumo.refinanciamentos_pendentes} pendentes`}
-            tone="positive"
-            icon={RefreshCcwIcon}
-          />
-          <StatsCard
-            title="Baixas no mes"
-            value={formatCurrency(resumo.valor_baixado_mes)}
-            delta={`${resumo.baixas_mes} parcelas descontadas`}
-            tone="warning"
-            icon={FileSpreadsheetIcon}
-          />
-        </section>
-      ) : (
-        <EmptyState
-          title="Resumo indisponivel"
-          description="Nao foi possivel carregar os indicadores executivos de relatorios."
-        />
-      )}
 
       <section className="grid gap-4 xl:grid-cols-2">
         {ASSOCIADO_PAGAMENTO_EXPORT_OPTIONS.map((option) => (
@@ -334,7 +288,54 @@ export default function RelatoriosPage() {
 
 function formatIsoDate(value?: Date) {
   if (!value) return "";
-  return value.toISOString().slice(0, 10);
+  return format(value, "yyyy-MM-dd");
+}
+
+type PeriodPreset = "customizado" | "mes_atual" | "mes_anterior" | "periodo_maximo";
+
+const PERIOD_PRESET_OPTIONS: Array<{
+  value: PeriodPreset;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "mes_atual",
+    label: "Mês atual",
+    description: "Do primeiro ao último dia do mês atual.",
+  },
+  {
+    value: "mes_anterior",
+    label: "Mês anterior",
+    description: "Do primeiro ao último dia do mês anterior.",
+  },
+  {
+    value: "customizado",
+    label: "Faixa de período",
+    description: "Permite definir data inicial e final manualmente.",
+  },
+  {
+    value: "periodo_maximo",
+    label: "Período máximo",
+    description: "Sem recorte de datas; considera todo o histórico pagável.",
+  },
+];
+
+function resolvePeriodRange(preset: PeriodPreset, customStart?: Date, customEnd?: Date) {
+  const today = new Date();
+  if (preset === "mes_atual") {
+    return { dataInicio: startOfMonth(today), dataFim: endOfMonth(today) };
+  }
+  if (preset === "mes_anterior") {
+    const previousMonth = subMonths(today, 1);
+    return {
+      dataInicio: startOfMonth(previousMonth),
+      dataFim: endOfMonth(previousMonth),
+    };
+  }
+  if (preset === "periodo_maximo") {
+    return { dataInicio: undefined, dataFim: undefined };
+  }
+  return { dataInicio: customStart, dataFim: customEnd };
 }
 
 function AssociadoPagamentoReportDialog({
@@ -359,17 +360,30 @@ function AssociadoPagamentoReportDialog({
   ) => void;
 }) {
   const [open, setOpen] = React.useState(false);
+  const [periodPreset, setPeriodPreset] = React.useState<PeriodPreset>("mes_atual");
   const [dataInicio, setDataInicio] = React.useState<Date>();
   const [dataFim, setDataFim] = React.useState<Date>();
   const [agenteId, setAgenteId] = React.useState("");
   const [faixasMensalidade, setFaixasMensalidade] = React.useState<string[]>([]);
   const [faixasOpen, setFaixasOpen] = React.useState(false);
 
+  React.useEffect(() => {
+    if (!open) {
+      return;
+    }
+    setPeriodPreset("mes_atual");
+    setDataInicio(undefined);
+    setDataFim(undefined);
+    setAgenteId("");
+    setFaixasMensalidade([]);
+  }, [open]);
+
   const handleExport = (formato: ReportFormat) => {
+    const range = resolvePeriodRange(periodPreset, dataInicio, dataFim);
     onExport(
       {
-        dataInicio: formatIsoDate(dataInicio) || undefined,
-        dataFim: formatIsoDate(dataFim) || undefined,
+        dataInicio: formatIsoDate(range.dataInicio) || undefined,
+        dataFim: formatIsoDate(range.dataFim) || undefined,
         agenteId: agenteId || undefined,
         faixasMensalidade,
       },
@@ -381,6 +395,7 @@ function AssociadoPagamentoReportDialog({
   const selectedFaixaLabels = MENSALIDADE_FAIXAS.filter((option) =>
     faixasMensalidade.includes(option.value),
   );
+  const customPeriodSelected = periodPreset === "customizado";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -396,13 +411,37 @@ function AssociadoPagamentoReportDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-2 md:grid-cols-2">
+          <div className="space-y-2 md:col-span-2">
+            <Label>Período</Label>
+            <div className="grid gap-2 md:grid-cols-2">
+              {PERIOD_PRESET_OPTIONS.map((option) => {
+                const checked = periodPreset === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setPeriodPreset(option.value)}
+                    className={[
+                      "rounded-2xl border px-4 py-3 text-left transition-colors",
+                      checked
+                        ? "border-primary/60 bg-primary/10"
+                        : "border-border/60 bg-card/50 hover:border-primary/30",
+                    ].join(" ")}
+                  >
+                    <div className="text-sm font-medium text-foreground">{option.label}</div>
+                    <div className="text-xs text-muted-foreground">{option.description}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div className="space-y-2">
             <Label>Data inicial</Label>
-            <DatePicker value={dataInicio} onChange={setDataInicio} />
+            <DatePicker value={dataInicio} onChange={setDataInicio} disabled={!customPeriodSelected} />
           </div>
           <div className="space-y-2">
             <Label>Data final</Label>
-            <DatePicker value={dataFim} onChange={setDataFim} />
+            <DatePicker value={dataFim} onChange={setDataFim} disabled={!customPeriodSelected} />
           </div>
           <div className="space-y-2">
             <Label htmlFor={`${title}-agente`}>Agente</Label>
@@ -486,6 +525,13 @@ function AssociadoPagamentoReportDialog({
                 ))}
               </div>
             ) : null}
+          </div>
+          <div className="rounded-2xl border border-border/60 bg-muted/30 px-4 py-3 text-sm text-muted-foreground md:col-span-2">
+            Criterios: ativo = associado sem status `inativo` e sem contrato `cancelado`;
+            inativo = associado com status `inativo` ou contrato `cancelado`; parcelas com status
+            `descontado` ou `liquidada`; período aplicado sobre `data_pagamento` com fallback para
+            `referencia_mes`; agente do contrato com fallback para o agente do associado; faixa pela
+            `valor_mensalidade` do contrato.
           </div>
         </div>
         <DialogFooter className="gap-2 sm:justify-end">

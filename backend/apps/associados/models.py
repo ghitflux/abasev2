@@ -25,6 +25,7 @@ class Associado(BaseModel):
         IMPORTADO = "importado", "Importado"
         EM_ANALISE = "em_analise", "Em análise"
         ATIVO = "ativo", "Ativo"
+        APTO_A_RENOVAR = "apto_a_renovar", "Apto a renovar"
         PENDENTE = "pendente", "Pendente"
         INATIVO = "inativo", "Inativo"
         INADIMPLENTE = "inadimplente", "Inadimplente"

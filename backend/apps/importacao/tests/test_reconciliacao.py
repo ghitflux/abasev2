@@ -165,7 +165,7 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
         associado.refresh_from_db()
         self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.NAO_DESCONTADO)
         self.assertEqual(ciclo.parcelas.get(numero=3).status, Parcela.Status.NAO_DESCONTADO)
-        self.assertEqual(associado.status, Associado.Status.INADIMPLENTE)
+        self.assertEqual(associado.status, Associado.Status.ATIVO)
 
     def test_status_4_baixa_automatica_com_diferenca(self):
         _, _, ciclo = self.create_associado_com_contrato(
@@ -226,7 +226,7 @@ class MotorReconciliacaoTestCase(ImportacaoBaseTestCase):
         associado.refresh_from_db()
         self.assertEqual(outcome["resultado"], ArquivoRetornoItem.ResultadoProcessamento.NAO_DESCONTADO)
         self.assertEqual(ciclo.parcelas.get(numero=3).status, Parcela.Status.NAO_DESCONTADO)
-        self.assertEqual(associado.status, Associado.Status.INADIMPLENTE)
+        self.assertEqual(associado.status, Associado.Status.ATIVO)
 
     def test_divergencia_de_valor_vai_para_pendencia_manual(self):
         _, _, ciclo = self.create_associado_com_contrato(

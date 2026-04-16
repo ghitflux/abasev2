@@ -160,7 +160,7 @@ class RepairMaristelaCycleMembershipCommandTestCase(ImportacaoBaseTestCase):
 
         self.assertEqual(payload["summary"]["repaired"], 1)
         self.assertEqual(payload["results"][0]["classification"], "repaired")
-        self.assertEqual(associado.status, Associado.Status.ATIVO)
+        self.assertEqual(associado.status, Associado.Status.APTO_A_RENOVAR)
         self.assertEqual(len(march_parcelas), 1)
         self.assertEqual(march_parcelas[0].status, Parcela.Status.DESCONTADO)
         self.assertFalse(

@@ -31,7 +31,16 @@ class EsteiraService:
     }
 
     @staticmethod
-    def can_delete(esteira_item: EsteiraItem) -> bool:
+    def _user_can_delete_broadly(user) -> bool:
+        return bool(
+            user
+            and getattr(user, "is_authenticated", False)
+            and hasattr(user, "has_role")
+            and user.has_role("ADMIN", "COORDENADOR")
+        )
+
+    @staticmethod
+    def _can_delete_restricted(esteira_item: EsteiraItem) -> bool:
         return bool(
             esteira_item.status == EsteiraItem.Situacao.AGUARDANDO
             and esteira_item.assumido_em is None
@@ -41,16 +50,125 @@ class EsteiraService:
         )
 
     @staticmethod
-    def get_available_actions(esteira_item: EsteiraItem) -> list[str]:
+    def can_delete(esteira_item: EsteiraItem, user=None) -> bool:
+        if EsteiraService._user_can_delete_broadly(user):
+            return True
+        return EsteiraService._can_delete_restricted(esteira_item)
+
+    @staticmethod
+    def get_available_actions(esteira_item: EsteiraItem, user=None) -> list[str]:
         actions = list(
             EsteiraService.TRANSICOES_VALIDAS.get(
                 (esteira_item.etapa_atual, esteira_item.status),
                 [],
             )
         )
-        if EsteiraService.can_delete(esteira_item):
+        if EsteiraService.can_delete(esteira_item, user=user):
             actions.append("excluir")
         return actions
+
+    @staticmethod
+    def _resolve_operational_delete_mode(
+        esteira_item: EsteiraItem,
+    ) -> tuple[str, str, str]:
+        associado = esteira_item.associado
+        contrato = resolve_operational_contract_for_associado(associado)
+        contrato_cancelado = (
+            associado.contratos.filter(
+                deleted_at__isnull=True,
+                status=Contrato.Status.CANCELADO,
+            )
+            .order_by("-updated_at", "-id")
+            .first()
+        )
+
+        if (
+            contrato_cancelado is not None
+        ) or associado.status == Associado.Status.INATIVO:
+            return (
+                "preserve",
+                EsteiraItem.Situacao.REJEITADO,
+                "Item removido da fila com histórico preservado. O status real do associado indica cancelamento ou inativação.",
+            )
+
+        if (
+            contrato is not None
+            and (
+                contrato.status in {Contrato.Status.ATIVO, Contrato.Status.ENCERRADO}
+                or contrato.auxilio_liberado_em is not None
+            )
+        ) or associado.status in {
+            Associado.Status.ATIVO,
+            Associado.Status.INADIMPLENTE,
+        }:
+            return (
+                "preserve",
+                EsteiraItem.Situacao.REJEITADO,
+                "Item removido da fila com histórico preservado. O status real do associado/contrato já está consolidado.",
+            )
+
+        return (
+            "soft_delete",
+            EsteiraItem.Situacao.REJEITADO,
+            "Cadastro pré-operacional removido por exclusão operacional.",
+        )
+
+    @staticmethod
+    def _cancelar_pendencias_abertas(esteira_item: EsteiraItem, user) -> None:
+        now = timezone.now()
+        for pendencia in esteira_item.pendencias.filter(
+            deleted_at__isnull=True,
+            status=Pendencia.Status.ABERTA,
+        ):
+            pendencia.status = Pendencia.Status.CANCELADA
+            pendencia.resolvida_em = now
+            pendencia.resolvida_por = user
+            pendencia.save(
+                update_fields=[
+                    "status",
+                    "resolvida_em",
+                    "resolvida_por",
+                    "updated_at",
+                ]
+            )
+
+    @staticmethod
+    def _finalize_operational_exclusion(
+        esteira_item: EsteiraItem,
+        *,
+        user,
+        target_status: str,
+        observacao: str,
+    ) -> None:
+        de_etapa = esteira_item.etapa_atual
+        de_situacao = esteira_item.status
+        now = timezone.now()
+        EsteiraService._cancelar_pendencias_abertas(esteira_item, user)
+        esteira_item.etapa_atual = EsteiraItem.Etapa.CONCLUIDO
+        esteira_item.status = target_status
+        esteira_item.concluido_em = now
+        esteira_item.observacao = observacao
+        esteira_item.assumido_em = None
+        esteira_item.save(
+            update_fields=[
+                "etapa_atual",
+                "status",
+                "concluido_em",
+                "observacao",
+                "assumido_em",
+                "updated_at",
+            ]
+        )
+        EsteiraService._registrar_transicao(
+            esteira_item,
+            user,
+            "excluir_preservando_historico",
+            de_etapa,
+            EsteiraItem.Etapa.CONCLUIDO,
+            de_situacao,
+            target_status,
+            observacao,
+        )
 
     @staticmethod
     @transaction.atomic
@@ -302,8 +420,23 @@ class EsteiraService:
 
     @staticmethod
     @transaction.atomic
-    def excluir_solicitacao(esteira_item: EsteiraItem) -> None:
-        if not EsteiraService.can_delete(esteira_item):
+    def excluir_solicitacao(esteira_item: EsteiraItem, user=None) -> None:
+        if EsteiraService._user_can_delete_broadly(user):
+            mode, target_status, observacao = (
+                EsteiraService._resolve_operational_delete_mode(esteira_item)
+            )
+            if mode == "soft_delete":
+                EsteiraService._soft_delete_solicitacao_package(esteira_item)
+                return
+            EsteiraService._finalize_operational_exclusion(
+                esteira_item,
+                user=user,
+                target_status=target_status,
+                observacao=observacao,
+            )
+            return
+
+        if not EsteiraService._can_delete_restricted(esteira_item):
             raise ValidationError(
                 "Somente itens aguardando, sem assunção e sem responsáveis podem ser excluídos."
             )

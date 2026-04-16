@@ -245,7 +245,7 @@ class TesourariaContratoListSerializer(serializers.Serializer):
 
 
 class EfetivarContratoSerializer(serializers.Serializer):
-    comprovante_associado = serializers.FileField(required=True)
+    comprovante_associado = serializers.FileField(required=False, allow_null=True)
     comprovante_agente = serializers.FileField(required=False, allow_null=True)
 
 

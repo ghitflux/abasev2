@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from apps.associados.models import Associado, only_digits
 from apps.contratos.competencia import propagate_competencia_status, resolve_processing_competencia_parcela
+from apps.contratos.cycle_projection import sync_associado_mother_status
 from apps.contratos.models import Parcela
 
 from .matching import find_associado
@@ -284,10 +285,9 @@ class MotorReconciliacao:
             parcela.save(update_fields=["status", "data_pagamento", "observacao", "updated_at"])
             propagate_competencia_status(parcela)
 
-        if associado.status != Associado.Status.INADIMPLENTE:
-            associado.status = Associado.Status.INADIMPLENTE
-            associado.observacao = self._append_note(associado.observacao, item.status_descricao)
-            associado.save(update_fields=["status", "observacao", "updated_at"])
+        associado.observacao = self._append_note(associado.observacao, item.status_descricao)
+        associado.save(update_fields=["observacao", "updated_at"])
+        sync_associado_mother_status(associado)
 
         item.motivo_rejeicao = item.status_descricao
         item.resultado_processamento = ArquivoRetornoItem.ResultadoProcessamento.NAO_DESCONTADO
@@ -334,13 +334,12 @@ class MotorReconciliacao:
             }
 
         if item.status_codigo in {"2", "3", "S"}:
-            if associado.status != Associado.Status.INADIMPLENTE:
-                associado.status = Associado.Status.INADIMPLENTE
-                associado.observacao = self._append_note(
-                    associado.observacao,
-                    item.status_descricao,
-                )
-                associado.save(update_fields=["status", "observacao", "updated_at"])
+            associado.observacao = self._append_note(
+                associado.observacao,
+                item.status_descricao,
+            )
+            associado.save(update_fields=["observacao", "updated_at"])
+            sync_associado_mother_status(associado)
             item.motivo_rejeicao = item.status_descricao
             item.resultado_processamento = ArquivoRetornoItem.ResultadoProcessamento.NAO_DESCONTADO
             item.observacao = f"{item.status_descricao}. {nota_sem_parcela}"
@@ -409,17 +408,11 @@ class MotorReconciliacao:
     def _regularizar_associado(self, associado: Associado | None, note: str) -> None:
         if associado is None:
             return
-        if associado.status not in {
-            Associado.Status.IMPORTADO,
-            Associado.Status.CADASTRADO,
-            Associado.Status.EM_ANALISE,
-            Associado.Status.PENDENTE,
-            Associado.Status.INADIMPLENTE,
-        }:
+        if associado.status == Associado.Status.INATIVO:
             return
-        associado.status = Associado.Status.ATIVO
         associado.observacao = self._append_note(associado.observacao, note)
-        associado.save(update_fields=["status", "observacao", "updated_at"])
+        associado.save(update_fields=["observacao", "updated_at"])
+        sync_associado_mother_status(associado)
 
     @staticmethod
     def _append_note(base: str, note: str) -> str:

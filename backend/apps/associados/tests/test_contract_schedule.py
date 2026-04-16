@@ -171,3 +171,52 @@ class AssociadoContractScheduleTestCase(TestCase):
         self.assertEqual(contrato.margem_disponivel, Decimal("1050.00"))
         self.assertEqual(contrato.doacao_associado, Decimal("450.00"))
         self.assertEqual(contrato.taxa_antecipacao, Decimal("30.00"))
+
+    def test_create_rejeita_mensalidade_zero(self):
+        response = self.client.post(
+            "/api/v1/associados/",
+            {
+                **self._payload(),
+                "cpf_cnpj": "72345678901",
+                "contato": {
+                    **self._payload()["contato"],
+                    "email": "schedule-zero@teste.local",
+                },
+                "mensalidade": "0.00",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertEqual(
+            response.json()["mensalidade"][0],
+            "Mensalidade deve ser maior que zero.",
+        )
+
+    def test_update_rejeita_mensalidade_zero(self):
+        create_response = self.client.post(
+            "/api/v1/associados/",
+            {
+                **self._payload(),
+                "cpf_cnpj": "82345678901",
+                "contato": {
+                    **self._payload()["contato"],
+                    "email": "schedule-update-zero@teste.local",
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 201, create_response.json())
+
+        associado = Associado.objects.get(cpf_cnpj="82345678901")
+        response = self.client.patch(
+            f"/api/v1/associados/{associado.id}/",
+            {"mensalidade": "0.00"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertEqual(
+            response.json()["mensalidade"][0],
+            "Mensalidade deve ser maior que zero.",
+        )

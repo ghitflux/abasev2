@@ -17,6 +17,8 @@ from apps.contratos.cycle_projection import (
     STATUS_VISUAL_FINANCIAL_LABELS,
     STATUS_VISUAL_PHASE_LABELS,
     build_contract_cycle_projection,
+    resolve_associado_mother_status,
+    sync_associado_mother_status,
 )
 from apps.contratos.cycle_rebuild import rebind_financial_links_by_reference
 from apps.contratos.cycle_timeline import (
@@ -68,6 +70,29 @@ def _parse_decimal(value: Any, default: Decimal = Decimal("0.00")) -> Decimal:
     if value in (None, ""):
         return default
     return Decimal(str(value))
+
+
+def _assert_override_mensalidade_allowed(
+    *,
+    current_value: Any,
+    next_value: Any,
+    field_name: str,
+) -> Decimal:
+    mensalidade = _parse_decimal(next_value)
+    if mensalidade > 0:
+        return mensalidade
+
+    current_mensalidade = _parse_decimal(current_value)
+    if current_mensalidade <= 0 and mensalidade <= 0:
+        return mensalidade
+
+    raise ValidationError(
+        {
+            field_name: [
+                "A mensalidade deve ser maior que zero para novos fluxos operacionais."
+            ]
+        }
+    )
 
 
 def _parse_bool(value: Any) -> bool:
@@ -500,7 +525,7 @@ def _serialize_associado(associado: Associado) -> dict[str, Any]:
         "orgao_publico": associado.orgao_publico,
         "matricula_orgao": associado.matricula_orgao,
         "cargo": associado.cargo,
-        "status": associado.status,
+        "status": resolve_associado_mother_status(associado),
         "observacao": associado.observacao,
         "agente_responsavel_id": associado.agente_responsavel_id,
         "percentual_repasse": str(associado.auxilio_taxa),
@@ -602,6 +627,35 @@ def _build_editor_item(
     }
 
 
+def _resolve_editor_actual_parcela(
+    item: dict[str, Any],
+    *,
+    current_parcelas_by_id: dict[int, Parcela],
+    current_parcelas_by_ref: dict[date, list[Parcela]],
+) -> Parcela | None:
+    item_id = item.get("id")
+    if item_id is not None:
+        try:
+            item_id_int = int(item_id)
+        except (TypeError, ValueError):
+            item_id_int = None
+        if item_id_int is not None and item_id_int in current_parcelas_by_id:
+            return current_parcelas_by_id[item_id_int]
+
+    referencia_raw = item.get("referencia_mes")
+    referencia = (
+        referencia_raw
+        if isinstance(referencia_raw, date)
+        else _parse_optional_date(referencia_raw)
+    )
+    if referencia is None:
+        return None
+    candidates = current_parcelas_by_ref.get(referencia, [])
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
 def _active_operational_refinanciamento(contrato: Contrato) -> Refinanciamento | None:
     return (
         Refinanciamento.objects.filter(
@@ -649,11 +703,9 @@ def _manual_financial_slug(
     contrato: Contrato,
     has_unpaid: bool,
 ) -> str:
-    associado_status = getattr(contrato.associado, "status", "")
+    associado_status = str(getattr(contrato.associado, "status", "") or "")
     if associado_status == Associado.Status.INATIVO or contrato.status == Contrato.Status.CANCELADO:
         return "ciclo_desativado"
-    if has_unpaid and associado_status == Associado.Status.INADIMPLENTE:
-        return "ciclo_inadimplente"
     if has_unpaid:
         return "ciclo_com_pendencia"
     return "ciclo_em_dia"
@@ -910,13 +962,15 @@ class AdminOverrideService:
                 ciclo.numero: ciclo
                 for ciclo in contrato.ciclos.filter(deleted_at__isnull=True).order_by("numero", "id")
             }
-            current_parcelas_by_ref: dict[date, Parcela] = {}
+            current_parcelas_by_id: dict[int, Parcela] = {}
+            current_parcelas_by_ref: dict[date, list[Parcela]] = defaultdict(list)
             for parcela in (
                 Parcela.all_objects.filter(ciclo__contrato=contrato, deleted_at__isnull=True)
                 .exclude(status=Parcela.Status.CANCELADO)
                 .order_by("updated_at", "id")
             ):
-                current_parcelas_by_ref[parcela.referencia_mes] = parcela
+                current_parcelas_by_id[parcela.id] = parcela
+                current_parcelas_by_ref[parcela.referencia_mes].append(parcela)
 
             cycles_payload = []
             for cycle in sorted(projection["cycles"], key=lambda item: item["numero"]):
@@ -939,7 +993,11 @@ class AdminOverrideService:
                         "parcelas": [
                             _build_editor_item(
                                 parcela,
-                                actual_parcela=current_parcelas_by_ref.get(parcela["referencia_mes"]),
+                                actual_parcela=_resolve_editor_actual_parcela(
+                                    parcela,
+                                    current_parcelas_by_id=current_parcelas_by_id,
+                                    current_parcelas_by_ref=current_parcelas_by_ref,
+                                ),
                                 bucket=Parcela.LayoutBucket.CYCLE,
                             )
                             for parcela in cycle["parcelas"]
@@ -950,7 +1008,11 @@ class AdminOverrideService:
             unpaid_payload = [
                 _build_editor_item(
                     item,
-                    actual_parcela=current_parcelas_by_ref.get(item["referencia_mes"]),
+                    actual_parcela=_resolve_editor_actual_parcela(
+                        item,
+                        current_parcelas_by_id=current_parcelas_by_id,
+                        current_parcelas_by_ref=current_parcelas_by_ref,
+                    ),
                     bucket=Parcela.LayoutBucket.UNPAID,
                 )
                 for item in projection["unpaid_months"]
@@ -958,7 +1020,11 @@ class AdminOverrideService:
             movement_payload = [
                 _build_editor_item(
                     item,
-                    actual_parcela=current_parcelas_by_ref.get(item["referencia_mes"]),
+                    actual_parcela=_resolve_editor_actual_parcela(
+                        item,
+                        current_parcelas_by_id=current_parcelas_by_id,
+                        current_parcelas_by_ref=current_parcelas_by_ref,
+                    ),
                     bucket=Parcela.LayoutBucket.MOVEMENT,
                 )
                 for item in projection["movimentos_financeiros_avulsos"]
@@ -1065,6 +1131,10 @@ class AdminOverrideService:
 
                 cycles_payload = contract_payload.get("cycles")
                 if cycles_payload:
+                    cycle_rows = list(cycles_payload.get("cycles") or [])
+                    parcela_rows = list(cycles_payload.get("parcelas") or [])
+                    if not cycle_rows and not parcela_rows:
+                        raise ValidationError({"detail": "Informe ao menos um ciclo no layout."})
                     cycles_updated_at = (
                         contrato.updated_at.isoformat() if getattr(contrato, "updated_at", None) else None
                     )
@@ -1097,6 +1167,7 @@ class AdminOverrideService:
                     user=user,
                 )
 
+        sync_associado_mother_status(associado)
         associado.refresh_from_db()
         return AdminOverrideService.build_associado_editor_payload(associado)
 
@@ -1251,6 +1322,12 @@ class AdminOverrideService:
                     if source_key not in payload or payload.get(source_key) in (None, ""):
                         continue
                     value = payload.get(source_key)
+                    if field == "valor_mensalidade":
+                        value = _assert_override_mensalidade_allowed(
+                            current_value=contrato.valor_mensalidade,
+                            next_value=value,
+                            field_name="mensalidade",
+                        )
                     setattr(
                         contrato,
                         field,
@@ -1338,7 +1415,16 @@ class AdminOverrideService:
                     setattr(contrato, field, payload.get(field))
             for field in numeric_fields:
                 if field in payload and payload.get(field) not in (None, ""):
-                    setattr(contrato, field, _parse_decimal(payload.get(field)))
+                    value = payload.get(field)
+                    if field == "valor_mensalidade":
+                        value = _assert_override_mensalidade_allowed(
+                            current_value=contrato.valor_mensalidade,
+                            next_value=value,
+                            field_name="valor_mensalidade",
+                        )
+                    else:
+                        value = _parse_decimal(value)
+                    setattr(contrato, field, value)
             for field in [
                 "data_contrato",
                 "data_aprovacao",
@@ -1731,6 +1817,9 @@ class AdminOverrideService:
 
         cycles_payload = [dict(item) for item in (payload.get("cycles") or [])]
         parcel_items = [dict(item) for item in (payload.get("parcelas") or [])]
+        if not cycles_payload and not parcel_items:
+            raise ValidationError("Informe ao menos um ciclo no layout.")
+
         if not cycles_payload:
             if current_cycles:
                 cycles_payload = [
@@ -1788,6 +1877,39 @@ class AdminOverrideService:
                 ]
             else:
                 raise ValidationError("Informe ao menos um ciclo no layout.")
+
+        references_seen: dict[date, list[dict[str, Any]]] = defaultdict(list)
+        for raw_parcela in parcel_items:
+            if str(raw_parcela.get("status") or "") == Parcela.Status.CANCELADO:
+                continue
+            referencia = _parse_optional_date(raw_parcela.get("referencia_mes"))
+            if referencia is None:
+                continue
+            references_seen[referencia].append(raw_parcela)
+        duplicate_conflicts = []
+        for referencia, rows in sorted(references_seen.items()):
+            if len(rows) < 2:
+                continue
+            duplicate_conflicts.append(
+                {
+                    "referencia_mes": referencia.isoformat(),
+                    "parcelas": [
+                        {
+                            "id": row.get("id"),
+                            "numero": int(row.get("numero") or 0),
+                            "cycle_ref": row.get("cycle_ref") or row.get("cycle_id"),
+                        }
+                        for row in rows
+                    ],
+                }
+            )
+        if duplicate_conflicts:
+            raise ValidationError(
+                {
+                    "detail": "Não é permitido manter competências duplicadas ativas no mesmo contrato.",
+                    "conflicts": duplicate_conflicts,
+                }
+            )
 
         cycle_ref_map: dict[str, Ciclo] = {}
         touched_cycle_ids: set[int] = set()
@@ -1847,27 +1969,33 @@ class AdminOverrideService:
                 if raw_cycle.get("client_key"):
                     cycle_ref_map[str(raw_cycle["client_key"])] = cycle
 
-            fallback_cycle = next(
-                iter(
-                    sorted(
-                        {cycle.id: cycle for cycle in cycle_ref_map.values() if cycle.id is not None}.values(),
-                        key=lambda item: (item.numero, item.id),
-                    )
-                ),
-                None,
-            )
-
             for raw_parcela in parcel_items:
                 parcela_id = raw_parcela.get("id")
                 parcela = current_parcelas.get(parcela_id) if parcela_id else None
                 cycle_ref = raw_parcela.get("cycle_ref") or raw_parcela.get("cycle_id")
+                if cycle_ref in (None, ""):
+                    raise ValidationError(
+                        {
+                            "detail": "Parcela sem ciclo de destino válido.",
+                            "parcela": {
+                                "id": raw_parcela.get("id"),
+                                "cycle_ref": cycle_ref,
+                                "referencia_mes": raw_parcela.get("referencia_mes"),
+                            },
+                        }
+                    )
                 cycle = cycle_ref_map.get(str(cycle_ref))
-                if cycle is None and parcela is not None:
-                    cycle = current_cycles.get(parcela.ciclo_id)
                 if cycle is None:
-                    cycle = fallback_cycle
-                if cycle is None:
-                    raise ValidationError("Parcela sem ciclo de destino válido.")
+                    raise ValidationError(
+                        {
+                            "detail": "Parcela sem ciclo de destino válido.",
+                            "parcela": {
+                                "id": raw_parcela.get("id"),
+                                "cycle_ref": cycle_ref,
+                                "referencia_mes": raw_parcela.get("referencia_mes"),
+                            },
+                        }
+                    )
                 requested_number = int(
                     raw_parcela.get("numero")
                     or (parcela.numero if parcela is not None else 1)
@@ -1919,18 +2047,27 @@ class AdminOverrideService:
             contrato.admin_manual_layout_updated_at = timezone.now()
             contrato.save(update_fields=["admin_manual_layout_enabled", "admin_manual_layout_updated_at", "updated_at"])
 
-            new_parcela_by_reference = {
-                parcela.referencia_mes: parcela
-                for parcela in Parcela.all_objects.filter(
+            new_parcela_candidates_by_reference: dict[date, list[Parcela]] = defaultdict(list)
+            for parcela in (
+                Parcela.all_objects.filter(
                     ciclo__contrato=contrato,
                     deleted_at__isnull=True,
-                ).exclude(status=Parcela.Status.CANCELADO)
+                )
+                .exclude(status=Parcela.Status.CANCELADO)
+                .order_by("ciclo__numero", "numero", "id")
+            ):
+                new_parcela_candidates_by_reference[parcela.referencia_mes].append(parcela)
+            new_parcela_by_reference = {
+                referencia: items[0]
+                for referencia, items in new_parcela_candidates_by_reference.items()
+                if len(items) == 1
             }
             rebind_financial_links_by_reference(
                 old_reference_by_parcela_id=old_reference_by_parcela_id,
                 new_parcela_by_reference=new_parcela_by_reference,
             )
 
+        sync_associado_mother_status(contrato.associado)
         after_snapshot = AdminOverrideService.build_contract_projection_for_response(
             contrato,
             include_documents=True,
