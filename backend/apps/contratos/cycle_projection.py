@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
+from functools import lru_cache
 
 from django.utils import timezone
 
@@ -11,7 +12,7 @@ from apps.importacao.manual_payment_flags import (
     is_manual_payment_in_cycle,
     is_manual_payment_outside_cycle,
 )
-from apps.importacao.models import PagamentoMensalidade
+from apps.importacao.models import ArquivoRetorno, PagamentoMensalidade
 from apps.refinanciamento.models import Comprovante, Refinanciamento
 from apps.tesouraria.models import BaixaManual, Pagamento
 from core.file_references import build_storage_reference
@@ -32,6 +33,7 @@ from .models import Ciclo, Contrato, Parcela
 
 PAID_STATUS_CODES = {"1", "4"}
 PROJECTION_STATUS_QUITADA = "quitada"
+_QUEUE_LOOKUP_DEPTH = 0
 ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES = {
     Refinanciamento.Status.APTO_A_RENOVAR,
     Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
@@ -116,10 +118,140 @@ def _is_resolved_cycle_status(value: str | None) -> bool:
     return str(value or "") in RESOLVED_UNPAID_STATUSES
 
 
+def _is_paid_cycle_status(value: str | None) -> bool:
+    return _is_resolved_cycle_status(value)
+
+
 def _month_floor(value: date | None) -> date | None:
     if value is None:
         return None
     return value.replace(day=1)
+
+
+def resolve_current_renewal_competencia() -> date:
+    current_month = timezone.localdate().replace(day=1)
+    ultima_importacao = (
+        ArquivoRetorno.objects.filter(status=ArquivoRetorno.Status.CONCLUIDO)
+        .order_by("-competencia", "-created_at")
+        .first()
+    )
+    if ultima_importacao is not None and ultima_importacao.competencia is not None:
+        return max(ultima_importacao.competencia.replace(day=1), current_month)
+    return current_month
+
+
+@lru_cache(maxsize=12)
+def _operational_apt_contract_ids_for_competencia_cached(competencia: date) -> frozenset[int]:
+    global _QUEUE_LOOKUP_DEPTH
+
+    from apps.contratos.renovacao import RenovacaoCicloService
+
+    _QUEUE_LOOKUP_DEPTH += 1
+    try:
+        rows = RenovacaoCicloService.listar_detalhes(
+            competencia=competencia,
+            status="apto_a_renovar",
+        )
+        return frozenset(
+            int(row["contrato_referencia_renovacao_id"])
+            for row in rows
+            if row.get("contrato_referencia_renovacao_id") is not None
+        )
+    finally:
+        _QUEUE_LOOKUP_DEPTH -= 1
+
+
+def _operational_apt_contract_ids_for_competencia(competencia: date) -> frozenset[int]:
+    if _QUEUE_LOOKUP_DEPTH > 0:
+        return frozenset()
+    return _operational_apt_contract_ids_for_competencia_cached(competencia)
+
+
+def _is_contract_in_operational_apt_queue(
+    contrato: Contrato,
+    *,
+    competencia: date | None = None,
+) -> bool:
+    competencia_resolvida = _month_floor(competencia) or resolve_current_renewal_competencia()
+    queue_ids = _operational_apt_contract_ids_for_competencia(competencia_resolvida)
+    if not queue_ids:
+        return False
+    return contrato.id in queue_ids
+
+
+def _subtract_months(base_date: date, months: int) -> date:
+    month_index = base_date.month - 1 - months
+    year = base_date.year + month_index // 12
+    month = month_index % 12 + 1
+    return date(year, month, 1)
+
+
+def _eligible_paid_references_for_competencia(competencia: date, cycle_size: int) -> list[date]:
+    required_count = max(cycle_size - 1, 0)
+    return [_subtract_months(competencia, offset) for offset in range(required_count, 0, -1)]
+
+
+def _has_renewal_progress_for_competencia(contrato: Contrato, competencia: date) -> bool:
+    competencia = competencia.replace(day=1)
+    refinanciamentos = list(
+        contrato.refinanciamentos.filter(competencia_solicitada=competencia).order_by("-created_at", "-id")
+    )
+    if not refinanciamentos:
+        return False
+
+    for refinanciamento in refinanciamentos:
+        if (
+            refinanciamento.executado_em is not None
+            or refinanciamento.ciclo_destino_id is not None
+        ):
+            return True
+        if refinanciamento.status not in {
+            Refinanciamento.Status.APTO_A_RENOVAR,
+            Refinanciamento.Status.PENDENTE_APTO,
+            Refinanciamento.Status.SOLICITADO,
+        }:
+            return True
+    return False
+
+
+def is_contract_eligible_for_renewal_competencia(
+    contrato: Contrato,
+    *,
+    competencia: date | None = None,
+    parcelas: list[dict[str, object]] | None = None,
+    projection: dict[str, object] | None = None,
+) -> bool:
+    if contrato.status not in {Contrato.Status.ATIVO, Contrato.Status.ENCERRADO}:
+        return False
+    if normalize_associado_mother_status(getattr(contrato.associado, "status", "")) == Associado.Status.INATIVO:
+        return False
+
+    competencia_resolvida = _month_floor(competencia) or resolve_current_renewal_competencia()
+    if _has_renewal_progress_for_competencia(contrato, competencia_resolvida):
+        return False
+
+    projected_parcelas = parcelas
+    if projected_parcelas is None:
+        resolved_projection = projection or build_contract_cycle_projection(contrato)
+        cycles = list(sorted(resolved_projection.get("cycles") or [], key=lambda item: item.get("numero") or 0))
+        if not cycles:
+            return False
+        projected_parcelas = list(cycles[-1].get("parcelas") or [])
+
+    cycle_size = max(len(projected_parcelas), get_contract_cycle_size(contrato))
+    expected_references = _eligible_paid_references_for_competencia(competencia_resolvida, cycle_size)
+    if not expected_references:
+        return False
+
+    parcelas_por_referencia = {
+        _month_floor(parcela.get("referencia_mes")): str(parcela.get("status") or "")
+        for parcela in projected_parcelas
+        if parcela.get("referencia_mes")
+    }
+    return all(
+        parcelas_por_referencia.get(referencia) in RESOLVED_UNPAID_STATUSES
+        for referencia in expected_references
+    )
 
 
 @dataclass(frozen=True)
@@ -171,9 +303,11 @@ def resolve_associado_mother_status(
 
     contratos = get_operational_contracts_for_associado(associado)
     if not contratos:
-        return normalize_associado_mother_status(associado.status)
+        return Associado.Status.ATIVO
 
+    latest_contract: Contrato | None = None
     latest_cycle: dict[str, object] | None = None
+    latest_projection: dict[str, object] | None = None
     for contrato in contratos:
         projection = (
             projections_by_contract.get(contrato.id)
@@ -185,14 +319,54 @@ def resolve_associado_mother_status(
             continue
         cycle = max(cycles, key=lambda item: int(item.get("numero") or 0))
         if latest_cycle is None or int(cycle.get("numero") or 0) >= int(latest_cycle.get("numero") or 0):
+            latest_contract = contrato
             latest_cycle = cycle
+            latest_projection = projection
 
-    if latest_cycle is None:
-        return normalize_associado_mother_status(associado.status)
+    if latest_cycle is None or latest_contract is None:
+        return Associado.Status.ATIVO
 
     latest_cycle_status = str(latest_cycle.get("status") or "")
     latest_phase = str(latest_cycle.get("fase_ciclo") or "")
-    if latest_cycle_status == Ciclo.Status.APTO_A_RENOVAR or latest_phase == "apto_a_renovar":
+    latest_status_renovacao = str((latest_projection or {}).get("status_renovacao") or "")
+    if (
+        latest_status_renovacao
+        and latest_status_renovacao != Refinanciamento.Status.APTO_A_RENOVAR
+    ):
+        return Associado.Status.ATIVO
+    current_competencia = resolve_current_renewal_competencia()
+    in_operational_apt_queue = _is_contract_in_operational_apt_queue(
+        latest_contract,
+        competencia=current_competencia,
+    )
+    if (
+        (latest_cycle_status == Ciclo.Status.APTO_A_RENOVAR or latest_phase == "apto_a_renovar")
+        and (
+            in_operational_apt_queue
+            or (
+                not _operational_apt_contract_ids_for_competencia(current_competencia)
+                and is_contract_eligible_for_renewal_competencia(
+                    latest_contract,
+                    projection=(
+                        projections_by_contract.get(latest_contract.id)
+                        if projections_by_contract is not None
+                        else None
+                    ),
+                )
+            )
+        )
+    ):
+        return "apto_a_renovar"
+    if in_operational_apt_queue:
+        return "apto_a_renovar"
+    if not _operational_apt_contract_ids_for_competencia(current_competencia) and is_contract_eligible_for_renewal_competencia(
+        latest_contract,
+        projection=(
+            projections_by_contract.get(latest_contract.id)
+            if projections_by_contract is not None
+            else None
+        ),
+    ):
         return "apto_a_renovar"
     if latest_cycle_status in CONCLUDED_CYCLE_STATUSES:
         return Associado.Status.ATIVO
@@ -935,7 +1109,7 @@ def _is_effective_renewal(refinanciamento: Refinanciamento) -> bool:
     if refinanciamento.legacy_refinanciamento_id is not None:
         return _effective_renewal_activation(refinanciamento) is not None
     return bool(
-        refinanciamento.status in EFFECTIVE_REFINANCIAMENTO_STATUSES
+        refinanciamento.ciclo_destino_id is not None
         or refinanciamento.executado_em is not None
         or refinanciamento.data_ativacao_ciclo is not None
     )
@@ -1684,10 +1858,24 @@ def _build_manual_contract_projection(
 
     status_renovacao = ""
     refinanciamento_id: int | None = None
+    current_competencia = resolve_current_renewal_competencia()
+    current_queue_ids = _operational_apt_contract_ids_for_competencia(current_competencia)
     if refinanciamento_operacional:
         status_renovacao = _normalize_operational_status(refinanciamento_operacional.status)
+        if (
+            status_renovacao == Refinanciamento.Status.APTO_A_RENOVAR
+            and current_queue_ids
+            and contrato.id not in current_queue_ids
+        ):
+            status_renovacao = ""
         refinanciamento_id = refinanciamento_operacional.id
-    elif projected_cycles and projected_cycles[-1]["status"] == Ciclo.Status.APTO_A_RENOVAR:
+    elif projected_cycles and projected_cycles[-1]["status"] == Ciclo.Status.APTO_A_RENOVAR and is_contract_eligible_for_renewal_competencia(
+        contrato,
+        parcelas=list(projected_cycles[-1].get("parcelas") or []),
+    ) and (
+        contrato.id in current_queue_ids
+        or not current_queue_ids
+    ):
         status_renovacao = Refinanciamento.Status.APTO_A_RENOVAR
 
     return {
@@ -1966,14 +2154,28 @@ def build_contract_cycle_projection(
 
     status_renovacao = ""
     refinanciamento_id: int | None = None
+    current_competencia = resolve_current_renewal_competencia()
+    current_queue_ids = _operational_apt_contract_ids_for_competencia(current_competencia)
     if operational_refi is not None:
         status_renovacao = _normalize_operational_status(operational_refi.status)
+        if (
+            status_renovacao == Refinanciamento.Status.APTO_A_RENOVAR
+            and current_queue_ids
+            and contrato.id not in current_queue_ids
+        ):
+            status_renovacao = ""
         refinanciamento_id = operational_refi.id
     elif not block_small_value_renewal and cycles and sum(
         1
         for parcela in cycles[-1]["parcelas"]
-        if parcela["status"] == Parcela.Status.DESCONTADO
-    ) >= threshold:
+        if _is_paid_cycle_status(str(parcela.get("status") or ""))
+    ) >= threshold and is_contract_eligible_for_renewal_competencia(
+        contrato,
+        parcelas=list(cycles[-1].get("parcelas") or []),
+    ) and (
+        contrato.id in current_queue_ids
+        or not current_queue_ids
+    ):
         status_renovacao = Refinanciamento.Status.APTO_A_RENOVAR
 
     return {

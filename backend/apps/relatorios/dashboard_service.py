@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 
-from django.db.models import Case, Count, DecimalField, F, IntegerField, OuterRef, Prefetch, Q, QuerySet, Subquery, Sum, Value, When
+from django.db.models import Case, Count, DateTimeField, DecimalField, F, IntegerField, OuterRef, Prefetch, Q, QuerySet, Subquery, Sum, Value, When
 from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
@@ -713,6 +713,48 @@ class AdminDashboardService:
         }
 
     @staticmethod
+    def _detail_row_from_refinanciamento(
+        refinanciamento: Refinanciamento,
+        *,
+        origem: str,
+        observacao: str = "",
+    ) -> dict[str, object]:
+        associado = refinanciamento.associado
+        contrato = refinanciamento.contrato_origem
+        reference = (
+            getattr(refinanciamento, "effective_reference", None)
+            or refinanciamento.executado_em
+            or refinanciamento.data_ativacao_ciclo
+            or refinanciamento.updated_at
+        )
+        reference_date = reference.date() if hasattr(reference, "date") else None
+        return {
+            "id": f"refinanciamento-{refinanciamento.id}-{origem}",
+            "associado_id": associado.id,
+            "associado_nome": associado.nome_completo,
+            "cpf_cnpj": associado.cpf_cnpj,
+            "matricula": associado.matricula_orgao or associado.matricula or "-",
+            "data_nascimento": associado.data_nascimento.isoformat() if associado.data_nascimento else "",
+            "status": refinanciamento.status,
+            "agente_nome": AdminDashboardService._resolve_agent_name(
+                associado=associado,
+                contrato=contrato,
+            ),
+            "contrato_codigo": contrato.codigo if contrato else refinanciamento.contrato_codigo_origem,
+            "etapa": "renovacao",
+            "competencia": (
+                month_label(refinanciamento.competencia_solicitada)
+                if refinanciamento.competencia_solicitada
+                else ""
+            ),
+            "valor": value_or_none(refinanciamento.valor_refinanciamento),
+            "origem": origem,
+            "data_referencia": reference_date.isoformat() if reference_date else "",
+            "observacao": observacao or refinanciamento.observacao,
+            **AdminDashboardService._detail_row_summary_fields(associado, contrato),
+        }
+
+    @staticmethod
     def _renewal_reference_date(row: dict[str, object]) -> date | None:
         for key in ("data_pagamento", "data_solicitacao_renovacao", "data_ativacao_ciclo"):
             value = row.get(key)
@@ -733,6 +775,48 @@ class AdminDashboardService:
         ]
 
     @staticmethod
+    def _effective_renewal_queryset(
+        agent_id: int | None = None,
+        status: str | None = None,
+    ) -> QuerySet[Refinanciamento]:
+        queryset = (
+            Refinanciamento.objects.select_related(
+                "associado",
+                "contrato_origem",
+                "contrato_origem__agente",
+            )
+            .filter(
+                deleted_at__isnull=True,
+                status=Refinanciamento.Status.EFETIVADO,
+            )
+            .filter(
+                Q(executado_em__isnull=False)
+                | Q(data_ativacao_ciclo__isnull=False)
+                | Q(ciclo_destino__isnull=False)
+            )
+            .annotate(
+                effective_reference=Coalesce(
+                    "executado_em",
+                    "data_ativacao_ciclo",
+                    "updated_at",
+                    output_field=DateTimeField(),
+                ),
+                resolved_agent_id=Coalesce(
+                    "contrato_origem__associado__agente_responsavel_id",
+                    "contrato_origem__agente_id",
+                ),
+            )
+        )
+        if agent_id:
+            queryset = queryset.filter(
+                Q(contrato_origem__agente_id=agent_id)
+                | Q(contrato_origem__associado__agente_responsavel_id=agent_id)
+            )
+        if status:
+            queryset = queryset.filter(associado__status=status)
+        return queryset
+
+    @staticmethod
     def _renewed_associados_for_month(
         month: date,
         *,
@@ -740,24 +824,16 @@ class AdminDashboardService:
         status: str | None = None,
         day: date | None = None,
     ) -> set[int]:
-        rows = AdminDashboardService._filter_renewal_rows_by_agent(
-            RenovacaoCicloService.listar_detalhes(
-                competencia=month,
-                status="ciclo_renovado",
-            ),
-            agent_id,
+        queryset = AdminDashboardService._effective_renewal_queryset(
+            agent_id=agent_id,
+            status=status,
+        ).filter(
+            effective_reference__date__gte=month,
+            effective_reference__date__lt=add_months(month, 1),
         )
-        rows = AdminDashboardService._filter_renewal_rows_by_status(
-            rows,
-            status,
-            agent_id,
-        )
-        rows = AdminDashboardService._filter_renewal_rows_by_day(rows, day)
-        return {
-            int(row["associado_id"])
-            for row in rows
-            if row["status_visual"] == "ciclo_renovado" or row["gerou_encerramento"]
-        }
+        if day:
+            queryset = queryset.filter(effective_reference__date=day)
+        return set(queryset.values_list("associado_id", flat=True))
 
     @staticmethod
     def _trend_months(end_month: date, count: int = 6) -> list[date]:
@@ -790,6 +866,40 @@ class AdminDashboardService:
         apt_contracts: defaultdict[date, set[int]] = defaultdict(set)
         apt_associados: defaultdict[date, set[int]] = defaultdict(set)
         apt_contracts_by_agent: defaultdict[tuple[date, int], set[int]] = defaultdict(set)
+
+        effective_rows = (
+            AdminDashboardService._effective_renewal_queryset(
+                agent_id=agent_id,
+                status=status,
+            )
+            .annotate(competencia_mes=TruncMonth("effective_reference"))
+            .filter(
+                effective_reference__date__gte=start_month,
+                effective_reference__date__lt=end_month,
+            )
+            .values(
+                "competencia_mes",
+                "resolved_agent_id",
+                "contrato_origem_id",
+                "associado_id",
+            )
+            .distinct()
+        )
+        for row in effective_rows:
+            month = row["competencia_mes"]
+            if not isinstance(month, date) or month not in months_set:
+                continue
+            contract_id = int(row["contrato_origem_id"] or 0)
+            associado_id = int(row["associado_id"] or 0)
+            if not contract_id or not associado_id:
+                continue
+            renewed_contracts[month].add(contract_id)
+            renewed_associados[month].add(associado_id)
+            resolved_agent_id = row["resolved_agent_id"]
+            if resolved_agent_id:
+                renewed_contracts_by_agent[(month, int(resolved_agent_id))].add(
+                    contract_id
+                )
 
         relevant_cycle_ids = Parcela.objects.filter(
             referencia_mes__gte=start_month,
@@ -859,15 +969,6 @@ class AdminDashboardService:
             total_parcelas = int(row["total_parcelas"] or 0)
             parcelas_pagas = int(row["parcelas_pagas"] or 0)
 
-            if row["status"] == Ciclo.Status.CICLO_RENOVADO:
-                renewed_contracts[month].add(contract_id)
-                renewed_associados[month].add(associado_id)
-                if resolved_agent_id:
-                    renewed_contracts_by_agent[(month, int(resolved_agent_id))].add(
-                        contract_id
-                    )
-                continue
-
             parcelas_minimas = total_parcelas if total_parcelas <= 1 else total_parcelas - 1
             if (
                 row["status"] in [Ciclo.Status.ABERTO, Ciclo.Status.APTO_A_RENOVAR]
@@ -880,53 +981,6 @@ class AdminDashboardService:
                     apt_contracts_by_agent[(month, int(resolved_agent_id))].add(
                         contract_id
                     )
-
-        encerramento_rows = (
-            ArquivoRetornoItem.objects.filter(
-                arquivo_retorno__competencia__gte=start_month,
-                arquivo_retorno__competencia__lt=end_month,
-                arquivo_retorno__status=ArquivoRetorno.Status.CONCLUIDO,
-                gerou_encerramento=True,
-                parcela__isnull=False,
-            )
-            .annotate(
-                competencia_mes=TruncMonth("arquivo_retorno__competencia"),
-                resolved_agent_id=Coalesce(
-                    "parcela__ciclo__contrato__associado__agente_responsavel_id",
-                    "parcela__ciclo__contrato__agente_id",
-                ),
-            )
-            .values(
-                "competencia_mes",
-                "resolved_agent_id",
-                "parcela__ciclo__contrato_id",
-                "parcela__ciclo__contrato__associado_id",
-            )
-            .distinct()
-        )
-        if agent_id:
-            encerramento_rows = encerramento_rows.filter(
-                Q(parcela__ciclo__contrato__agente_id=agent_id)
-                | Q(parcela__ciclo__contrato__associado__agente_responsavel_id=agent_id)
-            )
-        if status:
-            encerramento_rows = encerramento_rows.filter(
-                parcela__ciclo__contrato__associado__status=status
-            )
-
-        for row in encerramento_rows:
-            month = row["competencia_mes"]
-            if not isinstance(month, date) or month not in months_set:
-                continue
-            resolved_agent_id = row["resolved_agent_id"]
-            contract_id = int(row["parcela__ciclo__contrato_id"])
-            associado_id = int(row["parcela__ciclo__contrato__associado_id"])
-            renewed_contracts[month].add(contract_id)
-            renewed_associados[month].add(associado_id)
-            if resolved_agent_id:
-                renewed_contracts_by_agent[(month, int(resolved_agent_id))].add(
-                    contract_id
-                )
 
         return {
             "renewed_contracts": dict(renewed_contracts),
@@ -1031,26 +1085,30 @@ class AdminDashboardService:
             else None
         )
         if renewal_snapshot is None:
-            renewal_rows = AdminDashboardService._filter_renewal_rows_by_agent(
-                RenovacaoCicloService.listar_detalhes(competencia=filters.competencia),
-                filters.agent_id,
+            renewal_refis = AdminDashboardService._effective_renewal_queryset(
+                agent_id=filters.agent_id,
+                status=filters.status,
+            ).filter(
+                effective_reference__date__gte=filters.competencia,
+                effective_reference__date__lt=add_months(filters.competencia, 1),
             )
-            renewal_rows = AdminDashboardService._filter_renewal_rows_by_status(
-                renewal_rows,
-                filters.status,
-                filters.agent_id,
-            )
-            renewal_rows = AdminDashboardService._filter_renewal_rows_by_day(
-                renewal_rows,
-                filters.day,
-            )
-            renovacoes = sum(
-                1
-                for row in renewal_rows
-                if row["status_visual"] == "ciclo_renovado" or row["gerou_encerramento"]
-            )
+            if filters.day:
+                renewal_refis = renewal_refis.filter(effective_reference__date=filters.day)
+            renovacoes = renewal_refis.values("contrato_origem_id").distinct().count()
             aptos_renovacao = sum(
-                1 for row in renewal_rows if row["status_visual"] == "apto_a_renovar"
+                1
+                for row in AdminDashboardService._filter_renewal_rows_by_day(
+                    AdminDashboardService._filter_renewal_rows_by_status(
+                        AdminDashboardService._filter_renewal_rows_by_agent(
+                            RenovacaoCicloService.listar_detalhes(competencia=filters.competencia),
+                            filters.agent_id,
+                        ),
+                        filters.status,
+                        filters.agent_id,
+                    ),
+                    filters.day,
+                )
+                if row["status_visual"] == "apto_a_renovar"
             )
         else:
             renovacoes = len(
@@ -1527,6 +1585,29 @@ class AdminDashboardService:
             contracts_month = contracts_month.filter(data_contrato=filters.day)
         new_contracts = contracts_month.count()
 
+        # Mensalidade baixa (R$30 ou R$50) — parcelas da competência
+        MENSALIDADE_BAIXA_VALUES = [Decimal("30.00"), Decimal("50.00")]
+        parcelas_baixas_qs = Parcela.objects.filter(
+            ciclo__contrato__valor_mensalidade__in=MENSALIDADE_BAIXA_VALUES,
+            referencia_mes__year=filters.competencia.year,
+            referencia_mes__month=filters.competencia.month,
+            ciclo__contrato__status=Contrato.Status.ATIVO,
+        )
+        if filters.agent_id:
+            parcelas_baixas_qs = parcelas_baixas_qs.filter(
+                Q(ciclo__contrato__agente_id=filters.agent_id)
+                | Q(ciclo__contrato__associado__agente_responsavel_id=filters.agent_id)
+            )
+        PARCELA_OK_STATUSES = ("descontado", "efetivado")
+        mensalidade_baixa_total = parcelas_baixas_qs.count()
+        mensalidade_baixa_com_desconto = parcelas_baixas_qs.filter(
+            status__in=PARCELA_OK_STATUSES
+        ).count()
+        mensalidade_baixa_sem_desconto = mensalidade_baixa_total - mensalidade_baixa_com_desconto
+        mensalidade_baixa_valor = (
+            parcelas_baixas_qs.aggregate(total=Sum("valor"))["total"] or Decimal("0.00")
+        )
+
         treasury_payouts = list(AdminDashboardService._payments_saida_base(filters))
         payout_context = AdminDashboardService._resolve_treasury_payment_context(
             treasury_payouts
@@ -1675,6 +1756,39 @@ class AdminDashboardService:
                     tone="neutral",
                     detail_metric="projecao_total",
                     description="Receita esperada para o mes e dois ciclos seguintes.",
+                ),
+                AdminDashboardService._metric_card(
+                    key="mensalidade_baixa_total",
+                    label="Mensalidade R$30/50 — total",
+                    numeric_value=mensalidade_baixa_total,
+                    tone="neutral",
+                    detail_metric="mensalidade_baixa_total",
+                    description="Parcelas da competencia de contratos com mensalidade de R$30 ou R$50.",
+                ),
+                AdminDashboardService._metric_card(
+                    key="mensalidade_baixa_descontado",
+                    label="Mensalidade R$30/50 — descontados",
+                    numeric_value=mensalidade_baixa_com_desconto,
+                    tone="positive",
+                    detail_metric="mensalidade_baixa_descontado",
+                    description="Parcelas de mensalidade baixa com desconto efetuado ou efetivado.",
+                ),
+                AdminDashboardService._metric_card(
+                    key="mensalidade_baixa_pendente",
+                    label="Mensalidade R$30/50 — pendentes",
+                    numeric_value=mensalidade_baixa_sem_desconto,
+                    tone="warning" if mensalidade_baixa_sem_desconto > 0 else "neutral",
+                    detail_metric="mensalidade_baixa_pendente",
+                    description="Parcelas de mensalidade baixa ainda sem desconto na competencia.",
+                ),
+                AdminDashboardService._metric_card(
+                    key="mensalidade_baixa_valor",
+                    label="Mensalidade R$30/50 — valor total",
+                    numeric_value=mensalidade_baixa_valor,
+                    value_format="currency",
+                    tone="neutral",
+                    detail_metric="mensalidade_baixa_valor",
+                    description="Soma dos valores de todas as parcelas de mensalidade R$30/50 na competencia.",
                 ),
             ],
             "projection_area": projection_points,
@@ -2174,19 +2288,25 @@ class AdminDashboardService:
                 str(efetivados_stats.get("volume_financeiro", zero))
             )
             if renewal_snapshot is None:
-                agent_renewals = [
+                agent_renewals = AdminDashboardService._effective_renewal_queryset(
+                    agent_id=agent.id,
+                    status=filters.status,
+                ).filter(
+                    effective_reference__date__gte=filters.competencia,
+                    effective_reference__date__lt=add_months(filters.competencia, 1),
+                )
+                if filters.day:
+                    agent_renewals = agent_renewals.filter(
+                        effective_reference__date=filters.day
+                    )
+                renovados = agent_renewals.values("contrato_origem_id").distinct().count()
+                agent_apt_rows = [
                     row
                     for row in renewal_rows
                     if row["agente_responsavel"] == (agent.full_name or agent.email)
                 ]
-                renovados = sum(
-                    1
-                    for row in agent_renewals
-                    if row["status_visual"] == "ciclo_renovado"
-                    or row["gerou_encerramento"]
-                )
                 aptos_renovar = sum(
-                    1 for row in agent_renewals if row["status_visual"] == "apto_a_renovar"
+                    1 for row in agent_apt_rows if row["status_visual"] == "apto_a_renovar"
                 )
             else:
                 renovados = len(
@@ -2448,10 +2568,22 @@ class AdminDashboardService:
                 for contrato in effective_contracts
             ]
         if metric == "renovacoes_ciclo":
+            renewal_refis = AdminDashboardService._effective_renewal_queryset(
+                agent_id=filters.agent_id,
+                status=filters.status,
+            ).filter(
+                effective_reference__date__gte=filters.competencia,
+                effective_reference__date__lt=add_months(filters.competencia, 1),
+            )
+            if filters.day:
+                renewal_refis = renewal_refis.filter(effective_reference__date=filters.day)
             return [
-                AdminDashboardService._detail_row_from_renewal_row(row, origem="Ciclo renovado")
-                for row in renewal_rows
-                if row["status_visual"] == "ciclo_renovado" or row["gerou_encerramento"]
+                AdminDashboardService._detail_row_from_refinanciamento(
+                    refinanciamento,
+                    origem="Renovacao efetivada",
+                    observacao="Refinanciamento efetivado pela tesouraria.",
+                )
+                for refinanciamento in renewal_refis
             ]
         if metric == "aptos_renovacao":
             return [
@@ -2518,26 +2650,22 @@ class AdminDashboardService:
                     for contrato in contracts.distinct()
                 ]
             if trend_key == "renovacoes":
-                month_rows = AdminDashboardService._filter_renewal_rows_by_agent(
-                    RenovacaoCicloService.listar_detalhes(
-                        competencia=month,
-                        status="ciclo_renovado",
-                    ),
-                    filters.agent_id,
+                month_refis = AdminDashboardService._effective_renewal_queryset(
+                    agent_id=filters.agent_id,
+                    status=filters.status,
+                ).filter(
+                    effective_reference__date__gte=month,
+                    effective_reference__date__lt=add_months(month, 1),
                 )
-                month_rows = AdminDashboardService._filter_renewal_rows_by_status(
-                    month_rows,
-                    filters.status,
-                    filters.agent_id,
-                )
-                month_rows = AdminDashboardService._filter_renewal_rows_by_day(
-                    month_rows,
-                    filters.day,
-                )
+                if filters.day:
+                    month_refis = month_refis.filter(effective_reference__date=filters.day)
                 return [
-                    AdminDashboardService._detail_row_from_renewal_row(row, origem=f"Renovacao {month_label(month)}")
-                    for row in month_rows
-                    if row["status_visual"] == "ciclo_renovado" or row["gerou_encerramento"]
+                    AdminDashboardService._detail_row_from_refinanciamento(
+                        refinanciamento,
+                        origem=f"Renovacao {month_label(month)}",
+                        observacao="Refinanciamento efetivado pela tesouraria.",
+                    )
+                    for refinanciamento in month_refis
                 ]
         return []
 
@@ -2818,6 +2946,37 @@ class AdminDashboardService:
                 ]
             )
             return rows
+        if metric in (
+            "mensalidade_baixa_total",
+            "mensalidade_baixa_descontado",
+            "mensalidade_baixa_pendente",
+            "mensalidade_baixa_valor",
+        ):
+            MENSALIDADE_BAIXA_VALUES = [Decimal("30.00"), Decimal("50.00")]
+            PARCELA_OK_STATUSES = ("descontado", "efetivado")
+            parcelas_qs = Parcela.objects.filter(
+                ciclo__contrato__valor_mensalidade__in=MENSALIDADE_BAIXA_VALUES,
+                referencia_mes__year=filters.competencia.year,
+                referencia_mes__month=filters.competencia.month,
+                ciclo__contrato__status=Contrato.Status.ATIVO,
+            ).select_related("ciclo__contrato__associado", "ciclo__contrato__agente")
+            if filters.agent_id:
+                parcelas_qs = parcelas_qs.filter(
+                    Q(ciclo__contrato__agente_id=filters.agent_id)
+                    | Q(ciclo__contrato__associado__agente_responsavel_id=filters.agent_id)
+                )
+            if metric == "mensalidade_baixa_descontado":
+                parcelas_qs = parcelas_qs.filter(status__in=PARCELA_OK_STATUSES)
+            elif metric == "mensalidade_baixa_pendente":
+                parcelas_qs = parcelas_qs.exclude(status__in=PARCELA_OK_STATUSES)
+            return [
+                AdminDashboardService._detail_row_from_parcela(
+                    parcela,
+                    origem="Mensalidade R$30/50",
+                    observacao=f"Parcela de mensalidade baixa — status: {parcela.status}.",
+                )
+                for parcela in parcelas_qs
+            ]
         return []
 
     @staticmethod

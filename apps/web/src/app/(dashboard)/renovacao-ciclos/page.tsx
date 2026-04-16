@@ -1800,7 +1800,7 @@ function MonthlyCycleCard({
   );
   const monthlyMetricCounts = React.useMemo(
     () =>
-      !searchValue && selectedStatus === "todos" && canUseServerResumo
+      canUseServerResumo && Boolean(resumoMensalQuery.data)
         ? {
             cicloRenovado: monthlyMetrics.cicloRenovado,
             aptoRenovar: monthlyMetrics.aptoRenovar,
@@ -1815,7 +1815,7 @@ function MonthlyCycleCard({
             inadimplente: metricRowsByStatus.inadimplente.length,
             emPrevisao: metricRowsByStatus.em_previsao.length,
           },
-    [canUseServerResumo, metricRowsByStatus, monthlyMetrics, searchValue, selectedStatus],
+    [canUseServerResumo, metricRowsByStatus, monthlyMetrics, resumoMensalQuery.data],
   );
   const cycleMetricAutocompleteOptions = React.useMemo(
     () => buildAutocompleteOptions(metricDialogConfig?.rows ?? []),
@@ -2610,16 +2610,33 @@ export default function RenovacaoCiclosPage() {
     }),
     [filteredDetailRows],
   );
+  const detailServerMetrics = React.useMemo(
+    () =>
+      canUseServerResumo && detailResumoQuery.data
+        ? buildMonthlyMetricsFromResumo(detailResumoQuery.data)
+        : null,
+    [canUseServerResumo, detailResumoQuery.data],
+  );
   const detailMetricCounts = React.useMemo(
-    () => ({
-      total: detailMetricRows.total.length,
-      cicloRenovado: detailMetricRows.ciclo_renovado.length,
-      aptoRenovar: detailMetricRows.apto_a_renovar.length,
-      emAberto: detailMetricRows.em_aberto.length,
-      inadimplente: detailMetricRows.inadimplente.length,
-      emPrevisao: detailMetricRows.em_previsao.length,
-    }),
-    [detailMetricRows],
+    () =>
+      detailServerMetrics
+        ? {
+            total: detailServerMetrics.total,
+            cicloRenovado: detailServerMetrics.cicloRenovado,
+            aptoRenovar: detailServerMetrics.aptoRenovar,
+            emAberto: detailServerMetrics.emAberto,
+            inadimplente: detailServerMetrics.inadimplente,
+            emPrevisao: detailMetricRows.em_previsao.length,
+          }
+        : {
+            total: detailMetricRows.total.length,
+            cicloRenovado: detailMetricRows.ciclo_renovado.length,
+            aptoRenovar: detailMetricRows.apto_a_renovar.length,
+            emAberto: detailMetricRows.em_aberto.length,
+            inadimplente: detailMetricRows.inadimplente.length,
+            emPrevisao: detailMetricRows.em_previsao.length,
+          },
+    [detailMetricRows, detailServerMetrics],
   );
   const detailMetricAutocompleteOptions = React.useMemo(
     () => buildAutocompleteOptions(detailMetricDialogConfig?.rows ?? []),

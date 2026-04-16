@@ -13,6 +13,8 @@ from apps.refinanciamento.models import Assumption, Comprovante, Item, Refinanci
 from apps.tesouraria.models import BaixaManual
 
 from .cycle_projection import (
+    _is_effective_renewal,
+    _is_paid_cycle_status,
     build_contract_cycle_projection,
     refinanciamento_matches_contract_timeline,
 )
@@ -290,16 +292,9 @@ def _sync_refinanciamentos(
         current_cycle = desired_cycles[0] if desired_cycles else None
 
     effective_refis = list(
-        (
-            _effective_refinanciamento_queryset(contrato).filter(
-                status=Refinanciamento.Status.EFETIVADO
-            )
-            | _effective_refinanciamento_queryset(contrato).exclude(
-                data_ativacao_ciclo__isnull=True,
-                executado_em__isnull=True,
-            )
-        ).distinct()
+        _effective_refinanciamento_queryset(contrato)
     )
+    effective_refis = [item for item in effective_refis if _is_effective_renewal(item)]
     effective_refis = sorted(
         {item.id: item for item in effective_refis}.values(),
         key=lambda item: (
@@ -339,7 +334,9 @@ def _sync_refinanciamentos(
             should_have_operational_refi = True
         else:
             paid_count = sum(
-                1 for parcela in current_cycle["parcelas"] if parcela["status"] == Parcela.Status.DESCONTADO
+                1
+                for parcela in current_cycle["parcelas"]
+                if _is_paid_cycle_status(str(parcela.get("status") or ""))
             )
             should_have_operational_refi = (
                 not block_small_value_renewal
@@ -354,9 +351,15 @@ def _sync_refinanciamentos(
         current_ciclo = cycle_by_number[current_number]
         referencias = [parcela["referencia_mes"] for parcela in current_cycle["parcelas"]]
         cycle_key = "|".join(referencia.strftime("%Y-%m") for referencia in referencias)
-        competencia_solicitada = current_cycle["data_fim"].replace(day=1)
+        competencia_solicitada = (
+            max(referencias).replace(day=1)
+            if referencias
+            else current_cycle["data_fim"].replace(day=1)
+        )
         paid_count = sum(
-            1 for parcela in current_cycle["parcelas"] if parcela["status"] == Parcela.Status.DESCONTADO
+            1
+            for parcela in current_cycle["parcelas"]
+            if _is_paid_cycle_status(str(parcela.get("status") or ""))
         )
         value_defaults = {
             "associado": contrato.associado,

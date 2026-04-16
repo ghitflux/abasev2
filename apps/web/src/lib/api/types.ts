@@ -1309,6 +1309,8 @@ export type RefinanciamentoItem = {
 
 export type RefinanciamentoResumo = {
   total: number;
+  solicitados_liquidacao?: number;
+  desistentes?: number;
   em_analise: number;
   assumidos: number;
   aprovados: number;
@@ -1320,6 +1322,52 @@ export type RefinanciamentoResumo = {
   em_fluxo: number;
   com_anexo_agente: number;
   repasse_total: string;
+};
+
+export type ContratoRenovacaoResumo = {
+  competencia: string;
+  em_analise: number;
+  aprovados: number;
+  desistentes: number;
+  renovados: number;
+};
+
+export type RenovacaoCicloItem = {
+  id: number;
+  competencia: string;
+  contrato_id: number;
+  contrato_codigo: string;
+  associado_id: number;
+  nome_associado: string;
+  cpf_cnpj: string;
+  orgao_publico: string;
+  ciclo_id: number;
+  ciclo_numero: number;
+  status_ciclo: string;
+  status_parcela: string;
+  status_visual: string;
+  status_explicacao: string;
+  data_primeiro_ciclo_ativado: string | null;
+  data_ativacao_ciclo: string | null;
+  origem_data_ativacao: string;
+  data_solicitacao_renovacao: string | null;
+  ativacao_inferida: boolean;
+  matricula: string;
+  agente_responsavel: string;
+  parcelas_pagas: number;
+  parcelas_total: number;
+  contrato_referencia_renovacao_id: number;
+  contrato_referencia_renovacao_codigo: string;
+  possui_multiplos_contratos: boolean;
+  valor_mensalidade: string;
+  valor_parcela: string;
+  data_pagamento: string | null;
+  orgao_pagto_nome: string;
+  resultado_importacao: string;
+  status_codigo_etipi: string;
+  status_descricao_etipi: string;
+  gerou_encerramento: boolean;
+  gerou_novo_ciclo: boolean;
 };
 
 export type PagamentoAgenteItem = {

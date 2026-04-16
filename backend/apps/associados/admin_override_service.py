@@ -17,6 +17,7 @@ from apps.contratos.cycle_projection import (
     STATUS_VISUAL_FINANCIAL_LABELS,
     STATUS_VISUAL_PHASE_LABELS,
     build_contract_cycle_projection,
+    is_contract_eligible_for_renewal_competencia,
     resolve_associado_mother_status,
     sync_associado_mother_status,
 )
@@ -867,7 +868,10 @@ def _build_manual_contract_projection(
     if refinanciamento_ativo is not None:
         status_renovacao = refinanciamento_ativo.status
         refinanciamento_id = refinanciamento_ativo.id
-    elif projected_cycles and projected_cycles[-1]["status"] == Ciclo.Status.APTO_A_RENOVAR:
+    elif projected_cycles and projected_cycles[-1]["status"] == Ciclo.Status.APTO_A_RENOVAR and is_contract_eligible_for_renewal_competencia(
+        contrato,
+        parcelas=list(projected_cycles[-1].get("parcelas") or []),
+    ):
         status_renovacao = Refinanciamento.Status.APTO_A_RENOVAR
 
     return {

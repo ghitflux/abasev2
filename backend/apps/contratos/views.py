@@ -13,17 +13,19 @@ from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet, ReadOnlyModelViewSet
 
 from apps.associados.models import Associado
-from apps.accounts.permissions import IsTesoureiroOrAdmin
+from apps.accounts.permissions import IsOperacionalOrAdmin
 from apps.contratos.canonicalization import operational_contracts_queryset
 from apps.contratos.cycle_projection import (
     build_contract_cycle_projection,
     get_contract_visual_status_payload,
+    resolve_current_renewal_competencia,
     resolve_associado_mother_status,
 )
 from apps.contratos.cycle_timeline import (
     get_contract_cycle_size,
 )
 from apps.esteira.models import EsteiraItem
+from apps.refinanciamento.models import Refinanciamento
 from core.pagination import StandardResultsSetPagination
 
 from .renovacao import RenovacaoCicloService, parse_competencia_query
@@ -108,6 +110,59 @@ def _contract_is_renewed(contrato: Contrato) -> bool:
     if projection.get("refinanciamento_id"):
         return True
     return len(projection.get("cycles", [])) > 1
+
+
+def _current_operational_apt_contract_ids() -> set[int]:
+    competencia = resolve_current_renewal_competencia()
+    rows = RenovacaoCicloService.listar_detalhes(
+        competencia=competencia,
+        status="apto_a_renovar",
+    )
+    return {
+        int(row["contrato_referencia_renovacao_id"])
+        for row in rows
+        if row.get("contrato_referencia_renovacao_id") is not None
+    }
+
+
+def _filtered_operational_contract_queryset(request):
+    queryset = Contrato.objects.select_related("associado", "agente")
+    queryset = operational_contracts_queryset(queryset)
+
+    user = request.user
+    if user.has_role("AGENTE") and not user.has_role("ADMIN"):
+        queryset = queryset.filter(agente=user)
+
+    associado_filter = request.query_params.get("associado") or request.query_params.get("search")
+    if associado_filter:
+        queryset = queryset.filter(
+            Q(codigo__icontains=associado_filter)
+            | Q(associado__nome_completo__icontains=associado_filter)
+            | Q(associado__cpf_cnpj__icontains=associado_filter)
+            | Q(associado__matricula__icontains=associado_filter)
+            | Q(associado__matricula_orgao__icontains=associado_filter)
+        )
+
+    agente_filter = request.query_params.get("agente")
+    if agente_filter and user.has_role("ADMIN", "COORDENADOR", "ANALISTA"):
+        if agente_filter.isdigit():
+            queryset = queryset.filter(agente_id=int(agente_filter))
+        else:
+            queryset = queryset.filter(
+                Q(agente__first_name__icontains=agente_filter)
+                | Q(agente__last_name__icontains=agente_filter)
+                | Q(agente__email__icontains=agente_filter)
+            )
+
+    data_inicio = parse_date(request.query_params.get("data_inicio") or "")
+    if data_inicio:
+        queryset = queryset.filter(data_contrato__gte=data_inicio)
+
+    data_fim = parse_date(request.query_params.get("data_fim") or "")
+    if data_fim:
+        queryset = queryset.filter(data_contrato__lte=data_fim)
+
+    return queryset
 
 
 def filter_by_etapa_fluxo(queryset, etapa_fluxo: str):
@@ -298,15 +353,36 @@ class ContratoViewSet(ReadOnlyModelViewSet):
             ]
         status_renovacao_values = [item for item in raw_status_renovacao if item]
         if status_renovacao_values:
-            contratos_filtrados = list(queryset)
-            queryset = queryset.filter(
-                id__in=[
-                    contrato.id
-                    for contrato in contratos_filtrados
-                    if str(build_contract_cycle_projection(contrato)["status_renovacao"])
-                    in status_renovacao_values
-                ]
-            )
+            filtered_ids: set[int] = set()
+
+            if "apto_a_renovar" in status_renovacao_values:
+                apt_queue_ids = _current_operational_apt_contract_ids()
+                if apt_queue_ids:
+                    filtered_ids.update(
+                        queryset.filter(id__in=apt_queue_ids).values_list("id", flat=True)
+                    )
+                else:
+                    contratos_filtrados = list(queryset)
+                    filtered_ids.update(
+                        contrato.id
+                        for contrato in contratos_filtrados
+                        if str(build_contract_cycle_projection(contrato)["status_renovacao"])
+                        == "apto_a_renovar"
+                    )
+
+            non_queue_statuses = [
+                item for item in status_renovacao_values if item != "apto_a_renovar"
+            ]
+            if non_queue_statuses:
+                filtered_ids.update(
+                    queryset.filter(
+                        refinanciamentos__origem=Refinanciamento.Origem.OPERACIONAL,
+                        refinanciamentos__status__in=non_queue_statuses,
+                    )
+                    .values_list("id", flat=True)
+                )
+
+            queryset = queryset.filter(id__in=filtered_ids)
 
         return queryset
 
@@ -331,12 +407,64 @@ class ContratoViewSet(ReadOnlyModelViewSet):
         }
         return Response(ContratoResumoCardsSerializer(payload).data)
 
+    @action(detail=False, methods=["get"], url_path="renovacao-resumo")
+    def renovacao_resumo(self, request):
+        queryset = _filtered_operational_contract_queryset(request)
+        competencia = resolve_current_renewal_competencia()
+        refinanciamentos = Refinanciamento.objects.filter(
+            origem=Refinanciamento.Origem.OPERACIONAL,
+            contrato_origem_id__in=queryset.values("id"),
+        )
+        em_analise_statuses = [
+            Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+            Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+            Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
+        ]
+        aprovados_statuses = [
+            Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+            Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+        ]
+        desistentes_statuses = [
+            Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
+            Refinanciamento.Status.DESATIVADO,
+            Refinanciamento.Status.BLOQUEADO,
+            Refinanciamento.Status.REVERTIDO,
+        ]
+        competencia_refinanciamentos = refinanciamentos.filter(
+            competencia_solicitada=competencia
+        )
+        payload = {
+            "competencia": competencia,
+            "em_analise": competencia_refinanciamentos.filter(
+                status__in=em_analise_statuses
+            ).count(),
+            "aprovados": competencia_refinanciamentos.filter(
+                status__in=aprovados_statuses
+            ).count(),
+            "desistentes": competencia_refinanciamentos.filter(
+                status__in=desistentes_statuses
+            ).count(),
+            "renovados": refinanciamentos.filter(
+                status=Refinanciamento.Status.EFETIVADO
+            ).count(),
+        }
+        return Response(payload)
+
 
 class RenovacaoCicloViewSet(GenericViewSet):
     queryset = Contrato.objects.none()
     serializer_class = RenovacaoCicloItemSerializer
-    permission_classes = [permissions.IsAuthenticated, IsTesoureiroOrAdmin]
+    permission_classes = [permissions.IsAuthenticated, IsOperacionalOrAdmin]
     pagination_class = StandardResultsSetPagination
+
+    def _resolve_agente_id(self, request) -> int | None:
+        user = request.user
+        if user.has_role("AGENTE") and not user.has_role("ADMIN"):
+            return user.id
+        agente_param = (request.query_params.get("agente") or "").strip()
+        if agente_param.isdigit():
+            return int(agente_param)
+        return None
 
     def get_serializer_class(self):
         if self.action == "visao_mensal":
@@ -361,6 +489,9 @@ class RenovacaoCicloViewSet(GenericViewSet):
             competencia=competencia,
             search=request.query_params.get("search"),
             status=request.query_params.get("status"),
+            agente_id=self._resolve_agente_id(request),
+            data_inicio=parse_date(request.query_params.get("data_inicio") or ""),
+            data_fim=parse_date(request.query_params.get("data_fim") or ""),
         )
         page = self.paginate_queryset(rows)
         serializer = RenovacaoCicloItemSerializer(page if page is not None else rows, many=True)
@@ -384,6 +515,20 @@ class RenovacaoCicloViewSet(GenericViewSet):
             search=request.query_params.get("search"),
             status=request.query_params.get("status"),
         )
+        if (
+            self._resolve_agente_id(request) is not None
+            or request.query_params.get("data_inicio")
+            or request.query_params.get("data_fim")
+        ):
+            rows = RenovacaoCicloService.listar_detalhes(
+                competencia=competencia,
+                search=request.query_params.get("search"),
+                status=request.query_params.get("status"),
+                agente_id=self._resolve_agente_id(request),
+                data_inicio=parse_date(request.query_params.get("data_inicio") or ""),
+                data_fim=parse_date(request.query_params.get("data_fim") or ""),
+            )
+            payload["total_associados"] = len(rows)
         return Response(RenovacaoCicloResumoSerializer(payload).data)
 
     @extend_schema(responses=RenovacaoCicloMesSerializer(many=True))
@@ -406,6 +551,9 @@ class RenovacaoCicloViewSet(GenericViewSet):
             competencia=competencia,
             search=request.query_params.get("search"),
             status=request.query_params.get("status"),
+            agente_id=self._resolve_agente_id(request),
+            data_inicio=parse_date(request.query_params.get("data_inicio") or ""),
+            data_fim=parse_date(request.query_params.get("data_fim") or ""),
         )
         payload = {
             "competencia": competencia.strftime("%m/%Y"),

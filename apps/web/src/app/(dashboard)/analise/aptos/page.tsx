@@ -22,6 +22,7 @@ import type {
 import { apiFetch } from "@/lib/api/client";
 import { formatMonthYear } from "@/lib/formatters";
 import { exportPaginatedRouteReport } from "@/lib/reports";
+import { usePermissions } from "@/hooks/use-permissions";
 import {
   AssociadoContractsOverview,
   AssociadoSnapshotSummary,
@@ -150,6 +151,7 @@ function getKpiLabel(value: KpiFilterKey) {
 }
 
 export default function AnaliseAptosPage() {
+  const { hasAnyRole } = usePermissions();
   const queryClient = useQueryClient();
   const [page, setPage] = React.useState(1);
   const [search, setSearch] = React.useState("");
@@ -167,8 +169,15 @@ export default function AnaliseAptosPage() {
   >(null);
   const [detailItem, setDetailItem] =
     React.useState<RefinanciamentoItem | null>(null);
+  const [liquidacaoTarget, setLiquidacaoTarget] =
+    React.useState<RefinanciamentoItem | null>(null);
+  const [inativacaoTarget, setInativacaoTarget] =
+    React.useState<RefinanciamentoItem | null>(null);
   const [observacao, setObservacao] = React.useState("");
+  const [liquidacaoObservacao, setLiquidacaoObservacao] = React.useState("");
+  const [inativacaoObservacao, setInativacaoObservacao] = React.useState("");
   const [activeKpi, setActiveKpi] = React.useState<KpiFilterKey>("total");
+  const canManageWithdrawal = hasAnyRole(["ADMIN", "COORDENADOR"]);
 
   const resolvedStatuses = React.useMemo(() => {
     if (activeKpi === "em_analise") {
@@ -335,6 +344,75 @@ export default function AnaliseAptosPage() {
     },
   });
 
+  const encaminharLiquidacaoMutation = useMutation({
+    mutationFn: async ({ id, note }: { id: number; note: string }) =>
+      apiFetch<RefinanciamentoItem>(`refinanciamentos/${id}/encaminhar-liquidacao`, {
+        method: "POST",
+        body: { observacao: note },
+      }),
+    onSuccess: () => {
+      toast.success("Renovação enviada para liquidação.");
+      setLiquidacaoTarget(null);
+      setLiquidacaoObservacao("");
+      void queryClient.invalidateQueries({
+        queryKey: ["analise-refinanciamentos"],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["analise-refinanciamentos-resumo"],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["agente-refinanciados"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-liquidacoes"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao encaminhar para liquidação.",
+      );
+    },
+  });
+
+  const inativarAssociadoMutation = useMutation({
+    mutationFn: async ({
+      associadoId,
+      observacao,
+    }: {
+      associadoId: number;
+      observacao: string;
+    }) => {
+      const formData = new FormData();
+      formData.append("associado_id", String(associadoId));
+      if (observacao.trim()) {
+        formData.append("observacao", observacao.trim());
+      }
+      return apiFetch<{
+        associado_id: number;
+        parcelas_baixadas: number;
+        total_baixado: string;
+      }>("tesouraria/baixa-manual/inativar-associado", {
+        method: "POST",
+        formData,
+      });
+    },
+    onSuccess: () => {
+      toast.success("Associado inativado e removido da esteira.");
+      setInativacaoTarget(null);
+      setInativacaoObservacao("");
+      void queryClient.invalidateQueries({
+        queryKey: ["analise-refinanciamentos"],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["analise-refinanciamentos-resumo"],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["agente-refinanciados"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-baixa-manual"] });
+      void queryClient.invalidateQueries({ queryKey: ["associado"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao inativar associado.",
+      );
+    },
+  });
+
   const rows = refinanciamentosQuery.data?.results ?? [];
   const totalCount = refinanciamentosQuery.data?.count ?? 0;
   const activeAdvancedFiltersCount = countActiveFilters(filters);
@@ -465,11 +543,29 @@ export default function AnaliseAptosPage() {
                 Devolver para agente
               </Button>
             ) : null}
+            {canManageWithdrawal ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setLiquidacaoTarget(row)}
+              >
+                Liquidar
+              </Button>
+            ) : null}
+            {canManageWithdrawal ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setInativacaoTarget(row)}
+              >
+                Inativar associado
+              </Button>
+            ) : null}
           </div>
         ),
       },
     ],
-    [assumirMutation],
+    [assumirMutation, canManageWithdrawal],
   );
 
   const handleExport = React.useCallback(
@@ -544,7 +640,7 @@ export default function AnaliseAptosPage() {
             <p className="text-sm uppercase tracking-[0.28em] text-muted-foreground">
               Análise
             </p>
-            <h1 className="text-3xl font-semibold">Contratos para Renovação</h1>
+            <h1 className="text-3xl font-semibold">Esteira de Renovação</h1>
             <p className="text-sm text-muted-foreground">
               Fila do analista para revisar solicitações enviadas pelo agente e
               encaminhá-las para validação da coordenação. Total filtrado:{" "}
@@ -876,6 +972,106 @@ export default function AnaliseAptosPage() {
               {dialogAction === "devolver_agente"
                 ? "Devolver para agente"
                 : "Aprovar e enviar à coordenação"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!liquidacaoTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setLiquidacaoTarget(null);
+            setLiquidacaoObservacao("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Encaminhar para liquidação</DialogTitle>
+            <DialogDescription>
+              {liquidacaoTarget
+                ? `${liquidacaoTarget.associado_nome} · ${liquidacaoTarget.contrato_codigo}`
+                : "A renovação será removida da esteira e seguirá para liquidação."}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={liquidacaoObservacao}
+            onChange={(event) => setLiquidacaoObservacao(event.target.value)}
+            placeholder="Observação da liquidação (opcional)"
+            className="min-h-28"
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setLiquidacaoTarget(null);
+                setLiquidacaoObservacao("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={!liquidacaoTarget || encaminharLiquidacaoMutation.isPending}
+              onClick={() => {
+                if (!liquidacaoTarget) return;
+                encaminharLiquidacaoMutation.mutate({
+                  id: liquidacaoTarget.id,
+                  note: liquidacaoObservacao,
+                });
+              }}
+            >
+              Encaminhar para liquidação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!inativacaoTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setInativacaoTarget(null);
+            setInativacaoObservacao("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Inativar associado</DialogTitle>
+            <DialogDescription>
+              {inativacaoTarget
+                ? `${inativacaoTarget.associado_nome} · ${inativacaoTarget.contrato_codigo}`
+                : "O associado será inativado e sairá da esteira de renovação."}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={inativacaoObservacao}
+            onChange={(event) => setInativacaoObservacao(event.target.value)}
+            placeholder="Motivo da inativação (opcional)"
+            className="min-h-28"
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setInativacaoTarget(null);
+                setInativacaoObservacao("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={!inativacaoTarget || inativarAssociadoMutation.isPending}
+              onClick={() => {
+                if (!inativacaoTarget) return;
+                inativarAssociadoMutation.mutate({
+                  associadoId: inativacaoTarget.associado_id,
+                  observacao: inativacaoObservacao,
+                });
+              }}
+            >
+              Inativar associado
             </Button>
           </DialogFooter>
         </DialogContent>

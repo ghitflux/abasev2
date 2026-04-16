@@ -20,6 +20,7 @@ from apps.accounts.mobile_legacy_auth import (
     ensure_associado_user,
     only_digits,
 )
+from apps.accounts.mobile_maintenance import MobileMaintenanceMixin
 from apps.contratos.canonicalization import resolve_operational_contract_for_associado
 from apps.contratos.models import Contrato
 from apps.esteira.models import DocIssue, DocReupload
@@ -65,7 +66,7 @@ class LegacyNoopSerializer(serializers.Serializer):
     pass
 
 
-class LegacyMobileAPIView(APIView):
+class LegacyMobileAPIView(MobileMaintenanceMixin, APIView):
     authentication_classes = [LegacyMobileTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = LegacyNoopSerializer

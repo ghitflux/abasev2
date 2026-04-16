@@ -37,6 +37,10 @@ class IsAgenteOrAdmin(BaseRolePermission):
     allowed_roles = ("AGENTE", "ADMIN")
 
 
+class IsAgenteOrCoordenadorOrAdmin(BaseRolePermission):
+    allowed_roles = ("AGENTE", "COORDENADOR", "ADMIN")
+
+
 class IsAgenteOrAnalistaOrCoordenadorOrAdmin(BaseRolePermission):
     allowed_roles = ("AGENTE", "ANALISTA", "COORDENADOR", "ADMIN")
 

@@ -1,6 +1,5 @@
 import logging
 
-from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
@@ -58,26 +57,12 @@ class AgentManualPasswordResetRateThrottle(AnonRateThrottle):
     rate = "3/hour"
 
 
-def _maintenance_response():
-    """Retorna 503 com mensagem de manutenção se APP_MAINTENANCE_MODE estiver ativo."""
-    if getattr(settings, "APP_MAINTENANCE_MODE", False):
-        message = getattr(
-            settings,
-            "APP_MAINTENANCE_MESSAGE",
-            "O aplicativo está temporariamente indisponível para manutenção. Tente novamente em breve.",
-        )
-        return Response({"detail": message}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
-    return None
-
-
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
     throttle_classes = [LoginRateThrottle]
 
     @extend_schema(request=LoginSerializer, responses={200: LoginSerializer})
     def post(self, request):
-        if (resp := _maintenance_response()) is not None:
-            return resp
         serializer = LoginSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         return Response(serializer.save(), status=status.HTTP_200_OK)
@@ -88,8 +73,6 @@ class RefreshView(APIView):
 
     @extend_schema(request=RefreshSerializer, responses={200: RefreshSerializer})
     def post(self, request):
-        if (resp := _maintenance_response()) is not None:
-            return resp
         serializer = RefreshSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         return Response(serializer.validated_data, status=status.HTTP_200_OK)

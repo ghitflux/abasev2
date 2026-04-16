@@ -14,10 +14,11 @@ import {
 import { toast } from "sonner";
 
 import type {
-  ContratoListItem,
+  ContratoRenovacaoResumo,
   PaginatedResponse,
   RefinanciamentoItem,
   RefinanciamentoResumo,
+  RenovacaoCicloItem,
   SimpleUser,
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
@@ -30,12 +31,16 @@ import {
 } from "@/lib/date-value";
 import {
   formatCurrency,
-  formatDate,
   formatDateTime,
   formatMonthYear,
 } from "@/lib/formatters";
 import { maskCPFCNPJ } from "@/lib/masks";
-import { exportPaginatedRouteReport } from "@/lib/reports";
+import {
+  describeReportScope,
+  exportRouteReport,
+  fetchAllPaginatedRows,
+  filterRowsByReportScope,
+} from "@/lib/reports";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { usePermissions } from "@/hooks/use-permissions";
 import AssociadoDetailsDialog from "@/components/associados/associado-details-dialog";
@@ -46,7 +51,9 @@ import SearchableSelect from "@/components/custom/searchable-select";
 import StatusBadge from "@/components/custom/status-badge";
 import CopySnippet from "@/components/shared/copy-snippet";
 import DataTable, { type DataTableColumn } from "@/components/shared/data-table";
-import ReportExportDialog from "@/components/shared/report-export-dialog";
+import ReportExportDialog, {
+  type ReportExportFilters,
+} from "@/components/shared/report-export-dialog";
 import { MetricCardSkeleton } from "@/components/shared/page-skeletons";
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
@@ -112,6 +119,8 @@ const TERMO_ACCEPT = {
 
 const EMPTY_RESUMO: RefinanciamentoResumo = {
   total: 0,
+  solicitados_liquidacao: 0,
+  desistentes: 0,
   em_analise: 0,
   assumidos: 0,
   aprovados: 0,
@@ -124,6 +133,14 @@ const EMPTY_RESUMO: RefinanciamentoResumo = {
   repasse_total: "0.00",
 };
 
+const EMPTY_APTOS_RESUMO: ContratoRenovacaoResumo = {
+  competencia: "",
+  em_analise: 0,
+  aprovados: 0,
+  desistentes: 0,
+  renovados: 0,
+};
+
 const INITIAL_HISTORY_FILTERS: HistoryAdvancedFilters = {
   status: "todos",
   competenciaStart: "",
@@ -134,7 +151,7 @@ const INITIAL_APTOS_FILTERS: AptosAdvancedFilters = {
   dataFim: "",
   agente: "",
 };
-const APTOS_STATUS_RENOVACAO = ["apto_a_renovar", "pendente_termo_agente"];
+const APTOS_STATUS_RENOVACAO = ["apto_a_renovar"];
 
 function toCompetenciaDate(value: string) {
   return value ? `${value}-01` : undefined;
@@ -162,7 +179,7 @@ function countActiveAptosFilters(
 export default function AgenteRefinanciadosPage() {
   const { hasAnyRole } = usePermissions();
   const queryClient = useQueryClient();
-  const [tab, setTab] = React.useState<RefinanciadosTab>("historico");
+  const [tab, setTab] = React.useState<RefinanciadosTab>("aptos");
   const [search, setSearch] = React.useState("");
   const [isExporting, setIsExporting] = React.useState(false);
   const [historyFilters, setHistoryFilters] =
@@ -177,14 +194,18 @@ export default function AgenteRefinanciadosPage() {
   const [aptosSheetOpen, setAptosSheetOpen] = React.useState(false);
   const [pageSize, setPageSize] = React.useState("15");
   const [page, setPage] = React.useState(1);
-  const [sendTarget, setSendTarget] = React.useState<ContratoListItem | null>(null);
-  const [liquidacaoTarget, setLiquidacaoTarget] = React.useState<ContratoListItem | null>(null);
+  const [sendTarget, setSendTarget] = React.useState<RenovacaoCicloItem | null>(null);
+  const [liquidacaoTarget, setLiquidacaoTarget] = React.useState<RenovacaoCicloItem | null>(null);
+  const [inativacaoTarget, setInativacaoTarget] = React.useState<RenovacaoCicloItem | null>(null);
   const [termo, setTermo] = React.useState<File | null>(null);
+  const [liquidacaoObservacao, setLiquidacaoObservacao] = React.useState("");
+  const [inativacaoObservacao, setInativacaoObservacao] = React.useState("");
   const [detailAssociadoId, setDetailAssociadoId] = React.useState<number | null>(null);
   const debouncedSearch = useDebouncedValue(search, 300);
   const canViewGlobalAptos = hasAnyRole(["ADMIN", "COORDENADOR", "ANALISTA"]);
   const canStartRenewal = hasAnyRole(["ADMIN", "COORDENADOR", "ANALISTA", "AGENTE"]);
-  const canRequestLiquidation = hasAnyRole(["ADMIN", "AGENTE"]);
+  const canRequestLiquidation = hasAnyRole(["ADMIN", "COORDENADOR", "AGENTE"]);
+  const canInactivateAssociado = hasAnyRole(["ADMIN", "COORDENADOR"]);
   const aptosDescription = canViewGlobalAptos
     ? "Esta aba mostra todos os contratos do sistema que já podem receber o termo de antecipação e seguir para a análise."
     : "Esta aba mostra somente os contratos do agente que já podem receber o termo de antecipação e seguir para a análise.";
@@ -274,7 +295,7 @@ export default function AgenteRefinanciadosPage() {
   const resumoQuery = useQuery({
     queryKey: [
       "agente-refinanciados",
-      "resumo",
+      "historico-resumo",
       debouncedSearch,
       resolvedHistoryStatus,
       historyFilters.competenciaStart,
@@ -292,15 +313,28 @@ export default function AgenteRefinanciadosPage() {
       }),
   });
 
+  const aptosResumoQuery = useQuery({
+    queryKey: ["agente-refinanciados", "aptos-resumo", aptosQueryFilters],
+    enabled: tab === "aptos",
+    queryFn: () =>
+      apiFetch<ContratoRenovacaoResumo>("contratos/renovacao-resumo", {
+        query: aptosQueryFilters,
+      }),
+  });
+
   const aptosQuery = useQuery({
     queryKey: ["agente-refinanciados", "aptos", aptosQueryFilters, pageSize, page],
     enabled: tab === "aptos",
     queryFn: () =>
-      apiFetch<PaginatedResponse<ContratoListItem>>("contratos", {
+      apiFetch<PaginatedResponse<RenovacaoCicloItem>>("renovacao-ciclos", {
         query: {
           page,
           page_size: Number(pageSize),
-          ...aptosQueryFilters,
+          search: aptosQueryFilters.associado,
+          status: "apto_a_renovar",
+          data_inicio: aptosQueryFilters.data_inicio,
+          data_fim: aptosQueryFilters.data_fim,
+          agente: aptosQueryFilters.agente,
         },
       }),
   });
@@ -349,14 +383,31 @@ export default function AgenteRefinanciadosPage() {
   });
 
   const solicitarLiquidacaoMutation = useMutation({
-    mutationFn: async ({ contratoId }: { contratoId: number }) =>
-      apiFetch<RefinanciamentoItem>(`refinanciamentos/${contratoId}/solicitar-liquidacao`, {
-        method: "POST",
-        body: {},
-      }),
+    mutationFn: async ({
+      contratoId,
+      refinanciamentoId,
+      observacao,
+    }: {
+      contratoId: number;
+      refinanciamentoId: number | null;
+      observacao: string;
+    }) =>
+      refinanciamentoId
+        ? apiFetch<RefinanciamentoItem>(
+            `refinanciamentos/${refinanciamentoId}/encaminhar-liquidacao`,
+            {
+              method: "POST",
+              body: { observacao },
+            },
+          )
+        : apiFetch<RefinanciamentoItem>(`refinanciamentos/${contratoId}/solicitar-liquidacao`, {
+            method: "POST",
+            body: {},
+          }),
     onSuccess: () => {
       toast.success("Solicitação de liquidação enviada para tesouraria.");
       setLiquidacaoTarget(null);
+      setLiquidacaoObservacao("");
       setTab("historico");
       setHistoryFilters((current) => ({
         ...current,
@@ -380,9 +431,57 @@ export default function AgenteRefinanciadosPage() {
     },
   });
 
+  const inativarAssociadoMutation = useMutation({
+    mutationFn: async ({
+      associadoId,
+      observacao,
+    }: {
+      associadoId: number;
+      observacao: string;
+    }) => {
+      const formData = new FormData();
+      formData.append("associado_id", String(associadoId));
+      if (observacao.trim()) {
+        formData.append("observacao", observacao.trim());
+      }
+      return apiFetch<{
+        associado_id: number;
+        parcelas_baixadas: number;
+        total_baixado: string;
+      }>("tesouraria/baixa-manual/inativar-associado", {
+        method: "POST",
+        formData,
+      });
+    },
+    onSuccess: (payload) => {
+      const message =
+        payload.parcelas_baixadas > 0
+          ? `Associado inativado e ${payload.parcelas_baixadas} parcela(s) baixada(s).`
+          : "Associado inativado sem baixa de parcelas.";
+      toast.success(message);
+      setInativacaoTarget(null);
+      setInativacaoObservacao("");
+      void queryClient.invalidateQueries({ queryKey: ["agente-refinanciados"] });
+      void queryClient.invalidateQueries({ queryKey: ["analise-refinanciamentos"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["analise-refinanciamentos-resumo"],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["coordenacao-refinanciamento"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-baixa-manual"] });
+      void queryClient.invalidateQueries({ queryKey: ["contratos"] });
+      void queryClient.invalidateQueries({ queryKey: ["associado"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao inativar associado.",
+      );
+    },
+  });
+
   const refinanciadosRows = refinanciamentosQuery.data?.results ?? [];
   const aptosRows = aptosQuery.data?.results ?? [];
   const resumo = resumoQuery.data ?? EMPTY_RESUMO;
+  const aptosResumo = aptosResumoQuery.data ?? EMPTY_APTOS_RESUMO;
 
   const refinanciadosColumns = React.useMemo<DataTableColumn<RefinanciamentoItem>[]>(
     () => [
@@ -447,39 +546,33 @@ export default function AgenteRefinanciadosPage() {
     [],
   );
 
-  const aptosColumns = React.useMemo<DataTableColumn<ContratoListItem>[]>(
+  const aptosColumns = React.useMemo<DataTableColumn<RenovacaoCicloItem>[]>(
     () => {
-      const columns: DataTableColumn<ContratoListItem>[] = [
+      const columns: DataTableColumn<RenovacaoCicloItem>[] = [
         {
-          id: "nome",
-          header: "Nome",
-          cellClassName: "min-w-[16rem]",
+          id: "associado",
+          header: "Associado",
+          cellClassName: "min-w-[18rem] whitespace-normal break-words",
           cell: (row) => (
-            <CopySnippet
-              label="Nome"
-              value={row.associado.nome_completo}
-              inline
-              className="max-w-full"
-            />
-          ),
-        },
-        {
-          id: "cpf",
-          header: "CPF",
-          cellClassName: "min-w-[11rem]",
-          cell: (row) => <CopySnippet label="CPF" value={row.associado.cpf_cnpj} mono inline />,
-        },
-        {
-          id: "matricula",
-          header: "Matrícula do Servidor",
-          cellClassName: "min-w-[12rem]",
-          cell: (row) => (
-            <CopySnippet
-              label="Matrícula do Servidor"
-              value={row.associado.matricula_display || row.associado.matricula || "N/I"}
-              mono
-              inline
-            />
+            <div className="space-y-3">
+              <div className="min-w-0 space-y-1">
+                <CopySnippet
+                  label="Nome"
+                  value={row.nome_associado}
+                  inline
+                  className="max-w-full"
+                />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <CopySnippet label="CPF" value={row.cpf_cnpj} mono inline />
+                <CopySnippet
+                  label="Matrícula do Servidor"
+                  value={row.matricula || "N/I"}
+                  mono
+                  inline
+                />
+              </div>
+            </div>
           ),
         },
       ];
@@ -491,10 +584,12 @@ export default function AgenteRefinanciadosPage() {
           cellClassName: "min-w-[14rem]",
           cell: (row) => (
             <div className="space-y-1">
-              <p className="font-medium">{row.agente?.full_name || "Sem agente"}</p>
-              <p className="text-xs text-muted-foreground">
-                Data do contrato: {formatDate(row.data_contrato)}
-              </p>
+              <p className="font-medium">{row.agente_responsavel || "Sem agente"}</p>
+              {row.data_primeiro_ciclo_ativado ? (
+                <p className="text-xs text-muted-foreground">
+                  Primeiro ciclo ativado: {formatDateTime(row.data_primeiro_ciclo_ativado)}
+                </p>
+              ) : null}
             </div>
           ),
         });
@@ -502,47 +597,23 @@ export default function AgenteRefinanciadosPage() {
 
       columns.push(
         {
-          id: "contrato",
-          header: "Contrato atual",
-          cellClassName: "min-w-[15rem]",
-          cell: (row) => (
-            <div className="space-y-2">
-              <p className="font-mono text-xs text-foreground">{row.codigo}</p>
-              <StatusBadge
-                status={row.status_renovacao || "apto_a_renovar"}
-                label={
-                  row.status_renovacao === "pendente_termo_agente"
-                    ? "Aguardando novo termo"
-                    : "Apto a renovar"
-                }
-              />
-            </div>
-          ),
-        },
-        {
           id: "ciclo_apto",
           header: "Ciclo que gerou o apto",
           cellClassName: "min-w-[15rem]",
           cell: (row) => (
             <div className="space-y-1">
               <div className="flex flex-wrap items-center gap-2">
-                <p className="font-medium">
-                  Ciclo {row.ciclo_apto?.numero ?? "N/I"}
-                </p>
-                {row.ciclo_apto ? (
-                  <StatusBadge
-                    status={row.ciclo_apto.status_visual_slug}
-                    label={row.ciclo_apto.status_visual_label}
-                  />
-                ) : null}
+                <p className="font-medium">Ciclo {row.ciclo_numero || "N/I"}</p>
+                <StatusBadge status={row.status_visual} label="Apto a renovar" />
               </div>
               <p className="text-xs text-muted-foreground">
-                {row.ciclo_apto?.resumo_referencias || row.mensalidades.descricao}
+                {row.competencia}
+              </p>
+              <p className="font-mono text-xs text-muted-foreground">
+                {row.contrato_referencia_renovacao_codigo}
               </p>
               <p className="text-xs text-muted-foreground">
-                {row.ciclo_apto
-                  ? `${row.ciclo_apto.parcelas_pagas}/${row.ciclo_apto.parcelas_total} parcela(s) quitadas`
-                  : `${row.mensalidades.pagas}/${row.mensalidades.total} parcela(s) quitadas`}
+                {`${row.parcelas_pagas}/${row.parcelas_total} parcela(s) quitadas`}
               </p>
             </div>
           ),
@@ -554,10 +625,10 @@ export default function AgenteRefinanciadosPage() {
           cell: (row) => (
             <div className="space-y-1">
               <p className="font-medium">
-                Auxílio liberado: {formatCurrency(row.valor_auxilio_liberado)}
+                Mensalidade: {formatCurrency(row.valor_mensalidade)}
               </p>
               <p className="text-xs text-muted-foreground">
-                Repasse: {formatCurrency(row.comissao_agente)} · {row.percentual_repasse}%
+                Parcela de referência: {formatCurrency(row.valor_parcela)}
               </p>
             </div>
           ),
@@ -576,16 +647,14 @@ export default function AgenteRefinanciadosPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => setDetailAssociadoId(row.associado.id)}
+              onClick={() => setDetailAssociadoId(row.associado_id)}
             >
               Ver detalhes do associado
             </Button>
             {canStartRenewal ? (
               <Button size="sm" onClick={() => setSendTarget(row)}>
                 <ClipboardCheckIcon className="size-4" />
-                {row.status_renovacao === "pendente_termo_agente"
-                  ? "Reenviar termo"
-                  : "Enviar para renovação"}
+                Enviar para renovação
               </Button>
             ) : null}
             {canRequestLiquidation ? (
@@ -594,70 +663,168 @@ export default function AgenteRefinanciadosPage() {
                 Enviar para liquidação
               </Button>
             ) : null}
+            {canInactivateAssociado ? (
+              <Button size="sm" variant="outline" onClick={() => setInativacaoTarget(row)}>
+                Inativar associado
+              </Button>
+            ) : null}
           </div>
         ),
       });
 
       return columns;
     },
-    [canRequestLiquidation, canStartRenewal, canViewGlobalAptos],
+    [canInactivateAssociado, canRequestLiquidation, canStartRenewal, canViewGlobalAptos],
   );
 
   const handleExport = React.useCallback(
-    async (format: "csv" | "pdf" | "excel" | "xlsx") => {
-      if (format !== "pdf" && format !== "xlsx") {
-        return;
-      }
-
+    async (exportFilters: ReportExportFilters, format: "pdf" | "xlsx") => {
+      const {
+        scope,
+        referenceDate,
+        agente: exportAgente,
+        status: exportStatus,
+        columns: selectedColumns,
+      } = exportFilters;
       setIsExporting(true);
       try {
         if (tab === "historico") {
-          await exportPaginatedRouteReport<RefinanciamentoItem>({
+          const sourceQuery = {
+            search: debouncedSearch || undefined,
+            status: resolvedHistoryStatus,
+            competencia_start: toCompetenciaDate(historyFilters.competenciaStart),
+            competencia_end: toCompetenciaDate(historyFilters.competenciaEnd),
+            agente: exportAgente || undefined,
+          };
+          const fetchedRows = await fetchAllPaginatedRows<RefinanciamentoItem>({
+            sourcePath: "refinanciamentos",
+            sourceQuery,
+          });
+          const scopedRows = filterRowsByReportScope({
+            rows: fetchedRows,
+            scope,
+            referenceDate,
+            getCandidates: (row) => [
+              row.data_solicitacao_renovacao,
+              row.data_solicitacao,
+              row.executado_em,
+              row.data_ativacao_ciclo,
+              row.updated_at,
+            ],
+          }).filter((row) => !exportStatus || row.status === exportStatus);
+
+          await exportRouteReport({
             route: "/agentes/refinanciados",
             format,
-            sourcePath: "refinanciamentos",
-            sourceQuery: {
-              search: debouncedSearch || undefined,
-              status: resolvedHistoryStatus,
-              competencia_start: toCompetenciaDate(historyFilters.competenciaStart),
-              competencia_end: toCompetenciaDate(historyFilters.competenciaEnd),
-            },
-            mapRow: (row) => ({
+            rows: scopedRows.map((row) => ({
               contrato_codigo: row.contrato_codigo,
               associado_nome: row.associado_nome,
+              cpf_cnpj: row.cpf_cnpj,
+              matricula: row.matricula_display || row.matricula,
               status: row.status,
-              data_solicitacao: row.data_solicitacao,
-              valor_refinanciamento: row.valor_refinanciamento,
-              repasse_agente: row.repasse_agente,
+              data_solicitacao: formatDateTime(
+                row.data_solicitacao_renovacao || row.data_solicitacao,
+              ),
+              data_ativacao_ciclo: formatDateTime(row.data_ativacao_ciclo),
+              executado_em: formatDateTime(row.executado_em),
+              valor_refinanciamento: formatCurrency(row.valor_refinanciamento),
+              repasse_agente: formatCurrency(row.repasse_agente),
               analista_note: row.analista_note ?? "",
               coordenador_note: row.coordenador_note ?? "",
-            }),
+            })),
+            filters: {
+              ...sourceQuery,
+              ...describeReportScope(scope, referenceDate),
+              agente_label:
+                aptosAgentOptions.find((agent) => agent.value === exportAgente)?.label ||
+                undefined,
+              totais: {
+                total_registros: scopedRows.length,
+                total_valor_renovacao: scopedRows
+                  .reduce(
+                    (sum, row) =>
+                      sum + Number.parseFloat(String(row.valor_refinanciamento ?? "0")),
+                    0,
+                  )
+                  .toFixed(2),
+                total_repasse_agente: scopedRows
+                  .reduce(
+                    (sum, row) =>
+                      sum + Number.parseFloat(String(row.repasse_agente ?? "0")),
+                    0,
+                  )
+                  .toFixed(2),
+              },
+              columns: selectedColumns,
+            },
           });
         } else {
-          await exportPaginatedRouteReport<ContratoListItem>({
+          const sourceQuery = {
+            search: aptosQueryFilters.associado,
+            status: "apto_a_renovar",
+            data_inicio: aptosQueryFilters.data_inicio,
+            data_fim: aptosQueryFilters.data_fim,
+            agente: exportAgente || aptosQueryFilters.agente,
+          };
+          const fetchedRows = await fetchAllPaginatedRows<RenovacaoCicloItem>({
+            sourcePath: "renovacao-ciclos",
+            sourceQuery,
+          });
+          const scopedRows = filterRowsByReportScope({
+            rows: fetchedRows,
+            scope,
+            referenceDate,
+            getCandidates: (row) => [
+              row.data_solicitacao_renovacao,
+              row.data_ativacao_ciclo,
+              row.data_primeiro_ciclo_ativado,
+              row.data_pagamento,
+            ],
+          });
+
+          await exportRouteReport({
             route: "/agentes/refinanciados",
             format,
-            sourcePath: "contratos",
-            sourceQuery: aptosQueryFilters,
+            rows: scopedRows.map((row) => ({
+              contrato_codigo: row.contrato_referencia_renovacao_codigo,
+              associado_nome: row.nome_associado,
+              cpf_cnpj: row.cpf_cnpj,
+              matricula: row.matricula || "",
+              agente_nome: row.agente_responsavel,
+              status: row.status_visual,
+              data_contrato: formatDateTime(row.data_primeiro_ciclo_ativado),
+              data_pagamento: formatDateTime(row.data_pagamento),
+              ciclo_apto: row.ciclo_numero,
+              referencias_ciclo: row.competencia,
+              valor_refinanciamento: formatCurrency(row.valor_mensalidade),
+              repasse_agente: formatCurrency(row.valor_parcela),
+            })),
             filters: {
-              ...aptosQueryFilters,
+              ...sourceQuery,
+              ...describeReportScope(scope, referenceDate),
               agente_label:
-                aptosAgentOptions.find((agent) => agent.value === aptosFilters.agente)?.label ||
-                undefined,
+                aptosAgentOptions.find(
+                  (agent) => agent.value === (exportAgente || aptosFilters.agente),
+                )?.label || undefined,
+              totais: {
+                total_registros: scopedRows.length,
+                total_valor_renovacao: scopedRows
+                  .reduce(
+                    (sum, row) =>
+                      sum + Number.parseFloat(String(row.valor_mensalidade ?? "0")),
+                    0,
+                  )
+                  .toFixed(2),
+                total_repasse_agente: scopedRows
+                  .reduce(
+                    (sum, row) =>
+                      sum + Number.parseFloat(String(row.valor_parcela ?? "0")),
+                    0,
+                  )
+                  .toFixed(2),
+              },
+              columns: selectedColumns,
             },
-            mapRow: (row) => ({
-              contrato_codigo: row.codigo,
-              associado_nome: row.associado.nome_completo,
-              cpf_cnpj: row.associado.cpf_cnpj,
-              matricula: row.associado.matricula_display || row.associado.matricula || "",
-              agente_nome: row.agente?.full_name || "",
-              status: row.status_renovacao,
-              data_contrato: row.data_contrato,
-              ciclo_apto: row.ciclo_apto?.numero ?? "",
-              referencias_ciclo: row.ciclo_apto?.resumo_referencias || row.mensalidades.descricao,
-              valor_refinanciamento: row.valor_auxilio_liberado,
-              repasse_agente: row.comissao_agente,
-            }),
           });
         }
       } catch (error) {
@@ -699,15 +866,21 @@ export default function AgenteRefinanciadosPage() {
                 : "O agente envia o termo de antecipação dos próprios contratos aptos para a fila do analista e acompanha o andamento até a tesouraria."}
             </p>
             <TabsList variant="line" className="w-fit">
-              <TabsTrigger value="historico">Solicitações e histórico</TabsTrigger>
               <TabsTrigger value="aptos">Aptos a renovar</TabsTrigger>
+              <TabsTrigger value="historico">Solicitações e histórico</TabsTrigger>
             </TabsList>
           </div>
           <ReportExportDialog
-            hideScope
             disabled={isExporting}
             label={isExporting ? "Exportando..." : "Exportar"}
-            onExport={(_, fmt) => void handleExport(fmt)}
+            showFilters
+            agentOptions={aptosAgentOptions}
+            statusOptions={
+              tab === "historico"
+                ? HISTORY_STATUS_OPTIONS.filter((option) => option.value !== "todos")
+                : [{ value: "apto_a_renovar", label: "Aptos a renovar" }]
+            }
+            onExport={handleExport}
           />
         </div>
       </section>
@@ -895,7 +1068,7 @@ export default function AgenteRefinanciadosPage() {
 
       <TabsContent value="aptos" className="space-y-6">
         <section className="rounded-[1.75rem] border border-border/60 bg-card/60 p-5">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="space-y-4">
             <div className="space-y-1">
               <p className="text-sm font-medium text-foreground">
                 Contratos aptos a renovar
@@ -904,13 +1077,51 @@ export default function AgenteRefinanciadosPage() {
                 {aptosDescription}
               </p>
             </div>
-            <StatsCard
-              title="Aptos a renovar"
-              value={String(aptosQuery.data?.count ?? 0)}
-              delta={`${aptosRows.length} exibidos na página atual`}
-              icon={WalletIcon}
-              tone="neutral"
-            />
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              {aptosResumoQuery.isLoading && !aptosResumoQuery.data ? (
+                Array.from({ length: 5 }).map((_, index) => (
+                  <MetricCardSkeleton key={index} />
+                ))
+              ) : (
+                <>
+                  <StatsCard
+                    title="Aptos a renovar"
+                    value={String(aptosQuery.data?.count ?? 0)}
+                    delta={`${aptosRows.length} exibidos na página atual`}
+                    icon={RefreshCcwIcon}
+                    tone="neutral"
+                  />
+                  <StatsCard
+                    title="Em análise"
+                    value={String(aptosResumo.em_analise)}
+                    delta="Solicitações na fila da análise"
+                    icon={ClipboardCheckIcon}
+                    tone="warning"
+                  />
+                  <StatsCard
+                    title="Aprovados para renovação"
+                    value={String(aptosResumo.aprovados)}
+                    delta="Validados e aguardando coordenação/tesouraria"
+                    icon={BadgeCheckIcon}
+                    tone="positive"
+                  />
+                  <StatsCard
+                    title="Desistentes"
+                    value={String(aptosResumo.desistentes)}
+                    delta="Liquidados, desativados, bloqueados ou revertidos"
+                    icon={HandCoinsIcon}
+                    tone="neutral"
+                  />
+                  <StatsCard
+                    title="Renovados"
+                    value={String(aptosResumo.renovados)}
+                    delta="Renovações efetivadas"
+                    icon={WalletIcon}
+                    tone="neutral"
+                  />
+                </>
+              )}
+            </div>
           </div>
         </section>
 
@@ -1070,11 +1281,8 @@ export default function AgenteRefinanciadosPage() {
             <DialogTitle>Enviar renovação</DialogTitle>
             <DialogDescription>
               {sendTarget
-                ? `${sendTarget.associado.nome_completo} · ${sendTarget.codigo}`
+                ? `${sendTarget.nome_associado} · ${sendTarget.contrato_referencia_renovacao_codigo}`
                 : "Anexe o termo de antecipação para encaminhar a renovação ao analista."}
-              {sendTarget?.status_renovacao === "pendente_termo_agente"
-                ? " Reenvie o termo solicitado pelo analista no mesmo refinanciamento."
-                : ""}
             </DialogDescription>
           </DialogHeader>
           <FileUploadDropzone
@@ -1098,14 +1306,12 @@ export default function AgenteRefinanciadosPage() {
               onClick={() => {
                 if (!sendTarget || !termo) return;
                 solicitarMutation.mutate({
-                  contratoId: sendTarget.id,
+                  contratoId: sendTarget.contrato_referencia_renovacao_id,
                   file: termo,
                 });
               }}
             >
-              {sendTarget?.status_renovacao === "pendente_termo_agente"
-                ? "Reenviar termo"
-                : "Enviar para renovação"}
+              Enviar para renovação
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1116,6 +1322,7 @@ export default function AgenteRefinanciadosPage() {
         onOpenChange={(open) => {
           if (!open) {
             setLiquidacaoTarget(null);
+            setLiquidacaoObservacao("");
           }
         }}
       >
@@ -1124,7 +1331,7 @@ export default function AgenteRefinanciadosPage() {
             <DialogTitle>Enviar para liquidação</DialogTitle>
             <DialogDescription>
               {liquidacaoTarget
-                ? `${liquidacaoTarget.associado.nome_completo} · ${liquidacaoTarget.codigo}`
+                ? `${liquidacaoTarget.nome_associado} · ${liquidacaoTarget.contrato_referencia_renovacao_codigo}`
                 : "A solicitação será encaminhada para a tesouraria tratar a liquidação do contrato."}
             </DialogDescription>
           </DialogHeader>
@@ -1132,11 +1339,18 @@ export default function AgenteRefinanciadosPage() {
             Esta ação remove o contrato da lista de aptos a renovar e registra no histórico do agente
             que o caso deve seguir para liquidação.
           </div>
+          <Input
+            value={liquidacaoObservacao}
+            onChange={(event) => setLiquidacaoObservacao(event.target.value)}
+            placeholder="Observação da liquidação (opcional)"
+            className="rounded-2xl"
+          />
           <DialogFooter>
             <Button
               variant="outline"
               onClick={() => {
                 setLiquidacaoTarget(null);
+                setLiquidacaoObservacao("");
               }}
             >
               Cancelar
@@ -1147,11 +1361,68 @@ export default function AgenteRefinanciadosPage() {
               onClick={() => {
                 if (!liquidacaoTarget) return;
                 solicitarLiquidacaoMutation.mutate({
-                  contratoId: liquidacaoTarget.id,
+                  contratoId: liquidacaoTarget.contrato_referencia_renovacao_id,
+                  refinanciamentoId: null,
+                  observacao: liquidacaoObservacao,
                 });
               }}
             >
               Enviar para liquidação
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!inativacaoTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setInativacaoTarget(null);
+            setInativacaoObservacao("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Inativar associado</DialogTitle>
+            <DialogDescription>
+              {inativacaoTarget
+                ? `${inativacaoTarget.nome_associado} · ${inativacaoTarget.contrato_referencia_renovacao_codigo}`
+                : "O associado será inativado e sairá da fila de renovação."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-2xl border border-border/60 bg-card/50 p-4 text-sm text-muted-foreground">
+            Use esta ação quando o associado desistiu da renovação e não deve mais permanecer
+            na esteira.
+          </div>
+          <Input
+            value={inativacaoObservacao}
+            onChange={(event) => setInativacaoObservacao(event.target.value)}
+            placeholder="Motivo da inativação (opcional)"
+            className="rounded-2xl"
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setInativacaoTarget(null);
+                setInativacaoObservacao("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="outline"
+              disabled={!inativacaoTarget || inativarAssociadoMutation.isPending}
+              onClick={() => {
+                if (!inativacaoTarget) return;
+                inativarAssociadoMutation.mutate({
+                  associadoId: inativacaoTarget.associado_id,
+                  observacao: inativacaoObservacao,
+                });
+              }}
+            >
+              Inativar associado
             </Button>
           </DialogFooter>
         </DialogContent>

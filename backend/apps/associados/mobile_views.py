@@ -38,6 +38,7 @@ class AppStatusView(APIView):
 
 from apps.accounts.permissions import IsAssociadoOrAdmin
 from apps.accounts.serializers import get_user_role_codes
+from apps.accounts.mobile_maintenance import MobileMaintenanceMixin
 from apps.contratos.canonicalization import resolve_operational_contract_for_associado
 from apps.contratos.models import Contrato
 from apps.esteira.models import DocIssue, DocReupload
@@ -96,7 +97,7 @@ def _build_app_me_payload(request) -> dict[str, object]:
     }
 
 
-class AppMeView(APIView):
+class AppMeView(MobileMaintenanceMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
     @extend_schema(responses={200: OpenApiTypes.OBJECT})
@@ -104,7 +105,7 @@ class AppMeView(APIView):
         return Response(_build_app_me_payload(request), status=status.HTTP_200_OK)
 
 
-class AppMensalidadesView(APIView):
+class AppMensalidadesView(MobileMaintenanceMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
     @extend_schema(responses={200: OpenApiTypes.OBJECT})
@@ -120,7 +121,7 @@ class AppMensalidadesView(APIView):
         )
 
 
-class AppAntecipacaoView(APIView):
+class AppAntecipacaoView(MobileMaintenanceMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
     @extend_schema(responses={200: OpenApiTypes.OBJECT})
@@ -132,7 +133,7 @@ class AppAntecipacaoView(APIView):
         )
 
 
-class AppPendenciasView(APIView):
+class AppPendenciasView(MobileMaintenanceMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
     @extend_schema(responses={200: OpenApiTypes.OBJECT})
@@ -141,7 +142,7 @@ class AppPendenciasView(APIView):
         return Response(build_issues_payload(associado), status=status.HTTP_200_OK)
 
 
-class AppDocumentosView(APIView):
+class AppDocumentosView(MobileMaintenanceMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
     parser_classes = [MultiPartParser]
 
@@ -171,7 +172,7 @@ class AppDocumentosView(APIView):
         )
 
 
-class AppCadastroView(APIView):
+class AppCadastroView(MobileMaintenanceMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -210,7 +211,7 @@ class AppCadastroView(APIView):
         )
 
 
-class AppCadastroCheckCpfView(APIView):
+class AppCadastroCheckCpfView(MobileMaintenanceMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
     @extend_schema(responses={200: OpenApiTypes.OBJECT})
@@ -236,7 +237,7 @@ class AppCadastroCheckCpfView(APIView):
         )
 
 
-class AppPendenciasReuploadsView(APIView):
+class AppPendenciasReuploadsView(MobileMaintenanceMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
     parser_classes = [MultiPartParser, FormParser]
 
@@ -330,7 +331,7 @@ class AppPendenciasReuploadsView(APIView):
         )
 
 
-class AppTermosAceiteView(APIView):
+class AppTermosAceiteView(MobileMaintenanceMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
     @extend_schema(
@@ -363,7 +364,7 @@ class AppTermosAceiteView(APIView):
         return Response({"ok": True, "aceite_termos": True}, status=status.HTTP_200_OK)
 
 
-class AppContatoView(APIView):
+class AppContatoView(MobileMaintenanceMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
     @extend_schema(
@@ -400,7 +401,7 @@ class AppContatoView(APIView):
         )
 
 
-class AppAuxilio2StatusView(APIView):
+class AppAuxilio2StatusView(MobileMaintenanceMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
     @extend_schema(responses={200: OpenApiTypes.OBJECT})
@@ -412,7 +413,7 @@ class AppAuxilio2StatusView(APIView):
         )
 
 
-class AppAuxilio2ResumoView(APIView):
+class AppAuxilio2ResumoView(MobileMaintenanceMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
     @extend_schema(responses={200: OpenApiTypes.OBJECT})
@@ -424,7 +425,7 @@ class AppAuxilio2ResumoView(APIView):
         )
 
 
-class AppAuxilio2ChargeView(APIView):
+class AppAuxilio2ChargeView(MobileMaintenanceMixin, APIView):
     permission_classes = [permissions.IsAuthenticated, IsAssociadoOrAdmin]
 
     @extend_schema(responses={200: OpenApiTypes.OBJECT})

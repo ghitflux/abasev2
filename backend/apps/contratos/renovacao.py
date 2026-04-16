@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from django.db.models import Prefetch, Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from apps.associados.models import Associado
 from apps.importacao.financeiro import build_financeiro_resumo
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem
 
@@ -14,7 +15,11 @@ from .canonicalization import (
     get_operational_contracts_for_associado,
     operational_contracts_queryset,
 )
-from .cycle_projection import build_contract_cycle_projection
+from .cycle_projection import (
+    build_contract_cycle_projection,
+    is_contract_eligible_for_renewal_competencia,
+    resolve_current_renewal_competencia,
+)
 from .cycle_timeline import (
     get_contract_activation_payload,
     get_cycle_activation_info,
@@ -29,15 +34,7 @@ def parse_competencia_query(value: str | None):
             return datetime.strptime(value, "%Y-%m").date().replace(day=1)
         except ValueError as exc:
             raise ValidationError("Competência inválida. Use o formato YYYY-MM.") from exc
-
-    ultima_importacao = (
-        ArquivoRetorno.objects.filter(status=ArquivoRetorno.Status.CONCLUIDO)
-        .order_by("-competencia", "-created_at")
-        .first()
-    )
-    if ultima_importacao:
-        return ultima_importacao.competencia
-    return timezone.localdate().replace(day=1)
+    return resolve_current_renewal_competencia() or timezone.localdate().replace(day=1)
 
 
 class RenovacaoCicloService:
@@ -57,6 +54,14 @@ class RenovacaoCicloService:
         if parcelas_total <= 1:
             return parcelas_total
         return max(parcelas_total - 1, 1)
+
+    @staticmethod
+    def _is_paid_status(value: object) -> bool:
+        return str(value or "") in {
+            Parcela.Status.DESCONTADO,
+            Parcela.Status.LIQUIDADA,
+            "quitada",
+        }
 
     @staticmethod
     def _resolve_parcelas(ciclo: Ciclo) -> list[Parcela]:
@@ -94,13 +99,16 @@ class RenovacaoCicloService:
 
     @staticmethod
     def _status_visual(
+        competencia: date,
         parcela: Parcela,
         ciclo: Ciclo,
         proximo_ciclo: Ciclo | None,
         parcelas_ciclo: list[Parcela],
     ) -> str:
         parcelas_pagas = sum(
-            1 for ciclo_parcela in parcelas_ciclo if ciclo_parcela.status == Parcela.Status.DESCONTADO
+            1
+            for ciclo_parcela in parcelas_ciclo
+            if RenovacaoCicloService._is_paid_status(ciclo_parcela.status)
         )
         parcelas_total = len(parcelas_ciclo)
         parcelas_minimas_para_renovar = RenovacaoCicloService._parcelas_minimas_para_renovar(
@@ -127,7 +135,22 @@ class RenovacaoCicloService:
             or (ativacao_proxima and ativacao_proxima.activated_at is not None)
         ):
             return "ciclo_iniciado"
-        if parcelas_total > 0 and parcelas_pagas >= parcelas_minimas_para_renovar:
+        if (
+            parcelas_total > 0
+            and parcelas_pagas >= parcelas_minimas_para_renovar
+            and is_contract_eligible_for_renewal_competencia(
+                ciclo.contrato,
+                competencia=competencia,
+                parcelas=[
+                    {
+                        "referencia_mes": ciclo_parcela.referencia_mes,
+                        "status": ciclo_parcela.status,
+                        "data_pagamento": ciclo_parcela.data_pagamento,
+                    }
+                    for ciclo_parcela in parcelas_ciclo
+                ],
+            )
+        ):
             return "apto_a_renovar"
         if parcela.status == Parcela.Status.EM_PREVISAO:
             return "em_aberto"
@@ -173,14 +196,16 @@ class RenovacaoCicloService:
         parcelas_pagas = sum(
             1
             for parcela in parcelas_projetadas
-            if str(parcela.get("status") or "")
-            in {
-                Parcela.Status.DESCONTADO,
-                Parcela.Status.LIQUIDADA,
-                "quitada",
-            }
+            if RenovacaoCicloService._is_paid_status(parcela.get("status"))
         )
         parcelas_total = len(parcelas_projetadas)
+        if not is_contract_eligible_for_renewal_competencia(
+            contrato,
+            competencia=competencia,
+            parcelas=parcelas_projetadas,
+            projection=projection,
+        ):
+            return None
         status_explicacao = RenovacaoCicloService._build_status_explicacao(
             contrato=contrato,
             status_visual=status_renovacao,
@@ -308,10 +333,13 @@ class RenovacaoCicloService:
             None,
         )
         parcelas_pagas = sum(
-            1 for ciclo_parcela in parcelas_ciclo if ciclo_parcela.status == Parcela.Status.DESCONTADO
+            1
+            for ciclo_parcela in parcelas_ciclo
+            if RenovacaoCicloService._is_paid_status(ciclo_parcela.status)
         )
         parcelas_total = len(parcelas_ciclo)
         status_visual = RenovacaoCicloService._status_visual(
+            datetime.strptime(competencia, "%m/%Y").date().replace(day=1),
             parcela,
             ciclo,
             proximo_ciclo,
@@ -390,8 +418,15 @@ class RenovacaoCicloService:
         competencia,
         search: str | None = None,
         status: str | None = None,
+        agente_id: int | None = None,
+        data_inicio: date | None = None,
+        data_fim: date | None = None,
     ) -> list[dict[str, object]]:
         renewal_only = status == "ciclo_renovado"
+        optimize_apto_scope = (
+            status == "apto_a_renovar"
+            and Associado.objects.filter(status=Associado.Status.APTO_A_RENOVAR).exists()
+        )
         item_prefetch = Prefetch(
             "itens_retorno",
             queryset=ArquivoRetornoItem.objects.filter(
@@ -464,6 +499,10 @@ class RenovacaoCicloService:
                     itens_retorno__gerou_encerramento=True,
                 )
             ).distinct()
+        elif optimize_apto_scope:
+            parcelas = parcelas.filter(
+                ciclo__contrato__associado__status=Associado.Status.APTO_A_RENOVAR
+            )
 
         search_value = (search or "").strip()
         if search_value:
@@ -474,6 +513,12 @@ class RenovacaoCicloService:
                 | Q(ciclo__contrato__associado__matricula_orgao__icontains=search_value)
                 | Q(ciclo__contrato__codigo__icontains=search_value)
             )
+        if agente_id is not None:
+            parcelas = parcelas.filter(ciclo__contrato__agente_id=agente_id)
+        if data_inicio:
+            parcelas = parcelas.filter(ciclo__contrato__data_contrato__gte=data_inicio)
+        if data_fim:
+            parcelas = parcelas.filter(ciclo__contrato__data_contrato__lte=data_fim)
 
         rows: list[dict[str, object]] = []
         for parcela in parcelas:
@@ -484,6 +529,12 @@ class RenovacaoCicloService:
                 competencia.strftime("%m/%Y"),
                 import_item,
             )
+            if status == "apto_a_renovar":
+                projection_status = str(
+                    build_contract_cycle_projection(parcela.ciclo.contrato).get("status_renovacao") or ""
+                )
+                if projection_status != "apto_a_renovar":
+                    continue
             if status and row["status_visual"] != status:
                 continue
             rows.append(row)
@@ -515,15 +566,31 @@ class RenovacaoCicloService:
             itens_suplementares = itens_suplementares.filter(
                 Q(gerou_novo_ciclo=True) | Q(gerou_encerramento=True)
             )
+        elif optimize_apto_scope:
+            itens_suplementares = itens_suplementares.filter(
+                associado__status=Associado.Status.APTO_A_RENOVAR
+            )
         for import_item in itens_suplementares:
             contrato = import_item.parcela.ciclo.contrato
             if contrato.status not in [Contrato.Status.ATIVO, Contrato.Status.ENCERRADO]:
+                continue
+            if agente_id is not None and contrato.agente_id != agente_id:
+                continue
+            if data_inicio and contrato.data_contrato and contrato.data_contrato < data_inicio:
+                continue
+            if data_fim and contrato.data_contrato and contrato.data_contrato > data_fim:
                 continue
             row = RenovacaoCicloService._build_row(
                 import_item.parcela,
                 competencia.strftime("%m/%Y"),
                 import_item,
             )
+            if status == "apto_a_renovar":
+                projection_status = str(
+                    build_contract_cycle_projection(contrato).get("status_renovacao") or ""
+                )
+                if projection_status != "apto_a_renovar":
+                    continue
             if status and row["status_visual"] != status:
                 continue
             rows.append(row)
@@ -574,6 +641,16 @@ class RenovacaoCicloService:
                 | Q(associado__matricula_orgao__icontains=search_value)
                 | Q(codigo__icontains=search_value)
             )
+        if optimize_apto_scope:
+            contratos_suplementares = contratos_suplementares.filter(
+                associado__status=Associado.Status.APTO_A_RENOVAR
+            )
+        if agente_id is not None:
+            contratos_suplementares = contratos_suplementares.filter(agente_id=agente_id)
+        if data_inicio:
+            contratos_suplementares = contratos_suplementares.filter(data_contrato__gte=data_inicio)
+        if data_fim:
+            contratos_suplementares = contratos_suplementares.filter(data_contrato__lte=data_fim)
 
         if not renewal_only:
             for contrato in contratos_suplementares:

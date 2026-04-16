@@ -85,6 +85,8 @@ const ROUTE_SEARCH_ALIASES: Partial<Record<string, string[]>> = {
   "/analise": ["dashboard analise", "analise"],
   "/analise/aptos": [
     "aptos",
+    "esteira de renovacao",
+    "esteira de renovação",
     "contratos para renovacao",
     "contratos para renovação",
     "renovacao analise",
@@ -312,7 +314,7 @@ export const navigationSections: NavigationSection[] = [
             roles: ["ANALISTA", "ADMIN"],
           },
           {
-            title: "Contratos para Renovação",
+            title: "Esteira de Renovação",
             href: "/analise/aptos",
             icon: RefreshCcw,
             roles: ["ANALISTA", "ADMIN"],
@@ -609,6 +611,10 @@ export function canAccessPath(path: string, roles: Role[] = []) {
   }
 
   if (pathname === "/analise" && roles.includes("COORDENADOR")) {
+    return true;
+  }
+
+  if (pathname === "/analise/aptos" && roles.includes("COORDENADOR")) {
     return true;
   }
 

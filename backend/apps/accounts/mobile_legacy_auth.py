@@ -14,6 +14,7 @@ from rest_framework.exceptions import AuthenticationFailed
 
 from apps.associados.models import Associado
 
+from .mobile_maintenance import enforce_mobile_maintenance
 from .models import MobileAccessToken, PasswordResetRequest, Role, User, UserRole
 
 MOBILE_TOKEN_LIFETIME = timedelta(days=3650)
@@ -306,6 +307,8 @@ class LegacyMobileTokenAuthentication(BaseAuthentication):
             token_key = (request.query_params.get("token") or "").strip()
         if not token_key:
             return None
+
+        enforce_mobile_maintenance()
 
         token = (
             MobileAccessToken.objects.select_related("user")

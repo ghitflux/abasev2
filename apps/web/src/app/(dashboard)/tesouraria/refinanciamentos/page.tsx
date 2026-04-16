@@ -65,7 +65,84 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { usePermissions } from "@/hooks/use-permissions";
+
+type KpiModalConfig = {
+  title: string;
+  statuses: string[];
+};
+
+const KPI_MODAL_COLUMNS: DataTableColumn<RefinanciamentoItem>[] = [
+  {
+    id: "associado",
+    header: "Associado",
+    cell: (row) => (
+      <div className="space-y-0.5">
+        <p className="text-sm font-medium">{row.associado_nome}</p>
+        <p className="font-mono text-xs text-muted-foreground">{row.cpf_cnpj}</p>
+      </div>
+    ),
+  },
+  {
+    id: "matricula",
+    header: "Matrícula",
+    cell: (row) => (
+      <p className="font-mono text-xs">{row.matricula_display || row.matricula || "—"}</p>
+    ),
+  },
+  {
+    id: "contrato",
+    header: "Contrato",
+    cell: (row) => (
+      <p className="font-mono text-xs">{row.contrato_codigo}</p>
+    ),
+  },
+  {
+    id: "competencia",
+    header: "Competência",
+    cell: (row) => formatMonthYear(row.competencia_solicitada),
+  },
+  {
+    id: "agente",
+    header: "Agente",
+    cell: (row) => (
+      <p className="text-xs text-muted-foreground">{row.agente?.full_name || "—"}</p>
+    ),
+  },
+  {
+    id: "valor",
+    header: "Valor",
+    cell: (row) => (
+      <div className="space-y-0.5">
+        <p className="text-sm font-semibold">{formatCurrency(row.valor_liberado_associado)}</p>
+        <p className="text-xs text-emerald-400">Repasse: {formatCurrency(row.repasse_agente)}</p>
+      </div>
+    ),
+  },
+  {
+    id: "status",
+    header: "Status",
+    cell: (row) => <StatusBadge status={row.status} />,
+  },
+  {
+    id: "data",
+    header: "Data",
+    cell: (row) => (
+      <p className="text-xs text-muted-foreground">
+        {formatDateTime(row.executado_em || row.data_ativacao_ciclo || row.updated_at)}
+      </p>
+    ),
+  },
+];
 
 type AgentFilterUser = SimpleUser & {
   email?: string;
@@ -85,6 +162,14 @@ function normalizeCycleMonths(value: string[]) {
   return Array.from(
     new Set(value.map((item) => item.trim()).filter(Boolean)),
   ).sort((left, right) => left.localeCompare(right));
+}
+
+function getCurrentYearRange() {
+  const now = new Date();
+  return {
+    start: new Date(now.getFullYear(), 0, 1),
+    end: new Date(now.getFullYear(), 11, 31),
+  };
 }
 
 function CompactUploadButton({
@@ -199,6 +284,7 @@ function hasRenewalPaymentProofs(row: RefinanciamentoItem) {
 }
 
 export default function TesourariaRefinanciamentosPage() {
+  const currentYear = React.useMemo(() => String(new Date().getFullYear()), []);
   const { hasAnyRole } = usePermissions();
   const canMutate = hasAnyRole(["ADMIN", "TESOUREIRO"]);
   const canRemoverFila = hasAnyRole(["ADMIN", "COORDENADOR"]);
@@ -231,12 +317,12 @@ export default function TesourariaRefinanciamentosPage() {
     [agentesQuery.data],
   );
   const [filtersOpen, setFiltersOpen] = React.useState(false);
-  const [dataInicio, setDataInicio] = React.useState<Date>();
-  const [dataFim, setDataFim] = React.useState<Date>();
+  const [dataInicio, setDataInicio] = React.useState<Date>(() => getCurrentYearRange().start);
+  const [dataFim, setDataFim] = React.useState<Date>(() => getCurrentYearRange().end);
   const [cycleMonths, setCycleMonths] = React.useState<string[]>([]);
   const [numeroCiclos, setNumeroCiclos] = React.useState("");
-  const [draftDataInicio, setDraftDataInicio] = React.useState<Date>();
-  const [draftDataFim, setDraftDataFim] = React.useState<Date>();
+  const [draftDataInicio, setDraftDataInicio] = React.useState<Date>(() => getCurrentYearRange().start);
+  const [draftDataFim, setDraftDataFim] = React.useState<Date>(() => getCurrentYearRange().end);
   const [draftCycleMonths, setDraftCycleMonths] = React.useState<string[]>([]);
   const [draftCycleMonthPicker, setDraftCycleMonthPicker] = React.useState<Date>();
   const [draftNumeroCiclos, setDraftNumeroCiclos] = React.useState("");
@@ -271,6 +357,7 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
+          year: currentYear,
           cycle_key: cycleKey || undefined,
           numero_ciclos: numeroCiclos || undefined,
           status: PENDING_STATUS,
@@ -297,6 +384,7 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
+          year: currentYear,
           cycle_key: cycleKey || undefined,
           numero_ciclos: numeroCiclos || undefined,
           status: EFETIVADO_STATUS,
@@ -323,6 +411,7 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
+          year: currentYear,
           cycle_key: cycleKey || undefined,
           numero_ciclos: numeroCiclos || undefined,
           status: CANCELADO_STATUS,
@@ -345,6 +434,7 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
+          year: currentYear,
           cycle_key: cycleKey || undefined,
           numero_ciclos: numeroCiclos || undefined,
         },
@@ -480,6 +570,41 @@ export default function TesourariaRefinanciamentosPage() {
       );
     },
   });
+
+  const [kpiModal, setKpiModal] = React.useState<KpiModalConfig | null>(null);
+  const [kpiModalPage, setKpiModalPage] = React.useState(1);
+
+  const kpiModalQuery = useQuery({
+    queryKey: [
+      "tesouraria-refinanciamentos-kpi-modal",
+      kpiModal?.statuses,
+      kpiModalPage,
+      search,
+      dataInicio?.toISOString(),
+      dataFim?.toISOString(),
+      cycleKey,
+      numeroCiclos,
+    ],
+    queryFn: () =>
+      apiFetch<PaginatedResponse<RefinanciamentoItem>>("tesouraria/refinanciamentos", {
+        query: {
+          page: kpiModalPage,
+          page_size: 20,
+          search: search || undefined,
+          data_inicio: toIsoDate(dataInicio),
+          data_fim: toIsoDate(dataFim),
+          year: currentYear,
+          cycle_key: cycleKey || undefined,
+          numero_ciclos: numeroCiclos || undefined,
+          status: kpiModal?.statuses,
+        },
+      }),
+    enabled: kpiModal !== null,
+  });
+
+  React.useEffect(() => {
+    setKpiModalPage(1);
+  }, [kpiModal]);
 
   const resumo = resumoQuery.data;
   const canceladasTotal =
@@ -938,6 +1063,7 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
+          year: currentYear,
           agente: exportAgente || undefined,
           cycle_key: cycleKey || undefined,
           numero_ciclos: numeroCiclos || undefined,
@@ -1013,7 +1139,7 @@ export default function TesourariaRefinanciamentosPage() {
         setIsExporting(false);
       }
     },
-    [cycleKey, dataFim, dataInicio, numeroCiclos, search],
+    [currentYear, cycleKey, dataFim, dataInicio, numeroCiclos, search],
   );
 
   return (
@@ -1051,23 +1177,47 @@ export default function TesourariaRefinanciamentosPage() {
         <StatsCard
           title="Pendentes para renovação"
           value={String(pendingQuery.data?.count ?? 0)}
-          delta="Fila operacional aguardando anexos da tesouraria"
+          delta="Fila operacional aguardando anexos · clique para detalhar"
           icon={Clock3Icon}
           tone="neutral"
+          tooltip="Renovações aprovadas pela coordenação aguardando comprovantes e efetivação na tesouraria."
+          onClick={() =>
+            setKpiModal({
+              title: "Pendentes para renovação",
+              statuses: PENDING_STATUS,
+            })
+          }
+          active={kpiModal?.title === "Pendentes para renovação"}
         />
         <StatsCard
           title="Efetivadas"
           value={String(resumo?.efetivados ?? efetivadasQuery.data?.count ?? 0)}
-          delta="Contratos concluídos pela tesouraria"
+          delta="Contratos concluídos pela tesouraria · clique para detalhar"
           icon={CheckCircle2Icon}
           tone="positive"
+          tooltip="Renovações já pagas e ativadas no ciclo."
+          onClick={() =>
+            setKpiModal({
+              title: "Efetivadas",
+              statuses: EFETIVADO_STATUS,
+            })
+          }
+          active={kpiModal?.title === "Efetivadas"}
         />
         <StatsCard
           title="Canceladas"
           value={String(canceladasTotal)}
-          delta="Bloqueadas, revertidas ou desativadas"
+          delta="Bloqueadas, revertidas ou desativadas · clique para detalhar"
           icon={XCircleIcon}
           tone="warning"
+          tooltip="Renovações bloqueadas, revertidas ou desativadas no recorte atual."
+          onClick={() =>
+            setKpiModal({
+              title: "Canceladas / Bloqueadas",
+              statuses: CANCELADO_STATUS,
+            })
+          }
+          active={kpiModal?.title === "Canceladas / Bloqueadas"}
         />
         <StatsCard
           title="Repasse total"
@@ -1075,6 +1225,7 @@ export default function TesourariaRefinanciamentosPage() {
           delta="Soma do repasse no recorte atual"
           icon={HandCoinsIcon}
           tone="neutral"
+          tooltip="Soma do repasse ao agente de todas as renovações efetivadas no recorte."
         />
       </section>
 
@@ -1265,6 +1416,87 @@ export default function TesourariaRefinanciamentosPage() {
         loading={canceladasQuery.isLoading}
         emptyMessage="Nenhuma renovação cancelada no recorte."
       />
+
+      {/* ─── Modal KPI ──────────────────────────────────────────────── */}
+      <Dialog
+        open={kpiModal !== null}
+        onOpenChange={(open) => {
+          if (!open) setKpiModal(null);
+        }}
+      >
+        <DialogContent className="max-h-[85vh] max-w-5xl overflow-hidden p-0 flex flex-col">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/60">
+            <DialogTitle>{kpiModal?.title ?? ""}</DialogTitle>
+            <DialogDescription>
+              {kpiModalQuery.data?.count ?? 0} registros no recorte atual
+              {search ? ` · busca: "${search}"` : ""}
+              {dataInicio || dataFim ? " · com filtro de data" : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto px-6 py-4">
+            {kpiModalQuery.isLoading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-12 w-full rounded-xl" />
+                ))}
+              </div>
+            ) : kpiModalQuery.data?.results.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Nenhum registro encontrado para este filtro.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {KPI_MODAL_COLUMNS.map((col) => (
+                      <TableHead key={col.id}>{col.header}</TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(kpiModalQuery.data?.results ?? []).map((row) => (
+                    <TableRow key={row.id}>
+                      {KPI_MODAL_COLUMNS.map((col) => (
+                        <TableCell key={col.id}>
+                          {col.cell ? col.cell(row) : null}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+          {(kpiModalQuery.data?.count ?? 0) > 20 && (
+            <div className="flex items-center justify-between border-t border-border/60 px-6 py-3">
+              <p className="text-sm text-muted-foreground">
+                Página {kpiModalPage} de{" "}
+                {Math.ceil((kpiModalQuery.data?.count ?? 0) / 20)}
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={kpiModalPage <= 1}
+                  onClick={() => setKpiModalPage((p) => p - 1)}
+                >
+                  Anterior
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={
+                    kpiModalPage >= Math.ceil((kpiModalQuery.data?.count ?? 0) / 20)
+                  }
+                  onClick={() => setKpiModalPage((p) => p + 1)}
+                >
+                  Próxima
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <AssociadoDetailsDialog
         associadoId={detailAssociadoId}

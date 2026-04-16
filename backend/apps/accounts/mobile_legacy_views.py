@@ -26,6 +26,7 @@ from .mobile_legacy_auth import (
     issue_mobile_access_token,
     revoke_mobile_access_token,
 )
+from .mobile_maintenance import MobileMaintenanceMixin, enforce_mobile_maintenance
 from .models import User
 from .serializers import PasswordResetRequestSerializer
 from .views import LoginRateThrottle
@@ -104,7 +105,7 @@ def _roles_for_response(user: User, *, include_associado_alias: bool) -> list[st
     )
 
 
-class LegacyMobileAuthenticatedAPIView(APIView):
+class LegacyMobileAuthenticatedAPIView(MobileMaintenanceMixin, APIView):
     authentication_classes = [LegacyMobileTokenAuthentication]
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = LegacyNoopSerializer
@@ -117,6 +118,7 @@ class LegacyLoginView(APIView):
 
     @extend_schema(request=LegacyLoginSerializer, responses={200: OpenApiTypes.OBJECT})
     def post(self, request):
+        enforce_mobile_maintenance()
         serializer = LegacyLoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -182,6 +184,7 @@ class LegacyRegisterView(APIView):
     @extend_schema(request=LegacyRegisterSerializer, responses={201: OpenApiTypes.OBJECT})
     @transaction.atomic
     def post(self, request):
+        enforce_mobile_maintenance()
         serializer = LegacyRegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -239,6 +242,7 @@ class LegacyCheckEmailView(APIView):
 
     @extend_schema(responses={200: OpenApiTypes.OBJECT})
     def get(self, request):
+        enforce_mobile_maintenance()
         email = (request.query_params.get("email") or "").strip().lower()
         if not email:
             return Response(
@@ -278,6 +282,7 @@ class LegacyForgotPasswordView(APIView):
         responses={200: OpenApiTypes.OBJECT},
     )
     def post(self, request):
+        enforce_mobile_maintenance()
         serializer = LegacyForgotPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -307,6 +312,7 @@ class LegacyResetPasswordView(APIView):
     )
     @transaction.atomic
     def post(self, request):
+        enforce_mobile_maintenance()
         serializer = LegacyResetPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 

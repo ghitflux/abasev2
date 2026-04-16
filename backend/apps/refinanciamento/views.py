@@ -16,6 +16,7 @@ from rest_framework.viewsets import GenericViewSet
 from apps.accounts.permissions import (
     IsAgenteOrAdmin,
     IsAgenteOrAnalistaOrCoordenadorOrAdmin,
+    IsAgenteOrCoordenadorOrAdmin,
     IsAnalistaOrAdmin,
     IsCoordenadorOrTesoureiroOrAdmin,
     IsCoordenadorOrAdmin,
@@ -178,6 +179,12 @@ class BaseRefinanciamentoViewSet(
         if competencia_end:
             queryset = queryset.filter(competencia_solicitada__lte=competencia_end)
 
+        year = (self.request.query_params.get("year") or "").strip()
+        if year:
+            if not year.isdigit():
+                raise ValidationError({"year": ["Informe um ano válido."]})
+            queryset = queryset.filter(competencia_solicitada__year=int(year))
+
         agent_filter = self.request.query_params.get("agent")
         if agent_filter:
             queryset = queryset.filter(
@@ -234,6 +241,10 @@ class BaseRefinanciamentoViewSet(
         queryset = self.get_queryset()
         resumo = queryset.aggregate(
             total=Count("id"),
+            solicitados_liquidacao=Count(
+                "id",
+                filter=Q(status=Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO),
+            ),
             em_analise=Count(
                 "id",
                 filter=Q(
@@ -291,6 +302,12 @@ class BaseRefinanciamentoViewSet(
             ),
             repasse_total=Sum("repasse_agente"),
         )
+        resumo["desistentes"] = (
+            int(resumo.get("solicitados_liquidacao") or 0)
+            + int(resumo.get("bloqueados") or 0)
+            + int(resumo.get("revertidos") or 0)
+            + int(resumo.get("desativados") or 0)
+        )
         resumo["com_anexo_agente"] = (
             queryset.filter(comprovantes__papel=Comprovante.Papel.AGENTE)
             .values("id")
@@ -309,7 +326,7 @@ class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
                 IsAgenteOrAnalistaOrCoordenadorOrAdmin(),
             ]
         if self.action == "solicitar_liquidacao":
-            return [permissions.IsAuthenticated(), IsAgenteOrAdmin()]
+            return [permissions.IsAuthenticated(), IsAgenteOrCoordenadorOrAdmin()]
         if self.action in [
             "aprovar",
             "bloquear",
