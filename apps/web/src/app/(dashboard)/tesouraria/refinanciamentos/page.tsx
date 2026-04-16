@@ -317,12 +317,12 @@ export default function TesourariaRefinanciamentosPage() {
     [agentesQuery.data],
   );
   const [filtersOpen, setFiltersOpen] = React.useState(false);
-  const [dataInicio, setDataInicio] = React.useState<Date>(() => getCurrentYearRange().start);
-  const [dataFim, setDataFim] = React.useState<Date>(() => getCurrentYearRange().end);
+  const [dataInicio, setDataInicio] = React.useState<Date | undefined>(() => getCurrentYearRange().start);
+  const [dataFim, setDataFim] = React.useState<Date | undefined>(() => getCurrentYearRange().end);
   const [cycleMonths, setCycleMonths] = React.useState<string[]>([]);
   const [numeroCiclos, setNumeroCiclos] = React.useState("");
-  const [draftDataInicio, setDraftDataInicio] = React.useState<Date>(() => getCurrentYearRange().start);
-  const [draftDataFim, setDraftDataFim] = React.useState<Date>(() => getCurrentYearRange().end);
+  const [draftDataInicio, setDraftDataInicio] = React.useState<Date | undefined>(() => getCurrentYearRange().start);
+  const [draftDataFim, setDraftDataFim] = React.useState<Date | undefined>(() => getCurrentYearRange().end);
   const [draftCycleMonths, setDraftCycleMonths] = React.useState<string[]>([]);
   const [draftCycleMonthPicker, setDraftCycleMonthPicker] = React.useState<Date>();
   const [draftNumeroCiclos, setDraftNumeroCiclos] = React.useState("");
