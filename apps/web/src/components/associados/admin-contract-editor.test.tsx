@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import AdminContractEditor from "./admin-contract-editor";
 import type { AdminContractEditorHandle } from "./admin-contract-editor";
+import { buildCyclesPayload } from "./admin-contract-editor";
 import type { AdminEditorContrato } from "@/lib/api/types";
 
 jest.mock("@/components/custom/calendar-competencia", () => {
@@ -243,5 +244,46 @@ describe("AdminContractEditor", () => {
         layout_bucket: "cycle",
       },
     ]);
+  });
+
+  it("gera ciclo ancora automatico quando nao ha ciclos e existem parcelas fora do ciclo", () => {
+    const contractWithoutCycles: AdminEditorContrato = {
+      ...contractFixture,
+      ciclos: [],
+      meses_nao_pagos: [
+        {
+          id: 901,
+          numero: 1,
+          referencia_mes: "2026-02-01",
+          valor: "75.00",
+          data_vencimento: "2026-02-05",
+          status: "nao_descontado",
+          data_pagamento: null,
+          observacao: "",
+          layout_bucket: "unpaid",
+          updated_at: "2026-04-01T10:00:00Z",
+          financial_flags: {
+            tem_retorno: false,
+            tem_baixa_manual: false,
+            tem_liquidacao: false,
+          },
+        },
+      ],
+      movimentos_financeiros_avulsos: [],
+    };
+    const payload = buildCyclesPayload(contractWithoutCycles as any);
+
+    expect(payload.cycles).toEqual([
+      {
+        id: null,
+        client_key: "auto-fallback-cycle-1",
+        numero: 1,
+        data_inicio: "2026-02-01",
+        data_fim: "2026-02-01",
+        status: "aberto",
+        valor_total: "75.00",
+      },
+    ]);
+    expect(payload.parcelas[0]?.cycle_ref).toBe("auto-fallback-cycle-1");
   });
 });

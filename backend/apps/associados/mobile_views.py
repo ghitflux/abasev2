@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 
+from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.types import OpenApiTypes
@@ -16,6 +17,24 @@ from rest_framework import permissions, serializers, status
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+
+class AppStatusView(APIView):
+    """
+    GET /api/v1/app/status/
+    Endpoint público (sem autenticação) que retorna se o app está em manutenção.
+    Controlado pela variável de ambiente APP_MAINTENANCE_MODE=true no servidor.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        maintenance = getattr(settings, "APP_MAINTENANCE_MODE", False)
+        message = getattr(
+            settings,
+            "APP_MAINTENANCE_MESSAGE",
+            "O aplicativo está temporariamente indisponível para manutenção. Tente novamente em breve.",
+        )
+        return Response({"maintenance": maintenance, "message": message})
 
 from apps.accounts.permissions import IsAssociadoOrAdmin
 from apps.accounts.serializers import get_user_role_codes

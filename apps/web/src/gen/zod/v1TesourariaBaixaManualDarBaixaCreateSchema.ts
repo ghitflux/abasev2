@@ -7,10 +7,7 @@ import * as z from "zod";
 import { baixaManualItemSchema } from "./baixaManualItemSchema.ts";
 
 export const V1TesourariaBaixaManualDarBaixaCreatePathParamsSchema = z.object({
-  id: z.coerce
-    .number()
-    .int()
-    .describe("A unique integer value identifying this parcela."),
+  id: z.string(),
 });
 
 export const V1TesourariaBaixaManualDarBaixaCreate200Schema = z.lazy(
@@ -22,6 +19,7 @@ export const V1TesourariaBaixaManualDarBaixaCreateMutationRequestSchema = z
   .unwrap()
   .omit({
     id: true,
+    parcela_id: true,
     associado_id: true,
     nome: true,
     cpf_cnpj: true,
@@ -34,6 +32,13 @@ export const V1TesourariaBaixaManualDarBaixaCreateMutationRequestSchema = z
     status: true,
     data_vencimento: true,
     observacao: true,
+    data_baixa: true,
+    valor_pago: true,
+    realizado_por_nome: true,
+    nome_comprovante: true,
+    origem: true,
+    arquivo_retorno_item_id: true,
+    pode_dar_baixa: true,
   });
 
 export const V1TesourariaBaixaManualDarBaixaCreateMutationResponseSchema =

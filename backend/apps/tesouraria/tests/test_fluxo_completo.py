@@ -669,8 +669,9 @@ class TestFluxoCompleto(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("CPF já possui refinanciamento ativo", " ".join(response.json()))
 
-    def test_efetivacao_sem_comprovante_do_agente_permanece_valida(self):
+    def test_efetivacao_sem_comprovante_do_agente_falha(self):
         associado = self._criar_associado("52345678901")
+        status_inicial = associado.status
         contrato = self._levar_para_tesouraria(associado)
 
         response = self.tes_client.post(
@@ -683,9 +684,16 @@ class TestFluxoCompleto(TestCase):
             format="multipart",
         )
 
-        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertEqual(
+            response.json()["comprovante_agente"][0],
+            "O comprovante do agente é obrigatório para efetivar o contrato.",
+        )
         contrato.refresh_from_db()
-        self.assertEqual(contrato.status, Contrato.Status.ATIVO)
+        associado.refresh_from_db()
+        self.assertNotEqual(contrato.status, Contrato.Status.ATIVO)
+        self.assertIsNone(contrato.auxilio_liberado_em)
+        self.assertEqual(associado.status, status_inicial)
         comprovantes = {
             comprovante.papel: comprovante
             for comprovante in contrato.comprovantes.filter(
@@ -693,8 +701,78 @@ class TestFluxoCompleto(TestCase):
                 deleted_at__isnull=True,
             )
         }
-        self.assertIn(Comprovante.Papel.ASSOCIADO, comprovantes)
+        self.assertNotIn(Comprovante.Papel.ASSOCIADO, comprovantes)
         self.assertNotIn(Comprovante.Papel.AGENTE, comprovantes)
+
+    def test_substituir_comprovante_nao_efetiva_sem_acao_explicita(self):
+        associado = self._criar_associado("52345678911")
+        status_inicial = associado.status
+        contrato = self._levar_para_tesouraria(associado)
+
+        response = self.tes_client.post(
+            f"/api/v1/tesouraria/contratos/{contrato.id}/substituir-comprovante/",
+            {
+                "papel": Comprovante.Papel.ASSOCIADO,
+                "arquivo": SimpleUploadedFile(
+                    "associado.pdf",
+                    b"arquivo",
+                    content_type="application/pdf",
+                ),
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        contrato.refresh_from_db()
+        associado.refresh_from_db()
+        self.assertNotEqual(contrato.status, Contrato.Status.ATIVO)
+        self.assertIsNone(contrato.auxilio_liberado_em)
+        self.assertEqual(associado.status, status_inicial)
+        self.assertEqual(
+            contrato.comprovantes.filter(
+                refinanciamento__isnull=True,
+                deleted_at__isnull=True,
+            ).count(),
+            1,
+        )
+
+    def test_efetivacao_com_comprovantes_ja_anexados_exige_acao_explicita(self):
+        associado = self._criar_associado("52345678912")
+        status_inicial = associado.status
+        contrato = self._levar_para_tesouraria(associado)
+
+        for papel in [Comprovante.Papel.ASSOCIADO, Comprovante.Papel.AGENTE]:
+            response = self.tes_client.post(
+                f"/api/v1/tesouraria/contratos/{contrato.id}/substituir-comprovante/",
+                {
+                    "papel": papel,
+                    "arquivo": SimpleUploadedFile(
+                        f"{papel}.pdf",
+                        b"arquivo",
+                        content_type="application/pdf",
+                    ),
+                },
+                format="multipart",
+            )
+            self.assertEqual(response.status_code, 200, response.json())
+
+        contrato.refresh_from_db()
+        associado.refresh_from_db()
+        self.assertNotEqual(contrato.status, Contrato.Status.ATIVO)
+        self.assertEqual(associado.status, status_inicial)
+
+        efetivar = self.tes_client.post(
+            f"/api/v1/tesouraria/contratos/{contrato.id}/efetivar/",
+            {},
+            format="json",
+        )
+        self.assertEqual(efetivar.status_code, 200, efetivar.json())
+
+        contrato.refresh_from_db()
+        associado.refresh_from_db()
+        self.assertEqual(contrato.status, Contrato.Status.ATIVO)
+        self.assertIsNotNone(contrato.auxilio_liberado_em)
+        self.assertEqual(associado.status, Associado.Status.ATIVO)
 
     def test_confirmacao_sequencial(self):
         associado = self._criar_associado("62345678901")
@@ -739,8 +817,9 @@ class TestFluxoCompleto(TestCase):
         self.assertEqual(averbacao.status, Confirmacao.Status.CONFIRMADO)
 
     def test_contrato_sem_mensalidade_pode_ser_averbado_diretamente(self):
-        associado = self._criar_associado("62345678902", mensalidade="0.00")
+        associado = self._criar_associado("62345678902")
         contrato = self._levar_para_tesouraria(associado)
+        Contrato.objects.filter(pk=contrato.pk).update(valor_mensalidade=Decimal("0.00"))
 
         response = self.tes_client.post(f"/api/v1/tesouraria/contratos/{contrato.id}/averbar/")
         self.assertEqual(response.status_code, 200, response.json())
@@ -752,6 +831,28 @@ class TestFluxoCompleto(TestCase):
         self.assertIsNotNone(contrato.auxilio_liberado_em)
         self.assertEqual(associado.status, Associado.Status.ATIVO)
         self.assertEqual(associado.esteira_item.etapa_atual, EsteiraItem.Etapa.CONCLUIDO)
+
+    def test_coordenador_pode_excluir_contrato_operacional_preservando_historico(self):
+        associado = self._criar_associado("62345678921")
+        contrato = self._levar_para_tesouraria(associado)
+        associado.status = Associado.Status.ATIVO
+        associado.save(update_fields=["status", "updated_at"])
+        contrato.status = Contrato.Status.ATIVO
+        contrato.save(update_fields=["status", "updated_at"])
+
+        response = self.coord_client.post(
+            f"/api/v1/tesouraria/contratos/{contrato.id}/excluir/"
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        associado.refresh_from_db()
+        contrato.refresh_from_db()
+        associado.esteira_item.refresh_from_db()
+        self.assertEqual(associado.status, Associado.Status.ATIVO)
+        self.assertEqual(contrato.status, Contrato.Status.ATIVO)
+        self.assertEqual(associado.esteira_item.etapa_atual, EsteiraItem.Etapa.CONCLUIDO)
+        self.assertEqual(associado.esteira_item.status, EsteiraItem.Situacao.APROVADO)
+        self.assertIsNotNone(associado.esteira_item.concluido_em)
 
     def test_coordenacao_tem_acesso_de_leitura_as_rotas_da_tesouraria(self):
         associado = self._criar_associado("62345678903")

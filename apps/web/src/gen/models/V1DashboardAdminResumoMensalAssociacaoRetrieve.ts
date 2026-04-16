@@ -7,9 +7,21 @@ import type { DashboardResumoMensalAssociacao } from "./DashboardResumoMensalAss
 
 export type V1DashboardAdminResumoMensalAssociacaoRetrieveQueryParams = {
   /**
+   * @type integer | undefined
+   */
+  agent_id?: number;
+  /**
    * @type string | undefined
    */
   competencia?: string;
+  /**
+   * @type string | undefined
+   */
+  day?: string;
+  /**
+   * @type string | undefined
+   */
+  status?: string;
 };
 
 export type V1DashboardAdminResumoMensalAssociacaoRetrieve200 =

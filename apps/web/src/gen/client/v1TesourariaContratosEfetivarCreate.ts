@@ -14,7 +14,6 @@ import type {
   RequestConfig,
   ResponseErrorConfig,
 } from "@kubb/plugin-client/clients/axios";
-import { buildFormData } from "../.kubb/config.ts";
 
 function getV1TesourariaContratosEfetivarCreateUrl(
   id: V1TesourariaContratosEfetivarCreatePathParams["id"],
@@ -39,7 +38,7 @@ export async function v1TesourariaContratosEfetivarCreate(
   const { client: request = fetch, ...requestConfig } = config;
 
   const requestData = data;
-  const formData = buildFormData(requestData);
+
   const res = await request<
     V1TesourariaContratosEfetivarCreateMutationResponse,
     ResponseErrorConfig<Error>,
@@ -47,7 +46,7 @@ export async function v1TesourariaContratosEfetivarCreate(
   >({
     method: "POST",
     url: getV1TesourariaContratosEfetivarCreateUrl(id).url.toString(),
-    data: formData as FormData,
+    data: requestData,
     ...requestConfig,
   });
   return res.data;

@@ -8,7 +8,10 @@ import { dashboardResumoMensalAssociacaoSchema } from "./dashboardResumoMensalAs
 
 export const V1DashboardAdminResumoMensalAssociacaoRetrieveQueryParamsSchema = z
   .object({
+    agent_id: z.optional(z.coerce.number().int()),
     competencia: z.optional(z.string()),
+    day: z.optional(z.string()),
+    status: z.optional(z.string()),
   })
   .optional();
 

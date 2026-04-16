@@ -24,4 +24,9 @@ export type ContratoEsteira = {
    * @type string
    */
   readonly matricula_display: string;
+  /**
+   * @pattern ^-?\d{0,10}(?:\.\d{0,2})?$
+   * @type string, decimal
+   */
+  readonly valor_mensalidade: string | null;
 };

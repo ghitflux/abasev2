@@ -66,11 +66,36 @@ export type TesourariaContratoList = {
    * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
    * @type string, decimal
    */
+  readonly valor_mensalidade: string;
+  /**
+   * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
+   * @type string, decimal
+   */
   readonly margem_disponivel: string;
+  /**
+   * @type boolean
+   */
+  readonly dispensa_pagamento_inicial: boolean;
   /**
    * @type array
    */
   readonly comprovantes: TesourariaComprovanteResumo[];
+  /**
+   * @type string
+   */
+  readonly data_anexo_associado: string;
+  /**
+   * @type string
+   */
+  readonly data_anexo_agente: string;
+  /**
+   * @type string
+   */
+  readonly data_pagamento_associado: string;
+  /**
+   * @type string
+   */
+  readonly data_pagamento_agente: string;
   readonly dados_bancarios: DadosBancarios | null;
   /**
    * @type string

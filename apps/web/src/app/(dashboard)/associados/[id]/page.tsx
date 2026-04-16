@@ -15,7 +15,6 @@ import {
   SaveIcon,
   ShieldCheckIcon,
   SmartphoneIcon,
-  Trash2Icon,
   UserIcon,
   WorkflowIcon,
 } from "lucide-react";
@@ -60,7 +59,6 @@ import {
   AlertDialogDescription,
   AlertDialogFooter,
   AlertDialogHeader,
-  AlertDialogMedia,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -71,7 +69,6 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 
 const AdminFileManager = dynamic(
@@ -219,8 +216,6 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   const [openSections, setOpenSections] = React.useState<string[]>(
     DEFAULT_OPEN_SECTIONS,
   );
-  const [deleteDialogOpen, setDeleteDialogOpen] = React.useState(false);
-  const [deleteConfirmed, setDeleteConfirmed] = React.useState(false);
   const [inativarDialogOpen, setInativarDialogOpen] = React.useState(false);
   const [saveAllOpen, setSaveAllOpen] = React.useState(false);
   const contractEditorRefs = React.useRef<
@@ -274,25 +269,6 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
       ),
     enabled: canUseAdminEditor && adminMode,
     ...dashboardRetainedQueryOptions,
-  });
-
-  const deleteAssociadoMutation = useMutation({
-    mutationFn: async () =>
-      apiFetch(`associados/${associadoId}/`, {
-        method: "DELETE",
-      }),
-    onSuccess: async () => {
-      toast.success("Associado excluído com sucesso.");
-      setDeleteDialogOpen(false);
-      setDeleteConfirmed(false);
-      await queryClient.invalidateQueries({ queryKey: ["associados"] });
-      router.replace("/associados");
-    },
-    onError: (error) => {
-      toast.error(
-        error instanceof Error ? error.message : "Falha ao excluir associado.",
-      );
-    },
   });
 
   const inativarAssociadoMutation = useMutation({
@@ -497,6 +473,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
       );
       setContractDirtyState({});
       setEsteiraDirty(false);
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-baixa-manual"] });
       await Promise.all([
         associadoQuery.refetch(),
         adminHistoryQuery.refetch(),
@@ -627,29 +604,17 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             </Button>
           ) : null}
           {isAdmin ? (
-            <>
-              <Button variant="outline" asChild>
-                <Link
-                  href={
-                    adminMode
-                      ? `/associados-editar/${associado.id}?admin=1`
-                      : `/associados-editar/${associado.id}`
-                  }
-                >
-                  Editar cadastro
-                </Link>
-              </Button>
-              <Button
-                variant="destructive"
-                onClick={() => {
-                  setDeleteDialogOpen(true);
-                  setDeleteConfirmed(false);
-                }}
+            <Button variant="outline" asChild>
+              <Link
+                href={
+                  adminMode
+                    ? `/associados-editar/${associado.id}?admin=1`
+                    : `/associados-editar/${associado.id}`
+                }
               >
-                <Trash2Icon className="size-4" />
-                Excluir associado
-              </Button>
-            </>
+                Editar cadastro
+              </Link>
+            </Button>
           ) : null}
         </div>
       </section>
@@ -1222,65 +1187,6 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
               disabled={inativarAssociadoMutation.isPending}
             >
               Confirmar inativação
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog
-        open={deleteDialogOpen}
-        onOpenChange={(open) => {
-          setDeleteDialogOpen(open);
-          if (!open) {
-            setDeleteConfirmed(false);
-          }
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogMedia className="bg-rose-500/10 text-rose-200">
-              <Trash2Icon className="size-8" />
-            </AlertDialogMedia>
-            <AlertDialogTitle>Excluir associado</AlertDialogTitle>
-            <AlertDialogDescription>
-              O associado <strong>{associado.nome_completo}</strong> será
-              removido da listagem ativa.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <div className="space-y-4 rounded-2xl border border-border/60 bg-card/60 p-4">
-            <div className="space-y-1 text-sm">
-              <p className="font-medium">{associado.nome_completo}</p>
-              <p className="text-muted-foreground">
-                {associado.matricula_display || associado.matricula} ·{" "}
-                {associado.cpf_cnpj}
-              </p>
-            </div>
-            <label className="flex items-start gap-3 text-sm text-muted-foreground">
-              <Checkbox
-                checked={deleteConfirmed}
-                onCheckedChange={(checked) =>
-                  setDeleteConfirmed(Boolean(checked))
-                }
-              />
-              <span>
-                Confirmo que revisei o cadastro e desejo excluir este associado.
-              </span>
-            </label>
-          </div>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={!deleteConfirmed || deleteAssociadoMutation.isPending}
-              onClick={(event) => {
-                if (!deleteConfirmed) {
-                  event.preventDefault();
-                  return;
-                }
-                deleteAssociadoMutation.mutate();
-              }}
-            >
-              Excluir associado
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

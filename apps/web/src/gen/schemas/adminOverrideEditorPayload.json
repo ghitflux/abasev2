@@ -786,8 +786,36 @@
         "x-readme-ref-name": "AdminOverrideDocumentoRead"
       },
       "readOnly": true
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string", "readOnly": true },
+          "severity": { "type": "string", "readOnly": true },
+          "contrato_id": {
+            "type": "integer",
+            "readOnly": true,
+            "nullable": true
+          },
+          "contrato_codigo": { "type": "string", "readOnly": true },
+          "message": { "type": "string", "readOnly": true },
+          "details": { "readOnly": true }
+        },
+        "required": [
+          "code",
+          "contrato_codigo",
+          "contrato_id",
+          "details",
+          "message",
+          "severity"
+        ],
+        "x-readme-ref-name": "AdminOverrideWarning"
+      },
+      "readOnly": true
     }
   },
-  "required": ["associado", "contratos", "documentos", "esteira"],
+  "required": ["associado", "contratos", "documentos", "esteira", "warnings"],
   "x-readme-ref-name": "AdminOverrideEditorPayload"
 }

@@ -227,7 +227,94 @@ docker compose exec -T backend python manage.py check
 curl http://localhost:8000/api/schema/ | head
 ```
 
-## 9. Referências rápidas
+## 9. Restaurar banco de produção localmente
+
+Use este fluxo quando precisar trazer os dados reais do servidor para o ambiente local.
+
+> **Atenção:** o banco local correto é `abase_v2` — o `docker-compose.yml` usa `${DATABASE_NAME:-abase_v2}`. O valor `DATABASE_NAME=abase` em `backend/.env` é ignorado pelo Docker.
+
+### Passo 1 — Fazer dump no servidor
+
+```bash
+ssh -i ~/.ssh/abase_deploy -o IdentitiesOnly=yes deploy@72.60.48.163 "
+  ROOTPW=\$(grep MYSQL_ROOT_PASSWORD /opt/ABASE/env/.env.production | cut -d= -f2)
+  docker exec abase-mysql-prod mysqldump \
+    -uroot -p\"\$ROOTPW\" \
+    --no-tablespaces \
+    --single-transaction \
+    --routines \
+    --triggers \
+    abase_v2 2>/dev/null \
+    | gzip > /opt/ABASE/data/backups/daily/db_\$(date +%Y%m%d_%H%M%S)_root.sql.gz
+  echo 'Dump OK'
+  ls -lh /opt/ABASE/data/backups/daily/db_*root*.sql.gz | tail -1
+"
+```
+
+> Use sempre usuário `root` com `--no-tablespaces` para evitar erro de privilégio PROCESS e garantir dump completo.
+
+### Passo 2 — Baixar o dump
+
+```bash
+# Substitua o nome do arquivo pelo gerado no passo anterior
+scp -i ~/.ssh/abase_deploy -o IdentitiesOnly=yes \
+  deploy@72.60.48.163:/opt/ABASE/data/backups/daily/db_YYYYMMDD_HHMMSS_root.sql.gz \
+  /tmp/abase_prod.sql.gz
+```
+
+### Passo 3 — Salvar senhas dos usuários de dev
+
+Antes de sobrescrever, guarde as senhas dos usuários de teste locais (IDs 1, 2, 3, 4, 30, 31):
+
+```bash
+docker exec abase-v2-mysql-1 mysql -uroot -pabase -D abase_v2 \
+  -e "SELECT id, email, password FROM accounts_user WHERE id IN (1,2,3,4,30,31);" 2>/dev/null
+```
+
+### Passo 4 — Recriar banco e restaurar
+
+```bash
+# Recriar banco
+docker exec abase-v2-mysql-1 mysql -uroot -pabase \
+  -e "DROP DATABASE IF EXISTS abase_v2; CREATE DATABASE abase_v2 CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>/dev/null
+
+# Restaurar dump
+zcat /tmp/abase_prod.sql.gz | docker exec -i abase-v2-mysql-1 mysql -uroot -pabase abase_v2
+```
+
+### Passo 5 — Restaurar senhas de dev
+
+```bash
+docker exec abase-v2-mysql-1 mysql -uroot -pabase -D abase_v2 2>/dev/null -e "
+UPDATE accounts_user SET password='<hash_id1>' WHERE id=1;
+UPDATE accounts_user SET password='<hash_id2>' WHERE id=2;
+UPDATE accounts_user SET password='<hash_id3>' WHERE id=3;
+UPDATE accounts_user SET password='<hash_id4>' WHERE id=4;
+UPDATE accounts_user SET password='<hash_id30>' WHERE id=30;
+UPDATE accounts_user SET password='<hash_id31>' WHERE id=31;
+"
+```
+
+### Passo 6 — Aplicar migrations pendentes
+
+```bash
+docker compose exec -T backend python manage.py migrate
+```
+
+### Manutenção do disco do servidor
+
+Backups de media acumulam ~4.8G por execução. Manter apenas o mais recente:
+
+```bash
+ssh -i ~/.ssh/abase_deploy -o IdentitiesOnly=yes deploy@72.60.48.163 "
+  ls /opt/ABASE/data/backups/daily/media_*.tar.gz | sort | head -n -1 | xargs rm -f
+  df -h /
+"
+```
+
+---
+
+## 10. Referências rápidas
 
 - setup operacional: `docker-compose.yml`
 - variáveis padrão: `.env.example`

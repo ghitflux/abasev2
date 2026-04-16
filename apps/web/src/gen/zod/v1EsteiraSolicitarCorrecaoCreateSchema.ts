@@ -23,6 +23,7 @@ export const V1EsteiraSolicitarCorrecaoCreateMutationRequestSchema = z
   .omit({
     id: true,
     associado_id: true,
+    associado: true,
     ordem: true,
     contrato: true,
     data_assinatura: true,
@@ -39,6 +40,8 @@ export const V1EsteiraSolicitarCorrecaoCreateMutationRequestSchema = z
     orgao_publico: true,
     documentos_count: true,
     acoes_disponiveis: true,
+    created_at: true,
+    updated_at: true,
   });
 
 export const V1EsteiraSolicitarCorrecaoCreateMutationResponseSchema = z.lazy(

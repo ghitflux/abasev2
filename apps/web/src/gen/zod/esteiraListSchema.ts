@@ -5,6 +5,7 @@
 
 import * as z from "zod";
 import { contratoEsteiraSchema } from "./contratoEsteiraSchema.ts";
+import { esteiraAssociadoCompatSchema } from "./esteiraAssociadoCompatSchema.ts";
 import { esteiraEtapaEnumSchema } from "./esteiraEtapaEnumSchema.ts";
 import { esteiraSimpleUserSchema } from "./esteiraSimpleUserSchema.ts";
 import { esteiraSituacaoEnumSchema } from "./esteiraSituacaoEnumSchema.ts";
@@ -12,6 +13,9 @@ import { esteiraSituacaoEnumSchema } from "./esteiraSituacaoEnumSchema.ts";
 export const esteiraListSchema = z.object({
   id: z.int(),
   associado_id: z.int(),
+  get associado() {
+    return esteiraAssociadoCompatSchema;
+  },
   ordem: z.int(),
   get contrato() {
     return contratoEsteiraSchema.nullable();
@@ -49,4 +53,6 @@ export const esteiraListSchema = z.object({
       .optional();
   },
   assumido_em: z.iso.datetime().nullish(),
+  created_at: z.iso.datetime(),
+  updated_at: z.iso.datetime(),
 });

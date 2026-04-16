@@ -123,10 +123,17 @@
       "format": "decimal",
       "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
     },
+    "valor_liberado_associado": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+      "readOnly": true
+    },
     "repasse_agente": {
       "type": "string",
       "format": "decimal",
-      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$"
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+      "readOnly": true
     },
     "ciclo_key": { "type": "string", "readOnly": true },
     "referencias": {
@@ -169,6 +176,10 @@
     "pagamento_status": { "type": "string", "readOnly": true },
     "legacy_refinanciamento_id": { "type": "integer", "readOnly": true },
     "origem": { "type": "string", "readOnly": true },
+    "data_anexo_associado": { "type": "string", "readOnly": true },
+    "data_anexo_agente": { "type": "string", "readOnly": true },
+    "data_pagamento_associado": { "type": "string", "readOnly": true },
+    "data_pagamento_agente": { "type": "string", "readOnly": true },
     "data_renovacao": {
       "type": "string",
       "format": "date-time",
@@ -439,7 +450,11 @@
     "contrato_id",
     "cpf_cnpj",
     "created_at",
+    "data_anexo_agente",
+    "data_anexo_associado",
     "data_ativacao_ciclo",
+    "data_pagamento_agente",
+    "data_pagamento_associado",
     "data_primeiro_ciclo_ativado",
     "data_renovacao",
     "data_solicitacao",
@@ -461,9 +476,11 @@
     "pagamento_status",
     "referencias",
     "refinanciamento_numero",
+    "repasse_agente",
     "reviewed_by",
     "solicitado_por",
-    "updated_at"
+    "updated_at",
+    "valor_liberado_associado"
   ],
   "x-readme-ref-name": "RefinanciamentoDetail"
 }

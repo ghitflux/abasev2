@@ -22,6 +22,7 @@ import type {
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
+import { formatMonthValue } from "@/lib/date-value";
 import { formatCurrency, formatDateTime, formatMonthYear } from "@/lib/formatters";
 import {
   describeReportScope,
@@ -29,6 +30,7 @@ import {
   fetchAllPaginatedRows,
   filterRowsByReportScope,
 } from "@/lib/reports";
+import CalendarCompetencia from "@/components/custom/calendar-competencia";
 import DatePicker from "@/components/custom/date-picker";
 import StatusBadge from "@/components/custom/status-badge";
 import AssociadoDetailsDialog from "@/components/associados/associado-details-dialog";
@@ -40,8 +42,20 @@ import ReportExportDialog, {
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/components/ui/native-select";
 import {
   Sheet,
   SheetContent,
@@ -61,9 +75,16 @@ type AgentFilterUser = SimpleUser & {
 const PENDING_STATUS = ["aprovado_para_renovacao"];
 const EFETIVADO_STATUS = ["efetivado"];
 const CANCELADO_STATUS = ["bloqueado", "revertido", "desativado"];
+const NUMERO_CICLO_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index + 1));
 
 function toIsoDate(value?: Date) {
   return value ? format(value, "yyyy-MM-dd") : undefined;
+}
+
+function normalizeCycleMonths(value: string[]) {
+  return Array.from(
+    new Set(value.map((item) => item.trim()).filter(Boolean)),
+  ).sort((left, right) => left.localeCompare(right));
 }
 
 function CompactUploadButton({
@@ -171,12 +192,24 @@ function resolveRenewalAttachments(row: RefinanciamentoItem) {
   };
 }
 
+function hasRenewalPaymentProofs(row: RefinanciamentoItem) {
+  const { comprovanteAssociado, comprovanteAgente } =
+    resolveRenewalAttachments(row);
+  return Boolean(comprovanteAssociado && comprovanteAgente);
+}
+
 export default function TesourariaRefinanciamentosPage() {
   const { hasAnyRole } = usePermissions();
   const canMutate = hasAnyRole(["ADMIN", "TESOUREIRO"]);
+  const canRemoverFila = hasAnyRole(["ADMIN", "COORDENADOR"]);
+  const canRetornarPendente = hasAnyRole(["ADMIN", "COORDENADOR", "TESOUREIRO"]);
+  const canLimparLinha = hasAnyRole(["ADMIN", "COORDENADOR"]);
   const queryClient = useQueryClient();
   const [search, setSearch] = React.useState("");
   const [isExporting, setIsExporting] = React.useState(false);
+  const [excluirTarget, setExcluirTarget] = React.useState<RefinanciamentoItem | null>(null);
+  const [retornarTarget, setRetornarTarget] = React.useState<RefinanciamentoItem | null>(null);
+  const [limparLinhaTarget, setLimparLinhaTarget] = React.useState<RefinanciamentoItem | null>(null);
 
   const agentesQuery = useQuery({
     queryKey: ["refinanciamentos-agentes"],
@@ -200,18 +233,24 @@ export default function TesourariaRefinanciamentosPage() {
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [dataInicio, setDataInicio] = React.useState<Date>();
   const [dataFim, setDataFim] = React.useState<Date>();
+  const [cycleMonths, setCycleMonths] = React.useState<string[]>([]);
+  const [numeroCiclos, setNumeroCiclos] = React.useState("");
   const [draftDataInicio, setDraftDataInicio] = React.useState<Date>();
   const [draftDataFim, setDraftDataFim] = React.useState<Date>();
+  const [draftCycleMonths, setDraftCycleMonths] = React.useState<string[]>([]);
+  const [draftCycleMonthPicker, setDraftCycleMonthPicker] = React.useState<Date>();
+  const [draftNumeroCiclos, setDraftNumeroCiclos] = React.useState("");
   const [pagePending, setPagePending] = React.useState(1);
   const [pageEfetivadas, setPageEfetivadas] = React.useState(1);
   const [pageCanceladas, setPageCanceladas] = React.useState(1);
   const [detailAssociadoId, setDetailAssociadoId] = React.useState<number | null>(null);
+  const cycleKey = React.useMemo(() => cycleMonths.join(","), [cycleMonths]);
 
   React.useEffect(() => {
     setPagePending(1);
     setPageEfetivadas(1);
     setPageCanceladas(1);
-  }, [search, dataInicio, dataFim]);
+  }, [search, dataInicio, dataFim, cycleKey, numeroCiclos]);
 
   const pendingQuery = useQuery({
     queryKey: [
@@ -221,6 +260,8 @@ export default function TesourariaRefinanciamentosPage() {
       search,
       dataInicio?.toISOString(),
       dataFim?.toISOString(),
+      cycleKey,
+      numeroCiclos,
     ],
     queryFn: () =>
       apiFetch<PaginatedResponse<RefinanciamentoItem>>("tesouraria/refinanciamentos", {
@@ -230,6 +271,8 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
+          cycle_key: cycleKey || undefined,
+          numero_ciclos: numeroCiclos || undefined,
           status: PENDING_STATUS,
         },
       }),
@@ -243,6 +286,8 @@ export default function TesourariaRefinanciamentosPage() {
       search,
       dataInicio?.toISOString(),
       dataFim?.toISOString(),
+      cycleKey,
+      numeroCiclos,
     ],
     queryFn: () =>
       apiFetch<PaginatedResponse<RefinanciamentoItem>>("tesouraria/refinanciamentos", {
@@ -252,6 +297,8 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
+          cycle_key: cycleKey || undefined,
+          numero_ciclos: numeroCiclos || undefined,
           status: EFETIVADO_STATUS,
         },
       }),
@@ -265,6 +312,8 @@ export default function TesourariaRefinanciamentosPage() {
       search,
       dataInicio?.toISOString(),
       dataFim?.toISOString(),
+      cycleKey,
+      numeroCiclos,
     ],
     queryFn: () =>
       apiFetch<PaginatedResponse<RefinanciamentoItem>>("tesouraria/refinanciamentos", {
@@ -274,6 +323,8 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
+          cycle_key: cycleKey || undefined,
+          numero_ciclos: numeroCiclos || undefined,
           status: CANCELADO_STATUS,
         },
       }),
@@ -285,6 +336,8 @@ export default function TesourariaRefinanciamentosPage() {
       search,
       dataInicio?.toISOString(),
       dataFim?.toISOString(),
+      cycleKey,
+      numeroCiclos,
     ],
     queryFn: () =>
       apiFetch<RefinanciamentoResumo>("tesouraria/refinanciamentos/resumo", {
@@ -292,6 +345,8 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
+          cycle_key: cycleKey || undefined,
+          numero_ciclos: numeroCiclos || undefined,
         },
       }),
   });
@@ -334,10 +389,106 @@ export default function TesourariaRefinanciamentosPage() {
     },
   });
 
+  const efetivarMutation = useMutation({
+    mutationFn: async ({
+      refinanciamentoId,
+    }: {
+      refinanciamentoId: number;
+    }) =>
+      apiFetch<RefinanciamentoItem>(
+        `tesouraria/refinanciamentos/${refinanciamentoId}/efetivar`,
+        {
+          method: "POST",
+          body: {},
+        },
+      ),
+    onSuccess: () => {
+      toast.success("Renovação efetivada com sucesso.");
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-refinanciamentos"],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-refinanciamentos-resumo"],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["agente-refinanciados"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao efetivar renovação.",
+      );
+    },
+  });
+
+  const excluirMutation = useMutation({
+    mutationFn: async (refinanciamentoId: number) =>
+      apiFetch(`tesouraria/refinanciamentos/${refinanciamentoId}/excluir`, {
+        method: "POST",
+        body: {},
+      }),
+    onSuccess: () => {
+      toast.success("Renovação removida da fila.");
+      setExcluirTarget(null);
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos-resumo"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Falha ao remover da fila.");
+    },
+  });
+
+  const retornarPendenteMutation = useMutation({
+    mutationFn: async (refinanciamentoId: number) =>
+      apiFetch<RefinanciamentoItem>(
+        `tesouraria/refinanciamentos/${refinanciamentoId}/retornar-pendente`,
+        {
+          method: "POST",
+          body: {},
+        },
+      ),
+    onSuccess: () => {
+      toast.success("Renovação devolvida para pendente de pagamento.");
+      setRetornarTarget(null);
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos-resumo"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao devolver renovação para pendente.",
+      );
+    },
+  });
+
+  const limparLinhaMutation = useMutation({
+    mutationFn: async (refinanciamentoId: number) =>
+      apiFetch(`tesouraria/refinanciamentos/${refinanciamentoId}/limpar-linha`, {
+        method: "POST",
+        body: {},
+      }),
+    onSuccess: () => {
+      toast.success("Linha operacional removida.");
+      setLimparLinhaTarget(null);
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos-resumo"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao limpar linha operacional.",
+      );
+    },
+  });
+
   const resumo = resumoQuery.data;
   const canceladasTotal =
     (resumo?.bloqueados ?? 0) + (resumo?.revertidos ?? 0) + (resumo?.desativados ?? 0);
-  const activeFiltersCount = Number(Boolean(dataInicio)) + Number(Boolean(dataFim));
+  const activeFiltersCount =
+    Number(Boolean(dataInicio)) +
+    Number(Boolean(dataFim)) +
+    Number(cycleMonths.length > 0) +
+    Number(Boolean(numeroCiclos.trim()));
 
   const pendingColumns = React.useMemo<DataTableColumn<RefinanciamentoItem>[]>(
     () => [
@@ -348,9 +499,13 @@ export default function TesourariaRefinanciamentosPage() {
         cell: (row) => {
           const { termoAgente, comprovanteAssociado, comprovanteAgente } =
             resolveRenewalAttachments(row);
+          const hasAllProofs = hasRenewalPaymentProofs(row);
           const isProcessing =
-            substituirComprovanteMutation.isPending &&
-            substituirComprovanteMutation.variables?.refinanciamentoId === row.id;
+            (substituirComprovanteMutation.isPending &&
+              substituirComprovanteMutation.variables?.refinanciamentoId ===
+                row.id) ||
+            (efetivarMutation.isPending &&
+              efetivarMutation.variables?.refinanciamentoId === row.id);
 
           return (
             <div className="space-y-3">
@@ -410,8 +565,9 @@ export default function TesourariaRefinanciamentosPage() {
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                O comprovante do associado efetiva automaticamente. O comprovante do agente
-                continua opcional e pode ser anexado depois.
+                {hasAllProofs
+                  ? "Os dois comprovantes já estão anexados. Clique em Efetivar renovação para concluir."
+                  : "A efetivação exige comprovante do associado e do agente. O upload isolado não conclui a renovação."}
               </p>
             </div>
           );
@@ -420,13 +576,35 @@ export default function TesourariaRefinanciamentosPage() {
       {
         id: "acao",
         header: "Ação",
-        cell: () => (
+        cell: (row) => (
           <div className="flex min-w-44 flex-col gap-2">
-            <Badge variant="outline" className="w-fit rounded-full">
-              Upload imediato
-            </Badge>
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-fit border-emerald-500/40 text-emerald-200"
+              onClick={() =>
+                efetivarMutation.mutate({ refinanciamentoId: row.id })
+              }
+              disabled={!canMutate || !hasRenewalPaymentProofs(row)}
+            >
+              <CheckCircle2Icon className="size-4" />
+              Efetivar renovação
+            </Button>
+            {canRemoverFila && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-fit border-red-500/40 text-red-400"
+                onClick={() => setExcluirTarget(row)}
+                disabled={excluirMutation.isPending}
+              >
+                <Trash2Icon className="size-4" />
+                Remover da fila
+              </Button>
+            )}
             <p className="text-xs text-muted-foreground">
-              O anexo do associado conclui a etapa operacional da tesouraria.
+              A renovação só é concluída depois dos dois anexos e da ação
+              explícita de efetivar.
             </p>
           </div>
         ),
@@ -541,7 +719,7 @@ export default function TesourariaRefinanciamentosPage() {
         ),
       },
     ],
-    [canMutate, substituirComprovanteMutation],
+    [canMutate, canRemoverFila, efetivarMutation, excluirMutation, substituirComprovanteMutation],
   );
 
   const historyColumns = React.useMemo<DataTableColumn<RefinanciamentoItem>[]>(
@@ -612,6 +790,39 @@ export default function TesourariaRefinanciamentosPage() {
             </div>
           );
         },
+      },
+      {
+        id: "acao",
+        header: "Ação",
+        cell: (row) => (
+          <div className="flex min-w-52 flex-col gap-2">
+            {canRetornarPendente ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-fit border-sky-500/40 text-sky-200"
+                onClick={() => setRetornarTarget(row)}
+                disabled={retornarPendenteMutation.isPending}
+              >
+                Voltar para pendente
+              </Button>
+            ) : null}
+            {canLimparLinha ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-fit border-red-500/40 text-red-400"
+                onClick={() => setLimparLinhaTarget(row)}
+                disabled={limparLinhaMutation.isPending}
+              >
+                Limpar linha
+              </Button>
+            ) : null}
+            <p className="text-xs text-muted-foreground">
+              Use retorno para recolocar na fila ou limpe linhas operacionais incorretas.
+            </p>
+          </div>
+        ),
       },
       {
         id: "associado",
@@ -702,7 +913,14 @@ export default function TesourariaRefinanciamentosPage() {
         ),
       },
     ],
-    [canMutate, substituirComprovanteMutation],
+    [
+      canLimparLinha,
+      canMutate,
+      canRetornarPendente,
+      limparLinhaMutation,
+      retornarPendenteMutation,
+      substituirComprovanteMutation,
+    ],
   );
 
   const handleExport = React.useCallback(
@@ -721,6 +939,8 @@ export default function TesourariaRefinanciamentosPage() {
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
           agente: exportAgente || undefined,
+          cycle_key: cycleKey || undefined,
+          numero_ciclos: numeroCiclos || undefined,
         };
         const fetchedRows = await fetchAllPaginatedRows<RefinanciamentoItem>({
           sourcePath: "tesouraria/refinanciamentos",
@@ -793,7 +1013,7 @@ export default function TesourariaRefinanciamentosPage() {
         setIsExporting(false);
       }
     },
-    [dataFim, dataInicio, search],
+    [cycleKey, dataFim, dataInicio, numeroCiclos, search],
   );
 
   return (
@@ -872,6 +1092,9 @@ export default function TesourariaRefinanciamentosPage() {
               if (open) {
                 setDraftDataInicio(dataInicio);
                 setDraftDataFim(dataFim);
+                setDraftCycleMonths(cycleMonths);
+                setDraftCycleMonthPicker(undefined);
+                setDraftNumeroCiclos(numeroCiclos);
               }
               setFiltersOpen(open);
             }}
@@ -891,11 +1114,77 @@ export default function TesourariaRefinanciamentosPage() {
               <SheetHeader>
                 <SheetTitle>Filtros avançados</SheetTitle>
                 <SheetDescription>
-                  Refine o recorte da tesouraria por datas operacionais das renovações.
+                  Refine o recorte da tesouraria por datas, ciclo e número do ciclo da renovação.
                 </SheetDescription>
               </SheetHeader>
 
               <div className="space-y-5 overflow-y-auto px-4 pb-4">
+                <div className="space-y-2">
+                  <Label>Ciclo</Label>
+                  <div className="space-y-3 rounded-2xl border border-border/60 bg-background/40 p-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <div className="min-w-0 flex-1">
+                        <CalendarCompetencia
+                          value={draftCycleMonthPicker}
+                          onChange={setDraftCycleMonthPicker}
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          const nextMonth = formatMonthValue(draftCycleMonthPicker);
+                          if (!nextMonth) {
+                            return;
+                          }
+                          setDraftCycleMonths((current) =>
+                            normalizeCycleMonths([...current, nextMonth]),
+                          );
+                          setDraftCycleMonthPicker(undefined);
+                        }}
+                      >
+                        Adicionar mês
+                      </Button>
+                    </div>
+                    {draftCycleMonths.length ? (
+                      <div className="flex flex-wrap gap-2">
+                        {draftCycleMonths.map((month) => (
+                          <Badge
+                            key={month}
+                            className="cursor-pointer rounded-full bg-primary/15 px-3 py-1 text-primary"
+                            onClick={() =>
+                              setDraftCycleMonths((current) =>
+                                current.filter((item) => item !== month),
+                              )
+                            }
+                          >
+                            {formatMonthYear(`${month}-01`)} ×
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Selecione os meses do ciclo um a um.
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="filtro-numero-ciclos">Número do ciclo</Label>
+                  <NativeSelect
+                    id="filtro-numero-ciclos"
+                    value={draftNumeroCiclos}
+                    onChange={(event) => setDraftNumeroCiclos(event.target.value)}
+                    className="h-11 rounded-xl border-border/60 bg-background/60"
+                  >
+                    <NativeSelectOption value="">Selecione</NativeSelectOption>
+                    {NUMERO_CICLO_OPTIONS.map((option) => (
+                      <NativeSelectOption key={option} value={option}>
+                        Ciclo {option}
+                      </NativeSelectOption>
+                    ))}
+                  </NativeSelect>
+                </div>
                 <div className="space-y-2">
                   <Label>Data inicial</Label>
                   <DatePicker value={draftDataInicio} onChange={setDraftDataInicio} />
@@ -912,8 +1201,13 @@ export default function TesourariaRefinanciamentosPage() {
                   onClick={() => {
                     setDraftDataInicio(undefined);
                     setDraftDataFim(undefined);
+                    setDraftCycleMonths([]);
+                    setDraftCycleMonthPicker(undefined);
+                    setDraftNumeroCiclos("");
                     setDataInicio(undefined);
                     setDataFim(undefined);
+                    setCycleMonths([]);
+                    setNumeroCiclos("");
                     setFiltersOpen(false);
                   }}
                 >
@@ -923,6 +1217,8 @@ export default function TesourariaRefinanciamentosPage() {
                   onClick={() => {
                     setDataInicio(draftDataInicio);
                     setDataFim(draftDataFim);
+                    setCycleMonths(normalizeCycleMonths(draftCycleMonths));
+                    setNumeroCiclos(draftNumeroCiclos);
                     setFiltersOpen(false);
                   }}
                 >
@@ -979,6 +1275,91 @@ export default function TesourariaRefinanciamentosPage() {
           }
         }}
       />
+
+      <Dialog open={excluirTarget != null} onOpenChange={(open) => { if (!open) setExcluirTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remover renovação da fila</DialogTitle>
+            <DialogDescription>
+              A renovação de <strong>{excluirTarget?.associado_nome}</strong> será bloqueada e
+              removida da fila operacional. O histórico será preservado.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExcluirTarget(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={excluirMutation.isPending}
+              onClick={() => excluirTarget && excluirMutation.mutate(excluirTarget.id)}
+            >
+              Remover da fila
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={retornarTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setRetornarTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Voltar para pendente de pagamento</DialogTitle>
+            <DialogDescription>
+              A renovação de <strong>{retornarTarget?.associado_nome}</strong> voltará para a
+              fila de pagamento da tesouraria, preservando os anexos já existentes.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRetornarTarget(null)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={retornarPendenteMutation.isPending}
+              onClick={() =>
+                retornarTarget && retornarPendenteMutation.mutate(retornarTarget.id)
+              }
+            >
+              Voltar para pendente
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={limparLinhaTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setLimparLinhaTarget(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Limpar linha operacional</DialogTitle>
+            <DialogDescription>
+              A linha de <strong>{limparLinhaTarget?.associado_nome}</strong> será removida da
+              esteira de renovação. Use isso apenas para registros incorretos.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLimparLinhaTarget(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={limparLinhaMutation.isPending}
+              onClick={() =>
+                limparLinhaTarget && limparLinhaMutation.mutate(limparLinhaTarget.id)
+              }
+            >
+              Limpar linha
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

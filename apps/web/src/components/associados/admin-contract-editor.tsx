@@ -317,23 +317,55 @@ function normalizeCycleStatusForApi(status: string) {
   return status === "concluido" ? "fechado" : status;
 }
 
-function buildCyclesPayload(contract: ContractDraft): SaveAllCyclesPayload {
+export function buildCyclesPayload(contract: ContractDraft): SaveAllCyclesPayload {
+  const outOfCycleRows = [
+    ...contract.meses_nao_pagos,
+    ...contract.movimentos_financeiros_avulsos,
+  ];
+  const hasNoCycles = contract.ciclos.length === 0;
+  const fallbackCycleClientKey = "auto-fallback-cycle-1";
+  const fallbackReferences = outOfCycleRows
+    .map((row) => row.referencia_mes)
+    .filter((value) => Boolean(value))
+    .sort((left, right) => (monthOrder(left) ?? 0) - (monthOrder(right) ?? 0));
+  const fallbackStart = fallbackReferences[0] ?? new Date().toISOString().slice(0, 10);
+  const fallbackEnd = fallbackReferences[fallbackReferences.length - 1] ?? fallbackStart;
+  const fallbackTotal = centsToDecimal(
+    outOfCycleRows.reduce(
+      (total, row) => total + (decimalToCents(row.valor || "0.00") ?? 0),
+      0,
+    ),
+  );
+  const payloadCycles =
+    hasNoCycles && outOfCycleRows.length > 0
+      ? [
+          {
+            id: null,
+            client_key: fallbackCycleClientKey,
+            numero: 1,
+            data_inicio: fallbackStart,
+            data_fim: fallbackEnd,
+            status: "aberto",
+            valor_total: fallbackTotal,
+          },
+        ]
+      : contract.ciclos.map((cycle) => ({
+          id: cycle.id,
+          client_key: cycle.client_key,
+          numero: cycle.numero,
+          data_inicio: cycle.data_inicio,
+          data_fim: cycle.data_fim,
+          status: normalizeCycleStatusForApi(cycle.status),
+          valor_total: cycle.valor_total,
+        }));
   const primaryCycleRef =
-    contract.ciclos[0]?.id != null
-      ? String(contract.ciclos[0].id)
-      : contract.ciclos[0]?.client_key || "";
+    payloadCycles[0]?.id != null
+      ? String(payloadCycles[0].id)
+      : payloadCycles[0]?.client_key || "";
 
   return {
     updated_at: contract.updated_at,
-    cycles: contract.ciclos.map((cycle) => ({
-      id: cycle.id,
-      client_key: cycle.client_key,
-      numero: cycle.numero,
-      data_inicio: cycle.data_inicio,
-      data_fim: cycle.data_fim,
-      status: normalizeCycleStatusForApi(cycle.status),
-      valor_total: cycle.valor_total,
-    })),
+    cycles: payloadCycles,
     parcelas: [
       ...contract.ciclos.flatMap((cycle) =>
         cycle.parcelas.map((parcela) => ({

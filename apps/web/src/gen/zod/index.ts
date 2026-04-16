@@ -80,6 +80,7 @@ export {
 export { adminOverrideRefinanciamentoEditorSchema } from "./adminOverrideRefinanciamentoEditorSchema.ts";
 export { adminOverrideReverterWriteSchema } from "./adminOverrideReverterWriteSchema.ts";
 export { adminOverrideSaveAllWriteSchema } from "./adminOverrideSaveAllWriteSchema.ts";
+export { adminOverrideWarningSchema } from "./adminOverrideWarningSchema.ts";
 export { adminUserAccessUpdateSchema } from "./adminUserAccessUpdateSchema.ts";
 export { adminUserCreateSchema } from "./adminUserCreateSchema.ts";
 export { adminUserListSchema } from "./adminUserListSchema.ts";
@@ -293,6 +294,7 @@ export { enderecoAdminWriteSchema } from "./enderecoAdminWriteSchema.ts";
 export { enderecoSchema } from "./enderecoSchema.ts";
 export { enderecoWriteSchema } from "./enderecoWriteSchema.ts";
 export { estadoCivilEnumSchema } from "./estadoCivilEnumSchema.ts";
+export { esteiraAssociadoCompatSchema } from "./esteiraAssociadoCompatSchema.ts";
 export { esteiraDetailSchema } from "./esteiraDetailSchema.ts";
 export { esteiraEtapaEnumSchema } from "./esteiraEtapaEnumSchema.ts";
 export { esteiraItemResumoSchema } from "./esteiraItemResumoSchema.ts";
@@ -810,6 +812,12 @@ export {
   V1EsteiraPendenciasRetrieveQueryResponseSchema,
 } from "./v1EsteiraPendenciasRetrieveSchema.ts";
 export {
+  V1EsteiraReprovarCreate200Schema,
+  V1EsteiraReprovarCreateMutationRequestSchema,
+  V1EsteiraReprovarCreateMutationResponseSchema,
+  V1EsteiraReprovarCreatePathParamsSchema,
+} from "./v1EsteiraReprovarCreateSchema.ts";
+export {
   V1EsteiraRetrieve200Schema,
   V1EsteiraRetrievePathParamsSchema,
   V1EsteiraRetrieveQueryResponseSchema,
@@ -1024,6 +1032,10 @@ export {
   V1RefinanciamentosSolicitarLiquidacaoCreatePathParamsSchema,
 } from "./v1RefinanciamentosSolicitarLiquidacaoCreateSchema.ts";
 export {
+  V1RelatoriosDefinicaoRetrieve200Schema,
+  V1RelatoriosDefinicaoRetrieveQueryResponseSchema,
+} from "./v1RelatoriosDefinicaoRetrieveSchema.ts";
+export {
   V1RelatoriosDownloadRetrieve200Schema,
   V1RelatoriosDownloadRetrievePathParamsSchema,
   V1RelatoriosDownloadRetrieveQueryResponseSchema,
@@ -1069,6 +1081,11 @@ export {
   V1TesourariaBaixaManualDarBaixaCreatePathParamsSchema,
 } from "./v1TesourariaBaixaManualDarBaixaCreateSchema.ts";
 export {
+  V1TesourariaBaixaManualInativarAssociadoCreate200Schema,
+  V1TesourariaBaixaManualInativarAssociadoCreateMutationRequestSchema,
+  V1TesourariaBaixaManualInativarAssociadoCreateMutationResponseSchema,
+} from "./v1TesourariaBaixaManualInativarAssociadoCreateSchema.ts";
+export {
   V1TesourariaBaixaManualList200Schema,
   V1TesourariaBaixaManualListQueryParamsSchema,
   V1TesourariaBaixaManualListQueryResponseSchema,
@@ -1101,6 +1118,12 @@ export {
   V1TesourariaContratosAgentesRetrieveQueryResponseSchema,
 } from "./v1TesourariaContratosAgentesRetrieveSchema.ts";
 export {
+  V1TesourariaContratosAverbarCreate200Schema,
+  V1TesourariaContratosAverbarCreateMutationRequestSchema,
+  V1TesourariaContratosAverbarCreateMutationResponseSchema,
+  V1TesourariaContratosAverbarCreatePathParamsSchema,
+} from "./v1TesourariaContratosAverbarCreateSchema.ts";
+export {
   V1TesourariaContratosCancelarCreate200Schema,
   V1TesourariaContratosCancelarCreateMutationRequestSchema,
   V1TesourariaContratosCancelarCreateMutationResponseSchema,
@@ -1123,6 +1146,12 @@ export {
   V1TesourariaContratosEfetivarCreateMutationResponseSchema,
   V1TesourariaContratosEfetivarCreatePathParamsSchema,
 } from "./v1TesourariaContratosEfetivarCreateSchema.ts";
+export {
+  V1TesourariaContratosExcluirCreate200Schema,
+  V1TesourariaContratosExcluirCreateMutationRequestSchema,
+  V1TesourariaContratosExcluirCreateMutationResponseSchema,
+  V1TesourariaContratosExcluirCreatePathParamsSchema,
+} from "./v1TesourariaContratosExcluirCreateSchema.ts";
 export {
   V1TesourariaContratosList200Schema,
   V1TesourariaContratosListQueryParamsSchema,
@@ -1247,6 +1276,20 @@ export {
   V1TesourariaLiquidacoesReverterCreatePathParamsSchema,
 } from "./v1TesourariaLiquidacoesReverterCreateSchema.ts";
 export {
+  V1TesourariaPagamentosList200Schema,
+  V1TesourariaPagamentosListQueryParamsSchema,
+  V1TesourariaPagamentosListQueryResponseSchema,
+} from "./v1TesourariaPagamentosListSchema.ts";
+export {
+  V1TesourariaPagamentosNotificacoesMarcarLidasCreate200Schema,
+  V1TesourariaPagamentosNotificacoesMarcarLidasCreateMutationRequestSchema,
+  V1TesourariaPagamentosNotificacoesMarcarLidasCreateMutationResponseSchema,
+} from "./v1TesourariaPagamentosNotificacoesMarcarLidasCreateSchema.ts";
+export {
+  V1TesourariaPagamentosNotificacoesRetrieve200Schema,
+  V1TesourariaPagamentosNotificacoesRetrieveQueryResponseSchema,
+} from "./v1TesourariaPagamentosNotificacoesRetrieveSchema.ts";
+export {
   V1TesourariaRefinanciamentosEfetivarCreate200Schema,
   V1TesourariaRefinanciamentosEfetivarCreateMutationRequestSchema,
   V1TesourariaRefinanciamentosEfetivarCreateMutationResponseSchema,
@@ -1266,3 +1309,9 @@ export {
   V1TesourariaRefinanciamentosRetrievePathParamsSchema,
   V1TesourariaRefinanciamentosRetrieveQueryResponseSchema,
 } from "./v1TesourariaRefinanciamentosRetrieveSchema.ts";
+export {
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreate200Schema,
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreateMutationRequestSchema,
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreateMutationResponseSchema,
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreatePathParamsSchema,
+} from "./v1TesourariaRefinanciamentosSubstituirComprovanteCreateSchema.ts";

@@ -64,9 +64,14 @@ export type RefinanciamentoDetail = {
   valor_refinanciamento?: string;
   /**
    * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
-   * @type string | undefined, decimal
+   * @type string, decimal
    */
-  repasse_agente?: string;
+  readonly valor_liberado_associado: string;
+  /**
+   * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
+   * @type string, decimal
+   */
+  readonly repasse_agente: string;
   /**
    * @type string
    */
@@ -107,6 +112,22 @@ export type RefinanciamentoDetail = {
    * @type string
    */
   readonly origem: string;
+  /**
+   * @type string
+   */
+  readonly data_anexo_associado: string;
+  /**
+   * @type string
+   */
+  readonly data_anexo_agente: string;
+  /**
+   * @type string
+   */
+  readonly data_pagamento_associado: string;
+  /**
+   * @type string
+   */
+  readonly data_pagamento_agente: string;
   /**
    * @type string, date-time
    */

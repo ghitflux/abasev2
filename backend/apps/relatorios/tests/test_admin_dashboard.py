@@ -523,6 +523,30 @@ class AdminDashboardViewSetTestCase(TestCase):
         )
         self.assertEqual(detail.status_code, 200, detail.json())
         self.assertEqual(march["renovacoes_associado"], detail.json()["count"])
+        row = detail.json()["results"][0]
+        self.assertEqual(row["data_entrada_associacao"], "2026-03-08")
+        self.assertEqual(row["parcelas_descontadas"], 1)
+        self.assertEqual(row["status_resumo_mensal"], "ativo")
+
+    def test_resumo_mensal_associacao_detalhes_de_novos_associados_expoem_campos_normalizados(self):
+        response = self.client.get(
+            "/api/v1/dashboard/admin/detalhes/",
+            {
+                "section": "summary",
+                "metric": "trend:efetivados:2026-03",
+                "page_size": "all",
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        maria = next(
+            row for row in payload["results"] if row["associado_nome"] == "Maria Ativa"
+        )
+        self.assertEqual(maria["data_nascimento"], "1990-03-10")
+        self.assertEqual(maria["data_entrada_associacao"], "2026-03-05")
+        self.assertEqual(maria["parcelas_descontadas"], 1)
+        self.assertEqual(maria["status_resumo_mensal"], "ativo")
+        self.assertEqual(maria["valor"], "30.00")
 
     def test_tesouraria_considera_liquidacoes_nos_valores_recebidos(self):
         LiquidacaoContrato.objects.create(

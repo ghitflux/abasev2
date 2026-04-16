@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import { format } from "date-fns";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BadgeCheckIcon,
   BriefcaseBusinessIcon,
   HandCoinsIcon,
   PaperclipIcon,
   SlidersHorizontalIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -63,6 +64,15 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { usePermissions } from "@/hooks/use-permissions";
 
 const PAGE_SIZE = 15;
 
@@ -105,9 +115,13 @@ function countActiveAdvancedFilters(filters: AdvancedFiltersState) {
 }
 
 export default function TesourariaPagamentosPage() {
+  const { hasAnyRole } = usePermissions();
+  const canRemoverFila = hasAnyRole(["ADMIN", "COORDENADOR"]);
+  const queryClient = useQueryClient();
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [isExporting, setIsExporting] = React.useState(false);
+  const [excluirTarget, setExcluirTarget] = React.useState<PagamentoAgenteItem | null>(null);
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [filters, setFilters] = React.useState<AdvancedFiltersState>(EMPTY_FILTERS);
   const [draftFilters, setDraftFilters] = React.useState<AdvancedFiltersState>(EMPTY_FILTERS);
@@ -151,6 +165,22 @@ export default function TesourariaPagamentosPage() {
       }),
   });
 
+  const excluirMutation = useMutation({
+    mutationFn: async (contratoId: number) =>
+      apiFetch(`tesouraria/pagamentos/${contratoId}/excluir`, {
+        method: "POST",
+        body: {},
+      }),
+    onSuccess: () => {
+      toast.success("Contrato removido da fila.");
+      setExcluirTarget(null);
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-pagamentos"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Falha ao remover da fila.");
+    },
+  });
+
   const rows = query.data?.results ?? [];
   const resumo: PagamentoAgenteResumo = {
     total: resolveCount(query.data?.resumo?.total ?? EMPTY_RESUMO.total),
@@ -160,7 +190,10 @@ export default function TesourariaPagamentosPage() {
     parcelas_total: resolveCount(query.data?.resumo?.parcelas_total ?? EMPTY_RESUMO.parcelas_total),
   };
   const totalPages = Math.max(1, Math.ceil((query.data?.count ?? 0) / PAGE_SIZE));
-  const columns = React.useMemo(() => buildPagamentoColumns(), []);
+  const columns = React.useMemo(
+    () => buildPagamentoColumns({ onExcluir: setExcluirTarget, canRemoverFila }),
+    [canRemoverFila],
+  );
   const activeAdvancedFilters = countActiveAdvancedFilters(filters);
 
   const handleExport = React.useCallback(
@@ -559,6 +592,31 @@ export default function TesourariaPagamentosPage() {
           skeletonRows={6}
         />
       )}
+
+      <Dialog open={excluirTarget != null} onOpenChange={(open) => { if (!open) setExcluirTarget(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remover contrato da fila</DialogTitle>
+            <DialogDescription>
+              O contrato de <strong>{excluirTarget?.nome}</strong> será removido da fila
+              operacional. O histórico será preservado.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setExcluirTarget(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={excluirMutation.isPending}
+              onClick={() => excluirTarget && excluirMutation.mutate(excluirTarget.id)}
+            >
+              <Trash2Icon className="size-4" />
+              Remover da fila
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

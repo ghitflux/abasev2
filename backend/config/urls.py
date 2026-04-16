@@ -54,6 +54,7 @@ from apps.associados.mobile_views import (
     AppMeView,
     AppPendenciasView,
     AppPendenciasReuploadsView,
+    AppStatusView,
     AppTermosAceiteView,
 )
 from apps.associados.mobile_legacy_views import (
@@ -221,6 +222,7 @@ urlpatterns = [
     path("api/v1/auth/", include("apps.accounts.urls")),
     path("api/v1/", include(router.urls)),
     # Mobile self-service endpoints
+    path("api/v1/app/status/", AppStatusView.as_view(), name="app-status"),
     path("api/v1/app/me/", AppMeView.as_view(), name="app-me"),
     path("api/v1/app/mensalidades/", AppMensalidadesView.as_view(), name="app-mensalidades"),
     path("api/v1/app/antecipacao/", AppAntecipacaoView.as_view(), name="app-antecipacao"),

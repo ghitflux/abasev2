@@ -7,6 +7,7 @@ import * as z from "zod";
 import { adminOverrideContratoEditorSchema } from "./adminOverrideContratoEditorSchema.ts";
 import { adminOverrideDocumentoReadSchema } from "./adminOverrideDocumentoReadSchema.ts";
 import { adminOverrideEsteiraReadSchema } from "./adminOverrideEsteiraReadSchema.ts";
+import { adminOverrideWarningSchema } from "./adminOverrideWarningSchema.ts";
 import { associadoAdminSnapshotSchema } from "./associadoAdminSnapshotSchema.ts";
 
 export const adminOverrideEditorPayloadSchema = z.object({
@@ -21,5 +22,8 @@ export const adminOverrideEditorPayloadSchema = z.object({
   },
   get documentos() {
     return z.array(adminOverrideDocumentoReadSchema);
+  },
+  get warnings() {
+    return z.array(adminOverrideWarningSchema);
   },
 });

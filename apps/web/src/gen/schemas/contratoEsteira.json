@@ -5,14 +5,22 @@
     "associado_nome": { "type": "string", "readOnly": true },
     "cpf_cnpj": { "type": "string", "readOnly": true },
     "matricula": { "type": "string", "readOnly": true },
-    "matricula_display": { "type": "string", "readOnly": true }
+    "matricula_display": { "type": "string", "readOnly": true },
+    "valor_mensalidade": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+      "readOnly": true,
+      "nullable": true
+    }
   },
   "required": [
     "associado_nome",
     "codigo",
     "cpf_cnpj",
     "matricula",
-    "matricula_display"
+    "matricula_display",
+    "valor_mensalidade"
   ],
   "x-readme-ref-name": "ContratoEsteira"
 }

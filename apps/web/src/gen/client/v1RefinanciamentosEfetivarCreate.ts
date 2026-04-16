@@ -14,7 +14,6 @@ import type {
   RequestConfig,
   ResponseErrorConfig,
 } from "@kubb/plugin-client/clients/axios";
-import { buildFormData } from "../.kubb/config.ts";
 
 function getV1RefinanciamentosEfetivarCreateUrl(
   id: V1RefinanciamentosEfetivarCreatePathParams["id"],
@@ -39,7 +38,7 @@ export async function v1RefinanciamentosEfetivarCreate(
   const { client: request = fetch, ...requestConfig } = config;
 
   const requestData = data;
-  const formData = buildFormData(requestData);
+
   const res = await request<
     V1RefinanciamentosEfetivarCreateMutationResponse,
     ResponseErrorConfig<Error>,
@@ -47,7 +46,7 @@ export async function v1RefinanciamentosEfetivarCreate(
   >({
     method: "POST",
     url: getV1RefinanciamentosEfetivarCreateUrl(id).url.toString(),
-    data: formData as FormData,
+    data: requestData,
     ...requestConfig,
   });
   return res.data;

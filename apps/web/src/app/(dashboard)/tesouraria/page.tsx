@@ -160,8 +160,54 @@ function formatTesourariaDadosBancarios(row: TesourariaContratoItem) {
     .join(" | ");
 }
 
+function hasTesourariaPaymentProofs(row: TesourariaContratoItem) {
+  const hasAssociado = row.comprovantes.some((item) => item.papel === "associado");
+  const hasAgente = row.comprovantes.some((item) => item.papel === "agente");
+  return hasAssociado && hasAgente;
+}
+
+function getOperationalDeleteCopy(row: TesourariaContratoItem) {
+  if (row.status === "cancelado") {
+    return {
+      title: "Remover da fila preservando histórico",
+      description:
+        "O contrato não será apagado. O item operacional será reclassificado conforme o status real de cancelamento.",
+      confirmLabel: "Remover da fila",
+    };
+  }
+
+  if (row.status === "concluido" || row.status === "liquidado") {
+    return {
+      title: "Remover da fila preservando histórico",
+      description:
+        "O associado, o contrato e o financeiro serão preservados. Apenas o item operacional sairá da fila incorreta.",
+      confirmLabel: "Remover da fila",
+    };
+  }
+
+  return {
+    title: "Excluir cadastro pré-operacional",
+    description:
+      "O pacote operacional ainda não foi consolidado. A exclusão apagará o cadastro pré-operacional, documentos e contrato em análise.",
+    confirmLabel: "Excluir cadastro",
+  };
+}
+
 function formatTesourariaAcoes(row: TesourariaContratoItem) {
-  const actions = ["Ver detalhes", "Congelar", "Cancelar contrato"];
+  const actions = ["Ver detalhes"];
+  if ((row.status === "pendente" || row.status === "congelado") && !row.dispensa_pagamento_inicial) {
+    actions.push(
+      hasTesourariaPaymentProofs(row) ? "Efetivar" : "Aguardando comprovantes",
+    );
+  }
+  if (row.status === "pendente" || row.status === "congelado") {
+    actions.push("Congelar", "Cancelar contrato");
+  }
+  actions.push(
+    row.status === "pendente" || row.status === "congelado"
+      ? "Excluir cadastro"
+      : "Remover da fila",
+  );
   if (row.status === "cancelado" && row.cancelamento_tipo === "desistente") {
     return [...actions, "Desistente"].join(" | ");
   }
@@ -307,6 +353,7 @@ function useTesourariaQuery({
 export default function TesourariaPage() {
   const { hasAnyRole } = usePermissions();
   const canMutate = hasAnyRole(["ADMIN", "TESOUREIRO"]);
+  const canOperationalDelete = hasAnyRole(["ADMIN", "COORDENADOR"]);
   const queryClient = useQueryClient();
   const [search, setSearch] = React.useState("");
   const [isExporting, setIsExporting] = React.useState(false);
@@ -343,6 +390,8 @@ export default function TesourariaPage() {
   const [bankTarget, setBankTarget] =
     React.useState<TesourariaContratoItem | null>(null);
   const [detailTarget, setDetailTarget] =
+    React.useState<TesourariaContratoItem | null>(null);
+  const [deleteTarget, setDeleteTarget] =
     React.useState<TesourariaContratoItem | null>(null);
   const agentesFiltroQuery = useQuery({
     queryKey: ["tesouraria-contratos-agentes"],
@@ -486,6 +535,64 @@ export default function TesourariaPage() {
     },
   });
 
+  const efetivarMutation = useMutation({
+    mutationFn: async ({ contratoId }: { contratoId: number }) =>
+      apiFetch<TesourariaContratoItem>(
+        `tesouraria/contratos/${contratoId}/efetivar`,
+        {
+          method: "POST",
+          body: {},
+        },
+      ),
+    onSuccess: () => {
+      toast.success("Contrato efetivado com sucesso.");
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-contratos"],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-pagamentos"],
+      });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao efetivar contrato.",
+      );
+    },
+  });
+
+  const excluirMutation = useMutation({
+    mutationFn: async ({ contratoId }: { contratoId: number }) =>
+      apiFetch<TesourariaContratoItem>(
+        `tesouraria/contratos/${contratoId}/excluir`,
+        {
+          method: "POST",
+          body: {},
+        },
+      ),
+    onSuccess: (_, variables) => {
+      const target = deleteTarget;
+      toast.success(
+        target && getOperationalDeleteCopy(target).confirmLabel === "Excluir cadastro"
+          ? "Cadastro pré-operacional excluído."
+          : "Item removido da fila com histórico preservado.",
+      );
+      setDeleteTarget(null);
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-contratos"],
+      });
+      void queryClient.invalidateQueries({ queryKey: ["associados"] });
+      void queryClient.invalidateQueries({ queryKey: ["analise"] });
+      void queryClient.invalidateQueries({ queryKey: ["contratos"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao excluir item operacional.",
+      );
+    },
+  });
+
   const cancelarMutation = useMutation({
     mutationFn: async ({
       contratoId,
@@ -534,6 +641,7 @@ export default function TesourariaPage() {
           );
           const canEfetivar =
             row.status === "pendente" || row.status === "congelado";
+          const hasAllProofs = hasTesourariaPaymentProofs(row);
           const dispensaPagamentoInicial = row.dispensa_pagamento_inicial;
           const isAverbando =
             averbarMutation.isPending &&
@@ -541,17 +649,21 @@ export default function TesourariaPage() {
           const isSubstituindo =
             substituirComprovanteMutation.isPending &&
             substituirComprovanteMutation.variables?.contratoId === row.id;
-          const isBlocked = isAverbando || isSubstituindo;
+          const isEfetivando =
+            efetivarMutation.isPending &&
+            efetivarMutation.variables?.contratoId === row.id;
+          const isBlocked = isAverbando || isSubstituindo || isEfetivando;
 
           if (dispensaPagamentoInicial) {
             return (
               <div className="flex min-w-[13rem] flex-col gap-3 rounded-2xl border border-dashed border-border/60 bg-card/40 p-3">
                 <p className="text-sm font-medium">
-                  Fluxo sem pagamento inicial
+                  Fluxo legado sem mensalidade
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Este contrato não exige comprovantes PIX. A ação operacional é
-                  apenas averbar.
+                  Este contrato já existe como exceção legada com mensalidade
+                  zerada. Esse fluxo não fica mais disponível para novos
+                  cadastros.
                 </p>
                 {canEfetivar ? (
                   <Button
@@ -619,7 +731,9 @@ export default function TesourariaPage() {
               </div>
               <p className="text-xs text-muted-foreground">
                 {canEfetivar
-                  ? "O comprovante do associado efetiva automaticamente. O do agente é opcional."
+                  ? hasAllProofs
+                    ? "Os dois comprovantes já estão anexados. Clique em Efetivar para concluir."
+                    : "A efetivação exige comprovante do associado e do agente. O upload isolado não conclui a etapa."
                   : "Os comprovantes podem ser substituídos a qualquer momento."}
               </p>
             </div>
@@ -654,6 +768,14 @@ export default function TesourariaPage() {
             row.status === "pendente" || row.status === "congelado";
           const canCancel =
             row.status === "pendente" || row.status === "congelado";
+          const canEfetivar =
+            (row.status === "pendente" || row.status === "congelado") &&
+            !row.dispensa_pagamento_inicial;
+          const hasAllProofs = hasTesourariaPaymentProofs(row);
+          const isEfetivando =
+            efetivarMutation.isPending &&
+            efetivarMutation.variables?.contratoId === row.id;
+          const deleteCopy = getOperationalDeleteCopy(row);
 
           return (
             <div className="flex min-w-52 flex-wrap gap-2">
@@ -664,6 +786,16 @@ export default function TesourariaPage() {
               >
                 <EyeIcon className="size-4" />
                 Ver detalhes
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-emerald-500/40 text-emerald-200"
+                onClick={() => efetivarMutation.mutate({ contratoId: row.id })}
+                disabled={!canEfetivar || !hasAllProofs || !canMutate || isEfetivando}
+              >
+                <CheckCircle2Icon className="size-4" />
+                Efetivar
               </Button>
               <Button
                 size="sm"
@@ -683,6 +815,16 @@ export default function TesourariaPage() {
                 disabled={!canCancel || !canMutate}
               >
                 Cancelar contrato
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-rose-500/40 text-rose-200"
+                onClick={() => setDeleteTarget(row)}
+                disabled={!canOperationalDelete}
+              >
+                <Trash2Icon className="size-4" />
+                {deleteCopy.confirmLabel}
               </Button>
             </div>
           );
@@ -794,7 +936,13 @@ export default function TesourariaPage() {
         ),
       },
     ],
-    [averbarMutation, canMutate, substituirComprovanteMutation],
+    [
+      averbarMutation,
+      canMutate,
+      canOperationalDelete,
+      efetivarMutation,
+      substituirComprovanteMutation,
+    ],
   );
 
   const handleExport = React.useCallback(
@@ -1570,6 +1718,52 @@ export default function TesourariaPage() {
               }}
             >
               Confirmar cancelamento
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {deleteTarget ? getOperationalDeleteCopy(deleteTarget).title : "Excluir item operacional"}
+            </DialogTitle>
+            <DialogDescription>
+              {deleteTarget
+                ? getOperationalDeleteCopy(deleteTarget).description
+                : "Confirme a exclusão do item operacional."}
+            </DialogDescription>
+          </DialogHeader>
+          {deleteTarget ? (
+            <div className="rounded-2xl border border-border/60 bg-card/60 p-4 text-sm">
+              <p className="font-medium">{deleteTarget.nome}</p>
+              <p className="text-muted-foreground">
+                {deleteTarget.matricula || "Sem matrícula"} ·{" "}
+                {maskCPFCNPJ(deleteTarget.cpf_cnpj)}
+              </p>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+              Voltar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!deleteTarget || excluirMutation.isPending}
+              onClick={() => {
+                if (!deleteTarget) {
+                  return;
+                }
+                excluirMutation.mutate({ contratoId: deleteTarget.id });
+              }}
+            >
+              {deleteTarget
+                ? getOperationalDeleteCopy(deleteTarget).confirmLabel
+                : "Confirmar"}
             </Button>
           </DialogFooter>
         </DialogContent>

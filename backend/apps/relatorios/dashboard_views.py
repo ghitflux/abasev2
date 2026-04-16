@@ -77,6 +77,8 @@ class AdminDashboardViewSet(GenericViewSet):
     @extend_schema(
         parameters=[
             OpenApiParameter("competencia", str, OpenApiParameter.QUERY),
+            OpenApiParameter("date_start", str, OpenApiParameter.QUERY),
+            OpenApiParameter("date_end", str, OpenApiParameter.QUERY),
             OpenApiParameter("day", str, OpenApiParameter.QUERY),
             OpenApiParameter("agent_id", int, OpenApiParameter.QUERY),
             OpenApiParameter("status", str, OpenApiParameter.QUERY),

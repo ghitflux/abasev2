@@ -5,6 +5,7 @@
 
 import type { ContratoEsteira } from "./ContratoEsteira.ts";
 import type { DocumentoEsteira } from "./DocumentoEsteira.ts";
+import type { EsteiraAssociadoCompat } from "./EsteiraAssociadoCompat.ts";
 import type { EsteiraEtapaEnum } from "./EsteiraEtapaEnum.ts";
 import type { EsteiraSimpleUser } from "./EsteiraSimpleUser.ts";
 import type { EsteiraSituacaoEnum } from "./EsteiraSituacaoEnum.ts";
@@ -20,6 +21,7 @@ export type EsteiraDetail = {
    * @type integer
    */
   readonly associado_id: number;
+  readonly associado: EsteiraAssociadoCompat;
   /**
    * @type integer
    */
@@ -91,6 +93,14 @@ export type EsteiraDetail = {
    * @type string, date-time
    */
   assumido_em?: string | null;
+  /**
+   * @type string, date-time
+   */
+  readonly created_at: string;
+  /**
+   * @type string, date-time
+   */
+  readonly updated_at: string;
   /**
    * @type array
    */

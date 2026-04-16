@@ -48,7 +48,8 @@ export const refinanciamentoDetailSchema = z.object({
   valor_refinanciamento: z.optional(
     z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
   ),
-  repasse_agente: z.optional(z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/)),
+  valor_liberado_associado: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
+  repasse_agente: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
   ciclo_key: z.string(),
   referencias: z.array(z.string()),
   get itens() {
@@ -61,6 +62,10 @@ export const refinanciamentoDetailSchema = z.object({
   pagamento_status: z.string(),
   legacy_refinanciamento_id: z.int(),
   origem: z.string(),
+  data_anexo_associado: z.string(),
+  data_anexo_agente: z.string(),
+  data_pagamento_associado: z.string(),
+  data_pagamento_agente: z.string(),
   data_renovacao: z.nullable(z.iso.datetime()),
   origem_renovacao: z.string(),
   motivo_apto_renovacao: z.string(),

@@ -186,11 +186,13 @@ const schema = z
         .min(3, "Prazo inválido.")
         .max(4, "Prazo inválido."),
       taxa_antecipacao: z.number().min(0, "Taxa inválida."),
-      sem_mensalidade: z.boolean(),
       mensalidade: z
         .number()
         .nullable()
-        .refine((value) => (value ?? 0) >= 0, "Informe a mensalidade."),
+        .refine(
+          (value) => (value ?? 0) > 0,
+          "A mensalidade deve ser maior que zero.",
+        ),
       data_aprovacao: z.date().optional(),
     }),
     agente_responsavel_id: z.number().nullable().optional(),
@@ -223,14 +225,11 @@ const schema = z
       });
     }
 
-    if (
-      !values.contrato.sem_mensalidade &&
-      (values.contrato.mensalidade ?? 0) <= 0
-    ) {
+    if ((values.contrato.mensalidade ?? 0) <= 0) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["contrato", "mensalidade"],
-        message: "Informe a mensalidade.",
+        message: "A mensalidade deve ser maior que zero.",
       });
     }
   });
@@ -348,9 +347,6 @@ function defaultValues(
         Number.parseFloat(
           contrato?.taxa_antecipacao ?? String(TAXA_ANTECIPACAO_PADRAO),
         ) || TAXA_ANTECIPACAO_PADRAO,
-      sem_mensalidade: contrato
-        ? (decimalToCents(contrato.valor_mensalidade) ?? 0) === 0
-        : false,
       mensalidade: decimalToCents(contrato?.valor_mensalidade),
       data_aprovacao:
         parseIsoDate(contrato?.data_aprovacao) ??
@@ -445,9 +441,8 @@ export default function AssociadoForm({
 
   const valorBruto = watch("contrato.valor_bruto_total") ?? 0;
   const valorLiquido = watch("contrato.valor_liquido") ?? 0;
-  const semMensalidade = watch("contrato.sem_mensalidade") ?? false;
   const mensalidade = watch("contrato.mensalidade") ?? 0;
-  const mensalidadeCalculada = semMensalidade ? 0 : mensalidade;
+  const mensalidadeCalculada = mensalidade;
   const prazoMeses = watch("contrato.prazo_meses") ?? PRAZO_ANTECIPACAO_PADRAO;
   const taxaAntecipacao =
     watch("contrato.taxa_antecipacao") ?? TAXA_ANTECIPACAO_PADRAO;
@@ -583,18 +578,6 @@ export default function AssociadoForm({
   ]);
 
   React.useEffect(() => {
-    if (!semMensalidade) {
-      return;
-    }
-    if (mensalidade !== 0) {
-      setValue("contrato.mensalidade", 0, {
-        shouldDirty: true,
-        shouldValidate: true,
-      });
-    }
-  }, [mensalidade, semMensalidade, setValue]);
-
-  React.useEffect(() => {
     if (mode !== "create") {
       return;
     }
@@ -625,9 +608,7 @@ export default function AssociadoForm({
         valor_liquido: centsToDecimal(values.contrato.valor_liquido),
         prazo_meses: prazoPayload,
         taxa_antecipacao: taxaPayload.toFixed(2),
-        mensalidade: centsToDecimal(
-          values.contrato.sem_mensalidade ? 0 : values.contrato.mensalidade,
-        ),
+        mensalidade: centsToDecimal(values.contrato.mensalidade),
         margem_disponivel: centsToDecimal(margemDisponivel),
       };
       const payload = {
@@ -1489,34 +1470,6 @@ export default function AssociadoForm({
                 <CardContent>
                   <FieldGroup className="grid gap-5 md:grid-cols-4">
                     <Field>
-                      <FieldLabel>Regra de cobrança</FieldLabel>
-                      <FieldContent>
-                        <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-card/40 px-3 py-3">
-                          <Controller
-                            control={control}
-                            name="contrato.sem_mensalidade"
-                            render={({ field }) => (
-                              <Checkbox
-                                checked={field.value}
-                                onCheckedChange={(checked) =>
-                                  field.onChange(Boolean(checked))
-                                }
-                              />
-                            )}
-                          />
-                          <div className="space-y-1">
-                            <p className="text-sm font-medium">
-                              Associado sem mensalidade
-                            </p>
-                            <p className="text-xs text-muted-foreground">
-                              Dispensa pagamento inicial na tesouraria e segue
-                              por averbação direta.
-                            </p>
-                          </div>
-                        </div>
-                      </FieldContent>
-                    </Field>
-                    <Field>
                       <FieldLabel>Mensalidade associativa (R$)</FieldLabel>
                       <FieldContent>
                         <Controller
@@ -1524,9 +1477,8 @@ export default function AssociadoForm({
                           name="contrato.mensalidade"
                           render={({ field }) => (
                             <InputCurrency
-                              value={semMensalidade ? 0 : field.value}
+                              value={field.value}
                               onChange={field.onChange}
-                              disabled={semMensalidade}
                             />
                           )}
                         />

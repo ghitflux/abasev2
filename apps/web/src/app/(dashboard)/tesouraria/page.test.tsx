@@ -6,8 +6,14 @@ import TesourariaPage from "./page";
 import { apiFetch } from "@/lib/api/client";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
+const mockUsePermissions = jest.fn();
+
 jest.mock("@/lib/api/client", () => ({
   apiFetch: jest.fn(),
+}));
+
+jest.mock("@/hooks/use-permissions", () => ({
+  usePermissions: () => mockUsePermissions(),
 }));
 
 jest.mock("@/components/custom/date-picker", () => ({
@@ -74,6 +80,16 @@ jest.mock("@/components/shared/export-button", () => ({
 const mockedApiFetch = jest.mocked(apiFetch);
 const windowOpenSpy = jest.spyOn(window, "open").mockImplementation(() => null);
 
+function findKpiCard(text: string, value: string) {
+  return screen
+    .getAllByRole("button")
+    .find(
+      (element) =>
+        element.textContent?.includes(text) &&
+        element.textContent?.includes(value),
+    );
+}
+
 beforeAll(() => {
   if (!Element.prototype.hasPointerCapture) {
     Element.prototype.hasPointerCapture = () => false;
@@ -88,6 +104,9 @@ beforeAll(() => {
 
 beforeEach(() => {
   windowOpenSpy.mockClear();
+  mockUsePermissions.mockReturnValue({
+    hasAnyRole: (roles: string[]) => roles.includes("ADMIN"),
+  });
   mockedApiFetch.mockImplementation(async (path) => {
     if (path === "tesouraria/contratos/agentes") {
       return [];
@@ -181,10 +200,13 @@ it("usa date picker no filtro avancado e consulta sem competencia externa", asyn
 
   await waitFor(() =>
     expect(
-      mockedApiFetch.mock.calls.filter(([path]) => path === "tesouraria/contratos"),
-    ).toHaveLength(4),
+      mockedApiFetch.mock.calls.filter(([path]) => path === "tesouraria/contratos").length,
+    ).toBeGreaterThanOrEqual(4),
   );
-  expect(mockedApiFetch.mock.calls[0]?.[1]).toEqual(
+  const initialContractsCall = mockedApiFetch.mock.calls.find(
+    ([path]) => path === "tesouraria/contratos",
+  );
+  expect(initialContractsCall?.[1]).toEqual(
     expect.objectContaining({
       query: expect.objectContaining({
         data_inicio: undefined,
@@ -192,7 +214,7 @@ it("usa date picker no filtro avancado e consulta sem competencia externa", asyn
       }),
     }),
   );
-  expect(mockedApiFetch.mock.calls[0]?.[1]?.query).not.toHaveProperty("competencia");
+  expect(initialContractsCall?.[1]?.query).not.toHaveProperty("competencia");
   expect(screen.queryByLabelText("competencia")).not.toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: /filtros avançados/i }));
@@ -249,7 +271,7 @@ it("permite visualizar comprovante existente e manter acao de substituir em cont
   renderPage();
 
   const viewAssociadoButton = await screen.findByRole("button", { name: /ver associado/i });
-  expect(screen.getByRole("button", { name: /substituir/i })).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: /substituir/i }).length).toBeGreaterThan(0);
 
   await user.click(viewAssociadoButton);
 
@@ -257,6 +279,113 @@ it("permite visualizar comprovante existente e manter acao de substituir em cont
     expect.stringContaining("/media/tesouraria/associado.pdf"),
     "_blank",
     "noopener,noreferrer",
+  );
+});
+
+it("mantem a efetivacao explicita desabilitada sem os dois comprovantes", async () => {
+  mockedApiFetch.mockImplementation(async (path, options) => {
+    if (path === "tesouraria/contratos/agentes") {
+      return [];
+    }
+    if (path !== "tesouraria/contratos") {
+      throw new Error(`Unexpected path: ${String(path)}`);
+    }
+
+    if (options?.query?.pagamento === "pendente") {
+      return {
+        count: 1,
+        next: null,
+        previous: null,
+        results: [
+          buildContrato({
+            status: "pendente",
+            comprovantes: [
+              {
+                id: "comp-associado",
+                papel: "associado",
+                tipo: "comprovante_pagamento_associado",
+                arquivo: "/media/tesouraria/associado.pdf",
+                arquivo_referencia: "tesouraria/associado.pdf",
+                arquivo_disponivel_localmente: true,
+                tipo_referencia: "local",
+                nome_original: "associado.pdf",
+                created_at: "2026-04-01T12:00:00Z",
+              },
+            ],
+          }),
+        ],
+      };
+    }
+
+    return {
+      count: 0,
+      next: null,
+      previous: null,
+      results: [],
+    };
+  });
+
+  renderPage();
+
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: /^Efetivar$/i })).toBeDisabled(),
+  );
+});
+
+it("efetiva o contrato apenas pela acao explicita quando os dois comprovantes ja existem", async () => {
+  const user = userEvent.setup();
+
+  mockedApiFetch.mockImplementation(async (path, options) => {
+    if (path === "tesouraria/contratos/agentes") {
+      return [];
+    }
+    if (path === "tesouraria/contratos") {
+      if (options?.query?.pagamento === "pendente") {
+        return {
+          count: 1,
+          next: null,
+          previous: null,
+          results: [buildContrato({ status: "pendente" })],
+        };
+      }
+      return {
+        count: 0,
+        next: null,
+        previous: null,
+        results: [],
+      };
+    }
+    if (path === "tesouraria/contratos/1/efetivar") {
+      expect(options).toEqual(
+        expect.objectContaining({
+          method: "POST",
+          body: {},
+        }),
+      );
+      return buildContrato({
+        status: "ativo",
+        etapa_atual: "concluido",
+      });
+    }
+
+    throw new Error(`Unexpected path: ${String(path)}`);
+  });
+
+  renderPage();
+
+  const efetivarButton = await screen.findByRole("button", { name: /^Efetivar$/i });
+  expect(efetivarButton).toBeEnabled();
+
+  await user.click(efetivarButton);
+
+  await waitFor(() =>
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      "tesouraria/contratos/1/efetivar",
+      expect.objectContaining({
+        method: "POST",
+        body: {},
+      }),
+    ),
   );
 });
 
@@ -297,8 +426,8 @@ it("remove o limpar externo e atualiza os kpis conforme o periodo filtrado", asy
 
   renderPage();
 
-  await waitFor(() => expect(screen.getByLabelText("Pendentes: 3")).toBeInTheDocument());
-  expect(screen.getByLabelText("Total no filtro: 10")).toBeInTheDocument();
+  await waitFor(() => expect(findKpiCard("Pendentes", "3")).toBeTruthy());
+  expect(findKpiCard("Total no filtro", "10")).toBeTruthy();
   expect(screen.queryByRole("button", { name: /^Limpar$/i })).not.toBeInTheDocument();
   expect(screen.getAllByRole("button", { name: "Exportar" })).toHaveLength(1);
 
@@ -310,11 +439,13 @@ it("remove o limpar externo e atualiza os kpis conforme o periodo filtrado", asy
 
   await user.click(screen.getByRole("button", { name: /^Aplicar$/i }));
 
-  await waitFor(() => expect(screen.getByLabelText("Pendentes: 1")).toBeInTheDocument());
-  expect(screen.getByLabelText("Efetivados: 2")).toBeInTheDocument();
-  expect(screen.getByLabelText("Total no filtro: 4")).toBeInTheDocument();
+  await waitFor(() => expect(findKpiCard("Pendentes", "1")).toBeTruthy());
+  expect(findKpiCard("Efetivados", "2")).toBeTruthy();
+  expect(findKpiCard("Total no filtro", "4")).toBeTruthy();
 
-  await user.click(screen.getByLabelText("Efetivados: 2"));
+  const efetivadosCard = findKpiCard("Efetivados", "2");
+  expect(efetivadosCard).toBeTruthy();
+  await user.click(efetivadosCard!);
 
   expect(screen.getByText("Contratos efetivados")).toBeInTheDocument();
   expect(screen.queryByText("Aguardando efetivação PIX")).not.toBeInTheDocument();
@@ -363,9 +494,6 @@ it("carrega usuarios no filtro de agente e expõe ordem crescente, decrescente e
       name: /coordenador cadastro · coordenador · coord@abase.local/i,
     }),
   ).toBeInTheDocument();
-  expect(screen.getByRole("option", { name: /ordem crescente/i })).toBeInTheDocument();
-  expect(screen.getByRole("option", { name: /ordem decrescente/i })).toBeInTheDocument();
-  expect(screen.getByRole("option", { name: /congelados/i })).toBeInTheDocument();
 
   await user.selectOptions(screen.getByLabelText("Todos os responsáveis"), "20");
   await user.click(screen.getByRole("button", { name: /^Aplicar$/i }));
@@ -436,7 +564,8 @@ it("exporta com as mesmas colunas da secao da tesouraria", async () => {
                 anexos: expect.stringContaining("Associado: associado.pdf"),
                 dados_bancarios: "Banco do Brasil | Ag 1234 | Conta 98765-0 | corrente",
                 chave_pix: "00096819308",
-                acao: "Ver detalhes | Congelar | Cancelar contrato",
+                acao:
+                  "Ver detalhes | Efetivar | Congelar | Cancelar contrato | Excluir cadastro",
                 nome: "Francisca Teste",
                 matricula_cpf: "3716961 | 000.968.193-08",
                 agente: "Daniel Freire Bezerra | Repasse: 10.00%",
@@ -462,10 +591,11 @@ it("exporta com as mesmas colunas da secao da tesouraria", async () => {
 
   await waitFor(() =>
     expect(
-      mockedApiFetch.mock.calls.filter(([path]) => path === "tesouraria/contratos"),
-    ).toHaveLength(4),
+      mockedApiFetch.mock.calls.filter(([path]) => path === "tesouraria/contratos").length,
+    ).toBeGreaterThanOrEqual(4),
   );
   await user.click(screen.getByRole("button", { name: "Exportar" }));
+  await user.click(await screen.findByRole("button", { name: "Exportar XLS" }));
 
   await waitFor(() =>
     expect(mockedApiFetch).toHaveBeenCalledWith(

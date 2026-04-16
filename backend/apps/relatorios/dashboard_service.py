@@ -318,6 +318,101 @@ class AdminDashboardService:
         return "-"
 
     @staticmethod
+    def _resolve_contract_by_id(contract_id: int | None) -> Contrato | None:
+        if not contract_id:
+            return None
+        return (
+            Contrato.objects.select_related(
+                "associado",
+                "agente",
+                "associado__agente_responsavel",
+                "associado__esteira_item",
+            )
+            .prefetch_related("ciclos__parcelas")
+            .filter(pk=contract_id)
+            .first()
+        )
+
+    @staticmethod
+    def _resolve_data_entrada_associacao(
+        associado: Associado | None,
+        contrato: Contrato | None = None,
+    ) -> str:
+        if associado is None:
+            return ""
+        if contrato and contrato.auxilio_liberado_em:
+            return contrato.auxilio_liberado_em.isoformat()
+        created_at = getattr(associado, "created_at", None)
+        if created_at is None:
+            return ""
+        if isinstance(created_at, datetime):
+            return created_at.date().isoformat()
+        return created_at.isoformat()
+
+    @staticmethod
+    def _resolve_parcelas_descontadas(contrato: Contrato | None) -> int | None:
+        if contrato is None:
+            return None
+        prefetched_cycles = getattr(contrato, "_prefetched_objects_cache", {}).get("ciclos")
+        if prefetched_cycles is not None:
+            count = 0
+            for ciclo in prefetched_cycles:
+                prefetched_parcelas = getattr(ciclo, "_prefetched_objects_cache", {}).get(
+                    "parcelas"
+                )
+                if prefetched_parcelas is not None:
+                    count += sum(
+                        1
+                        for parcela in prefetched_parcelas
+                        if parcela.status == Parcela.Status.DESCONTADO
+                    )
+                    continue
+                count += ciclo.parcelas.filter(
+                    deleted_at__isnull=True,
+                    status=Parcela.Status.DESCONTADO,
+                ).count()
+            return count
+        return Parcela.objects.filter(
+            ciclo__contrato=contrato,
+            deleted_at__isnull=True,
+            status=Parcela.Status.DESCONTADO,
+        ).count()
+
+    @staticmethod
+    def _resolve_status_resumo_mensal(
+        associado: Associado | None,
+        contrato: Contrato | None = None,
+    ) -> str:
+        if contrato and contrato.status == Contrato.Status.CANCELADO:
+            return "cancelado"
+        if contrato and contrato.status == Contrato.Status.ENCERRADO:
+            return "liquidado"
+        if associado is None:
+            return ""
+        if associado.status == Associado.Status.INATIVO:
+            return "inativo"
+        return associado.status
+
+    @staticmethod
+    def _detail_row_summary_fields(
+        associado: Associado | None,
+        contrato: Contrato | None = None,
+    ) -> dict[str, object]:
+        return {
+            "data_entrada_associacao": AdminDashboardService._resolve_data_entrada_associacao(
+                associado,
+                contrato,
+            ),
+            "parcelas_descontadas": AdminDashboardService._resolve_parcelas_descontadas(
+                contrato
+            ),
+            "status_resumo_mensal": AdminDashboardService._resolve_status_resumo_mensal(
+                associado,
+                contrato,
+            ),
+        }
+
+    @staticmethod
     def _detail_row_from_associado(
         associado: Associado,
         *,
@@ -344,6 +439,7 @@ class AdminDashboardService:
             "origem": origem,
             "data_referencia": data_referencia.isoformat() if data_referencia else "",
             "observacao": observacao,
+            **AdminDashboardService._detail_row_summary_fields(associado, contrato),
         }
 
     @staticmethod
@@ -373,6 +469,7 @@ class AdminDashboardService:
             "origem": origem,
             "data_referencia": data_referencia.isoformat() if data_referencia else contrato.data_contrato.isoformat(),
             "observacao": observacao,
+            **AdminDashboardService._detail_row_summary_fields(associado, contrato),
         }
 
     @staticmethod
@@ -403,6 +500,7 @@ class AdminDashboardService:
             "associado_nome": associado_nome,
             "cpf_cnpj": cpf_cnpj,
             "matricula": matricula,
+            "data_nascimento": associado.data_nascimento.isoformat() if associado and associado.data_nascimento else "",
             "status": status,
             "agente_nome": AdminDashboardService._resolve_agent_name(associado=associado, contrato=contrato),
             "contrato_codigo": contrato.codigo if contrato else "",
@@ -416,6 +514,7 @@ class AdminDashboardService:
                 else payment.referencia_month.isoformat()
             ),
             "observacao": observacao,
+            **AdminDashboardService._detail_row_summary_fields(associado, contrato),
         }
 
     @staticmethod
@@ -434,6 +533,7 @@ class AdminDashboardService:
             "associado_nome": associado.nome_completo,
             "cpf_cnpj": associado.cpf_cnpj,
             "matricula": associado.matricula_orgao or associado.matricula or "-",
+            "data_nascimento": associado.data_nascimento.isoformat() if associado.data_nascimento else "",
             "status": associado.status,
             "agente_nome": AdminDashboardService._resolve_agent_name(
                 associado=associado,
@@ -446,6 +546,7 @@ class AdminDashboardService:
             "origem": origem,
             "data_referencia": liquidacao.data_liquidacao.isoformat(),
             "observacao": observacao or liquidacao.observacao,
+            **AdminDashboardService._detail_row_summary_fields(associado, contrato),
         }
 
     @staticmethod
@@ -463,6 +564,7 @@ class AdminDashboardService:
             "associado_nome": associado.nome_completo,
             "cpf_cnpj": associado.cpf_cnpj,
             "matricula": associado.matricula_orgao or associado.matricula or contrato.codigo,
+            "data_nascimento": associado.data_nascimento.isoformat() if associado.data_nascimento else "",
             "status": parcela.status,
             "agente_nome": AdminDashboardService._resolve_agent_name(associado=associado, contrato=contrato),
             "contrato_codigo": contrato.codigo,
@@ -472,6 +574,7 @@ class AdminDashboardService:
             "origem": origem,
             "data_referencia": parcela.referencia_mes.isoformat(),
             "observacao": observacao,
+            **AdminDashboardService._detail_row_summary_fields(associado, contrato),
         }
 
     @staticmethod
@@ -494,6 +597,7 @@ class AdminDashboardService:
             "associado_nome": associado.nome_completo,
             "cpf_cnpj": associado.cpf_cnpj,
             "matricula": associado.matricula_orgao or associado.matricula or "-",
+            "data_nascimento": associado.data_nascimento.isoformat() if associado.data_nascimento else "",
             "status": pagamento.status,
             "agente_nome": AdminDashboardService._resolve_agent_name(associado=associado, contrato=contrato),
             "contrato_codigo": pagamento.contrato_codigo or (contrato.codigo if contrato else ""),
@@ -503,6 +607,7 @@ class AdminDashboardService:
             "origem": origem,
             "data_referencia": paid_at.isoformat() if paid_at else "",
             "observacao": observacao,
+            **AdminDashboardService._detail_row_summary_fields(associado, contrato),
         }
         if valor_associado is not None:
             payload["valor_associado"] = value_or_none(valor_associado)
@@ -528,6 +633,7 @@ class AdminDashboardService:
             "associado_nome": devolucao.nome_snapshot or associado.nome_completo,
             "cpf_cnpj": devolucao.cpf_cnpj_snapshot or associado.cpf_cnpj,
             "matricula": devolucao.matricula_snapshot or associado.matricula_orgao or associado.matricula or "-",
+            "data_nascimento": associado.data_nascimento.isoformat() if associado.data_nascimento else "",
             "status": devolucao.status,
             "agente_nome": devolucao.agente_snapshot or AdminDashboardService._resolve_agent_name(associado=associado, contrato=contrato),
             "contrato_codigo": devolucao.contrato_codigo_snapshot or contrato.codigo,
@@ -537,6 +643,7 @@ class AdminDashboardService:
             "origem": origem,
             "data_referencia": devolucao.data_devolucao.isoformat(),
             "observacao": observacao or devolucao.motivo,
+            **AdminDashboardService._detail_row_summary_fields(associado, contrato),
         }
 
     @staticmethod
@@ -563,22 +670,38 @@ class AdminDashboardService:
             "origem": origem,
             "data_referencia": reference_date.isoformat(),
             "observacao": observacao or despesa.observacoes,
+            "data_entrada_associacao": "",
+            "parcelas_descontadas": None,
+            "status_resumo_mensal": "",
         }
 
     @staticmethod
     def _detail_row_from_renewal_row(row: dict[str, object], *, origem: str) -> dict[str, object]:
+        contrato = AdminDashboardService._resolve_contract_by_id(
+            int(row["contrato_id"]) if row.get("contrato_id") else None
+        )
+        associado = contrato.associado if contrato is not None else None
         return {
             "id": f"renovacao-{row['id']}-{origem}",
             "associado_id": row["associado_id"],
             "associado_nome": row["nome_associado"],
             "cpf_cnpj": row["cpf_cnpj"],
             "matricula": row["matricula"],
+            "data_nascimento": (
+                associado.data_nascimento.isoformat()
+                if associado is not None and associado.data_nascimento
+                else ""
+            ),
             "status": row["status_visual"],
             "agente_nome": row["agente_responsavel"],
             "contrato_codigo": row["contrato_codigo"],
             "etapa": "renovacao",
             "competencia": str(row["competencia"]),
-            "valor": value_or_none(Decimal(str(row.get("valor_parcela") or 0))),
+            "valor": value_or_none(
+                contrato.valor_mensalidade
+                if contrato is not None
+                else Decimal(str(row.get("valor_parcela") or 0))
+            ),
             "origem": origem,
             "data_referencia": (
                 row["data_pagamento"].isoformat()
@@ -586,6 +709,7 @@ class AdminDashboardService:
                 else ""
             ),
             "observacao": str(row.get("status_explicacao") or ""),
+            **AdminDashboardService._detail_row_summary_fields(associado, contrato),
         }
 
     @staticmethod
@@ -1604,9 +1728,21 @@ class AdminDashboardService:
 
     @staticmethod
     def resumo_mensal_associacao(filters: DashboardFilters) -> dict[str, object]:
-        months = AdminDashboardService._trend_months(filters.competencia, count=12)
-        start_month = months[0]
-        end_month = add_months(filters.competencia, 1)
+        if filters.date_start and filters.date_end:
+            # Período personalizado: lista todos os meses do intervalo
+            range_start = filters.date_start.replace(day=1)
+            range_end = filters.date_end.replace(day=1)
+            months = []
+            current = range_start
+            while current <= range_end:
+                months.append(current)
+                current = add_months(current, 1)
+            start_month = months[0]
+            end_month = add_months(months[-1], 1)
+        else:
+            months = AdminDashboardService._trend_months(filters.competencia, count=12)
+            start_month = months[0]
+            end_month = add_months(filters.competencia, 1)
         zero = Decimal("0.00")
 
         complementos_por_mes = {month: zero for month in months}

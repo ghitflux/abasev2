@@ -15,6 +15,7 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 
 from apps.accounts.permissions import (
     IsAgenteOrTesoureiroOrAdmin,
+    IsCoordenadorOrAdmin,
     IsCoordenadorOrTesoureiroOrAdmin,
 )
 from apps.associados.models import Associado
@@ -115,6 +116,11 @@ class TesourariaContratoViewSet(
     permission_classes = [permissions.IsAuthenticated, IsTesourariaViewerOrManager]
     pagination_class = StandardResultsSetPagination
 
+    def get_permissions(self):
+        if self.action == "excluir":
+            return [permissions.IsAuthenticated(), IsCoordenadorOrAdmin()]
+        return [permission() for permission in self.permission_classes]
+
     def get_queryset(self):
         competencia_param = self.request.query_params.get("competencia")
         competencia = parse_competencia(competencia_param) if competencia_param else None
@@ -158,13 +164,17 @@ class TesourariaContratoViewSet(
     def agentes(self, request):
         return Response(TesourariaService.listar_usuarios_filtro_agente())
 
-    @action(detail=True, methods=["post"], parser_classes=[MultiPartParser])
+    @action(
+        detail=True,
+        methods=["post"],
+        parser_classes=[FormParser, JSONParser, MultiPartParser],
+    )
     def efetivar(self, request, pk=None):
         payload = EfetivarContratoSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         contrato = TesourariaService.efetivar_contrato(
             pk,
-            payload.validated_data["comprovante_associado"],
+            payload.validated_data.get("comprovante_associado"),
             payload.validated_data.get("comprovante_agente"),
             request.user,
         )
@@ -210,6 +220,12 @@ class TesourariaContratoViewSet(
             payload.validated_data["motivo"],
             request.user,
         )
+        serializer = self.get_serializer(contrato)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def excluir(self, request, pk=None):
+        contrato = TesourariaService.excluir_contrato_operacional(pk, request.user)
         serializer = self.get_serializer(contrato)
         return Response(serializer.data)
 
@@ -576,6 +592,20 @@ class TesourariaPagamentoViewSet(AgentePagamentoViewSet):
     def _notification_queryset(self):
         return PagamentoNotificacao.objects.none()
 
+    def get_permissions(self):
+        if self.action == "excluir":
+            return [permissions.IsAuthenticated(), IsCoordenadorOrAdmin()]
+        return [permission() for permission in self.permission_classes]
+
+    @action(detail=True, methods=["post"])
+    def excluir(self, request, pk=None):
+        try:
+            contrato = TesourariaService.excluir_contrato_operacional(pk, request.user)
+        except Exception as exc:
+            return Response({"detail": str(exc)}, status=400)
+        serializer = self.get_serializer(contrato)
+        return Response(serializer.data)
+
 
 class BaixaManualViewSet(mixins.ListModelMixin, GenericViewSet):
     serializer_class = BaixaManualItemSerializer
@@ -655,6 +685,22 @@ class BaixaManualViewSet(mixins.ListModelMixin, GenericViewSet):
         return Response(
             {"id": baixa.id, "message": "Baixa manual registrada com sucesso."},
             status=201,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="descartar",
+        permission_classes=[permissions.IsAuthenticated, IsCoordenadorOrAdmin],
+    )
+    def descartar(self, request, pk=None):
+        try:
+            parcela = BaixaManualService.descartar_parcela(int(pk), request.user)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response(
+            {"id": parcela.id, "message": "Inadimplência descartada com sucesso."},
+            status=200,
         )
 
     @action(

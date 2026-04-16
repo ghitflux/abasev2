@@ -15,7 +15,9 @@ from django.utils import timezone
 from openpyxl import Workbook
 
 from apps.associados.models import Associado
+from apps.contratos.canonicalization import resolve_operational_contract_for_associado
 from apps.contratos.models import Contrato, Parcela
+from apps.contratos.cycle_projection import resolve_associado_mother_status
 from apps.esteira.models import EsteiraItem, Pendencia
 from apps.importacao.models import ArquivoRetorno
 from apps.refinanciamento.models import Refinanciamento
@@ -44,6 +46,8 @@ class RelatorioService:
         "tesouraria": "/tesouraria",
         "refinanciamentos": "/tesouraria/refinanciamentos",
         "importacao": "/importacao",
+        "associados_ativos_com_1_parcela_paga": "/relatorios/associados-ativos-com-1-parcela-paga",
+        "associados_ativos_com_3_parcelas_pagas": "/relatorios/associados-ativos-com-3-parcelas-pagas",
     }
 
     @staticmethod
@@ -221,6 +225,40 @@ class RelatorioService:
                     ReportColumn("nao_encontrados", "Nao encontrados", 1.1),
                     ReportColumn("erros", "Erros", 0.7),
                     ReportColumn("created_at", "Importado em", 1.4),
+                ),
+            ),
+            "/relatorios/associados-ativos-com-1-parcela-paga": ReportDefinition(
+                tipo="/relatorios/associados-ativos-com-1-parcela-paga",
+                title="Associados Ativos com 1 Parcela Paga",
+                description="Associados com status mãe ativo e ao menos uma parcela paga dentro do recorte informado.",
+                columns=(
+                    ReportColumn("nome_completo", "Associado", 2.4),
+                    ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("matricula", "Matricula", 1.2),
+                    ReportColumn("agente", "Agente", 1.8),
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("valor_mensalidade", "Mensalidade", 1.1),
+                    ReportColumn("parcelas_pagas", "Parcelas pagas", 1.0),
+                    ReportColumn("valor_total_pago", "Valor pago", 1.2),
+                    ReportColumn("primeira_parcela_paga", "Primeira paga", 1.3),
+                    ReportColumn("ultima_parcela_paga", "Ultima paga", 1.3),
+                ),
+            ),
+            "/relatorios/associados-ativos-com-3-parcelas-pagas": ReportDefinition(
+                tipo="/relatorios/associados-ativos-com-3-parcelas-pagas",
+                title="Associados Ativos com 3 Parcelas Pagas",
+                description="Associados com status mãe ativo e no mínimo três parcelas pagas dentro do recorte informado.",
+                columns=(
+                    ReportColumn("nome_completo", "Associado", 2.4),
+                    ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("matricula", "Matricula", 1.2),
+                    ReportColumn("agente", "Agente", 1.8),
+                    ReportColumn("contrato_codigo", "Contrato", 1.3),
+                    ReportColumn("valor_mensalidade", "Mensalidade", 1.1),
+                    ReportColumn("parcelas_pagas", "Parcelas pagas", 1.0),
+                    ReportColumn("valor_total_pago", "Valor pago", 1.2),
+                    ReportColumn("primeira_parcela_paga", "Primeira paga", 1.3),
+                    ReportColumn("ultima_parcela_paga", "Ultima paga", 1.3),
                 ),
             ),
         }
@@ -433,7 +471,10 @@ class RelatorioService:
             None,
         )
         if legacy_tipo is not None:
-            return [RelatorioService._normalize_row(row) for row in RelatorioService._rows_for_tipo(legacy_tipo)]
+            return [
+                RelatorioService._normalize_row(row)
+                for row in RelatorioService._rows_for_tipo(legacy_tipo, filtros)
+            ]
         raise ValueError(f"Rota de relatório inválida: {rota}")
 
     @staticmethod
@@ -452,7 +493,8 @@ class RelatorioService:
         return value
 
     @staticmethod
-    def _rows_for_tipo(tipo: str) -> list[dict[str, object]]:
+    def _rows_for_tipo(tipo: str, filtros: dict[str, object] | None = None) -> list[dict[str, object]]:
+        active_filters = filtros or {}
         if tipo == "associados":
             return RelatorioService._associados_rows()
         if tipo == "tesouraria":
@@ -461,7 +503,167 @@ class RelatorioService:
             return RelatorioService._refinanciamentos_rows()
         if tipo == "importacao":
             return RelatorioService._importacao_rows()
+        if tipo == "associados_ativos_com_1_parcela_paga":
+            return RelatorioService._associados_pagadores_rows(
+                min_paid=1,
+                filtros=active_filters,
+            )
+        if tipo == "associados_ativos_com_3_parcelas_pagas":
+            return RelatorioService._associados_pagadores_rows(
+                min_paid=3,
+                filtros=active_filters,
+            )
         raise ValueError(f"Tipo de relatorio invalido: {tipo}")
+
+    @staticmethod
+    def _parse_date_filter(value: object) -> date | None:
+        if isinstance(value, date):
+            return value
+        if not isinstance(value, str) or not value.strip():
+            return None
+        try:
+            return date.fromisoformat(value.strip())
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _faixa_mensalidade_bounds(value: object) -> tuple[Decimal | None, Decimal | None]:
+        if not isinstance(value, str) or not value.strip():
+            return None, None
+        normalized = value.strip()
+        if normalized == "ate_100":
+            return None, Decimal("100.00")
+        if normalized == "100_200":
+            return Decimal("100.00"), Decimal("200.00")
+        if normalized == "200_300":
+            return Decimal("200.00"), Decimal("300.00")
+        if normalized == "300_500":
+            return Decimal("300.00"), Decimal("500.00")
+        if normalized == "acima_500":
+            return Decimal("500.00"), None
+        return None, None
+
+    @staticmethod
+    def _mensalidade_in_selected_ranges(
+        valor_mensalidade: Decimal,
+        faixa_mensalidade: object,
+    ) -> bool:
+        if isinstance(faixa_mensalidade, list):
+            selected_ranges = [
+                item for item in faixa_mensalidade if isinstance(item, str) and item.strip()
+            ]
+        elif isinstance(faixa_mensalidade, str) and faixa_mensalidade.strip():
+            selected_ranges = [chunk.strip() for chunk in faixa_mensalidade.split(",") if chunk.strip()]
+        else:
+            selected_ranges = []
+
+        if not selected_ranges:
+            return True
+
+        for selected_range in selected_ranges:
+            min_value, max_value = RelatorioService._faixa_mensalidade_bounds(selected_range)
+            if min_value is not None and valor_mensalidade < min_value:
+                continue
+            if max_value is not None and valor_mensalidade >= max_value:
+                continue
+            return True
+        return False
+
+    @staticmethod
+    def _associados_pagadores_rows(
+        *,
+        min_paid: int,
+        filtros: dict[str, object],
+    ) -> list[dict[str, object]]:
+        paid_statuses = {Parcela.Status.DESCONTADO, Parcela.Status.LIQUIDADA}
+        data_inicio = RelatorioService._parse_date_filter(filtros.get("data_inicio"))
+        data_fim = RelatorioService._parse_date_filter(filtros.get("data_fim"))
+        agente_id = str(filtros.get("agente_id") or "").strip()
+        faixa_mensalidade = filtros.get("faixa_mensalidade")
+
+        queryset = (
+            Associado.objects.select_related("agente_responsavel")
+            .prefetch_related("contratos__agente", "contratos__ciclos__parcelas")
+            .order_by("nome_completo")
+        )
+        rows: list[dict[str, object]] = []
+
+        for associado in queryset:
+            if resolve_associado_mother_status(associado) != Associado.Status.ATIVO:
+                continue
+
+            contrato = resolve_operational_contract_for_associado(associado)
+            if contrato is None:
+                continue
+
+            resolved_agente = contrato.agente or associado.agente_responsavel
+            if agente_id and str(getattr(resolved_agente, "id", "")) != agente_id:
+                continue
+
+            valor_mensalidade = Decimal(str(contrato.valor_mensalidade or Decimal("0.00")))
+            if faixa_mensalidade and not RelatorioService._mensalidade_in_selected_ranges(
+                valor_mensalidade,
+                faixa_mensalidade,
+            ):
+                continue
+
+            paid_parcelas = list(
+                Parcela.objects.filter(
+                    ciclo__contrato=contrato,
+                    status__in=paid_statuses,
+                ).order_by("data_pagamento", "referencia_mes", "numero", "id")
+            )
+            if data_inicio or data_fim:
+                filtered_paid: list[Parcela] = []
+                for parcela in paid_parcelas:
+                    payment_date = parcela.data_pagamento or parcela.referencia_mes
+                    if data_inicio and payment_date and payment_date < data_inicio:
+                        continue
+                    if data_fim and payment_date and payment_date > data_fim:
+                        continue
+                    filtered_paid.append(parcela)
+                paid_parcelas = filtered_paid
+
+            if len(paid_parcelas) < min_paid:
+                continue
+
+            ordered_paid = sorted(
+                paid_parcelas,
+                key=lambda parcela: (
+                    parcela.data_pagamento or parcela.referencia_mes,
+                    parcela.numero,
+                    parcela.id,
+                ),
+            )
+            valor_total_pago = sum(
+                (Decimal(str(parcela.valor or Decimal("0.00"))) for parcela in ordered_paid),
+                Decimal("0.00"),
+            )
+            rows.append(
+                {
+                    "id": associado.id,
+                    "nome_completo": associado.nome_completo,
+                    "cpf_cnpj": associado.cpf_cnpj,
+                    "matricula": associado.matricula_display,
+                    "agente": resolved_agente.full_name if resolved_agente else "",
+                    "contrato_codigo": contrato.codigo,
+                    "valor_mensalidade": f"{valor_mensalidade:.2f}",
+                    "parcelas_pagas": len(ordered_paid),
+                    "valor_total_pago": f"{valor_total_pago:.2f}",
+                    "primeira_parcela_paga": (
+                        (ordered_paid[0].data_pagamento or ordered_paid[0].referencia_mes).isoformat()
+                        if ordered_paid
+                        else ""
+                    ),
+                    "ultima_parcela_paga": (
+                        (ordered_paid[-1].data_pagamento or ordered_paid[-1].referencia_mes).isoformat()
+                        if ordered_paid
+                        else ""
+                    ),
+                }
+            )
+
+        return rows
 
     @staticmethod
     def _associados_rows() -> list[dict[str, object]]:

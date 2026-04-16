@@ -7,10 +7,9 @@ import type { BaixaManualItem } from "./BaixaManualItem.ts";
 
 export type V1TesourariaBaixaManualDarBaixaCreatePathParams = {
   /**
-   * @description A unique integer value identifying this parcela.
-   * @type integer
+   * @type string
    */
-  id: number;
+  id: string;
 };
 
 export type V1TesourariaBaixaManualDarBaixaCreate200 = BaixaManualItem;
@@ -18,6 +17,7 @@ export type V1TesourariaBaixaManualDarBaixaCreate200 = BaixaManualItem;
 export type V1TesourariaBaixaManualDarBaixaCreateMutationRequest = Omit<
   NonNullable<BaixaManualItem>,
   | "id"
+  | "parcela_id"
   | "associado_id"
   | "nome"
   | "cpf_cnpj"
@@ -30,6 +30,13 @@ export type V1TesourariaBaixaManualDarBaixaCreateMutationRequest = Omit<
   | "status"
   | "data_vencimento"
   | "observacao"
+  | "data_baixa"
+  | "valor_pago"
+  | "realizado_por_nome"
+  | "nome_comprovante"
+  | "origem"
+  | "arquivo_retorno_item_id"
+  | "pode_dar_baixa"
 >;
 
 export type V1TesourariaBaixaManualDarBaixaCreateMutationResponse =

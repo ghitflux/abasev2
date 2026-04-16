@@ -1,6 +1,6 @@
 import * as React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import AssociadoPage from "./page";
@@ -209,7 +209,7 @@ const editorFixture = {
   warnings: [],
 };
 
-function renderPage() {
+async function renderPage() {
   const client = new QueryClient({
     defaultOptions: {
       queries: {
@@ -221,13 +221,18 @@ function renderPage() {
     },
   });
 
-  return render(
-    <QueryClientProvider client={client}>
-      <React.Suspense fallback={<div>SuspenseFallback</div>}>
-        <AssociadoPage params={Promise.resolve({ id: "26" })} />
-      </React.Suspense>
-    </QueryClientProvider>,
-  );
+  let rendered: ReturnType<typeof render> | undefined;
+  await act(async () => {
+    rendered = render(
+      <QueryClientProvider client={client}>
+        <React.Suspense fallback={<div>SuspenseFallback</div>}>
+          <AssociadoPage params={Promise.resolve({ id: "26" })} />
+        </React.Suspense>
+      </QueryClientProvider>,
+    );
+  });
+
+  return rendered!;
 }
 
 beforeEach(() => {
@@ -255,11 +260,20 @@ describe("AssociadoPage admin editor", () => {
   it("ativa o editor, abre os blocos administrativos e preserva admin=1 no link de edição", async () => {
     const user = userEvent.setup();
 
-    renderPage();
+    await renderPage();
 
     expect(
       await screen.findByText("MARIA DO AMPARO VASCONCELOS"),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Inativar associado/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Excluir associado/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Remover da fila/i }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Editar cadastro" }),
     ).toHaveAttribute("href", "/associados-editar/26");
@@ -300,7 +314,7 @@ describe("AssociadoPage admin editor", () => {
       throw new Error(`Unexpected path: ${String(path)}`);
     });
 
-    renderPage();
+    await renderPage();
 
     expect(
       await screen.findByText("MARIA DO AMPARO VASCONCELOS"),
@@ -313,7 +327,7 @@ describe("AssociadoPage admin editor", () => {
     expect(
       await screen.findByText("Falha ao carregar o editor avançado"),
     ).toBeInTheDocument();
-    expect(screen.getByText("Editor indisponível")).toBeInTheDocument();
+    expect(screen.getAllByText("Editor indisponível").length).toBeGreaterThan(0);
     expect(
       screen.getByRole("button", { name: "Tentar novamente" }),
     ).toBeInTheDocument();

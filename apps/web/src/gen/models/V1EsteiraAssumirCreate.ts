@@ -19,6 +19,7 @@ export type V1EsteiraAssumirCreateMutationRequest = Omit<
   NonNullable<EsteiraList>,
   | "id"
   | "associado_id"
+  | "associado"
   | "ordem"
   | "contrato"
   | "data_assinatura"
@@ -35,6 +36,8 @@ export type V1EsteiraAssumirCreateMutationRequest = Omit<
   | "orgao_publico"
   | "documentos_count"
   | "acoes_disponiveis"
+  | "created_at"
+  | "updated_at"
 >;
 
 export type V1EsteiraAssumirCreateMutationResponse = V1EsteiraAssumirCreate200;

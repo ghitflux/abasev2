@@ -1,12 +1,39 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import TesourariaRefinanciamentosPage from "./page";
 import type { RefinanciamentoItem, RefinanciamentoResumo } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 
+const mockUsePermissions = jest.fn();
+
 jest.mock("@/lib/api/client", () => ({
   apiFetch: jest.fn(),
+}));
+
+jest.mock("@/hooks/use-permissions", () => ({
+  usePermissions: () => mockUsePermissions(),
+}));
+
+jest.mock("@/components/custom/calendar-competencia", () => ({
+  __esModule: true,
+  default: ({
+    value,
+    onChange,
+  }: {
+    value?: Date;
+    onChange?: (date?: Date) => void;
+  }) => (
+    <input
+      aria-label="Competência do ciclo"
+      placeholder="mm/aaaa"
+      value={value && !Number.isNaN(value.getTime()) ? value.toISOString().slice(0, 7) : ""}
+      onChange={(event) =>
+        onChange?.(event.target.value ? new Date(`${event.target.value}-01T12:00:00`) : undefined)
+      }
+    />
+  ),
 }));
 
 jest.mock("@/components/custom/date-picker", () => ({
@@ -111,6 +138,9 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  mockUsePermissions.mockReturnValue({
+    hasAnyRole: (roles: string[]) => roles.includes("ADMIN"),
+  });
   mockedApiFetch.mockImplementation(async (path, options) => {
     if (path === "tesouraria/refinanciamentos/resumo") {
       const resumo: RefinanciamentoResumo = {
@@ -305,4 +335,330 @@ it("separa termo do agente dos comprovantes de pagamento e mostra o valor libera
   expect(
     screen.queryAllByText((_, element) => element?.textContent?.includes("1.881,03") ?? false),
   ).toHaveLength(0);
+});
+
+it("efetiva a renovacao apenas pela acao explicita quando os dois comprovantes ja existem", async () => {
+  const user = userEvent.setup();
+
+  mockedApiFetch.mockImplementation(async (path, options) => {
+    if (path === "tesouraria/refinanciamentos/resumo") {
+      return {
+        total: 1,
+        em_analise: 0,
+        assumidos: 0,
+        aprovados: 0,
+        efetivados: 0,
+        concluidos: 0,
+        bloqueados: 0,
+        revertidos: 0,
+        desativados: 0,
+        em_fluxo: 1,
+        com_anexo_agente: 1,
+        repasse_total: "120.00",
+      } satisfies RefinanciamentoResumo;
+    }
+
+    if (path === "tesouraria/refinanciamentos") {
+      const status = options?.query?.status;
+      if (Array.isArray(status) && status.includes("aprovado_para_renovacao")) {
+        return {
+          count: 1,
+          next: null,
+          previous: null,
+          results: [
+            buildRefinanciamento({
+              comprovantes: [
+                {
+                  id: 10,
+                  refinanciamento: 1,
+                  contrato: 11,
+                  ciclo: 3,
+                  tipo: "comprovante_pagamento_associado",
+                  papel: "associado",
+                  arquivo: "/media/refi/associado.pdf",
+                  arquivo_referencia: "refi/associado.pdf",
+                  arquivo_disponivel_localmente: true,
+                  tipo_referencia: "local",
+                  nome_original: "associado.pdf",
+                  created_at: "2026-04-01T10:00:00Z",
+                },
+                {
+                  id: 11,
+                  refinanciamento: 1,
+                  contrato: 11,
+                  ciclo: 3,
+                  tipo: "comprovante_pagamento_agente",
+                  papel: "agente",
+                  arquivo: "/media/refi/agente.pdf",
+                  arquivo_referencia: "refi/agente.pdf",
+                  arquivo_disponivel_localmente: true,
+                  tipo_referencia: "local",
+                  nome_original: "agente.pdf",
+                  created_at: "2026-04-01T10:05:00Z",
+                },
+              ],
+            }),
+          ],
+        };
+      }
+
+      return {
+        count: 0,
+        next: null,
+        previous: null,
+        results: [],
+      };
+    }
+
+    if (path === "tesouraria/refinanciamentos/1/efetivar") {
+      expect(options).toEqual(
+        expect.objectContaining({
+          method: "POST",
+          body: {},
+        }),
+      );
+      return buildRefinanciamento({
+        status: "efetivado",
+        executado_em: "2026-04-05T10:00:00Z",
+        data_ativacao_ciclo: "2026-04-05T10:00:00Z",
+      });
+    }
+
+    throw new Error(`Unexpected path: ${String(path)}`);
+  });
+
+  renderPage();
+
+  const efetivarButton = await screen.findByRole("button", {
+    name: /Efetivar renovação/i,
+  });
+  expect(efetivarButton).toBeEnabled();
+
+  await user.click(efetivarButton);
+
+  await waitFor(() =>
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      "tesouraria/refinanciamentos/1/efetivar",
+      expect.objectContaining({
+        method: "POST",
+        body: {},
+      }),
+    ),
+  );
+});
+
+it("aplica filtros por ciclo e numero do ciclo nas consultas", async () => {
+  const user = userEvent.setup();
+
+  renderPage();
+
+  await user.click(screen.getByRole("button", { name: /Filtros avançados/i }));
+  fireEvent.change(screen.getByLabelText("Competência do ciclo"), {
+    target: { value: "2026-04" },
+  });
+  await user.click(screen.getByRole("button", { name: /Adicionar mês/i }));
+  await user.selectOptions(screen.getByLabelText("Número do ciclo"), "2");
+  await user.click(screen.getByRole("button", { name: "Aplicar" }));
+
+  await waitFor(() =>
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      "tesouraria/refinanciamentos",
+      expect.objectContaining({
+        query: expect.objectContaining({
+          cycle_key: "2026-04",
+          numero_ciclos: "2",
+        }),
+      }),
+    ),
+  );
+
+  expect(
+    mockedApiFetch.mock.calls.some(
+      ([path, options]) =>
+        path === "tesouraria/refinanciamentos/resumo" &&
+        options?.query?.cycle_key === "2026-04" &&
+        options?.query?.numero_ciclos === "2",
+    ),
+  ).toBe(true);
+});
+
+it("permite remover renovacao incorreta da fila operacional", async () => {
+  const user = userEvent.setup();
+
+  mockedApiFetch.mockImplementation(async (path, options) => {
+    if (path === "tesouraria/refinanciamentos/resumo") {
+      return {
+        total: 1,
+        em_analise: 0,
+        assumidos: 0,
+        aprovados: 0,
+        efetivados: 0,
+        concluidos: 0,
+        bloqueados: 0,
+        revertidos: 0,
+        desativados: 0,
+        em_fluxo: 1,
+        com_anexo_agente: 0,
+        repasse_total: "120.00",
+      } satisfies RefinanciamentoResumo;
+    }
+
+    if (path === "tesouraria/refinanciamentos") {
+      const status = options?.query?.status;
+      if (Array.isArray(status) && status.includes("aprovado_para_renovacao")) {
+        return {
+          count: 1,
+          next: null,
+          previous: null,
+          results: [buildRefinanciamento({ associado_nome: "Elisete Teste" })],
+        };
+      }
+      return {
+        count: 0,
+        next: null,
+        previous: null,
+        results: [],
+      };
+    }
+
+    if (path === "tesouraria/refinanciamentos/1/excluir") {
+      expect(options).toEqual(
+        expect.objectContaining({
+          method: "POST",
+          body: {},
+        }),
+      );
+      return buildRefinanciamento({
+        status: "bloqueado",
+        motivo_bloqueio: "Linha incorreta",
+      });
+    }
+
+    throw new Error(`Unexpected path: ${String(path)}`);
+  });
+
+  renderPage();
+
+  const removeButtons = await screen.findAllByRole("button", {
+    name: /Remover da fila/i,
+  });
+  await user.click(removeButtons[0]);
+
+  const dialog = await screen.findByRole("dialog");
+  expect(within(dialog).getByText(/Elisete Teste/i)).toBeInTheDocument();
+  await user.click(
+    within(dialog).getByRole("button", { name: /^Remover da fila$/i }),
+  );
+
+  await waitFor(() =>
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      "tesouraria/refinanciamentos/1/excluir",
+      expect.objectContaining({
+        method: "POST",
+        body: {},
+      }),
+    ),
+  );
+});
+
+it("permite retornar efetivada para pendente e limpar linha cancelada", async () => {
+  const user = userEvent.setup();
+
+  mockedApiFetch.mockImplementation(async (path, options) => {
+    if (path === "tesouraria/refinanciamentos/resumo") {
+      return {
+        total: 2,
+        em_analise: 0,
+        assumidos: 0,
+        aprovados: 0,
+        efetivados: 1,
+        concluidos: 1,
+        bloqueados: 0,
+        revertidos: 0,
+        desativados: 1,
+        em_fluxo: 0,
+        com_anexo_agente: 0,
+        repasse_total: "120.00",
+      } satisfies RefinanciamentoResumo;
+    }
+
+    if (path === "tesouraria/refinanciamentos") {
+      const status = options?.query?.status;
+      if (Array.isArray(status) && status.includes("efetivado")) {
+        return {
+          count: 1,
+          next: null,
+          previous: null,
+          results: [buildRefinanciamento({ id: 2, associado_nome: "Efetivada Teste", status: "efetivado" })],
+        };
+      }
+      if (Array.isArray(status) && status.includes("bloqueado")) {
+        return {
+          count: 1,
+          next: null,
+          previous: null,
+          results: [buildRefinanciamento({ id: 3, associado_nome: "Elisete Linha", status: "desativado" })],
+        };
+      }
+      return {
+        count: 0,
+        next: null,
+        previous: null,
+        results: [],
+      };
+    }
+
+    if (path === "tesouraria/refinanciamentos/2/retornar-pendente") {
+      expect(options).toEqual(
+        expect.objectContaining({
+          method: "POST",
+          body: {},
+        }),
+      );
+      return buildRefinanciamento({ id: 2, status: "aprovado_para_renovacao" });
+    }
+
+    if (path === "tesouraria/refinanciamentos/3/limpar-linha") {
+      expect(options).toEqual(
+        expect.objectContaining({
+          method: "POST",
+          body: {},
+        }),
+      );
+      return { detail: "Linha operacional removida." };
+    }
+
+    throw new Error(`Unexpected path: ${String(path)}`);
+  });
+
+  renderPage();
+
+  const voltarButtons = await screen.findAllByRole("button", { name: /Voltar para pendente/i });
+  await user.click(voltarButtons[0]);
+  await user.click(await screen.findByRole("button", { name: /^Voltar para pendente$/i }));
+
+  await waitFor(() =>
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      "tesouraria/refinanciamentos/2/retornar-pendente",
+      expect.objectContaining({
+        method: "POST",
+        body: {},
+      }),
+    ),
+  );
+
+  const limparButtons = await screen.findAllByRole("button", { name: /Limpar linha/i });
+  await user.click(limparButtons[1]);
+  const limparDialog = await screen.findByRole("dialog");
+  await user.click(within(limparDialog).getByRole("button", { name: /^Limpar linha$/i }));
+
+  await waitFor(() =>
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      "tesouraria/refinanciamentos/3/limpar-linha",
+      expect.objectContaining({
+        method: "POST",
+        body: {},
+      }),
+    ),
+  );
 });

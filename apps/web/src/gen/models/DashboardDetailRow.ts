@@ -25,9 +25,21 @@ export type DashboardDetailRow = {
    */
   matricula: string;
   /**
-   * @type string
+   * @type string | undefined
    */
   data_nascimento?: string;
+  /**
+   * @type string | undefined
+   */
+  data_entrada_associacao?: string;
+  /**
+   * @type integer
+   */
+  parcelas_descontadas?: number | null;
+  /**
+   * @type string | undefined
+   */
+  status_resumo_mensal?: string;
   /**
    * @type string
    */
@@ -52,6 +64,18 @@ export type DashboardDetailRow = {
    * @type string
    */
   valor: string;
+  /**
+   * @type string | undefined
+   */
+  valor_associado?: string;
+  /**
+   * @type string | undefined
+   */
+  valor_agente?: string;
+  /**
+   * @type string | undefined
+   */
+  valor_total?: string;
   /**
    * @type string
    */

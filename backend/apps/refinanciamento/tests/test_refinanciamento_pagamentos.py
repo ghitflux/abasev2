@@ -467,18 +467,353 @@ class RefinanciamentoPagamentosTestCase(TestCase):
             },
             format="multipart",
         )
-        self.assertEqual(efetivacao.status_code, 200, efetivacao.json())
+        self.assertEqual(efetivacao.status_code, 400, efetivacao.json())
+        self.assertEqual(
+            efetivacao.json()["comprovante_agente"][0],
+            "O comprovante do agente é obrigatório para efetivar a renovação.",
+        )
 
         refinanciamento = Refinanciamento.objects.get(pk=refinanciamento_id)
-        self.assertEqual(refinanciamento.status, Refinanciamento.Status.EFETIVADO)
+        self.assertNotEqual(refinanciamento.status, Refinanciamento.Status.EFETIVADO)
         tipos = {
             comprovante.tipo
             for comprovante in refinanciamento.comprovantes.filter(
                 deleted_at__isnull=True
             )
         }
-        self.assertIn(Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO, tipos)
+        self.assertNotIn(Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO, tipos)
         self.assertNotIn(Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE, tipos)
+
+    def test_substituir_comprovante_nao_efetiva_refinanciamento(self):
+        contrato = self._create_contrato("62345678942")
+        self._create_pagamento(contrato, date(2026, 1, 1))
+        self._create_pagamento(contrato, date(2026, 2, 1))
+        self._create_pagamento(contrato, date(2026, 3, 1))
+        request = self._solicitar_refinanciamento(contrato)
+        self.assertEqual(request.status_code, 201, request.json())
+        refinanciamento_id = request.json()["id"]
+
+        self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/assumir_analise/"
+        )
+        self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar_analise/",
+            {"observacao": "Termo ok"},
+            format="json",
+        )
+        self.coord_client.post(f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar/")
+
+        response = self.tes_client.post(
+            f"/api/v1/tesouraria/refinanciamentos/{refinanciamento_id}/substituir-comprovante/",
+            {
+                "papel": Comprovante.Papel.ASSOCIADO,
+                "arquivo": SimpleUploadedFile(
+                    "associado.pdf",
+                    b"arquivo associado",
+                    content_type="application/pdf",
+                ),
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        refinanciamento = Refinanciamento.objects.get(pk=refinanciamento_id)
+        self.assertEqual(
+            refinanciamento.status,
+            Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+        )
+        self.assertIsNone(refinanciamento.executado_em)
+
+    def test_tesouraria_efetiva_refinanciamento_com_comprovantes_ja_anexados(self):
+        contrato = self._create_contrato("62345678943")
+        self._create_pagamento(contrato, date(2026, 1, 1))
+        self._create_pagamento(contrato, date(2026, 2, 1))
+        self._create_pagamento(contrato, date(2026, 3, 1))
+        request = self._solicitar_refinanciamento(contrato)
+        self.assertEqual(request.status_code, 201, request.json())
+        refinanciamento_id = request.json()["id"]
+
+        self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/assumir_analise/"
+        )
+        self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar_analise/",
+            {"observacao": "Termo ok"},
+            format="json",
+        )
+        self.coord_client.post(f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar/")
+
+        for papel in [Comprovante.Papel.ASSOCIADO, Comprovante.Papel.AGENTE]:
+            response = self.tes_client.post(
+                f"/api/v1/tesouraria/refinanciamentos/{refinanciamento_id}/substituir-comprovante/",
+                {
+                    "papel": papel,
+                    "arquivo": SimpleUploadedFile(
+                        f"{papel}.pdf",
+                        b"arquivo",
+                        content_type="application/pdf",
+                    ),
+                },
+                format="multipart",
+            )
+            self.assertEqual(response.status_code, 200, response.json())
+
+        refinanciamento = Refinanciamento.objects.get(pk=refinanciamento_id)
+        self.assertEqual(
+            refinanciamento.status,
+            Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+        )
+
+        efetivacao = self.tes_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/efetivar/",
+            {},
+            format="json",
+        )
+        self.assertEqual(efetivacao.status_code, 200, efetivacao.json())
+
+        refinanciamento.refresh_from_db()
+        self.assertEqual(refinanciamento.status, Refinanciamento.Status.EFETIVADO)
+        self.assertIsNotNone(refinanciamento.executado_em)
+
+    def test_coordenador_pode_remover_renovacao_da_fila_tesouraria(self):
+        contrato = self._create_contrato("62345678944")
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=2,
+            data_inicio=date(2026, 4, 1),
+            data_fim=date(2026, 6, 30),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("1500.00"),
+        )
+        refinanciamento = Refinanciamento.objects.create(
+            associado=contrato.associado,
+            contrato_origem=contrato,
+            ciclo_origem=ciclo,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            cycle_key="2026-04|2026-05|2026-06",
+        )
+
+        response = self.coord_client.post(
+            f"/api/v1/tesouraria/refinanciamentos/{refinanciamento.id}/excluir/",
+            {"motivo": "Linha operacional incorreta"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        refinanciamento.refresh_from_db()
+        self.assertEqual(refinanciamento.status, Refinanciamento.Status.BLOQUEADO)
+        self.assertEqual(refinanciamento.motivo_bloqueio, "Linha operacional incorreta")
+
+    def test_tesouraria_lista_filtra_por_ciclo_e_numero_ciclos(self):
+        contrato_primeiro = self._create_contrato("62345678945")
+        ciclo_primeiro = Ciclo.objects.create(
+            contrato=contrato_primeiro,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 31),
+            status=Ciclo.Status.CICLO_RENOVADO,
+            valor_total=Decimal("1500.00"),
+        )
+        primeiro = Refinanciamento.objects.create(
+            associado=contrato_primeiro.associado,
+            contrato_origem=contrato_primeiro,
+            ciclo_origem=ciclo_primeiro,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            cycle_key="2026-01|2026-02|2026-03",
+        )
+
+        contrato_segundo = self._create_contrato("62345678946")
+        ciclo_segundo = Ciclo.objects.create(
+            contrato=contrato_segundo,
+            numero=2,
+            data_inicio=date(2026, 4, 1),
+            data_fim=date(2026, 6, 30),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("1500.00"),
+        )
+        segundo = Refinanciamento.objects.create(
+            associado=contrato_segundo.associado,
+            contrato_origem=contrato_segundo,
+            ciclo_origem=ciclo_segundo,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 7, 1),
+            status=Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            cycle_key="2026-04|2026-05|2026-06",
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/refinanciamentos/",
+            {
+                "status": "aprovado_para_renovacao",
+                "cycle_key": "2026-04",
+                "numero_ciclos": "2",
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        ids = [item["id"] for item in response.json()["results"]]
+        self.assertEqual(ids, [segundo.id])
+        self.assertNotIn(primeiro.id, ids)
+
+    def test_tesouraria_lista_filtra_por_multiplos_meses_do_ciclo(self):
+        contrato_primeiro = self._create_contrato("62345678947")
+        ciclo_primeiro = Ciclo.objects.create(
+            contrato=contrato_primeiro,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 31),
+            status=Ciclo.Status.CICLO_RENOVADO,
+            valor_total=Decimal("1500.00"),
+        )
+        primeiro = Refinanciamento.objects.create(
+            associado=contrato_primeiro.associado,
+            contrato_origem=contrato_primeiro,
+            ciclo_origem=ciclo_primeiro,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            cycle_key="2026-01|2026-02|2026-03",
+        )
+
+        contrato_segundo = self._create_contrato("62345678948")
+        ciclo_segundo = Ciclo.objects.create(
+            contrato=contrato_segundo,
+            numero=2,
+            data_inicio=date(2026, 4, 1),
+            data_fim=date(2026, 6, 30),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("1500.00"),
+        )
+        segundo = Refinanciamento.objects.create(
+            associado=contrato_segundo.associado,
+            contrato_origem=contrato_segundo,
+            ciclo_origem=ciclo_segundo,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 7, 1),
+            status=Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            cycle_key="2026-04|2026-05|2026-06",
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/refinanciamentos/",
+            {
+                "status": "aprovado_para_renovacao",
+                "cycle_key": "2026-04,2026-06",
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        ids = [item["id"] for item in response.json()["results"]]
+        self.assertEqual(ids, [segundo.id])
+        self.assertNotIn(primeiro.id, ids)
+
+    def test_tesouraria_pode_retornar_efetivado_para_pendente_pagamento(self):
+        contrato = self._create_contrato("62345678949")
+        ciclo_origem = self._create_manual_cycle_quitado(contrato)
+        ciclo_destino = Ciclo.objects.create(
+            contrato=contrato,
+            numero=2,
+            data_inicio=date(2026, 4, 1),
+            data_fim=date(2026, 6, 30),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("1500.00"),
+        )
+        refinanciamento = Refinanciamento.objects.create(
+            associado=contrato.associado,
+            contrato_origem=contrato,
+            ciclo_origem=ciclo_origem,
+            ciclo_destino=ciclo_destino,
+            solicitado_por=self.agente,
+            efetivado_por=self.tesoureiro,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            cycle_key="2026-01|2026-02|2026-03",
+            executado_em=timezone.now(),
+            data_ativacao_ciclo=timezone.now(),
+        )
+        Comprovante.objects.create(
+            refinanciamento=refinanciamento,
+            contrato=contrato,
+            ciclo=ciclo_destino,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+            papel=Comprovante.Papel.ASSOCIADO,
+            arquivo=SimpleUploadedFile("assoc.pdf", b"assoc", content_type="application/pdf"),
+            enviado_por=self.tesoureiro,
+            data_pagamento=timezone.now(),
+            origem=Comprovante.Origem.TESOURARIA_RENOVACAO,
+        )
+        Comprovante.objects.create(
+            refinanciamento=refinanciamento,
+            contrato=contrato,
+            ciclo=ciclo_destino,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+            papel=Comprovante.Papel.AGENTE,
+            arquivo=SimpleUploadedFile("agente.pdf", b"agente", content_type="application/pdf"),
+            enviado_por=self.tesoureiro,
+            data_pagamento=timezone.now(),
+            origem=Comprovante.Origem.TESOURARIA_RENOVACAO,
+        )
+        pagamento = Pagamento.objects.create(
+            cadastro=contrato.associado,
+            created_by=self.tesoureiro,
+            contrato_codigo=contrato.codigo,
+            cpf_cnpj=contrato.associado.cpf_cnpj,
+            full_name=contrato.associado.nome_completo,
+            agente_responsavel=contrato.agente.full_name,
+            status=Pagamento.Status.PAGO,
+            valor_pago=Decimal("900.00"),
+            paid_at=timezone.now(),
+            forma_pagamento="pix",
+            referencias_externas={
+                "payment_kind": "renovacao",
+                "contrato_id": contrato.id,
+                "refinanciamento_id": refinanciamento.id,
+            },
+        )
+
+        response = self.tes_client.post(
+            f"/api/v1/tesouraria/refinanciamentos/{refinanciamento.id}/retornar-pendente/"
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        refinanciamento.refresh_from_db()
+        pagamento.refresh_from_db()
+        self.assertEqual(refinanciamento.status, Refinanciamento.Status.APROVADO_PARA_RENOVACAO)
+        self.assertIsNone(refinanciamento.executado_em)
+        self.assertIsNone(refinanciamento.data_ativacao_ciclo)
+        self.assertEqual(pagamento.status, Pagamento.Status.PENDENTE)
+        self.assertIsNone(pagamento.paid_at)
+        self.assertFalse(
+            refinanciamento.comprovantes.filter(data_pagamento__isnull=False).exists()
+        )
+
+    def test_coordenacao_pode_limpar_linha_operacional_incorreta(self):
+        contrato = self._create_contrato("62345678950")
+        refinanciamento = Refinanciamento.objects.create(
+            associado=contrato.associado,
+            contrato_origem=contrato,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.DESATIVADO,
+            cycle_key="2026-02|2026-03|2026-04",
+        )
+
+        response = self.coord_client.post(
+            f"/api/v1/tesouraria/refinanciamentos/{refinanciamento.id}/limpar-linha/",
+            {"motivo": "Linha incorreta na esteira"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        refinanciamento.refresh_from_db()
+        self.assertIsNotNone(refinanciamento.deleted_at)
+        self.assertFalse(
+            Refinanciamento.objects.filter(pk=refinanciamento.id).exists()
+        )
 
     def test_novo_ciclo_cria_nova_renovacao_sem_sobrescrever_historico_anterior(self):
         contrato = self._create_contrato("62345678951")
@@ -505,6 +840,11 @@ class RefinanciamentoPagamentosTestCase(TestCase):
                 "comprovante_associado": SimpleUploadedFile(
                     "associado-primeiro.pdf",
                     b"arquivo associado",
+                    content_type="application/pdf",
+                ),
+                "comprovante_agente": SimpleUploadedFile(
+                    "agente-primeiro.pdf",
+                    b"arquivo agente",
                     content_type="application/pdf",
                 ),
             },

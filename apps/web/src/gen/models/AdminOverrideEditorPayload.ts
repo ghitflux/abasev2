@@ -6,6 +6,7 @@
 import type { AdminOverrideContratoEditor } from "./AdminOverrideContratoEditor.ts";
 import type { AdminOverrideDocumentoRead } from "./AdminOverrideDocumentoRead.ts";
 import type { AdminOverrideEsteiraRead } from "./AdminOverrideEsteiraRead.ts";
+import type { AdminOverrideWarning } from "./AdminOverrideWarning.ts";
 import type { AssociadoAdminSnapshot } from "./AssociadoAdminSnapshot.ts";
 
 export type AdminOverrideEditorPayload = {
@@ -22,12 +23,5 @@ export type AdminOverrideEditorPayload = {
   /**
    * @type array
    */
-  readonly warnings?: Array<{
-    readonly code: string;
-    readonly severity: string;
-    readonly contrato_id: number | null;
-    readonly contrato_codigo: string;
-    readonly message: string;
-    readonly details: Record<string, unknown>;
-  }>;
+  readonly warnings: AdminOverrideWarning[];
 };

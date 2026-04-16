@@ -8,6 +8,11 @@ import { paginatedBaixaManualItemListSchema } from "./paginatedBaixaManualItemLi
 
 export const V1TesourariaBaixaManualListQueryParamsSchema = z
   .object({
+    agente: z.optional(z.string()),
+    competencia: z.optional(z.iso.date()),
+    data_fim: z.optional(z.iso.date()),
+    data_inicio: z.optional(z.iso.date()),
+    listing: z.optional(z.string()),
     ordering: z.optional(
       z.string().describe("Which field to use when ordering the results."),
     ),
@@ -20,7 +25,8 @@ export const V1TesourariaBaixaManualListQueryParamsSchema = z
     page_size: z.optional(
       z.coerce.number().int().describe("Number of results to return per page."),
     ),
-    search: z.optional(z.string().describe("A search term.")),
+    search: z.optional(z.string()),
+    status: z.optional(z.string()),
   })
   .optional();
 

@@ -92,6 +92,7 @@ export type {
 export type { AdminOverrideRefinanciamentoEditor } from "./AdminOverrideRefinanciamentoEditor.ts";
 export type { AdminOverrideReverterWrite } from "./AdminOverrideReverterWrite.ts";
 export type { AdminOverrideSaveAllWrite } from "./AdminOverrideSaveAllWrite.ts";
+export type { AdminOverrideWarning } from "./AdminOverrideWarning.ts";
 export type { AdminUserAccessUpdate } from "./AdminUserAccessUpdate.ts";
 export type { AdminUserCreate } from "./AdminUserCreate.ts";
 export type { AdminUserList } from "./AdminUserList.ts";
@@ -372,6 +373,7 @@ export type {
   EstadoCivilEnum,
   EstadoCivilEnumEnumKey,
 } from "./EstadoCivilEnum.ts";
+export type { EsteiraAssociadoCompat } from "./EsteiraAssociadoCompat.ts";
 export type { EsteiraDetail } from "./EsteiraDetail.ts";
 export type {
   EsteiraEtapaEnum,
@@ -1006,6 +1008,13 @@ export type {
   V1EsteiraPendenciasRetrieveQueryResponse,
 } from "./V1EsteiraPendenciasRetrieve.ts";
 export type {
+  V1EsteiraReprovarCreate200,
+  V1EsteiraReprovarCreateMutation,
+  V1EsteiraReprovarCreateMutationRequest,
+  V1EsteiraReprovarCreateMutationResponse,
+  V1EsteiraReprovarCreatePathParams,
+} from "./V1EsteiraReprovarCreate.ts";
+export type {
   V1EsteiraRetrieve200,
   V1EsteiraRetrievePathParams,
   V1EsteiraRetrieveQuery,
@@ -1258,6 +1267,11 @@ export type {
   V1RefinanciamentosSolicitarLiquidacaoCreatePathParams,
 } from "./V1RefinanciamentosSolicitarLiquidacaoCreate.ts";
 export type {
+  V1RelatoriosDefinicaoRetrieve200,
+  V1RelatoriosDefinicaoRetrieveQuery,
+  V1RelatoriosDefinicaoRetrieveQueryResponse,
+} from "./V1RelatoriosDefinicaoRetrieve.ts";
+export type {
   V1RelatoriosDownloadRetrieve200,
   V1RelatoriosDownloadRetrievePathParams,
   V1RelatoriosDownloadRetrieveQuery,
@@ -1312,6 +1326,12 @@ export type {
   V1TesourariaBaixaManualDarBaixaCreatePathParams,
 } from "./V1TesourariaBaixaManualDarBaixaCreate.ts";
 export type {
+  V1TesourariaBaixaManualInativarAssociadoCreate200,
+  V1TesourariaBaixaManualInativarAssociadoCreateMutation,
+  V1TesourariaBaixaManualInativarAssociadoCreateMutationRequest,
+  V1TesourariaBaixaManualInativarAssociadoCreateMutationResponse,
+} from "./V1TesourariaBaixaManualInativarAssociadoCreate.ts";
+export type {
   V1TesourariaBaixaManualList200,
   V1TesourariaBaixaManualListQuery,
   V1TesourariaBaixaManualListQueryParams,
@@ -1350,6 +1370,13 @@ export type {
   V1TesourariaContratosAgentesRetrieveQueryResponse,
 } from "./V1TesourariaContratosAgentesRetrieve.ts";
 export type {
+  V1TesourariaContratosAverbarCreate200,
+  V1TesourariaContratosAverbarCreateMutation,
+  V1TesourariaContratosAverbarCreateMutationRequest,
+  V1TesourariaContratosAverbarCreateMutationResponse,
+  V1TesourariaContratosAverbarCreatePathParams,
+} from "./V1TesourariaContratosAverbarCreate.ts";
+export type {
   V1TesourariaContratosCancelarCreate200,
   V1TesourariaContratosCancelarCreateMutation,
   V1TesourariaContratosCancelarCreateMutationRequest,
@@ -1376,6 +1403,13 @@ export type {
   V1TesourariaContratosEfetivarCreateMutationResponse,
   V1TesourariaContratosEfetivarCreatePathParams,
 } from "./V1TesourariaContratosEfetivarCreate.ts";
+export type {
+  V1TesourariaContratosExcluirCreate200,
+  V1TesourariaContratosExcluirCreateMutation,
+  V1TesourariaContratosExcluirCreateMutationRequest,
+  V1TesourariaContratosExcluirCreateMutationResponse,
+  V1TesourariaContratosExcluirCreatePathParams,
+} from "./V1TesourariaContratosExcluirCreate.ts";
 export type {
   V1TesourariaContratosList200,
   V1TesourariaContratosListQuery,
@@ -1523,6 +1557,23 @@ export type {
   V1TesourariaLiquidacoesReverterCreatePathParams,
 } from "./V1TesourariaLiquidacoesReverterCreate.ts";
 export type {
+  V1TesourariaPagamentosList200,
+  V1TesourariaPagamentosListQuery,
+  V1TesourariaPagamentosListQueryParams,
+  V1TesourariaPagamentosListQueryResponse,
+} from "./V1TesourariaPagamentosList.ts";
+export type {
+  V1TesourariaPagamentosNotificacoesMarcarLidasCreate200,
+  V1TesourariaPagamentosNotificacoesMarcarLidasCreateMutation,
+  V1TesourariaPagamentosNotificacoesMarcarLidasCreateMutationRequest,
+  V1TesourariaPagamentosNotificacoesMarcarLidasCreateMutationResponse,
+} from "./V1TesourariaPagamentosNotificacoesMarcarLidasCreate.ts";
+export type {
+  V1TesourariaPagamentosNotificacoesRetrieve200,
+  V1TesourariaPagamentosNotificacoesRetrieveQuery,
+  V1TesourariaPagamentosNotificacoesRetrieveQueryResponse,
+} from "./V1TesourariaPagamentosNotificacoesRetrieve.ts";
+export type {
   V1TesourariaRefinanciamentosEfetivarCreate200,
   V1TesourariaRefinanciamentosEfetivarCreateMutation,
   V1TesourariaRefinanciamentosEfetivarCreateMutationRequest,
@@ -1546,6 +1597,13 @@ export type {
   V1TesourariaRefinanciamentosRetrieveQuery,
   V1TesourariaRefinanciamentosRetrieveQueryResponse,
 } from "./V1TesourariaRefinanciamentosRetrieve.ts";
+export type {
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreate200,
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreateMutation,
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreateMutationRequest,
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreateMutationResponse,
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreatePathParams,
+} from "./V1TesourariaRefinanciamentosSubstituirComprovanteCreate.ts";
 export { arquivoRetornoFormatoEnumEnum } from "./ArquivoRetornoFormatoEnum.ts";
 export { arquivoRetornoStatusEnumEnum } from "./ArquivoRetornoStatusEnum.ts";
 export { associadoStatusEnumEnum } from "./AssociadoStatusEnum.ts";

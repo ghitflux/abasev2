@@ -6,6 +6,9 @@ export const BASE_URL = (
 ).replace(/\/+$/, '');
 
 export const ENDPOINTS = {
+  // Status do app (kill switch de manutenção — sem autenticação)
+  appStatus: `${BASE_URL}/app/status`,
+
   // Auth
   authLogin: `${BASE_URL}/auth/login`,
   authRefresh: `${BASE_URL}/auth/refresh`,

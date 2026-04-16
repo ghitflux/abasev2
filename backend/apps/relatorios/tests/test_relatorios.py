@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import tempfile
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -151,7 +151,7 @@ class RelatoriosViewSetTestCase(TestCase):
 
         expected_keys = {
             "associados": "nome_completo",
-            "tesouraria": "codigo",
+            "tesouraria": "agente",
             "refinanciamentos": "valor_refinanciamento",
             "importacao": "arquivo_nome",
         }
@@ -174,6 +174,212 @@ class RelatoriosViewSetTestCase(TestCase):
                 exported = json.loads(content.decode("utf-8"))
                 self.assertGreaterEqual(len(exported), 1)
                 self.assertIn(expected_key, exported[0])
+
+    def test_exportar_relatorio_de_associados_com_uma_parcela_paga_retorna_linhas(self):
+        associado = Associado.objects.create(
+            nome_completo="Associado Um Pagamento",
+            cpf_cnpj="22345678902",
+            status=Associado.Status.ATIVO,
+            agente_responsavel=self.agente,
+        )
+        contrato = Contrato.objects.create(
+            associado=associado,
+            agente=self.agente,
+            valor_mensalidade=Decimal("180.00"),
+            status=Contrato.Status.ATIVO,
+        )
+        ciclo = contrato.ciclos.create(
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status="aberto",
+            valor_total=Decimal("540.00"),
+        )
+        Parcela.objects.create(
+            ciclo=ciclo,
+            associado=associado,
+            numero=1,
+            referencia_mes=date(2026, 3, 1),
+            valor=Decimal("180.00"),
+            data_vencimento=date(2026, 3, 1),
+            status=Parcela.Status.DESCONTADO,
+            data_pagamento=date.today(),
+        )
+
+        response = self.client.post(
+            "/api/v1/relatorios/exportar/",
+            {
+                "tipo": "associados_ativos_com_1_parcela_paga",
+                "formato": "json",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+        payload = response.json()
+
+        download_response = self.client.get(f"/api/v1/relatorios/{payload['id']}/download/")
+        self.assertEqual(download_response.status_code, 200)
+        content = b"".join(download_response.streaming_content)
+        exported = json.loads(content.decode("utf-8"))
+        self.assertGreaterEqual(len(exported), 1)
+        self.assertEqual(exported[0]["parcelas_pagas"], 1)
+
+    def test_exportar_relatorio_de_associados_pagadores_respeita_periodo_agente_e_faixa(self):
+        hoje = date.today()
+        agente_secundario = self._create_user(
+            "agente-secundario@abase.local",
+            self.role_agente,
+            "AgenteSec",
+        )
+
+        associado_ok = Associado.objects.create(
+            nome_completo="Associado Faixa Alvo",
+            cpf_cnpj="32345678901",
+            status=Associado.Status.ATIVO,
+            agente_responsavel=self.agente,
+        )
+        contrato_ok = Contrato.objects.create(
+            associado=associado_ok,
+            agente=self.agente,
+            valor_mensalidade=Decimal("250.00"),
+            status=Contrato.Status.ATIVO,
+        )
+        ciclo_ok = contrato_ok.ciclos.create(
+            numero=1,
+            data_inicio=hoje.replace(day=1),
+            data_fim=hoje.replace(day=28),
+            status="aberto",
+            valor_total=Decimal("750.00"),
+        )
+        for numero in range(1, 4):
+            Parcela.objects.create(
+                ciclo=ciclo_ok,
+                associado=associado_ok,
+                numero=numero,
+                referencia_mes=hoje.replace(day=1),
+                valor=Decimal("250.00"),
+                data_vencimento=hoje,
+                status=Parcela.Status.DESCONTADO,
+                data_pagamento=hoje - timedelta(days=numero),
+            )
+
+        associado_outro_agente = Associado.objects.create(
+            nome_completo="Associado Outro Agente",
+            cpf_cnpj="32345678902",
+            status=Associado.Status.ATIVO,
+            agente_responsavel=agente_secundario,
+        )
+        contrato_outro_agente = Contrato.objects.create(
+            associado=associado_outro_agente,
+            agente=agente_secundario,
+            valor_mensalidade=Decimal("250.00"),
+            status=Contrato.Status.ATIVO,
+        )
+        ciclo_outro = contrato_outro_agente.ciclos.create(
+            numero=1,
+            data_inicio=hoje.replace(day=1),
+            data_fim=hoje.replace(day=28),
+            status="aberto",
+            valor_total=Decimal("750.00"),
+        )
+        Parcela.objects.create(
+            ciclo=ciclo_outro,
+            associado=associado_outro_agente,
+            numero=1,
+            referencia_mes=hoje.replace(day=1),
+            valor=Decimal("250.00"),
+            data_vencimento=hoje,
+            status=Parcela.Status.DESCONTADO,
+            data_pagamento=hoje,
+        )
+
+        associado_faixa_errada = Associado.objects.create(
+            nome_completo="Associado Faixa Errada",
+            cpf_cnpj="32345678903",
+            status=Associado.Status.ATIVO,
+            agente_responsavel=self.agente,
+        )
+        contrato_faixa_errada = Contrato.objects.create(
+            associado=associado_faixa_errada,
+            agente=self.agente,
+            valor_mensalidade=Decimal("550.00"),
+            status=Contrato.Status.ATIVO,
+        )
+        ciclo_faixa_errada = contrato_faixa_errada.ciclos.create(
+            numero=1,
+            data_inicio=hoje.replace(day=1),
+            data_fim=hoje.replace(day=28),
+            status="aberto",
+            valor_total=Decimal("1650.00"),
+        )
+        for numero in range(1, 3):
+            Parcela.objects.create(
+                ciclo=ciclo_faixa_errada,
+                associado=associado_faixa_errada,
+                numero=numero,
+                referencia_mes=hoje.replace(day=1),
+                valor=Decimal("550.00"),
+                data_vencimento=hoje,
+                status=Parcela.Status.DESCONTADO,
+                data_pagamento=hoje,
+            )
+
+        associado_faixa_alta = Associado.objects.create(
+            nome_completo="Associado Faixa Alta",
+            cpf_cnpj="32345678904",
+            status=Associado.Status.ATIVO,
+            agente_responsavel=self.agente,
+        )
+        contrato_faixa_alta = Contrato.objects.create(
+            associado=associado_faixa_alta,
+            agente=self.agente,
+            valor_mensalidade=Decimal("650.00"),
+            status=Contrato.Status.ATIVO,
+        )
+        ciclo_faixa_alta = contrato_faixa_alta.ciclos.create(
+            numero=1,
+            data_inicio=hoje.replace(day=1),
+            data_fim=hoje.replace(day=28),
+            status="aberto",
+            valor_total=Decimal("1950.00"),
+        )
+        for numero in range(1, 4):
+            Parcela.objects.create(
+                ciclo=ciclo_faixa_alta,
+                associado=associado_faixa_alta,
+                numero=numero,
+                referencia_mes=hoje.replace(day=1),
+                valor=Decimal("650.00"),
+                data_vencimento=hoje,
+                status=Parcela.Status.DESCONTADO,
+                data_pagamento=hoje - timedelta(days=numero),
+            )
+
+        response = self.client.post(
+            "/api/v1/relatorios/exportar/",
+            {
+                "tipo": "associados_ativos_com_3_parcelas_pagas",
+                "formato": "csv",
+                "filtros": {
+                    "data_inicio": (hoje - timedelta(days=10)).isoformat(),
+                    "data_fim": hoje.isoformat(),
+                    "agente_id": str(self.agente.id),
+                    "faixa_mensalidade": ["200_300", "acima_500"],
+                },
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.json())
+        payload = response.json()
+
+        download_response = self.client.get(f"/api/v1/relatorios/{payload['id']}/download/")
+        self.assertEqual(download_response.status_code, 200)
+        self.assertTrue(download_response["Content-Type"].startswith("text/csv"))
+        content = b"".join(download_response.streaming_content).decode("utf-8")
+        self.assertIn("Associado Faixa Alvo", content)
+        self.assertIn("Associado Faixa Alta", content)
+        self.assertNotIn("Associado Outro Agente", content)
+        self.assertNotIn("Associado Faixa Errada", content)
 
     def test_exportar_gera_pdf_personalizado_para_todos_os_tipos(self):
         self._seed_operational_data()

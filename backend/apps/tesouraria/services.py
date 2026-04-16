@@ -151,10 +151,21 @@ class TesourariaService:
             )
             .prefetch_related(Prefetch("comprovantes__enviado_por"), Prefetch("ciclos"))
             .filter(
-                Q(associado__esteira_item__etapa_atual__in=[
-                    EsteiraItem.Etapa.TESOURARIA,
-                    EsteiraItem.Etapa.CONCLUIDO,
-                ])
+                # Itens ativos na fila ou já efetivados/processados.
+                # Exclui CONCLUIDO+REJEITADO do filtro de etapa: esses são
+                # exclusões operacionais preservadas (não efetivações) e não
+                # devem aparecer na lista ativa. Contratos cancelados (status=CANCELADO)
+                # continuam visíveis pela segunda condição independentemente.
+                (
+                    Q(associado__esteira_item__etapa_atual__in=[
+                        EsteiraItem.Etapa.TESOURARIA,
+                        EsteiraItem.Etapa.CONCLUIDO,
+                    ])
+                    & ~Q(
+                        associado__esteira_item__etapa_atual=EsteiraItem.Etapa.CONCLUIDO,
+                        associado__esteira_item__status=EsteiraItem.Situacao.REJEITADO,
+                    )
+                )
                 | Q(status__in=[Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO])
             )
             .distinct()
@@ -508,6 +519,31 @@ class TesourariaService:
         return ciclo
 
     @staticmethod
+    def _require_contract_effectivation_comprovantes(
+        contrato: Contrato,
+    ) -> tuple[Comprovante, Comprovante]:
+        comprovante_associado = TesourariaService._latest_contract_payment_comprovante(
+            contrato,
+            Comprovante.Papel.ASSOCIADO,
+        )
+        comprovante_agente = TesourariaService._latest_contract_payment_comprovante(
+            contrato,
+            Comprovante.Papel.AGENTE,
+        )
+        errors: dict[str, list[str]] = {}
+        if comprovante_associado is None:
+            errors["comprovante_associado"] = [
+                "O comprovante do associado é obrigatório para efetivar o contrato."
+            ]
+        if comprovante_agente is None:
+            errors["comprovante_agente"] = [
+                "O comprovante do agente é obrigatório para efetivar o contrato."
+            ]
+        if errors:
+            raise ValidationError(errors)
+        return comprovante_associado, comprovante_agente
+
+    @staticmethod
     def _finalize_contract_effectivation(
         contrato: Contrato,
         *,
@@ -565,19 +601,15 @@ class TesourariaService:
     @transaction.atomic
     def efetivar_contrato(contrato_id, comprovante_associado, comprovante_agente, user):
         contrato = TesourariaService._get_contrato(int(contrato_id))
-        if not comprovante_associado:
-            raise ValidationError(
-                {"comprovante_associado": ["O comprovante do associado é obrigatório."]}
-            )
-
         paid_at = timezone.now()
-        TesourariaService._upsert_contract_payment_comprovante(
-            contrato,
-            papel=Comprovante.Papel.ASSOCIADO,
-            arquivo=comprovante_associado,
-            user=user,
-            data_pagamento=paid_at,
-        )
+        if comprovante_associado:
+            TesourariaService._upsert_contract_payment_comprovante(
+                contrato,
+                papel=Comprovante.Papel.ASSOCIADO,
+                arquivo=comprovante_associado,
+                user=user,
+                data_pagamento=paid_at,
+            )
         if comprovante_agente:
             TesourariaService._upsert_contract_payment_comprovante(
                 contrato,
@@ -586,6 +618,13 @@ class TesourariaService:
                 user=user,
                 data_pagamento=paid_at,
             )
+        comprovante_associado_db, comprovante_agente_db = (
+            TesourariaService._require_contract_effectivation_comprovantes(contrato)
+        )
+        for comprovante in (comprovante_associado_db, comprovante_agente_db):
+            if comprovante.data_pagamento != paid_at:
+                comprovante.data_pagamento = paid_at
+                comprovante.save(update_fields=["data_pagamento", "updated_at"])
         return TesourariaService._finalize_contract_effectivation(
             contrato,
             user=user,
@@ -675,42 +714,36 @@ class TesourariaService:
     def substituir_comprovante(contrato_id, *, papel: str, arquivo, user):
         contrato = TesourariaService._get_contrato(int(contrato_id))
         now = timezone.now()
-        comprovante = TesourariaService._upsert_contract_payment_comprovante(
+        TesourariaService._upsert_contract_payment_comprovante(
             contrato,
             papel=papel,
             arquivo=arquivo,
             user=user,
             data_pagamento=now,
         )
-        if papel == Comprovante.Papel.ASSOCIADO:
-            esteira_item = getattr(contrato.associado, "esteira_item", None)
-            if (
-                esteira_item is not None
-                and esteira_item.etapa_atual == EsteiraItem.Etapa.TESOURARIA
-            ):
-                return TesourariaService._finalize_contract_effectivation(
-                    contrato,
-                    user=user,
-                    paid_at=now,
-                )
-            pagamento = TesourariaService._upsert_initial_payment(
-                contrato,
-                user=user,
-                paid_at=now,
-            )
+        pagamento = get_initial_payment_for_contract(contrato)
+        if pagamento is not None:
             TesourariaService._sync_initial_payment_paths(pagamento, contrato)
-            pagamento.save(update_fields=["comprovante_associado_path", "comprovante_agente_path", "updated_at"])
-        else:
-            pagamento = get_initial_payment_for_contract(contrato)
-            if pagamento is not None:
-                TesourariaService._sync_initial_payment_paths(pagamento, contrato)
-                pagamento.save(
-                    update_fields=[
-                        "comprovante_associado_path",
-                        "comprovante_agente_path",
-                        "updated_at",
-                    ]
-                )
+            pagamento.save(
+                update_fields=[
+                    "comprovante_associado_path",
+                    "comprovante_agente_path",
+                    "updated_at",
+                ]
+            )
+        contrato.refresh_from_db()
+        return contrato
+
+    @staticmethod
+    @transaction.atomic
+    def excluir_contrato_operacional(contrato_id: int, user) -> Contrato:
+        contrato = TesourariaService._get_contrato(int(contrato_id))
+        esteira_item = getattr(contrato.associado, "esteira_item", None)
+        if esteira_item is None:
+            raise ValidationError("Contrato sem item operacional vinculado.")
+        from apps.esteira.services import EsteiraService
+
+        EsteiraService.excluir_solicitacao(esteira_item, user)
         contrato.refresh_from_db()
         return contrato
 
@@ -1369,6 +1402,7 @@ class BaixaManualService:
                 ciclo__contrato__contrato_canonico__isnull=True,
                 status__in=[Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO],
                 referencia_mes__lt=mes_atual,
+                descartado_em__isnull=True,
             )
             .order_by(
                 "ciclo__contrato__associado__nome_completo",
@@ -1415,6 +1449,24 @@ class BaixaManualService:
             )
         )
         return rows
+
+    @staticmethod
+    def descartar_parcela(parcela_id: int, user) -> Parcela:
+        from django.utils import timezone as tz
+
+        parcela = Parcela.objects.select_related(
+            "ciclo__contrato__associado"
+        ).get(pk=parcela_id)
+        if parcela.descartado_em is not None:
+            raise ValueError("Inadimplência já foi descartada anteriormente.")
+        if parcela.status not in {Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO}:
+            raise ValueError(
+                f"Não é possível descartar parcela com status '{parcela.status}'."
+            )
+        parcela.descartado_em = tz.now()
+        parcela.descartado_por = user
+        parcela.save(update_fields=["descartado_em", "descartado_por"])
+        return parcela
 
     @staticmethod
     def listar_parcelas_quitadas(

@@ -64,7 +64,11 @@ export function resolveCount(value?: number | null) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-export function buildPagamentoColumns(): DataTableColumn<PagamentoAgenteItem>[] {
+export function buildPagamentoColumns(options?: {
+  onExcluir?: (row: PagamentoAgenteItem) => void;
+  canRemoverFila?: boolean;
+}): DataTableColumn<PagamentoAgenteItem>[] {
+  const { onExcluir, canRemoverFila } = options ?? {};
   return [
     {
       id: "associado",
@@ -171,6 +175,27 @@ export function buildPagamentoColumns(): DataTableColumn<PagamentoAgenteItem>[] 
         </div>
       ),
     },
+    ...(canRemoverFila && onExcluir
+      ? [
+          {
+            id: "remover_fila",
+            header: "Ação",
+            cell: (row: PagamentoAgenteItem) => (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-fit border-red-500/40 text-red-400"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onExcluir(row);
+                }}
+              >
+                Remover da fila
+              </Button>
+            ),
+          } satisfies DataTableColumn<PagamentoAgenteItem>,
+        ]
+      : []),
   ];
 }
 

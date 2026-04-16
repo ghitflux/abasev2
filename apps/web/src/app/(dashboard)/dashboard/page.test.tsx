@@ -29,6 +29,7 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({
     replace: mockReplace,
   }),
+  usePathname: () => "/dashboard",
 }));
 
 jest.mock("recharts", () => {
@@ -476,7 +477,7 @@ const detailPayload = {
 };
 
 const monthlyDetailPayload = {
-  count: 2,
+  count: 3,
   next: null,
   previous: null,
   results: [
@@ -496,11 +497,14 @@ const monthlyDetailPayload = {
       origem: "Efetivado 03/2026",
       data_referencia: "2026-03-01",
       observacao: "",
+      data_entrada_associacao: "2026-03-05",
+      parcelas_descontadas: 1,
+      status_resumo_mensal: "ativo",
     },
     {
       id: "associado-2",
       associado_id: 2,
-      associado_nome: "João Premium",
+      associado_nome: "João Cancelado",
       cpf_cnpj: "22222222222",
       matricula: "MAT-2222",
       data_nascimento: "1988-08-08",
@@ -513,6 +517,29 @@ const monthlyDetailPayload = {
       origem: "Efetivado 03/2026",
       data_referencia: "2026-03-02",
       observacao: "",
+      data_entrada_associacao: "2026-03-06",
+      parcelas_descontadas: 3,
+      status_resumo_mensal: "cancelado",
+    },
+    {
+      id: "associado-3",
+      associado_id: 3,
+      associado_nome: "Rita Renovada",
+      cpf_cnpj: "33333333333",
+      matricula: "MAT-3333",
+      data_nascimento: "1985-05-05",
+      status: "ativo",
+      agente_nome: "Alice ABASE",
+      contrato_codigo: "CTR-C3",
+      etapa: "concluido",
+      competencia: "03/2026",
+      valor: "55.00",
+      origem: "Renovado 03/2026",
+      data_referencia: "2026-03-03",
+      observacao: "",
+      data_entrada_associacao: "2026-03-08",
+      parcelas_descontadas: 3,
+      status_resumo_mensal: "ativo",
     },
   ],
 };
@@ -573,7 +600,10 @@ describe("DashboardPage", () => {
         return newAssociadosPayload;
       if (path === "dashboard/admin/agentes") return agentsPayload;
       if (path === "dashboard/admin/detalhes") {
-        if (options?.query?.metric === "trend:efetivados:2026-03") {
+        if (
+          typeof options?.query?.metric === "string" &&
+          options.query.metric.startsWith("trend:")
+        ) {
           return monthlyDetailPayload;
         }
         return detailPayload;
@@ -697,6 +727,8 @@ describe("DashboardPage", () => {
     expect(
       await screen.findByText("Novos associados de março de 2026"),
     ).toBeInTheDocument();
+    expect(screen.getByText("Data de entrada na associação")).toBeInTheDocument();
+    expect(screen.getByText("Valor da mensalidade")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Exportar detalhes" }));
 
@@ -714,7 +746,7 @@ describe("DashboardPage", () => {
     });
   });
 
-  it("filtra novos associados por mensalidade no modal mensal e exporta apenas o recorte selecionado", async () => {
+  it("filtra o detalhamento mensal por presets e exporta apenas o recorte selecionado", async () => {
     const user = userEvent.setup();
     let exportedBlob: Blob | null = null;
 
@@ -731,16 +763,17 @@ describe("DashboardPage", () => {
       }),
     );
 
-    expect(await screen.findByText("Mensalidade")).toBeInTheDocument();
-    expect((await screen.findAllByText("R$ 30,00")).length).toBeGreaterThan(0);
-    expect((await screen.findAllByText("R$ 75,00")).length).toBeGreaterThan(0);
+    expect(await screen.findByText("Filtros do resumo mensal")).toBeInTheDocument();
+    expect(screen.getByText("Maria Ativa")).toBeInTheDocument();
+    expect(screen.getByText("João Cancelado")).toBeInTheDocument();
+    expect(screen.getByText("Rita Renovada")).toBeInTheDocument();
 
-    const maxInput = screen.getByLabelText("Valor máximo da mensalidade");
-    fireEvent.change(maxInput, { target: { value: "30" } });
+    await user.click(screen.getByRole("button", { name: "3 parcelas descontadas" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Maria Ativa")).toBeInTheDocument();
-      expect(screen.queryByText("João Premium")).not.toBeInTheDocument();
+      expect(screen.queryByText("Maria Ativa")).not.toBeInTheDocument();
+      expect(screen.queryByText("João Cancelado")).not.toBeInTheDocument();
+      expect(screen.getByText("Rita Renovada")).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: "Exportar detalhes" }));
@@ -752,9 +785,10 @@ describe("DashboardPage", () => {
       reader.onerror = () => reject(reader.error);
       reader.readAsText(exportedBlob!);
     });
-    expect(exportedContent).toContain("Maria Ativa");
-    expect(exportedContent).not.toContain("João Premium");
-    expect(exportedContent).toContain("Mensalidade");
+    expect(exportedContent).toContain("Rita Renovada");
+    expect(exportedContent).not.toContain("Maria Ativa");
+    expect(exportedContent).not.toContain("João Cancelado");
+    expect(exportedContent).toContain("Valor da mensalidade");
   });
 
   it("abre o modal de renovações a partir da tabela mensal", async () => {
@@ -784,7 +818,7 @@ describe("DashboardPage", () => {
             path === "dashboard/admin/detalhes" &&
             options?.query?.section === "summary" &&
             options?.query?.metric === "trend:renovacoes:2026-03" &&
-            options?.query?.page === 1,
+            options?.query?.page_size === "all",
         ),
       ).toBe(true);
     });

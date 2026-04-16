@@ -36,6 +36,11 @@ export type V1ImportacaoArquivoRetornoListQueryParams = {
    * @type string | undefined
    */
   search?: string;
+  /**
+   * @description Status do processamento do arquivo retorno.
+   * @type string | undefined
+   */
+  status?: string;
 };
 
 export type V1ImportacaoArquivoRetornoList200 = PaginatedArquivoRetornoListList;

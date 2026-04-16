@@ -7,6 +7,26 @@ import type { PaginatedBaixaManualItemList } from "./PaginatedBaixaManualItemLis
 
 export type V1TesourariaBaixaManualListQueryParams = {
   /**
+   * @type string | undefined
+   */
+  agente?: string;
+  /**
+   * @type string | undefined, date
+   */
+  competencia?: string;
+  /**
+   * @type string | undefined, date
+   */
+  data_fim?: string;
+  /**
+   * @type string | undefined, date
+   */
+  data_inicio?: string;
+  /**
+   * @type string | undefined
+   */
+  listing?: string;
+  /**
    * @description Which field to use when ordering the results.
    * @type string | undefined
    */
@@ -22,10 +42,13 @@ export type V1TesourariaBaixaManualListQueryParams = {
    */
   page_size?: number;
   /**
-   * @description A search term.
    * @type string | undefined
    */
   search?: string;
+  /**
+   * @type string | undefined
+   */
+  status?: string;
 };
 
 export type V1TesourariaBaixaManualList200 = PaginatedBaixaManualItemList;

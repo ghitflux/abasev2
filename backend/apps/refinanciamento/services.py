@@ -277,6 +277,31 @@ class RefinanciamentoService:
         return pagamento
 
     @staticmethod
+    def _require_effectivation_comprovantes(
+        refinanciamento: Refinanciamento,
+    ) -> tuple[Comprovante, Comprovante]:
+        comprovante_associado = RefinanciamentoService._latest_payment_comprovante(
+            refinanciamento,
+            Comprovante.Papel.ASSOCIADO,
+        )
+        comprovante_agente = RefinanciamentoService._latest_payment_comprovante(
+            refinanciamento,
+            Comprovante.Papel.AGENTE,
+        )
+        errors: dict[str, list[str]] = {}
+        if comprovante_associado is None:
+            errors["comprovante_associado"] = [
+                "O comprovante do associado é obrigatório para efetivar a renovação."
+            ]
+        if comprovante_agente is None:
+            errors["comprovante_agente"] = [
+                "O comprovante do agente é obrigatório para efetivar a renovação."
+            ]
+        if errors:
+            raise ValidationError(errors)
+        return comprovante_associado, comprovante_agente
+
+    @staticmethod
     def _serialize_pagamento_seed(pagamento: PagamentoMensalidade) -> dict[str, object]:
         return {
             "pagamento_mensalidade_id": pagamento.id,
@@ -930,6 +955,108 @@ class RefinanciamentoService:
 
     @staticmethod
     @transaction.atomic
+    def retornar_para_pendente_pagamento(
+        refinanciamento_id: int,
+        user,
+    ) -> Refinanciamento:
+        refinanciamento = RefinanciamentoService._get_refinanciamento(refinanciamento_id)
+        if refinanciamento.status == Refinanciamento.Status.APROVADO_PARA_RENOVACAO:
+            return refinanciamento
+
+        allowed_statuses = {
+            Refinanciamento.Status.EFETIVADO,
+            Refinanciamento.Status.BLOQUEADO,
+            Refinanciamento.Status.REVERTIDO,
+            Refinanciamento.Status.DESATIVADO,
+        }
+        if refinanciamento.status not in allowed_statuses:
+            raise ValidationError(
+                "Somente renovações efetivadas ou canceladas podem voltar para pendente de pagamento."
+            )
+
+        refinanciamento.status = Refinanciamento.Status.APROVADO_PARA_RENOVACAO
+        refinanciamento.bloqueado_por = None
+        refinanciamento.efetivado_por = None
+        refinanciamento.motivo_bloqueio = ""
+        refinanciamento.observacao = "Renovação devolvida para pendente de pagamento."
+        refinanciamento.executado_em = None
+        refinanciamento.data_ativacao_ciclo = None
+        refinanciamento.save(
+            update_fields=[
+                "status",
+                "bloqueado_por",
+                "efetivado_por",
+                "motivo_bloqueio",
+                "observacao",
+                "executado_em",
+                "data_ativacao_ciclo",
+                "updated_at",
+            ]
+        )
+
+        comprovantes = refinanciamento.comprovantes.filter(
+            tipo__in=[
+                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+                Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+            ],
+            deleted_at__isnull=True,
+        )
+        for comprovante in comprovantes:
+            if comprovante.data_pagamento is not None:
+                comprovante.data_pagamento = None
+                comprovante.save(update_fields=["data_pagamento", "updated_at"])
+
+        pagamento = RefinanciamentoService._get_renewal_payment(refinanciamento)
+        if pagamento is not None:
+            pagamento.status = Pagamento.Status.PENDENTE
+            pagamento.paid_at = None
+            pagamento.notes = (
+                f"Renovação retornada para pendente de pagamento via tesouraria para refi #{refinanciamento.id}."
+            )
+            pagamento = RefinanciamentoService._sync_renewal_payment_paths(
+                pagamento,
+                refinanciamento,
+            )
+            pagamento.save(
+                update_fields=[
+                    "status",
+                    "paid_at",
+                    "notes",
+                    "comprovante_associado_path",
+                    "comprovante_agente_path",
+                    "updated_at",
+                ]
+            )
+
+        RefinanciamentoService._registrar_auditoria(
+            refinanciamento.contrato_origem,
+            user,
+            "retornar_refinanciamento_para_pendente_pagamento",
+            "Renovação devolvida para pendente de pagamento na fila da tesouraria.",
+        )
+        return refinanciamento
+
+    @staticmethod
+    @transaction.atomic
+    def limpar_linha_operacional(
+        refinanciamento_id: int,
+        *,
+        motivo: str,
+        user,
+    ) -> None:
+        refinanciamento = RefinanciamentoService._get_refinanciamento(refinanciamento_id)
+        refinanciamento.observacao = motivo or "Linha operacional removida manualmente."
+        refinanciamento.save(update_fields=["observacao", "updated_at"])
+        refinanciamento.soft_delete()
+        RefinanciamentoService._registrar_auditoria(
+            refinanciamento.contrato_origem,
+            user,
+            "limpar_linha_operacional_refinanciamento",
+            refinanciamento.observacao,
+        )
+
+    @staticmethod
+    @transaction.atomic
     def desativar(refinanciamento_id: int, motivo: str, user) -> Refinanciamento:
         raise ValidationError(
             "A desativação direta da renovação foi bloqueada. Use a liquidação do contrato para encerrar os meses pendentes."
@@ -974,23 +1101,20 @@ class RefinanciamentoService:
             raise ValidationError(
                 "Somente renovações validadas pela coordenação podem ser efetivadas."
             )
-        if not comprovante_associado:
-            raise ValidationError(
-                {"comprovante_associado": ["O comprovante do associado é obrigatório."]}
-            )
 
         contrato = refinanciamento.contrato_origem
         if contrato is None:
             raise ValidationError("Renovação sem contrato de origem.")
 
         executado_em = timezone.now()
-        RefinanciamentoService._upsert_payment_comprovante(
-            refinanciamento,
-            papel=Comprovante.Papel.ASSOCIADO,
-            arquivo=comprovante_associado,
-            user=user,
-            data_pagamento=executado_em,
-        )
+        if comprovante_associado:
+            RefinanciamentoService._upsert_payment_comprovante(
+                refinanciamento,
+                papel=Comprovante.Papel.ASSOCIADO,
+                arquivo=comprovante_associado,
+                user=user,
+                data_pagamento=executado_em,
+            )
         if comprovante_agente:
             RefinanciamentoService._upsert_payment_comprovante(
                 refinanciamento,
@@ -999,6 +1123,13 @@ class RefinanciamentoService:
                 user=user,
                 data_pagamento=executado_em,
             )
+        comprovante_associado_db, comprovante_agente_db = (
+            RefinanciamentoService._require_effectivation_comprovantes(refinanciamento)
+        )
+        for comprovante in (comprovante_associado_db, comprovante_agente_db):
+            if comprovante.data_pagamento != executado_em:
+                comprovante.data_pagamento = executado_em
+                comprovante.save(update_fields=["data_pagamento", "updated_at"])
 
         refinanciamento.status = Refinanciamento.Status.EFETIVADO
         refinanciamento.efetivado_por = user
@@ -1062,34 +1193,19 @@ class RefinanciamentoService:
             user=user,
             data_pagamento=now,
         )
-
-        if papel == Comprovante.Papel.ASSOCIADO:
-            if refinanciamento.status != Refinanciamento.Status.EFETIVADO:
-                return RefinanciamentoService.efetivar(
-                    refinanciamento_id,
-                    comprovante_associado=arquivo,
-                    comprovante_agente=None,
-                    user=user,
-                )
-            RefinanciamentoService._upsert_renewal_payment(
+        pagamento = RefinanciamentoService._get_renewal_payment(refinanciamento)
+        if pagamento is not None:
+            RefinanciamentoService._sync_renewal_payment_paths(
+                pagamento,
                 refinanciamento,
-                user=user,
-                paid_at=now,
             )
-        else:
-            pagamento = RefinanciamentoService._get_renewal_payment(refinanciamento)
-            if pagamento is not None:
-                RefinanciamentoService._sync_renewal_payment_paths(
-                    pagamento,
-                    refinanciamento,
-                )
-                pagamento.save(
-                    update_fields=[
-                        "comprovante_associado_path",
-                        "comprovante_agente_path",
-                        "updated_at",
-                    ]
-                )
+            pagamento.save(
+                update_fields=[
+                    "comprovante_associado_path",
+                    "comprovante_agente_path",
+                    "updated_at",
+                ]
+            )
 
         refinanciamento.refresh_from_db()
         return refinanciamento

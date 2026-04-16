@@ -11,7 +11,11 @@ export type BaixaManualItem = {
   /**
    * @type integer
    */
-  readonly associado_id: number;
+  readonly parcela_id: number | null;
+  /**
+   * @type integer
+   */
+  readonly associado_id: number | null;
   /**
    * @type string
    */
@@ -31,18 +35,17 @@ export type BaixaManualItem = {
   /**
    * @type integer
    */
-  readonly contrato_id: number;
+  readonly contrato_id: number | null;
   /**
    * @type string
    */
   readonly contrato_codigo: string;
   /**
-   * @type string, date
+   * @type string
    */
   readonly referencia_mes: string;
   /**
-   * @pattern ^-?\d{0,8}(?:\.\d{0,2})?$
-   * @type string, decimal
+   * @type string
    */
   readonly valor: string;
   /**
@@ -50,11 +53,39 @@ export type BaixaManualItem = {
    */
   readonly status: string;
   /**
-   * @type string, date
+   * @type string
    */
   readonly data_vencimento: string;
   /**
    * @type string
    */
   readonly observacao: string;
+  /**
+   * @type string
+   */
+  readonly data_baixa: string;
+  /**
+   * @type string
+   */
+  readonly valor_pago: string;
+  /**
+   * @type string
+   */
+  readonly realizado_por_nome: string;
+  /**
+   * @type string
+   */
+  readonly nome_comprovante: string;
+  /**
+   * @type string
+   */
+  readonly origem: string;
+  /**
+   * @type integer
+   */
+  readonly arquivo_retorno_item_id: number | null;
+  /**
+   * @type boolean
+   */
+  readonly pode_dar_baixa: boolean;
 };

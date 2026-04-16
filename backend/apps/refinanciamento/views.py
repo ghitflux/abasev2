@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from decimal import Decimal
+import re
 
 from django.db.models import Count, DateTimeField, OuterRef, Prefetch, Q, Subquery, Sum
 from django.db.models.functions import Coalesce
 from django.utils.dateparse import parse_date
 from rest_framework import mixins, permissions, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
@@ -142,9 +144,23 @@ class BaseRefinanciamentoViewSet(
         if status_filters:
             queryset = queryset.filter(status__in=status_filters)
 
-        cycle_key = self.request.query_params.get("cycle_key")
+        cycle_key = (self.request.query_params.get("cycle_key") or "").strip()
         if cycle_key:
-            queryset = queryset.filter(cycle_key__icontains=cycle_key)
+            cycle_tokens = [
+                token.strip()
+                for token in re.split(r"[|,]", cycle_key)
+                if token.strip()
+            ]
+            for token in cycle_tokens:
+                queryset = queryset.filter(cycle_key__icontains=token)
+
+        numero_ciclos = (self.request.query_params.get("numero_ciclos") or "").strip()
+        if numero_ciclos:
+            if not numero_ciclos.isdigit():
+                raise ValidationError(
+                    {"numero_ciclos": ["Informe um número de ciclo válido."]}
+                )
+            queryset = queryset.filter(ciclo_origem__numero=int(numero_ciclos))
 
         origin_filters = self._get_multi_param("origem")
         if origin_filters:
@@ -454,13 +470,17 @@ class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
         )
         return Response(serializer.data)
 
-    @action(detail=True, methods=["post"], parser_classes=[MultiPartParser])
+    @action(
+        detail=True,
+        methods=["post"],
+        parser_classes=[FormParser, JSONParser, MultiPartParser],
+    )
     def efetivar(self, request, pk=None):
         payload = EfetivarRefinanciamentoSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         refinanciamento = RefinanciamentoService.efetivar(
             int(pk),
-            payload.validated_data["comprovante_associado"],
+            payload.validated_data.get("comprovante_associado"),
             payload.validated_data.get("comprovante_agente"),
             request.user,
         )
@@ -594,6 +614,8 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
     def get_permissions(self):
         if self.action in {"efetivar", "substituir_comprovante"}:
             return [permissions.IsAuthenticated(), IsTesoureiroOrAdmin()]
+        if self.action == "retornar_pendente":
+            return [permissions.IsAuthenticated(), IsCoordenadorOrTesoureiroOrAdmin()]
         return [permissions.IsAuthenticated(), IsCoordenadorOrTesoureiroOrAdmin()]
 
     def get_queryset(self):
@@ -678,20 +700,82 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
 
         return queryset.order_by("-updated_at", "-id")
 
-    @action(detail=True, methods=["post"], parser_classes=[MultiPartParser])
+    @action(
+        detail=True,
+        methods=["post"],
+        parser_classes=[FormParser, JSONParser, MultiPartParser],
+    )
     def efetivar(self, request, pk=None):
         payload = EfetivarRefinanciamentoSerializer(data=request.data)
         payload.is_valid(raise_exception=True)
         refinanciamento = RefinanciamentoService.efetivar(
             int(pk),
-            payload.validated_data["comprovante_associado"],
-            payload.validated_data["comprovante_agente"],
+            payload.validated_data.get("comprovante_associado"),
+            payload.validated_data.get("comprovante_agente"),
             request.user,
         )
         serializer = RefinanciamentoDetailSerializer(
             refinanciamento, context=self.get_serializer_context()
         )
         return Response(serializer.data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[permissions.IsAuthenticated, IsCoordenadorOrAdmin],
+    )
+    def excluir(self, request, pk=None):
+        motivo = (request.data.get("motivo") or "").strip() or "Removido da fila pela coordenação."
+        try:
+            refinanciamento = RefinanciamentoService.bloquear(int(pk), motivo, request.user)
+        except Exception as exc:
+            return Response({"detail": str(exc)}, status=400)
+        serializer = RefinanciamentoDetailSerializer(
+            refinanciamento, context=self.get_serializer_context()
+        )
+        return Response(serializer.data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[
+            permissions.IsAuthenticated,
+            IsCoordenadorOrTesoureiroOrAdmin,
+        ],
+        url_path="retornar-pendente",
+    )
+    def retornar_pendente(self, request, pk=None):
+        try:
+            refinanciamento = RefinanciamentoService.retornar_para_pendente_pagamento(
+                int(pk),
+                request.user,
+            )
+        except Exception as exc:
+            return Response({"detail": str(exc)}, status=400)
+        serializer = RefinanciamentoDetailSerializer(
+            refinanciamento, context=self.get_serializer_context()
+        )
+        return Response(serializer.data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        permission_classes=[permissions.IsAuthenticated, IsCoordenadorOrAdmin],
+        url_path="limpar-linha",
+    )
+    def limpar_linha(self, request, pk=None):
+        motivo = (
+            request.data.get("motivo") or ""
+        ).strip() or "Linha operacional removida manualmente."
+        try:
+            RefinanciamentoService.limpar_linha_operacional(
+                int(pk),
+                motivo=motivo,
+                user=request.user,
+            )
+        except Exception as exc:
+            return Response({"detail": str(exc)}, status=400)
+        return Response({"detail": "Linha operacional removida."})
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser], url_path="substituir-comprovante")
     def substituir_comprovante(self, request, pk=None):

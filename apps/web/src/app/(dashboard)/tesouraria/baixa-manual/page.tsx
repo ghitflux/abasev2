@@ -71,6 +71,7 @@ import {
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { usePermissions } from "@/hooks/use-permissions";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -239,6 +240,8 @@ function countActiveAdvancedFilters(filters: AdvancedFilters) {
 }
 
 export default function BaixaManualPage() {
+  const { hasAnyRole } = usePermissions();
+  const canDescartar = hasAnyRole(["ADMIN", "COORDENADOR"]);
   const queryClient = useQueryClient();
   const router = useRouter();
   const [listing, setListing] = React.useState<ListingTab>("pendentes");
@@ -260,6 +263,8 @@ export default function BaixaManualPage() {
     React.useState<DarBaixaState | null>(null);
   const [inativarAssociadoState, setInativarAssociadoState] =
     React.useState<InativarAssociadoState | null>(null);
+  const [descartarTarget, setDescartarTarget] =
+    React.useState<BaixaManualItem | null>(null);
   const [navigatingId, setNavigatingId] = React.useState<number | null>(null);
 
   const competenciaParam = competencia
@@ -493,6 +498,22 @@ export default function BaixaManualPage() {
       toast.error(
         error instanceof Error ? error.message : "Falha ao inativar associado.",
       );
+    },
+  });
+
+  const descartarMutation = useMutation({
+    mutationFn: async (parcelaId: number) =>
+      apiFetch(`tesouraria/baixa-manual/${parcelaId}/descartar`, {
+        method: "POST",
+        body: {},
+      }),
+    onSuccess: () => {
+      toast.success("Inadimplência descartada com sucesso.");
+      setDescartarTarget(null);
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-baixa-manual"] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Falha ao descartar inadimplência.");
     },
   });
 
@@ -819,27 +840,39 @@ export default function BaixaManualPage() {
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
-                      {parcela.pode_dar_baixa ? (
-                        <Button
-                          size="sm"
-                          variant="success"
-                          onClick={() =>
-                            setDarBaixaState({
-                              item: parcela,
-                              comprovante: null,
-                              valorPago: parcela.valor,
-                              observacao: "",
-                            })
-                          }
-                        >
-                          <UploadIcon className="mr-1.5 size-3.5" />
-                          Dar Baixa
-                        </Button>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">
-                          Quitação indisponível
-                        </span>
-                      )}
+                      <div className="flex flex-col gap-1.5">
+                        {parcela.pode_dar_baixa ? (
+                          <Button
+                            size="sm"
+                            variant="success"
+                            onClick={() =>
+                              setDarBaixaState({
+                                item: parcela,
+                                comprovante: null,
+                                valorPago: parcela.valor,
+                                observacao: "",
+                              })
+                            }
+                          >
+                            <UploadIcon className="mr-1.5 size-3.5" />
+                            Dar Baixa
+                          </Button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            Quitação indisponível
+                          </span>
+                        )}
+                        {canDescartar && parcela.id > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="border-red-500/40 text-red-400"
+                            onClick={() => setDescartarTarget(parcela)}
+                          >
+                            Descartar
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -1367,6 +1400,41 @@ export default function BaixaManualPage() {
                 </>
               ) : (
                 "Confirmar inativação"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={descartarTarget != null}
+        onOpenChange={(open) => { if (!open) setDescartarTarget(null); }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Descartar inadimplência</DialogTitle>
+            <DialogDescription>
+              A parcela de <strong>{formatMonthYear(descartarTarget?.referencia_mes ?? "")}</strong>{" "}
+              do contrato <strong>{descartarTarget?.contrato_codigo}</strong> será removida da
+              fila de inadimplentes. O histórico financeiro não será alterado.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDescartarTarget(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={descartarMutation.isPending}
+              onClick={() => descartarTarget && descartarMutation.mutate(descartarTarget.id)}
+            >
+              {descartarMutation.isPending ? (
+                <>
+                  <Spinner className="mr-2 size-4" />
+                  Descartando...
+                </>
+              ) : (
+                "Descartar inadimplência"
               )}
             </Button>
           </DialogFooter>

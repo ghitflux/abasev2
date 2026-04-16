@@ -3,6 +3,31 @@
   "properties": {
     "id": { "type": "integer", "readOnly": true },
     "associado_id": { "type": "integer", "readOnly": true },
+    "associado": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": { "type": "integer", "readOnly": true },
+            "nome_completo": { "type": "string", "readOnly": true },
+            "cpf_cnpj": { "type": "string", "readOnly": true },
+            "matricula": { "type": "string", "readOnly": true },
+            "matricula_display": { "type": "string", "readOnly": true },
+            "status": { "type": "string", "readOnly": true }
+          },
+          "required": [
+            "cpf_cnpj",
+            "id",
+            "matricula",
+            "matricula_display",
+            "nome_completo",
+            "status"
+          ],
+          "x-readme-ref-name": "EsteiraAssociadoCompat"
+        }
+      ],
+      "readOnly": true
+    },
     "ordem": { "type": "integer", "readOnly": true },
     "contrato": {
       "allOf": [
@@ -13,14 +38,22 @@
             "associado_nome": { "type": "string", "readOnly": true },
             "cpf_cnpj": { "type": "string", "readOnly": true },
             "matricula": { "type": "string", "readOnly": true },
-            "matricula_display": { "type": "string", "readOnly": true }
+            "matricula_display": { "type": "string", "readOnly": true },
+            "valor_mensalidade": {
+              "type": "string",
+              "format": "decimal",
+              "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$",
+              "readOnly": true,
+              "nullable": true
+            }
           },
           "required": [
             "associado_nome",
             "codigo",
             "cpf_cnpj",
             "matricula",
-            "matricula_display"
+            "matricula_display",
+            "valor_mensalidade"
           ],
           "x-readme-ref-name": "ContratoEsteira"
         }
@@ -120,6 +153,8 @@
       "format": "date-time",
       "nullable": true
     },
+    "created_at": { "type": "string", "format": "date-time", "readOnly": true },
+    "updated_at": { "type": "string", "format": "date-time", "readOnly": true },
     "documentos": {
       "type": "array",
       "items": {
@@ -304,10 +339,12 @@
     "acoes_disponiveis",
     "agente",
     "analista_responsavel",
+    "associado",
     "associado_id",
     "comissao_agente",
     "contato_web",
     "contrato",
+    "created_at",
     "data_assinatura",
     "documentos",
     "documentos_count",
@@ -321,6 +358,7 @@
     "status_documentacao",
     "termos_web",
     "transicoes",
+    "updated_at",
     "valor_disponivel"
   ],
   "x-readme-ref-name": "EsteiraDetail"

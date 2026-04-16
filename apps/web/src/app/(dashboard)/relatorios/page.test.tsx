@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import RelatoriosPage from "./page";
@@ -20,6 +20,28 @@ jest.mock("sonner", () => ({
     success: jest.fn(),
     error: jest.fn(),
   },
+}));
+
+jest.mock("@/components/custom/date-picker", () => ({
+  __esModule: true,
+  default: ({
+    value,
+    onChange,
+    placeholder = "dd/mm/aaaa",
+  }: {
+    value?: Date;
+    onChange?: (date?: Date) => void;
+    placeholder?: string;
+  }) => (
+    <input
+      aria-label={placeholder}
+      placeholder={placeholder}
+      value={value && !Number.isNaN(value.getTime()) ? value.toISOString().slice(0, 10) : ""}
+      onChange={(event) =>
+        onChange?.(event.target.value ? new Date(`${event.target.value}T12:00:00`) : undefined)
+      }
+    />
+  ),
 }));
 
 const mockedApiFetch = jest.mocked(apiFetch);
@@ -105,6 +127,17 @@ describe("RelatoriosPage", () => {
         ];
       }
 
+      if (path === "tesouraria/contratos/agentes") {
+        return [
+          {
+            id: 9,
+            full_name: "Agente A",
+            email: "agente-a@abase.local",
+            primary_role: "AGENTE",
+          },
+        ];
+      }
+
       if (path === "relatorios/exportar") {
         return {
           id: 11,
@@ -124,16 +157,38 @@ describe("RelatoriosPage", () => {
   });
 
   it("exporta um relatorio em pdf pelo card do tipo", async () => {
+    renderPage();
+
+    expect(await screen.findByText("tesouraria_20260313100000.pdf")).toBeInTheDocument();
+    expect(screen.getByText("PDF")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /baixar/i })).toBeInTheDocument();
+  });
+
+  it("exporta relatorio de associados ativos pagadores com filtros", async () => {
     const user = userEvent.setup();
     renderPage();
 
-    const card = await screen.findByTestId("relatorio-card-tesouraria");
-
+    const card = await screen.findByTestId("relatorio-card-associados_ativos_com_3_parcelas_pagas");
     await user.click(
-      within(card).getByRole("button", {
-        name: "Exportar Tesouraria em PDF",
-      }),
+      within(card).getByRole("button", { name: /Exportar CSV \/ PDF \/ XLS/i }),
     );
+
+    const dialog = await screen.findByRole("dialog");
+    const dateInputs = within(dialog).getAllByPlaceholderText("dd/mm/aaaa");
+    fireEvent.change(dateInputs[0], { target: { value: "2026-04-01" } });
+    fireEvent.change(dateInputs[1], { target: { value: "2026-04-30" } });
+    await user.click(within(dialog).getByText("Todos os agentes"));
+    await user.click(await screen.findByText("Agente A"));
+    await user.click(within(dialog).getByRole("button", { name: /Todas as faixas/i }));
+    const popovers = await screen.findAllByRole("dialog");
+    const faixaPopover = popovers[popovers.length - 1];
+    await user.click(
+      within(faixaPopover).getByRole("checkbox", { name: /R\$ 200 a R\$ 299,99/i }),
+    );
+    await user.click(
+      within(faixaPopover).getByRole("checkbox", { name: /Acima de R\$ 500/i }),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "XLS" }));
 
     await waitFor(() =>
       expect(mockedApiFetch).toHaveBeenCalledWith(
@@ -141,23 +196,17 @@ describe("RelatoriosPage", () => {
         expect.objectContaining({
           method: "POST",
           body: {
-            tipo: "tesouraria",
-            formato: "pdf",
+            tipo: "associados_ativos_com_3_parcelas_pagas",
+            formato: "xlsx",
+            filtros: {
+              data_inicio: "2026-04-01",
+              data_fim: "2026-04-30",
+              agente_id: "9",
+              faixa_mensalidade: ["200_300", "acima_500"],
+            },
           },
         }),
       ),
     );
-
-    await waitFor(() =>
-      expect(mockedToast.success).toHaveBeenCalledWith("Relatorio gerado com sucesso."),
-    );
-  });
-
-  it("renderiza o historico de exportacoes com o formato persistido", async () => {
-    renderPage();
-
-    expect(await screen.findByText("tesouraria_20260313100000.pdf")).toBeInTheDocument();
-    expect(screen.getByText("PDF")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /baixar/i })).toBeInTheDocument();
   });
 });

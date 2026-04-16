@@ -27,6 +27,9 @@ export const V1ImportacaoArquivoRetornoListQueryParamsSchema = z
       z.string().describe("Janela de filtro: mes ou trimestre."),
     ),
     search: z.optional(z.string().describe("A search term.")),
+    status: z.optional(
+      z.string().describe("Status do processamento do arquivo retorno."),
+    ),
   })
   .optional();
 

@@ -25,10 +25,16 @@ export const tesourariaContratoListSchema = z.object({
   agente_nome: z.string(),
   percentual_repasse: z.string(),
   comissao_agente: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
+  valor_mensalidade: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
   margem_disponivel: z.string().regex(/^-?\d{0,8}(?:\.\d{0,2})?$/),
+  dispensa_pagamento_inicial: z.boolean(),
   get comprovantes() {
     return z.array(tesourariaComprovanteResumoSchema);
   },
+  data_anexo_associado: z.string(),
+  data_anexo_agente: z.string(),
+  data_pagamento_associado: z.string(),
+  data_pagamento_agente: z.string(),
   get dados_bancarios() {
     return dadosBancariosSchema.nullable();
   },

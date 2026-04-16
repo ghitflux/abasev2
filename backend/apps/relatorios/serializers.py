@@ -61,6 +61,14 @@ class RelatorioExportarSerializer(serializers.Serializer):
             ("tesouraria", "Tesouraria"),
             ("refinanciamentos", "Refinanciamentos"),
             ("importacao", "Importacao"),
+            (
+                "associados_ativos_com_1_parcela_paga",
+                "Associados ativos com 1 parcela paga",
+            ),
+            (
+                "associados_ativos_com_3_parcelas_pagas",
+                "Associados ativos com 3 parcelas pagas",
+            ),
         ],
         required=False,
     )

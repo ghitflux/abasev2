@@ -41,12 +41,19 @@
       "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
       "readOnly": true
     },
+    "valor_mensalidade": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
+      "readOnly": true
+    },
     "margem_disponivel": {
       "type": "string",
       "format": "decimal",
       "pattern": "^-?\\d{0,8}(?:\\.\\d{0,2})?$",
       "readOnly": true
     },
+    "dispensa_pagamento_inicial": { "type": "boolean", "readOnly": true },
     "comprovantes": {
       "type": "array",
       "items": {
@@ -134,6 +141,10 @@
       },
       "readOnly": true
     },
+    "data_anexo_associado": { "type": "string", "readOnly": true },
+    "data_anexo_agente": { "type": "string", "readOnly": true },
+    "data_pagamento_associado": { "type": "string", "readOnly": true },
+    "data_pagamento_agente": { "type": "string", "readOnly": true },
     "dados_bancarios": {
       "allOf": [
         {
@@ -187,8 +198,13 @@
     "comprovantes",
     "cpf_cnpj",
     "dados_bancarios",
+    "data_anexo_agente",
+    "data_anexo_associado",
     "data_assinatura",
+    "data_pagamento_agente",
+    "data_pagamento_associado",
     "data_solicitacao",
+    "dispensa_pagamento_inicial",
     "etapa_atual",
     "id",
     "margem_disponivel",
@@ -197,7 +213,8 @@
     "observacao_tesouraria",
     "percentual_repasse",
     "situacao_esteira",
-    "status"
+    "status",
+    "valor_mensalidade"
   ],
   "x-readme-ref-name": "TesourariaContratoList"
 }

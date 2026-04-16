@@ -173,11 +173,11 @@ export default function ReportExportDialog({
       : format(referenceDate, "MMMM/yyyy", { locale: ptBR })
     : "—";
   const definition = definitionQuery.data;
-  const hasCustomColumns = Boolean(definition?.columns.length);
+  const definitionColumns = definition?.columns ?? [];
+  const hasCustomColumns = definitionColumns.length > 0;
   const allColumnsSelected =
     hasCustomColumns &&
-    definition.columns.length > 0 &&
-    selectedColumns.length === definition.columns.length;
+    selectedColumns.length === definitionColumns.length;
 
   const toggleColumn = (key: string, checked: boolean) => {
     setSelectedColumns((current) => {
@@ -357,8 +357,10 @@ export default function ReportExportDialog({
                   onClick={() =>
                     setSelectedColumns(
                       allColumnsSelected
-                        ? definition.columns.slice(0, 1).map((column) => column.key)
-                        : definition.columns.map((column) => column.key),
+                        ? definitionColumns
+                            .slice(0, 1)
+                            .map((column) => column.key)
+                        : definitionColumns.map((column) => column.key),
                     )
                   }
                 >
@@ -366,7 +368,7 @@ export default function ReportExportDialog({
                 </Button>
               </div>
               <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-border/60 bg-card/40 p-3">
-                {definition.columns.map((column) => {
+                {definitionColumns.map((column) => {
                   const checked = selectedColumns.includes(column.key);
                   return (
                     <label

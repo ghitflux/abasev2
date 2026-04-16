@@ -187,6 +187,7 @@ export type { V1EsteiraPendenciasResumoRetrieveQueryKey } from "./hooks/useV1Est
 export type { V1EsteiraPendenciasResumoRetrieveSuspenseQueryKey } from "./hooks/useV1EsteiraPendenciasResumoRetrieveSuspense.ts";
 export type { V1EsteiraPendenciasRetrieveQueryKey } from "./hooks/useV1EsteiraPendenciasRetrieve.ts";
 export type { V1EsteiraPendenciasRetrieveSuspenseQueryKey } from "./hooks/useV1EsteiraPendenciasRetrieveSuspense.ts";
+export type { V1EsteiraReprovarCreateMutationKey } from "./hooks/useV1EsteiraReprovarCreate.ts";
 export type { V1EsteiraRetrieveQueryKey } from "./hooks/useV1EsteiraRetrieve.ts";
 export type { V1EsteiraRetrieveSuspenseQueryKey } from "./hooks/useV1EsteiraRetrieveSuspense.ts";
 export type { V1EsteiraSolicitarCorrecaoCreateMutationKey } from "./hooks/useV1EsteiraSolicitarCorrecaoCreate.ts";
@@ -243,6 +244,8 @@ export type { V1RefinanciamentosRetrieveSuspenseQueryKey } from "./hooks/useV1Re
 export type { V1RefinanciamentosReverterCreateMutationKey } from "./hooks/useV1RefinanciamentosReverterCreate.ts";
 export type { V1RefinanciamentosSolicitarCreateMutationKey } from "./hooks/useV1RefinanciamentosSolicitarCreate.ts";
 export type { V1RefinanciamentosSolicitarLiquidacaoCreateMutationKey } from "./hooks/useV1RefinanciamentosSolicitarLiquidacaoCreate.ts";
+export type { V1RelatoriosDefinicaoRetrieveQueryKey } from "./hooks/useV1RelatoriosDefinicaoRetrieve.ts";
+export type { V1RelatoriosDefinicaoRetrieveSuspenseQueryKey } from "./hooks/useV1RelatoriosDefinicaoRetrieveSuspense.ts";
 export type { V1RelatoriosDownloadRetrieveQueryKey } from "./hooks/useV1RelatoriosDownloadRetrieve.ts";
 export type { V1RelatoriosDownloadRetrieveSuspenseQueryKey } from "./hooks/useV1RelatoriosDownloadRetrieveSuspense.ts";
 export type { V1RelatoriosExportarCreateMutationKey } from "./hooks/useV1RelatoriosExportarCreate.ts";
@@ -259,6 +262,7 @@ export type { V1RenovacaoCiclosMesesListSuspenseQueryKey } from "./hooks/useV1Re
 export type { V1RenovacaoCiclosVisaoMensalRetrieveQueryKey } from "./hooks/useV1RenovacaoCiclosVisaoMensalRetrieve.ts";
 export type { V1RenovacaoCiclosVisaoMensalRetrieveSuspenseQueryKey } from "./hooks/useV1RenovacaoCiclosVisaoMensalRetrieveSuspense.ts";
 export type { V1TesourariaBaixaManualDarBaixaCreateMutationKey } from "./hooks/useV1TesourariaBaixaManualDarBaixaCreate.ts";
+export type { V1TesourariaBaixaManualInativarAssociadoCreateMutationKey } from "./hooks/useV1TesourariaBaixaManualInativarAssociadoCreate.ts";
 export type { V1TesourariaBaixaManualListQueryKey } from "./hooks/useV1TesourariaBaixaManualList.ts";
 export type { V1TesourariaBaixaManualListSuspenseQueryKey } from "./hooks/useV1TesourariaBaixaManualListSuspense.ts";
 export type { V1TesourariaConfirmacoesConfirmarAverbacaoCreateMutationKey } from "./hooks/useV1TesourariaConfirmacoesConfirmarAverbacaoCreate.ts";
@@ -268,11 +272,13 @@ export type { V1TesourariaConfirmacoesListQueryKey } from "./hooks/useV1Tesourar
 export type { V1TesourariaConfirmacoesListSuspenseQueryKey } from "./hooks/useV1TesourariaConfirmacoesListSuspense.ts";
 export type { V1TesourariaContratosAgentesRetrieveQueryKey } from "./hooks/useV1TesourariaContratosAgentesRetrieve.ts";
 export type { V1TesourariaContratosAgentesRetrieveSuspenseQueryKey } from "./hooks/useV1TesourariaContratosAgentesRetrieveSuspense.ts";
+export type { V1TesourariaContratosAverbarCreateMutationKey } from "./hooks/useV1TesourariaContratosAverbarCreate.ts";
 export type { V1TesourariaContratosCancelarCreateMutationKey } from "./hooks/useV1TesourariaContratosCancelarCreate.ts";
 export type { V1TesourariaContratosCongelarCreateMutationKey } from "./hooks/useV1TesourariaContratosCongelarCreate.ts";
 export type { V1TesourariaContratosDadosBancariosRetrieveQueryKey } from "./hooks/useV1TesourariaContratosDadosBancariosRetrieve.ts";
 export type { V1TesourariaContratosDadosBancariosRetrieveSuspenseQueryKey } from "./hooks/useV1TesourariaContratosDadosBancariosRetrieveSuspense.ts";
 export type { V1TesourariaContratosEfetivarCreateMutationKey } from "./hooks/useV1TesourariaContratosEfetivarCreate.ts";
+export type { V1TesourariaContratosExcluirCreateMutationKey } from "./hooks/useV1TesourariaContratosExcluirCreate.ts";
 export type { V1TesourariaContratosListQueryKey } from "./hooks/useV1TesourariaContratosList.ts";
 export type { V1TesourariaContratosListSuspenseQueryKey } from "./hooks/useV1TesourariaContratosListSuspense.ts";
 export type { V1TesourariaContratosRetrieveQueryKey } from "./hooks/useV1TesourariaContratosRetrieve.ts";
@@ -306,6 +312,11 @@ export type { V1TesourariaLiquidacoesLiquidarCreateMutationKey } from "./hooks/u
 export type { V1TesourariaLiquidacoesListQueryKey } from "./hooks/useV1TesourariaLiquidacoesList.ts";
 export type { V1TesourariaLiquidacoesListSuspenseQueryKey } from "./hooks/useV1TesourariaLiquidacoesListSuspense.ts";
 export type { V1TesourariaLiquidacoesReverterCreateMutationKey } from "./hooks/useV1TesourariaLiquidacoesReverterCreate.ts";
+export type { V1TesourariaPagamentosListQueryKey } from "./hooks/useV1TesourariaPagamentosList.ts";
+export type { V1TesourariaPagamentosListSuspenseQueryKey } from "./hooks/useV1TesourariaPagamentosListSuspense.ts";
+export type { V1TesourariaPagamentosNotificacoesMarcarLidasCreateMutationKey } from "./hooks/useV1TesourariaPagamentosNotificacoesMarcarLidasCreate.ts";
+export type { V1TesourariaPagamentosNotificacoesRetrieveQueryKey } from "./hooks/useV1TesourariaPagamentosNotificacoesRetrieve.ts";
+export type { V1TesourariaPagamentosNotificacoesRetrieveSuspenseQueryKey } from "./hooks/useV1TesourariaPagamentosNotificacoesRetrieveSuspense.ts";
 export type { V1TesourariaRefinanciamentosEfetivarCreateMutationKey } from "./hooks/useV1TesourariaRefinanciamentosEfetivarCreate.ts";
 export type { V1TesourariaRefinanciamentosListQueryKey } from "./hooks/useV1TesourariaRefinanciamentosList.ts";
 export type { V1TesourariaRefinanciamentosListSuspenseQueryKey } from "./hooks/useV1TesourariaRefinanciamentosListSuspense.ts";
@@ -313,6 +324,7 @@ export type { V1TesourariaRefinanciamentosResumoRetrieveQueryKey } from "./hooks
 export type { V1TesourariaRefinanciamentosResumoRetrieveSuspenseQueryKey } from "./hooks/useV1TesourariaRefinanciamentosResumoRetrieveSuspense.ts";
 export type { V1TesourariaRefinanciamentosRetrieveQueryKey } from "./hooks/useV1TesourariaRefinanciamentosRetrieve.ts";
 export type { V1TesourariaRefinanciamentosRetrieveSuspenseQueryKey } from "./hooks/useV1TesourariaRefinanciamentosRetrieveSuspense.ts";
+export type { V1TesourariaRefinanciamentosSubstituirComprovanteCreateMutationKey } from "./hooks/useV1TesourariaRefinanciamentosSubstituirComprovanteCreate.ts";
 export type {
   AdminOverrideAssociadoCore200,
   AdminOverrideAssociadoCoreMutation,
@@ -407,6 +419,7 @@ export type {
 export type { AdminOverrideRefinanciamentoEditor } from "./models/AdminOverrideRefinanciamentoEditor.ts";
 export type { AdminOverrideReverterWrite } from "./models/AdminOverrideReverterWrite.ts";
 export type { AdminOverrideSaveAllWrite } from "./models/AdminOverrideSaveAllWrite.ts";
+export type { AdminOverrideWarning } from "./models/AdminOverrideWarning.ts";
 export type { AdminUserAccessUpdate } from "./models/AdminUserAccessUpdate.ts";
 export type { AdminUserCreate } from "./models/AdminUserCreate.ts";
 export type { AdminUserList } from "./models/AdminUserList.ts";
@@ -687,6 +700,7 @@ export type {
   EstadoCivilEnum,
   EstadoCivilEnumEnumKey,
 } from "./models/EstadoCivilEnum.ts";
+export type { EsteiraAssociadoCompat } from "./models/EsteiraAssociadoCompat.ts";
 export type { EsteiraDetail } from "./models/EsteiraDetail.ts";
 export type {
   EsteiraEtapaEnum,
@@ -1324,6 +1338,13 @@ export type {
   V1EsteiraPendenciasRetrieveQueryResponse,
 } from "./models/V1EsteiraPendenciasRetrieve.ts";
 export type {
+  V1EsteiraReprovarCreate200,
+  V1EsteiraReprovarCreateMutation,
+  V1EsteiraReprovarCreateMutationRequest,
+  V1EsteiraReprovarCreateMutationResponse,
+  V1EsteiraReprovarCreatePathParams,
+} from "./models/V1EsteiraReprovarCreate.ts";
+export type {
   V1EsteiraRetrieve200,
   V1EsteiraRetrievePathParams,
   V1EsteiraRetrieveQuery,
@@ -1576,6 +1597,11 @@ export type {
   V1RefinanciamentosSolicitarLiquidacaoCreatePathParams,
 } from "./models/V1RefinanciamentosSolicitarLiquidacaoCreate.ts";
 export type {
+  V1RelatoriosDefinicaoRetrieve200,
+  V1RelatoriosDefinicaoRetrieveQuery,
+  V1RelatoriosDefinicaoRetrieveQueryResponse,
+} from "./models/V1RelatoriosDefinicaoRetrieve.ts";
+export type {
   V1RelatoriosDownloadRetrieve200,
   V1RelatoriosDownloadRetrievePathParams,
   V1RelatoriosDownloadRetrieveQuery,
@@ -1630,6 +1656,12 @@ export type {
   V1TesourariaBaixaManualDarBaixaCreatePathParams,
 } from "./models/V1TesourariaBaixaManualDarBaixaCreate.ts";
 export type {
+  V1TesourariaBaixaManualInativarAssociadoCreate200,
+  V1TesourariaBaixaManualInativarAssociadoCreateMutation,
+  V1TesourariaBaixaManualInativarAssociadoCreateMutationRequest,
+  V1TesourariaBaixaManualInativarAssociadoCreateMutationResponse,
+} from "./models/V1TesourariaBaixaManualInativarAssociadoCreate.ts";
+export type {
   V1TesourariaBaixaManualList200,
   V1TesourariaBaixaManualListQuery,
   V1TesourariaBaixaManualListQueryParams,
@@ -1668,6 +1700,13 @@ export type {
   V1TesourariaContratosAgentesRetrieveQueryResponse,
 } from "./models/V1TesourariaContratosAgentesRetrieve.ts";
 export type {
+  V1TesourariaContratosAverbarCreate200,
+  V1TesourariaContratosAverbarCreateMutation,
+  V1TesourariaContratosAverbarCreateMutationRequest,
+  V1TesourariaContratosAverbarCreateMutationResponse,
+  V1TesourariaContratosAverbarCreatePathParams,
+} from "./models/V1TesourariaContratosAverbarCreate.ts";
+export type {
   V1TesourariaContratosCancelarCreate200,
   V1TesourariaContratosCancelarCreateMutation,
   V1TesourariaContratosCancelarCreateMutationRequest,
@@ -1694,6 +1733,13 @@ export type {
   V1TesourariaContratosEfetivarCreateMutationResponse,
   V1TesourariaContratosEfetivarCreatePathParams,
 } from "./models/V1TesourariaContratosEfetivarCreate.ts";
+export type {
+  V1TesourariaContratosExcluirCreate200,
+  V1TesourariaContratosExcluirCreateMutation,
+  V1TesourariaContratosExcluirCreateMutationRequest,
+  V1TesourariaContratosExcluirCreateMutationResponse,
+  V1TesourariaContratosExcluirCreatePathParams,
+} from "./models/V1TesourariaContratosExcluirCreate.ts";
 export type {
   V1TesourariaContratosList200,
   V1TesourariaContratosListQuery,
@@ -1841,6 +1887,23 @@ export type {
   V1TesourariaLiquidacoesReverterCreatePathParams,
 } from "./models/V1TesourariaLiquidacoesReverterCreate.ts";
 export type {
+  V1TesourariaPagamentosList200,
+  V1TesourariaPagamentosListQuery,
+  V1TesourariaPagamentosListQueryParams,
+  V1TesourariaPagamentosListQueryResponse,
+} from "./models/V1TesourariaPagamentosList.ts";
+export type {
+  V1TesourariaPagamentosNotificacoesMarcarLidasCreate200,
+  V1TesourariaPagamentosNotificacoesMarcarLidasCreateMutation,
+  V1TesourariaPagamentosNotificacoesMarcarLidasCreateMutationRequest,
+  V1TesourariaPagamentosNotificacoesMarcarLidasCreateMutationResponse,
+} from "./models/V1TesourariaPagamentosNotificacoesMarcarLidasCreate.ts";
+export type {
+  V1TesourariaPagamentosNotificacoesRetrieve200,
+  V1TesourariaPagamentosNotificacoesRetrieveQuery,
+  V1TesourariaPagamentosNotificacoesRetrieveQueryResponse,
+} from "./models/V1TesourariaPagamentosNotificacoesRetrieve.ts";
+export type {
   V1TesourariaRefinanciamentosEfetivarCreate200,
   V1TesourariaRefinanciamentosEfetivarCreateMutation,
   V1TesourariaRefinanciamentosEfetivarCreateMutationRequest,
@@ -1864,6 +1927,13 @@ export type {
   V1TesourariaRefinanciamentosRetrieveQuery,
   V1TesourariaRefinanciamentosRetrieveQueryResponse,
 } from "./models/V1TesourariaRefinanciamentosRetrieve.ts";
+export type {
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreate200,
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreateMutation,
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreateMutationRequest,
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreateMutationResponse,
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreatePathParams,
+} from "./models/V1TesourariaRefinanciamentosSubstituirComprovanteCreate.ts";
 export { adminOverrideAssociadoCore } from "./client/adminOverrideAssociadoCore.ts";
 export { adminOverrideAssociadoEditor } from "./client/adminOverrideAssociadoEditor.ts";
 export { adminOverrideAssociadoEsteira } from "./client/adminOverrideAssociadoEsteira.ts";
@@ -1986,6 +2056,7 @@ export { v1EsteiraList } from "./client/v1EsteiraList.ts";
 export { v1EsteiraPendenciarCreate } from "./client/v1EsteiraPendenciarCreate.ts";
 export { v1EsteiraPendenciasResumoRetrieve } from "./client/v1EsteiraPendenciasResumoRetrieve.ts";
 export { v1EsteiraPendenciasRetrieve } from "./client/v1EsteiraPendenciasRetrieve.ts";
+export { v1EsteiraReprovarCreate } from "./client/v1EsteiraReprovarCreate.ts";
 export { v1EsteiraRetrieve } from "./client/v1EsteiraRetrieve.ts";
 export { v1EsteiraSolicitarCorrecaoCreate } from "./client/v1EsteiraSolicitarCorrecaoCreate.ts";
 export { v1EsteiraTransicoesRetrieve } from "./client/v1EsteiraTransicoesRetrieve.ts";
@@ -2024,6 +2095,7 @@ export { v1RefinanciamentosRetrieve } from "./client/v1RefinanciamentosRetrieve.
 export { v1RefinanciamentosReverterCreate } from "./client/v1RefinanciamentosReverterCreate.ts";
 export { v1RefinanciamentosSolicitarCreate } from "./client/v1RefinanciamentosSolicitarCreate.ts";
 export { v1RefinanciamentosSolicitarLiquidacaoCreate } from "./client/v1RefinanciamentosSolicitarLiquidacaoCreate.ts";
+export { v1RelatoriosDefinicaoRetrieve } from "./client/v1RelatoriosDefinicaoRetrieve.ts";
 export { v1RelatoriosDownloadRetrieve } from "./client/v1RelatoriosDownloadRetrieve.ts";
 export { v1RelatoriosExportarCreate } from "./client/v1RelatoriosExportarCreate.ts";
 export { v1RelatoriosList } from "./client/v1RelatoriosList.ts";
@@ -2033,16 +2105,19 @@ export { v1RenovacaoCiclosList } from "./client/v1RenovacaoCiclosList.ts";
 export { v1RenovacaoCiclosMesesList } from "./client/v1RenovacaoCiclosMesesList.ts";
 export { v1RenovacaoCiclosVisaoMensalRetrieve } from "./client/v1RenovacaoCiclosVisaoMensalRetrieve.ts";
 export { v1TesourariaBaixaManualDarBaixaCreate } from "./client/v1TesourariaBaixaManualDarBaixaCreate.ts";
+export { v1TesourariaBaixaManualInativarAssociadoCreate } from "./client/v1TesourariaBaixaManualInativarAssociadoCreate.ts";
 export { v1TesourariaBaixaManualList } from "./client/v1TesourariaBaixaManualList.ts";
 export { v1TesourariaConfirmacoesConfirmarAverbacaoCreate } from "./client/v1TesourariaConfirmacoesConfirmarAverbacaoCreate.ts";
 export { v1TesourariaConfirmacoesConfirmarLigacaoCreate } from "./client/v1TesourariaConfirmacoesConfirmarLigacaoCreate.ts";
 export { v1TesourariaConfirmacoesLinkCreate } from "./client/v1TesourariaConfirmacoesLinkCreate.ts";
 export { v1TesourariaConfirmacoesList } from "./client/v1TesourariaConfirmacoesList.ts";
 export { v1TesourariaContratosAgentesRetrieve } from "./client/v1TesourariaContratosAgentesRetrieve.ts";
+export { v1TesourariaContratosAverbarCreate } from "./client/v1TesourariaContratosAverbarCreate.ts";
 export { v1TesourariaContratosCancelarCreate } from "./client/v1TesourariaContratosCancelarCreate.ts";
 export { v1TesourariaContratosCongelarCreate } from "./client/v1TesourariaContratosCongelarCreate.ts";
 export { v1TesourariaContratosDadosBancariosRetrieve } from "./client/v1TesourariaContratosDadosBancariosRetrieve.ts";
 export { v1TesourariaContratosEfetivarCreate } from "./client/v1TesourariaContratosEfetivarCreate.ts";
+export { v1TesourariaContratosExcluirCreate } from "./client/v1TesourariaContratosExcluirCreate.ts";
 export { v1TesourariaContratosList } from "./client/v1TesourariaContratosList.ts";
 export { v1TesourariaContratosRetrieve } from "./client/v1TesourariaContratosRetrieve.ts";
 export { v1TesourariaContratosSubstituirComprovanteCreate } from "./client/v1TesourariaContratosSubstituirComprovanteCreate.ts";
@@ -2066,10 +2141,14 @@ export { v1TesourariaLiquidacoesExcluirCreate } from "./client/v1TesourariaLiqui
 export { v1TesourariaLiquidacoesLiquidarCreate } from "./client/v1TesourariaLiquidacoesLiquidarCreate.ts";
 export { v1TesourariaLiquidacoesList } from "./client/v1TesourariaLiquidacoesList.ts";
 export { v1TesourariaLiquidacoesReverterCreate } from "./client/v1TesourariaLiquidacoesReverterCreate.ts";
+export { v1TesourariaPagamentosList } from "./client/v1TesourariaPagamentosList.ts";
+export { v1TesourariaPagamentosNotificacoesMarcarLidasCreate } from "./client/v1TesourariaPagamentosNotificacoesMarcarLidasCreate.ts";
+export { v1TesourariaPagamentosNotificacoesRetrieve } from "./client/v1TesourariaPagamentosNotificacoesRetrieve.ts";
 export { v1TesourariaRefinanciamentosEfetivarCreate } from "./client/v1TesourariaRefinanciamentosEfetivarCreate.ts";
 export { v1TesourariaRefinanciamentosList } from "./client/v1TesourariaRefinanciamentosList.ts";
 export { v1TesourariaRefinanciamentosResumoRetrieve } from "./client/v1TesourariaRefinanciamentosResumoRetrieve.ts";
 export { v1TesourariaRefinanciamentosRetrieve } from "./client/v1TesourariaRefinanciamentosRetrieve.ts";
+export { v1TesourariaRefinanciamentosSubstituirComprovanteCreate } from "./client/v1TesourariaRefinanciamentosSubstituirComprovanteCreate.ts";
 export { adminOverrideAssociadoCoreMutationKey } from "./hooks/useAdminOverrideAssociadoCore.ts";
 export { adminOverrideAssociadoCoreMutationOptions } from "./hooks/useAdminOverrideAssociadoCore.ts";
 export { useAdminOverrideAssociadoCore } from "./hooks/useAdminOverrideAssociadoCore.ts";
@@ -2637,6 +2716,9 @@ export { v1EsteiraPendenciasRetrieveQueryOptions } from "./hooks/useV1EsteiraPen
 export { useV1EsteiraPendenciasRetrieveSuspense } from "./hooks/useV1EsteiraPendenciasRetrieveSuspense.ts";
 export { v1EsteiraPendenciasRetrieveSuspenseQueryKey } from "./hooks/useV1EsteiraPendenciasRetrieveSuspense.ts";
 export { v1EsteiraPendenciasRetrieveSuspenseQueryOptions } from "./hooks/useV1EsteiraPendenciasRetrieveSuspense.ts";
+export { useV1EsteiraReprovarCreate } from "./hooks/useV1EsteiraReprovarCreate.ts";
+export { v1EsteiraReprovarCreateMutationKey } from "./hooks/useV1EsteiraReprovarCreate.ts";
+export { v1EsteiraReprovarCreateMutationOptions } from "./hooks/useV1EsteiraReprovarCreate.ts";
 export { useV1EsteiraRetrieve } from "./hooks/useV1EsteiraRetrieve.ts";
 export { v1EsteiraRetrieveQueryKey } from "./hooks/useV1EsteiraRetrieve.ts";
 export { v1EsteiraRetrieveQueryOptions } from "./hooks/useV1EsteiraRetrieve.ts";
@@ -2805,6 +2887,12 @@ export { v1RefinanciamentosSolicitarCreateMutationOptions } from "./hooks/useV1R
 export { useV1RefinanciamentosSolicitarLiquidacaoCreate } from "./hooks/useV1RefinanciamentosSolicitarLiquidacaoCreate.ts";
 export { v1RefinanciamentosSolicitarLiquidacaoCreateMutationKey } from "./hooks/useV1RefinanciamentosSolicitarLiquidacaoCreate.ts";
 export { v1RefinanciamentosSolicitarLiquidacaoCreateMutationOptions } from "./hooks/useV1RefinanciamentosSolicitarLiquidacaoCreate.ts";
+export { useV1RelatoriosDefinicaoRetrieve } from "./hooks/useV1RelatoriosDefinicaoRetrieve.ts";
+export { v1RelatoriosDefinicaoRetrieveQueryKey } from "./hooks/useV1RelatoriosDefinicaoRetrieve.ts";
+export { v1RelatoriosDefinicaoRetrieveQueryOptions } from "./hooks/useV1RelatoriosDefinicaoRetrieve.ts";
+export { useV1RelatoriosDefinicaoRetrieveSuspense } from "./hooks/useV1RelatoriosDefinicaoRetrieveSuspense.ts";
+export { v1RelatoriosDefinicaoRetrieveSuspenseQueryKey } from "./hooks/useV1RelatoriosDefinicaoRetrieveSuspense.ts";
+export { v1RelatoriosDefinicaoRetrieveSuspenseQueryOptions } from "./hooks/useV1RelatoriosDefinicaoRetrieveSuspense.ts";
 export { useV1RelatoriosDownloadRetrieve } from "./hooks/useV1RelatoriosDownloadRetrieve.ts";
 export { v1RelatoriosDownloadRetrieveQueryKey } from "./hooks/useV1RelatoriosDownloadRetrieve.ts";
 export { v1RelatoriosDownloadRetrieveQueryOptions } from "./hooks/useV1RelatoriosDownloadRetrieve.ts";
@@ -2853,6 +2941,9 @@ export { v1RenovacaoCiclosVisaoMensalRetrieveSuspenseQueryOptions } from "./hook
 export { useV1TesourariaBaixaManualDarBaixaCreate } from "./hooks/useV1TesourariaBaixaManualDarBaixaCreate.ts";
 export { v1TesourariaBaixaManualDarBaixaCreateMutationKey } from "./hooks/useV1TesourariaBaixaManualDarBaixaCreate.ts";
 export { v1TesourariaBaixaManualDarBaixaCreateMutationOptions } from "./hooks/useV1TesourariaBaixaManualDarBaixaCreate.ts";
+export { useV1TesourariaBaixaManualInativarAssociadoCreate } from "./hooks/useV1TesourariaBaixaManualInativarAssociadoCreate.ts";
+export { v1TesourariaBaixaManualInativarAssociadoCreateMutationKey } from "./hooks/useV1TesourariaBaixaManualInativarAssociadoCreate.ts";
+export { v1TesourariaBaixaManualInativarAssociadoCreateMutationOptions } from "./hooks/useV1TesourariaBaixaManualInativarAssociadoCreate.ts";
 export { useV1TesourariaBaixaManualList } from "./hooks/useV1TesourariaBaixaManualList.ts";
 export { v1TesourariaBaixaManualListQueryKey } from "./hooks/useV1TesourariaBaixaManualList.ts";
 export { v1TesourariaBaixaManualListQueryOptions } from "./hooks/useV1TesourariaBaixaManualList.ts";
@@ -2880,6 +2971,9 @@ export { v1TesourariaContratosAgentesRetrieveQueryOptions } from "./hooks/useV1T
 export { useV1TesourariaContratosAgentesRetrieveSuspense } from "./hooks/useV1TesourariaContratosAgentesRetrieveSuspense.ts";
 export { v1TesourariaContratosAgentesRetrieveSuspenseQueryKey } from "./hooks/useV1TesourariaContratosAgentesRetrieveSuspense.ts";
 export { v1TesourariaContratosAgentesRetrieveSuspenseQueryOptions } from "./hooks/useV1TesourariaContratosAgentesRetrieveSuspense.ts";
+export { useV1TesourariaContratosAverbarCreate } from "./hooks/useV1TesourariaContratosAverbarCreate.ts";
+export { v1TesourariaContratosAverbarCreateMutationKey } from "./hooks/useV1TesourariaContratosAverbarCreate.ts";
+export { v1TesourariaContratosAverbarCreateMutationOptions } from "./hooks/useV1TesourariaContratosAverbarCreate.ts";
 export { useV1TesourariaContratosCancelarCreate } from "./hooks/useV1TesourariaContratosCancelarCreate.ts";
 export { v1TesourariaContratosCancelarCreateMutationKey } from "./hooks/useV1TesourariaContratosCancelarCreate.ts";
 export { v1TesourariaContratosCancelarCreateMutationOptions } from "./hooks/useV1TesourariaContratosCancelarCreate.ts";
@@ -2895,6 +2989,9 @@ export { v1TesourariaContratosDadosBancariosRetrieveSuspenseQueryOptions } from 
 export { useV1TesourariaContratosEfetivarCreate } from "./hooks/useV1TesourariaContratosEfetivarCreate.ts";
 export { v1TesourariaContratosEfetivarCreateMutationKey } from "./hooks/useV1TesourariaContratosEfetivarCreate.ts";
 export { v1TesourariaContratosEfetivarCreateMutationOptions } from "./hooks/useV1TesourariaContratosEfetivarCreate.ts";
+export { useV1TesourariaContratosExcluirCreate } from "./hooks/useV1TesourariaContratosExcluirCreate.ts";
+export { v1TesourariaContratosExcluirCreateMutationKey } from "./hooks/useV1TesourariaContratosExcluirCreate.ts";
+export { v1TesourariaContratosExcluirCreateMutationOptions } from "./hooks/useV1TesourariaContratosExcluirCreate.ts";
 export { useV1TesourariaContratosList } from "./hooks/useV1TesourariaContratosList.ts";
 export { v1TesourariaContratosListQueryKey } from "./hooks/useV1TesourariaContratosList.ts";
 export { v1TesourariaContratosListQueryOptions } from "./hooks/useV1TesourariaContratosList.ts";
@@ -2994,6 +3091,21 @@ export { v1TesourariaLiquidacoesListSuspenseQueryOptions } from "./hooks/useV1Te
 export { useV1TesourariaLiquidacoesReverterCreate } from "./hooks/useV1TesourariaLiquidacoesReverterCreate.ts";
 export { v1TesourariaLiquidacoesReverterCreateMutationKey } from "./hooks/useV1TesourariaLiquidacoesReverterCreate.ts";
 export { v1TesourariaLiquidacoesReverterCreateMutationOptions } from "./hooks/useV1TesourariaLiquidacoesReverterCreate.ts";
+export { useV1TesourariaPagamentosList } from "./hooks/useV1TesourariaPagamentosList.ts";
+export { v1TesourariaPagamentosListQueryKey } from "./hooks/useV1TesourariaPagamentosList.ts";
+export { v1TesourariaPagamentosListQueryOptions } from "./hooks/useV1TesourariaPagamentosList.ts";
+export { useV1TesourariaPagamentosListSuspense } from "./hooks/useV1TesourariaPagamentosListSuspense.ts";
+export { v1TesourariaPagamentosListSuspenseQueryKey } from "./hooks/useV1TesourariaPagamentosListSuspense.ts";
+export { v1TesourariaPagamentosListSuspenseQueryOptions } from "./hooks/useV1TesourariaPagamentosListSuspense.ts";
+export { useV1TesourariaPagamentosNotificacoesMarcarLidasCreate } from "./hooks/useV1TesourariaPagamentosNotificacoesMarcarLidasCreate.ts";
+export { v1TesourariaPagamentosNotificacoesMarcarLidasCreateMutationKey } from "./hooks/useV1TesourariaPagamentosNotificacoesMarcarLidasCreate.ts";
+export { v1TesourariaPagamentosNotificacoesMarcarLidasCreateMutationOptions } from "./hooks/useV1TesourariaPagamentosNotificacoesMarcarLidasCreate.ts";
+export { useV1TesourariaPagamentosNotificacoesRetrieve } from "./hooks/useV1TesourariaPagamentosNotificacoesRetrieve.ts";
+export { v1TesourariaPagamentosNotificacoesRetrieveQueryKey } from "./hooks/useV1TesourariaPagamentosNotificacoesRetrieve.ts";
+export { v1TesourariaPagamentosNotificacoesRetrieveQueryOptions } from "./hooks/useV1TesourariaPagamentosNotificacoesRetrieve.ts";
+export { useV1TesourariaPagamentosNotificacoesRetrieveSuspense } from "./hooks/useV1TesourariaPagamentosNotificacoesRetrieveSuspense.ts";
+export { v1TesourariaPagamentosNotificacoesRetrieveSuspenseQueryKey } from "./hooks/useV1TesourariaPagamentosNotificacoesRetrieveSuspense.ts";
+export { v1TesourariaPagamentosNotificacoesRetrieveSuspenseQueryOptions } from "./hooks/useV1TesourariaPagamentosNotificacoesRetrieveSuspense.ts";
 export { useV1TesourariaRefinanciamentosEfetivarCreate } from "./hooks/useV1TesourariaRefinanciamentosEfetivarCreate.ts";
 export { v1TesourariaRefinanciamentosEfetivarCreateMutationKey } from "./hooks/useV1TesourariaRefinanciamentosEfetivarCreate.ts";
 export { v1TesourariaRefinanciamentosEfetivarCreateMutationOptions } from "./hooks/useV1TesourariaRefinanciamentosEfetivarCreate.ts";
@@ -3015,6 +3127,9 @@ export { v1TesourariaRefinanciamentosRetrieveQueryOptions } from "./hooks/useV1T
 export { useV1TesourariaRefinanciamentosRetrieveSuspense } from "./hooks/useV1TesourariaRefinanciamentosRetrieveSuspense.ts";
 export { v1TesourariaRefinanciamentosRetrieveSuspenseQueryKey } from "./hooks/useV1TesourariaRefinanciamentosRetrieveSuspense.ts";
 export { v1TesourariaRefinanciamentosRetrieveSuspenseQueryOptions } from "./hooks/useV1TesourariaRefinanciamentosRetrieveSuspense.ts";
+export { useV1TesourariaRefinanciamentosSubstituirComprovanteCreate } from "./hooks/useV1TesourariaRefinanciamentosSubstituirComprovanteCreate.ts";
+export { v1TesourariaRefinanciamentosSubstituirComprovanteCreateMutationKey } from "./hooks/useV1TesourariaRefinanciamentosSubstituirComprovanteCreate.ts";
+export { v1TesourariaRefinanciamentosSubstituirComprovanteCreateMutationOptions } from "./hooks/useV1TesourariaRefinanciamentosSubstituirComprovanteCreate.ts";
 export { arquivoRetornoFormatoEnumEnum } from "./models/ArquivoRetornoFormatoEnum.ts";
 export { arquivoRetornoStatusEnumEnum } from "./models/ArquivoRetornoStatusEnum.ts";
 export { associadoStatusEnumEnum } from "./models/AssociadoStatusEnum.ts";
@@ -3128,6 +3243,7 @@ export {
 export { adminOverrideRefinanciamentoEditorSchema } from "./zod/adminOverrideRefinanciamentoEditorSchema.ts";
 export { adminOverrideReverterWriteSchema } from "./zod/adminOverrideReverterWriteSchema.ts";
 export { adminOverrideSaveAllWriteSchema } from "./zod/adminOverrideSaveAllWriteSchema.ts";
+export { adminOverrideWarningSchema } from "./zod/adminOverrideWarningSchema.ts";
 export { adminUserAccessUpdateSchema } from "./zod/adminUserAccessUpdateSchema.ts";
 export { adminUserCreateSchema } from "./zod/adminUserCreateSchema.ts";
 export { adminUserListSchema } from "./zod/adminUserListSchema.ts";
@@ -3341,6 +3457,7 @@ export { enderecoAdminWriteSchema } from "./zod/enderecoAdminWriteSchema.ts";
 export { enderecoSchema } from "./zod/enderecoSchema.ts";
 export { enderecoWriteSchema } from "./zod/enderecoWriteSchema.ts";
 export { estadoCivilEnumSchema } from "./zod/estadoCivilEnumSchema.ts";
+export { esteiraAssociadoCompatSchema } from "./zod/esteiraAssociadoCompatSchema.ts";
 export { esteiraDetailSchema } from "./zod/esteiraDetailSchema.ts";
 export { esteiraEtapaEnumSchema } from "./zod/esteiraEtapaEnumSchema.ts";
 export { esteiraItemResumoSchema } from "./zod/esteiraItemResumoSchema.ts";
@@ -3858,6 +3975,12 @@ export {
   V1EsteiraPendenciasRetrieveQueryResponseSchema,
 } from "./zod/v1EsteiraPendenciasRetrieveSchema.ts";
 export {
+  V1EsteiraReprovarCreate200Schema,
+  V1EsteiraReprovarCreateMutationRequestSchema,
+  V1EsteiraReprovarCreateMutationResponseSchema,
+  V1EsteiraReprovarCreatePathParamsSchema,
+} from "./zod/v1EsteiraReprovarCreateSchema.ts";
+export {
   V1EsteiraRetrieve200Schema,
   V1EsteiraRetrievePathParamsSchema,
   V1EsteiraRetrieveQueryResponseSchema,
@@ -4072,6 +4195,10 @@ export {
   V1RefinanciamentosSolicitarLiquidacaoCreatePathParamsSchema,
 } from "./zod/v1RefinanciamentosSolicitarLiquidacaoCreateSchema.ts";
 export {
+  V1RelatoriosDefinicaoRetrieve200Schema,
+  V1RelatoriosDefinicaoRetrieveQueryResponseSchema,
+} from "./zod/v1RelatoriosDefinicaoRetrieveSchema.ts";
+export {
   V1RelatoriosDownloadRetrieve200Schema,
   V1RelatoriosDownloadRetrievePathParamsSchema,
   V1RelatoriosDownloadRetrieveQueryResponseSchema,
@@ -4117,6 +4244,11 @@ export {
   V1TesourariaBaixaManualDarBaixaCreatePathParamsSchema,
 } from "./zod/v1TesourariaBaixaManualDarBaixaCreateSchema.ts";
 export {
+  V1TesourariaBaixaManualInativarAssociadoCreate200Schema,
+  V1TesourariaBaixaManualInativarAssociadoCreateMutationRequestSchema,
+  V1TesourariaBaixaManualInativarAssociadoCreateMutationResponseSchema,
+} from "./zod/v1TesourariaBaixaManualInativarAssociadoCreateSchema.ts";
+export {
   V1TesourariaBaixaManualList200Schema,
   V1TesourariaBaixaManualListQueryParamsSchema,
   V1TesourariaBaixaManualListQueryResponseSchema,
@@ -4149,6 +4281,12 @@ export {
   V1TesourariaContratosAgentesRetrieveQueryResponseSchema,
 } from "./zod/v1TesourariaContratosAgentesRetrieveSchema.ts";
 export {
+  V1TesourariaContratosAverbarCreate200Schema,
+  V1TesourariaContratosAverbarCreateMutationRequestSchema,
+  V1TesourariaContratosAverbarCreateMutationResponseSchema,
+  V1TesourariaContratosAverbarCreatePathParamsSchema,
+} from "./zod/v1TesourariaContratosAverbarCreateSchema.ts";
+export {
   V1TesourariaContratosCancelarCreate200Schema,
   V1TesourariaContratosCancelarCreateMutationRequestSchema,
   V1TesourariaContratosCancelarCreateMutationResponseSchema,
@@ -4171,6 +4309,12 @@ export {
   V1TesourariaContratosEfetivarCreateMutationResponseSchema,
   V1TesourariaContratosEfetivarCreatePathParamsSchema,
 } from "./zod/v1TesourariaContratosEfetivarCreateSchema.ts";
+export {
+  V1TesourariaContratosExcluirCreate200Schema,
+  V1TesourariaContratosExcluirCreateMutationRequestSchema,
+  V1TesourariaContratosExcluirCreateMutationResponseSchema,
+  V1TesourariaContratosExcluirCreatePathParamsSchema,
+} from "./zod/v1TesourariaContratosExcluirCreateSchema.ts";
 export {
   V1TesourariaContratosList200Schema,
   V1TesourariaContratosListQueryParamsSchema,
@@ -4295,6 +4439,20 @@ export {
   V1TesourariaLiquidacoesReverterCreatePathParamsSchema,
 } from "./zod/v1TesourariaLiquidacoesReverterCreateSchema.ts";
 export {
+  V1TesourariaPagamentosList200Schema,
+  V1TesourariaPagamentosListQueryParamsSchema,
+  V1TesourariaPagamentosListQueryResponseSchema,
+} from "./zod/v1TesourariaPagamentosListSchema.ts";
+export {
+  V1TesourariaPagamentosNotificacoesMarcarLidasCreate200Schema,
+  V1TesourariaPagamentosNotificacoesMarcarLidasCreateMutationRequestSchema,
+  V1TesourariaPagamentosNotificacoesMarcarLidasCreateMutationResponseSchema,
+} from "./zod/v1TesourariaPagamentosNotificacoesMarcarLidasCreateSchema.ts";
+export {
+  V1TesourariaPagamentosNotificacoesRetrieve200Schema,
+  V1TesourariaPagamentosNotificacoesRetrieveQueryResponseSchema,
+} from "./zod/v1TesourariaPagamentosNotificacoesRetrieveSchema.ts";
+export {
   V1TesourariaRefinanciamentosEfetivarCreate200Schema,
   V1TesourariaRefinanciamentosEfetivarCreateMutationRequestSchema,
   V1TesourariaRefinanciamentosEfetivarCreateMutationResponseSchema,
@@ -4314,3 +4472,9 @@ export {
   V1TesourariaRefinanciamentosRetrievePathParamsSchema,
   V1TesourariaRefinanciamentosRetrieveQueryResponseSchema,
 } from "./zod/v1TesourariaRefinanciamentosRetrieveSchema.ts";
+export {
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreate200Schema,
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreateMutationRequestSchema,
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreateMutationResponseSchema,
+  V1TesourariaRefinanciamentosSubstituirComprovanteCreatePathParamsSchema,
+} from "./zod/v1TesourariaRefinanciamentosSubstituirComprovanteCreateSchema.ts";

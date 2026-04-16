@@ -23,6 +23,13 @@ def config_bool(name: str, default: bool = False) -> bool:
 
 SECRET_KEY = config("SECRET_KEY", default="change-me")
 DEBUG = config_bool("DEBUG", default=False)
+
+# Kill switch do app mobile — ative com APP_MAINTENANCE_MODE=true no servidor
+APP_MAINTENANCE_MODE = config_bool("APP_MAINTENANCE_MODE", default=False)
+APP_MAINTENANCE_MESSAGE = config(
+    "APP_MAINTENANCE_MESSAGE",
+    default="O aplicativo está temporariamente indisponível para manutenção. Tente novamente em breve.",
+)
 ALLOWED_HOSTS = config(
     "ALLOWED_HOSTS",
     default="localhost,127.0.0.1,backend",
@@ -183,6 +190,8 @@ SPECTACULAR_SETTINGS = {
     },
 }
 
+_JWT_SIGNING_KEY = config("JWT_SIGNING_KEY", default=None)
+
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(
         minutes=config("JWT_ACCESS_TOKEN_LIFETIME", default=2880, cast=int)
@@ -193,6 +202,9 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
+    # Chave de assinatura separada do SECRET_KEY.
+    # Trocar JWT_SIGNING_KEY no servidor invalida TODOS os tokens ativos imediatamente.
+    **({"SIGNING_KEY": _JWT_SIGNING_KEY} if _JWT_SIGNING_KEY else {}),
 }
 
 CORS_ALLOWED_ORIGINS = config(

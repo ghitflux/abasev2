@@ -11,4 +11,5 @@ export const contratoEsteiraSchema = z.object({
   cpf_cnpj: z.string(),
   matricula: z.string(),
   matricula_display: z.string(),
+  valor_mensalidade: z.nullable(z.string().regex(/^-?\d{0,10}(?:\.\d{0,2})?$/)),
 });
