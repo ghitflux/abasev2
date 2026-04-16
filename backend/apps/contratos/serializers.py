@@ -792,7 +792,8 @@ class ContratoListSerializer(serializers.ModelSerializer):
                 "parcelas_pagas": sum(
                     1
                     for parcela in parcelas
-                    if parcela["status"] == Parcela.Status.DESCONTADO
+                    if parcela["status"]
+                    in {Parcela.Status.DESCONTADO, Parcela.Status.LIQUIDADA, "quitada"}
                 ),
                 "parcelas_total": len(parcelas),
                 "valor_total": apt_cycle["valor_total"],
@@ -811,7 +812,8 @@ class ContratoListSerializer(serializers.ModelSerializer):
             sum(
                 1
                 for parcela in current_cycle["parcelas"]
-                if parcela["status"] == Parcela.Status.DESCONTADO
+                if parcela["status"]
+                in {Parcela.Status.DESCONTADO, Parcela.Status.LIQUIDADA, "quitada"}
             )
             if current_cycle
             else 0

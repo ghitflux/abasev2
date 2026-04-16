@@ -7,7 +7,6 @@ from django.db.models import Prefetch, Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
-from apps.associados.models import Associado
 from apps.importacao.financeiro import build_financeiro_resumo
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem
 
@@ -128,8 +127,6 @@ class RenovacaoCicloService:
 
         if projection["possui_meses_nao_descontados"]:
             return "inadimplente"
-        if ciclo.status == Ciclo.Status.CICLO_RENOVADO:
-            return "ciclo_renovado"
         if proximo_ciclo and (
             proximo_ciclo.status == Ciclo.Status.ABERTO
             or (ativacao_proxima and ativacao_proxima.activated_at is not None)
@@ -152,6 +149,8 @@ class RenovacaoCicloService:
             )
         ):
             return "apto_a_renovar"
+        if ciclo.status in {Ciclo.Status.CICLO_RENOVADO, Ciclo.Status.FECHADO}:
+            return "ciclo_renovado"
         if parcela.status == Parcela.Status.EM_PREVISAO:
             return "em_aberto"
         if parcela.status in [Parcela.Status.EM_ABERTO]:
@@ -423,10 +422,6 @@ class RenovacaoCicloService:
         data_fim: date | None = None,
     ) -> list[dict[str, object]]:
         renewal_only = status == "ciclo_renovado"
-        optimize_apto_scope = (
-            status == "apto_a_renovar"
-            and Associado.objects.filter(status=Associado.Status.APTO_A_RENOVAR).exists()
-        )
         item_prefetch = Prefetch(
             "itens_retorno",
             queryset=ArquivoRetornoItem.objects.filter(
@@ -499,11 +494,6 @@ class RenovacaoCicloService:
                     itens_retorno__gerou_encerramento=True,
                 )
             ).distinct()
-        elif optimize_apto_scope:
-            parcelas = parcelas.filter(
-                ciclo__contrato__associado__status=Associado.Status.APTO_A_RENOVAR
-            )
-
         search_value = (search or "").strip()
         if search_value:
             parcelas = parcelas.filter(
@@ -565,10 +555,6 @@ class RenovacaoCicloService:
         if renewal_only:
             itens_suplementares = itens_suplementares.filter(
                 Q(gerou_novo_ciclo=True) | Q(gerou_encerramento=True)
-            )
-        elif optimize_apto_scope:
-            itens_suplementares = itens_suplementares.filter(
-                associado__status=Associado.Status.APTO_A_RENOVAR
             )
         for import_item in itens_suplementares:
             contrato = import_item.parcela.ciclo.contrato
@@ -640,10 +626,6 @@ class RenovacaoCicloService:
                 | Q(associado__matricula__icontains=search_value)
                 | Q(associado__matricula_orgao__icontains=search_value)
                 | Q(codigo__icontains=search_value)
-            )
-        if optimize_apto_scope:
-            contratos_suplementares = contratos_suplementares.filter(
-                associado__status=Associado.Status.APTO_A_RENOVAR
             )
         if agente_id is not None:
             contratos_suplementares = contratos_suplementares.filter(agente_id=agente_id)

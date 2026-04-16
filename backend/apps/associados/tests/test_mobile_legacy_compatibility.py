@@ -468,6 +468,81 @@ class MobileLegacyCompatibilityTestCase(TestCase):
         self.assertEqual(antecipacao.status_code, 200, antecipacao.json())
         self.assertEqual(antecipacao.json()["historico"][0]["valor"], 500)
 
+    def test_mobile_maintenance_blocks_legacy_login_and_existing_token(self):
+        token, _payload = self.login_legacy()
+        self.client.credentials()
+
+        with override_settings(
+            APP_MAINTENANCE_MODE=True,
+            APP_MAINTENANCE_MESSAGE="App mobile pausado temporariamente.",
+        ):
+            response = self.client.post(
+                "/api/login",
+                {
+                    "login": self.associado.cpf_cnpj,
+                    "password": self.associado.matricula_orgao,
+                },
+                format="json",
+            )
+            self.assertEqual(response.status_code, 503, response.json())
+            self.assertEqual(response.json()["detail"], "App mobile pausado temporariamente.")
+
+            self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+            blocked = self.client.get("/api/home")
+            self.assertEqual(blocked.status_code, 503, blocked.json())
+            self.assertEqual(blocked.json()["detail"], "App mobile pausado temporariamente.")
+
+    def test_mobile_maintenance_blocks_v1_auth_and_app_endpoints_for_associado(self):
+        access, payload = self.login_v1()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+
+        with override_settings(
+            APP_MAINTENANCE_MODE=True,
+            APP_MAINTENANCE_MESSAGE="App mobile pausado temporariamente.",
+        ):
+            refresh = self.client.post(
+                "/api/v1/auth/refresh/",
+                {"refresh": payload["refresh"]},
+                format="json",
+            )
+            self.assertEqual(refresh.status_code, 503, refresh.json())
+            self.assertEqual(refresh.json()["detail"], "App mobile pausado temporariamente.")
+
+            auth_me = self.client.get("/api/v1/auth/me/")
+            self.assertEqual(auth_me.status_code, 503, auth_me.json())
+            self.assertEqual(auth_me.json()["detail"], "App mobile pausado temporariamente.")
+
+            me = self.client.get("/api/v1/app/me/")
+            self.assertEqual(me.status_code, 503, me.json())
+            self.assertEqual(me.json()["detail"], "App mobile pausado temporariamente.")
+
+            response = self.client.post(
+                "/api/v1/auth/login/",
+                {
+                    "login": self.associado.cpf_cnpj,
+                    "password": self.associado.matricula_orgao,
+                },
+                format="json",
+            )
+            self.assertEqual(response.status_code, 503, response.json())
+            self.assertEqual(response.json()["detail"], "App mobile pausado temporariamente.")
+
+    @override_settings(
+        APP_MAINTENANCE_MODE=True,
+        APP_MAINTENANCE_MESSAGE="App mobile pausado temporariamente.",
+    )
+    def test_mobile_maintenance_does_not_block_backoffice_login(self):
+        response = self.client.post(
+            "/api/v1/auth/login/",
+            {
+                "email": self.analista.email,
+                "password": "Senha@123",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertIn("access", response.json())
+
     def test_v1_mensalidades_expoe_multiplos_ciclos_e_meses_nao_pagos(self):
         for index, parcela in enumerate(self.ciclo.parcelas.order_by("numero"), start=1):
             parcela.status = Parcela.Status.DESCONTADO

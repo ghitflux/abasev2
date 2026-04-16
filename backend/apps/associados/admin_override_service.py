@@ -22,11 +22,13 @@ from apps.contratos.cycle_projection import (
     sync_associado_mother_status,
 )
 from apps.contratos.cycle_rebuild import rebind_financial_links_by_reference
+from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.cycle_timeline import (
     get_cycle_activation_payload,
     get_future_generation_threshold,
 )
 from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.contratos.small_value_rules import is_dedicated_small_value_contract
 from apps.esteira.models import EsteiraItem, Transicao
 from apps.importacao.models import ArquivoRetornoItem
 from apps.refinanciamento.models import Comprovante, Refinanciamento
@@ -64,6 +66,15 @@ RESOLVED_UNPAID_STATUSES = {
 CONCLUDED_CYCLE_STATUSES = {
     Ciclo.Status.CICLO_RENOVADO,
     Ciclo.Status.FECHADO,
+}
+SAFE_RENEWAL_STAGE_LABELS = {
+    Refinanciamento.Status.APTO_A_RENOVAR: "Apto a renovar",
+    Refinanciamento.Status.EM_ANALISE_RENOVACAO: "Em análise",
+    Refinanciamento.Status.PENDENTE_TERMO_AGENTE: "Pendente termo do agente",
+    Refinanciamento.Status.PENDENTE_TERMO_ANALISTA: "Pendente termo do analista",
+    Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO: "Aprovado pela análise",
+    Refinanciamento.Status.APROVADO_PARA_RENOVACAO: "Aprovado para renovação",
+    Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO: "Solicitado para liquidação",
 }
 
 
@@ -658,15 +669,59 @@ def _resolve_editor_actual_parcela(
 
 
 def _active_operational_refinanciamento(contrato: Contrato) -> Refinanciamento | None:
-    return (
+    candidates = list(
         Refinanciamento.objects.filter(
             contrato_origem=contrato,
             deleted_at__isnull=True,
-            status__in=ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES,
-        )
-        .order_by("-created_at", "-id")
-        .first()
+            legacy_refinanciamento_id__isnull=True,
+        ).order_by("-competencia_solicitada", "-created_at", "-id")
     )
+    if not candidates:
+        return None
+
+    priority_map = {
+        Refinanciamento.Status.EFETIVADO: 100,
+        Refinanciamento.Status.CONCLUIDO: 90,
+        Refinanciamento.Status.APROVADO_PARA_RENOVACAO: 80,
+        Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO: 70,
+        Refinanciamento.Status.PENDENTE_TERMO_ANALISTA: 60,
+        Refinanciamento.Status.EM_ANALISE_RENOVACAO: 50,
+        Refinanciamento.Status.PENDENTE_TERMO_AGENTE: 40,
+        Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO: 35,
+        Refinanciamento.Status.BLOQUEADO: 30,
+        Refinanciamento.Status.REVERTIDO: 25,
+        Refinanciamento.Status.DESATIVADO: 20,
+        Refinanciamento.Status.APTO_A_RENOVAR: 10,
+    }
+
+    def status_priority(item: Refinanciamento) -> tuple[int, Any, int]:
+        marker = (
+            item.executado_em
+            or item.data_ativacao_ciclo
+            or item.updated_at
+            or item.created_at
+        )
+        return (priority_map.get(item.status, 0), marker, item.id)
+
+    best_by_competencia: dict[date, Refinanciamento] = {}
+    for item in candidates:
+        competencia = item.competencia_solicitada.replace(day=1)
+        current = best_by_competencia.get(competencia)
+        if current is None or status_priority(item) > status_priority(current):
+            best_by_competencia[competencia] = item
+
+    ranked = sorted(
+        best_by_competencia.values(),
+        key=lambda item: (
+            item.competencia_solicitada.replace(day=1),
+            status_priority(item),
+        ),
+        reverse=True,
+    )
+    for item in ranked:
+        if item.status in ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES:
+            return item
+    return None
 
 
 def _manual_phase_slug(
@@ -1171,6 +1226,351 @@ class AdminOverrideService:
                     user=user,
                 )
 
+        sync_associado_mother_status(associado)
+        associado.refresh_from_db()
+        return AdminOverrideService.build_associado_editor_payload(associado)
+
+    @staticmethod
+    def _resolve_contract_for_safe_transition(
+        *,
+        associado: Associado,
+        contrato_id: int,
+    ) -> Contrato:
+        try:
+            return associado.contratos.exclude(status=Contrato.Status.CANCELADO).get(
+                id=contrato_id
+            )
+        except Contrato.DoesNotExist as exc:
+            raise ValidationError("Contrato inválido para a transição administrativa.") from exc
+
+    @staticmethod
+    def _force_refinanciamento_status(
+        *,
+        refinanciamento: Refinanciamento,
+        target_status: str,
+        motivo: str,
+        user,
+    ) -> Refinanciamento:
+        from apps.refinanciamento.models import Assumption
+
+        normalized = target_status
+        if normalized == Refinanciamento.Status.EFETIVADO:
+            raise ValidationError(
+                "A efetivação direta não é permitida no editor. Use a tesouraria para anexar comprovantes e materializar o ciclo."
+            )
+        if (
+            refinanciamento.executado_em is not None
+            or refinanciamento.data_ativacao_ciclo is not None
+            or refinanciamento.ciclo_destino_id is not None
+        ):
+            raise ValidationError(
+                "Esta renovação já foi materializada. Não é seguro reposicioná-la pelo editor."
+            )
+
+        before = _serialize_refinanciamento(refinanciamento)
+        refinanciamento.status = normalized
+        refinanciamento.observacao = motivo
+        if normalized == Refinanciamento.Status.APTO_A_RENOVAR:
+            refinanciamento.reviewed_by = None
+            refinanciamento.reviewed_at = None
+            refinanciamento.aprovado_por = None
+        elif normalized in {
+            Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+            Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+            Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
+        }:
+            refinanciamento.reviewed_by = None
+            refinanciamento.reviewed_at = None
+            refinanciamento.aprovado_por = None
+        elif normalized in {
+            Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+            Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+        }:
+            refinanciamento.reviewed_by = user
+            refinanciamento.reviewed_at = timezone.now()
+            if normalized == Refinanciamento.Status.APROVADO_PARA_RENOVACAO:
+                refinanciamento.aprovado_por = user
+
+        refinanciamento.save()
+
+        assumption = None
+        if refinanciamento.cycle_key:
+            assumption = (
+                Assumption.objects.filter(
+                    cadastro=refinanciamento.associado,
+                    request_key=refinanciamento.cycle_key,
+                )
+                .order_by("-created_at", "-id")
+                .first()
+            )
+        if assumption is not None:
+            if normalized in {
+                Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+            }:
+                assumption.status = Assumption.Status.LIBERADO
+                assumption.liberado_em = timezone.now()
+                assumption.assumido_em = None
+                assumption.finalizado_em = None
+                assumption.heartbeat_at = None
+                assumption.save(
+                    update_fields=[
+                        "status",
+                        "liberado_em",
+                        "assumido_em",
+                        "finalizado_em",
+                        "heartbeat_at",
+                        "updated_at",
+                    ]
+                )
+            elif normalized == Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO:
+                assumption.status = Assumption.Status.FINALIZADO
+                if assumption.analista_id is None:
+                    assumption.analista = user
+                assumption.finalizado_em = timezone.now()
+                assumption.save(
+                    update_fields=[
+                        "status",
+                        "analista",
+                        "finalizado_em",
+                        "updated_at",
+                    ]
+                )
+
+        contrato = refinanciamento.contrato_origem
+        esteira = (
+            getattr(refinanciamento.associado, "esteira_item", None)
+            if refinanciamento.associado_id
+            else None
+        )
+        if contrato is not None and normalized in {
+            Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
+        }:
+            from apps.refinanciamento.services import RefinanciamentoService
+
+            RefinanciamentoService._mover_esteira_para_tesouraria(
+                contrato,
+                user,
+                acao="admin_safe_renewal_stage_transition",
+                observacao=motivo,
+            )
+        elif esteira is not None:
+            previous_stage = esteira.etapa_atual
+            previous_status = esteira.status
+            if normalized == Refinanciamento.Status.APTO_A_RENOVAR:
+                esteira.etapa_atual = EsteiraItem.Etapa.ANALISE
+                esteira.status = EsteiraItem.Situacao.AGUARDANDO
+            elif normalized in {
+                Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+                Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
+                Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+            }:
+                esteira.etapa_atual = EsteiraItem.Etapa.ANALISE
+                esteira.status = (
+                    EsteiraItem.Situacao.AGUARDANDO
+                    if normalized in {
+                        Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+                        Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
+                    }
+                    else EsteiraItem.Situacao.EM_ANDAMENTO
+                )
+            if (
+                previous_stage != esteira.etapa_atual
+                or previous_status != esteira.status
+            ):
+                esteira.save(update_fields=["etapa_atual", "status", "updated_at"])
+                Transicao.objects.create(
+                    esteira_item=esteira,
+                    acao="admin_safe_renewal_stage_transition",
+                    de_status=previous_stage,
+                    para_status=esteira.etapa_atual,
+                    de_situacao=previous_status,
+                    para_situacao=esteira.status,
+                    realizado_por=user,
+                    observacao=motivo,
+                )
+
+        after = _serialize_refinanciamento(refinanciamento)
+        AdminOverrideService._record_event(
+            context=_OverrideContext(
+                associado=refinanciamento.associado,
+                contrato=refinanciamento.contrato_origem,
+                refinanciamento=refinanciamento,
+            ),
+            user=user,
+            escopo=AdminOverrideEvent.Scope.REFINANCIAMENTO,
+            resumo=f"Transição administrativa segura para {SAFE_RENEWAL_STAGE_LABELS.get(normalized, normalized)}",
+            motivo=motivo,
+            before_snapshot=before,
+            after_snapshot=after,
+            changes=[
+                {
+                    "entity_type": AdminOverrideChange.EntityType.REFINANCIAMENTO,
+                    "entity_id": refinanciamento.id,
+                    "resumo": f"Renovação reposicionada para {SAFE_RENEWAL_STAGE_LABELS.get(normalized, normalized)}",
+                    "before_snapshot": before,
+                    "after_snapshot": after,
+                }
+            ],
+        )
+        return refinanciamento
+
+    @staticmethod
+    def apply_safe_renewal_stage_transition(
+        *,
+        associado: Associado,
+        payload: dict[str, Any],
+        user,
+    ) -> dict[str, Any]:
+        motivo = str(payload.get("motivo") or "").strip()
+        if not motivo:
+            raise ValidationError("O motivo da alteração é obrigatório.")
+
+        contrato = AdminOverrideService._resolve_contract_for_safe_transition(
+            associado=associado,
+            contrato_id=int(payload.get("contrato_id") or 0),
+        )
+        target_stage = str(payload.get("target_stage") or "").strip()
+        if target_stage not in SAFE_RENEWAL_STAGE_LABELS:
+            raise ValidationError("Etapa de renovação inválida para transição administrativa.")
+
+        from apps.refinanciamento.services import RefinanciamentoService
+
+        projection, refinanciamento = RefinanciamentoService._sync_contract_and_get_refi(contrato)
+        normalized_projection_status = str(projection.get("status_renovacao") or "")
+        normalized_current = (
+            str(refinanciamento.status or "")
+            if refinanciamento is not None
+            else normalized_projection_status
+        )
+
+        if target_stage == Refinanciamento.Status.APTO_A_RENOVAR:
+            if refinanciamento is not None:
+                AdminOverrideService._force_refinanciamento_status(
+                    refinanciamento=refinanciamento,
+                    target_status=target_stage,
+                    motivo=motivo,
+                    user=user,
+                )
+            else:
+                if normalized_projection_status != Refinanciamento.Status.APTO_A_RENOVAR:
+                    raise ValidationError(
+                        "O contrato não está elegível para voltar à fila apta na competência atual."
+                    )
+        elif target_stage == Refinanciamento.Status.EM_ANALISE_RENOVACAO:
+            if refinanciamento is None:
+                raise ValidationError(
+                    "A fila operacional de renovação não pôde ser materializada para este contrato."
+                )
+            AdminOverrideService._force_refinanciamento_status(
+                refinanciamento=refinanciamento,
+                target_status=target_stage,
+                motivo=motivo,
+                user=user,
+            )
+        elif target_stage == Refinanciamento.Status.PENDENTE_TERMO_AGENTE:
+            if refinanciamento is None:
+                raise ValidationError("Nenhuma renovação operacional ativa foi encontrada.")
+            if normalized_current in {
+                Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+            }:
+                RefinanciamentoService.devolver_para_agente(
+                    refinanciamento.id,
+                    user,
+                    motivo,
+                )
+            else:
+                AdminOverrideService._force_refinanciamento_status(
+                    refinanciamento=refinanciamento,
+                    target_status=target_stage,
+                    motivo=motivo,
+                    user=user,
+                )
+        elif target_stage == Refinanciamento.Status.PENDENTE_TERMO_ANALISTA:
+            if refinanciamento is None:
+                raise ValidationError("Nenhuma renovação operacional ativa foi encontrada.")
+            if normalized_current == Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO:
+                RefinanciamentoService.devolver_para_analise(
+                    refinanciamento.id,
+                    user,
+                    motivo,
+                )
+            else:
+                AdminOverrideService._force_refinanciamento_status(
+                    refinanciamento=refinanciamento,
+                    target_status=target_stage,
+                    motivo=motivo,
+                    user=user,
+                )
+        elif target_stage == Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO:
+            if refinanciamento is None:
+                raise ValidationError("Nenhuma renovação operacional ativa foi encontrada.")
+            if normalized_current in {
+                Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+            }:
+                RefinanciamentoService.assumir_analise(refinanciamento.id, user)
+                RefinanciamentoService.aprovar_analise(
+                    refinanciamento.id,
+                    user,
+                    motivo,
+                )
+            else:
+                AdminOverrideService._force_refinanciamento_status(
+                    refinanciamento=refinanciamento,
+                    target_status=target_stage,
+                    motivo=motivo,
+                    user=user,
+                )
+        elif target_stage == Refinanciamento.Status.APROVADO_PARA_RENOVACAO:
+            if refinanciamento is None:
+                raise ValidationError("Nenhuma renovação operacional ativa foi encontrada.")
+            if normalized_current in {
+                Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+            }:
+                RefinanciamentoService.assumir_analise(refinanciamento.id, user)
+                refinanciamento = RefinanciamentoService.aprovar_analise(
+                    refinanciamento.id,
+                    user,
+                    motivo,
+                )
+                normalized_current = str(refinanciamento.status or "")
+            if normalized_current == Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO:
+                RefinanciamentoService.aprovar(refinanciamento.id, user, motivo)
+            else:
+                AdminOverrideService._force_refinanciamento_status(
+                    refinanciamento=refinanciamento,
+                    target_status=target_stage,
+                    motivo=motivo,
+                    user=user,
+                )
+        elif target_stage == Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO:
+            if normalized_current == Refinanciamento.Status.APTO_A_RENOVAR:
+                RefinanciamentoService.solicitar_liquidacao(contrato.id, user)
+            elif refinanciamento is not None and normalized_current in {
+                Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+                Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            }:
+                RefinanciamentoService.encaminhar_para_liquidacao(
+                    refinanciamento.id,
+                    user,
+                    motivo,
+                )
+            elif refinanciamento is not None:
+                AdminOverrideService._force_refinanciamento_status(
+                    refinanciamento=refinanciamento,
+                    target_status=target_stage,
+                    motivo=motivo,
+                    user=user,
+                )
+            else:
+                raise ValidationError("Nenhuma renovação operacional ativa foi encontrada.")
+
+        rebuild_contract_cycle_state(contrato, execute=True)
         sync_associado_mother_status(associado)
         associado.refresh_from_db()
         return AdminOverrideService.build_associado_editor_payload(associado)
@@ -2049,7 +2449,29 @@ class AdminOverrideService:
 
             contrato.admin_manual_layout_enabled = True
             contrato.admin_manual_layout_updated_at = timezone.now()
-            contrato.save(update_fields=["admin_manual_layout_enabled", "admin_manual_layout_updated_at", "updated_at"])
+            latest_cycle_payload = max(
+                cycles_payload,
+                key=lambda item: int(item.get("numero") or 0),
+                default=None,
+            )
+            if (
+                latest_cycle_payload is not None
+                and is_dedicated_small_value_contract(contrato)
+                and _normalize_cycle_status(latest_cycle_payload.get("status"))
+                in {
+                    Ciclo.Status.APTO_A_RENOVAR,
+                    Ciclo.Status.FECHADO,
+                }
+            ):
+                contrato.allow_small_value_renewal = True
+            contrato.save(
+                update_fields=[
+                    "admin_manual_layout_enabled",
+                    "admin_manual_layout_updated_at",
+                    "allow_small_value_renewal",
+                    "updated_at",
+                ]
+            )
 
             new_parcela_candidates_by_reference: dict[date, list[Parcela]] = defaultdict(list)
             for parcela in (

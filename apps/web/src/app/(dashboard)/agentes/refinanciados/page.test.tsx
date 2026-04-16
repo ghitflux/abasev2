@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 
 import AgenteRefinanciadosPage from "./page";
 import { apiFetch } from "@/lib/api/client";
-import { exportPaginatedRouteReport } from "@/lib/reports";
+import { exportRouteReport, fetchAllPaginatedRows } from "@/lib/reports";
 import { usePermissions } from "@/hooks/use-permissions";
 
 jest.mock("@/lib/api/client", () => ({
@@ -12,23 +12,50 @@ jest.mock("@/lib/api/client", () => ({
 }));
 
 jest.mock("@/lib/reports", () => ({
-  exportPaginatedRouteReport: jest.fn(),
+  describeReportScope: jest.fn(() => ({ scope: "month", referencia: "2026-04" })),
+  exportRouteReport: jest.fn(),
+  fetchAllPaginatedRows: jest.fn(),
+  filterRowsByReportScope: jest.fn(({ rows }) => rows),
 }));
 
 jest.mock("@/hooks/use-permissions", () => ({
   usePermissions: jest.fn(),
 }));
 
-jest.mock("@/components/shared/export-button", () => ({
+jest.mock("@/components/shared/report-export-dialog", () => ({
   __esModule: true,
-  default: function MockExportButton({
+  default: function MockReportExportDialog({
     onExport,
     label,
   }: {
-    onExport: (format: "xlsx") => void;
+    onExport: (
+      filters: {
+        scope: "month";
+        referenceDate: Date;
+        agente?: string;
+        columns?: string[];
+      },
+      format: "xlsx",
+    ) => void;
     label?: string;
   }) {
-    return <button onClick={() => onExport("xlsx")}>{label ?? "Exportar"}</button>;
+    return (
+      <button
+        onClick={() =>
+          onExport(
+            {
+              scope: "month",
+              referenceDate: new Date("2026-03-01T00:00:00"),
+              agente: "2",
+              columns: ["associado_nome"],
+            },
+            "xlsx",
+          )
+        }
+      >
+        {label ?? "Exportar"}
+      </button>
+    );
   },
 }));
 
@@ -40,7 +67,12 @@ jest.mock("@/components/shared/data-table", () => ({
     emptyMessage,
   }: {
     columns: Array<{ id: string; header: string }>;
-    data: Array<{ id: number; associado?: { nome_completo: string }; associado_nome?: string }>;
+    data: Array<{
+      id: number;
+      associado?: { nome_completo: string };
+      associado_nome?: string;
+      nome_associado?: string;
+    }>;
     emptyMessage: string;
   }) {
     return (
@@ -52,7 +84,9 @@ jest.mock("@/components/shared/data-table", () => ({
         </div>
         {data.length ? (
           data.map((row) => (
-            <div key={row.id}>{row.associado?.nome_completo || row.associado_nome}</div>
+            <div key={row.id}>
+              {row.associado?.nome_completo || row.associado_nome || row.nome_associado}
+            </div>
           ))
         ) : (
           <div>{emptyMessage}</div>
@@ -131,7 +165,8 @@ jest.mock("@/components/custom/searchable-select", () => ({
 }));
 
 const mockedApiFetch = jest.mocked(apiFetch);
-const mockedExportPaginatedRouteReport = jest.mocked(exportPaginatedRouteReport);
+const mockedExportRouteReport = jest.mocked(exportRouteReport);
+const mockedFetchAllPaginatedRows = jest.mocked(fetchAllPaginatedRows);
 const mockedUsePermissions = jest.mocked(usePermissions);
 
 const resumoVazio = {
@@ -148,64 +183,55 @@ const resumoVazio = {
   repasse_total: "0.00",
 };
 
-const contratosPayload = {
+const aptosResumoPayload = {
+  competencia: "2026-04-01",
+  em_analise: 1,
+  aprovados: 0,
+  desistentes: 1,
+  renovados: 23,
+};
+
+const aptosPayload = {
   count: 1,
   next: null,
   previous: null,
   results: [
     {
       id: 10,
-      codigo: "CTR-00010",
-      associado: {
-        id: 20,
-        nome_completo: "Associado Apto",
-        matricula: "123456",
-        matricula_display: "123456",
-        cpf_cnpj: "12345678901",
-        orgao_publico: "SEFAZ",
-        matricula_orgao: "MAT-123456",
-      },
-      agente: {
-        id: 2,
-        full_name: "Agente Norte",
-      },
-      status: "ativo",
-      status_resumido: "concluido",
-      status_contrato_visual: "ativo",
-      status_visual_slug: "contrato_ativo",
-      status_visual_label: "Ativo",
-      etapa_fluxo: "concluido",
-      data_contrato: "2026-03-12",
-      valor_disponivel: "1200.00",
+      competencia: "04/2026",
+      contrato_id: 10,
+      contrato_codigo: "CTR-00010",
+      associado_id: 20,
+      nome_associado: "Associado Apto",
+      cpf_cnpj: "12345678901",
+      orgao_publico: "SEFAZ",
+      ciclo_id: 99,
+      ciclo_numero: 1,
+      status_ciclo: "apto_a_renovar",
+      status_parcela: "descontado",
+      status_visual: "apto_a_renovar",
+      status_explicacao: "Apto a renovar porque o contrato CTR-00010 atingiu 2/3 parcelas baixadas.",
+      data_primeiro_ciclo_ativado: "2026-03-12T10:00:00Z",
+      data_ativacao_ciclo: "2026-03-12T10:00:00Z",
+      origem_data_ativacao: "modelo",
+      data_solicitacao_renovacao: null,
+      ativacao_inferida: false,
+      matricula: "123456",
+      agente_responsavel: "Agente Norte",
+      parcelas_pagas: 2,
+      parcelas_total: 3,
+      contrato_referencia_renovacao_id: 10,
+      contrato_referencia_renovacao_codigo: "CTR-00010",
+      possui_multiplos_contratos: false,
       valor_mensalidade: "400.00",
-      comissao_agente: "80.00",
-      valor_auxilio_liberado: "1200.00",
-      percentual_repasse: "6.67",
-      mensalidades: {
-        pagas: 3,
-        total: 3,
-        descricao: "01/2026, 02/2026 e 05/2026",
-        apto_refinanciamento: true,
-        refinanciamento_ativo: false,
-      },
-      auxilio_liberado_em: "2026-03-12",
-      ciclo_apto: {
-        numero: 1,
-        status: "apto_a_renovar",
-        status_visual_slug: "ciclo_apto_renovar",
-        status_visual_label: "Apto a renovar",
-        resumo_referencias: "01/2026 a 03/2026",
-        parcelas_pagas: 3,
-        parcelas_total: 3,
-        valor_total: "1200.00",
-        primeira_competencia_ciclo: "2026-01-01",
-        ultima_competencia_ciclo: "2026-03-01",
-      },
-      pode_solicitar_refinanciamento: true,
-      status_renovacao: "apto_a_renovar",
-      refinanciamento_id: null,
-      possui_meses_nao_descontados: false,
-      meses_nao_descontados_count: 0,
+      valor_parcela: "400.00",
+      data_pagamento: "2026-03-15",
+      orgao_pagto_nome: "SEFAZ",
+      resultado_importacao: "baixa_efetuada",
+      status_codigo_etipi: "1",
+      status_descricao_etipi: "Lançado e Efetivado",
+      gerou_encerramento: false,
+      gerou_novo_ciclo: false,
     },
   ],
 };
@@ -251,7 +277,8 @@ function renderPage() {
 describe("AgenteRefinanciadosPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedExportPaginatedRouteReport.mockResolvedValue(undefined);
+    mockedExportRouteReport.mockResolvedValue(undefined);
+    mockedFetchAllPaginatedRows.mockResolvedValue(aptosPayload.results);
     mockedApiFetch.mockImplementation(async (path) => {
       if (path === "refinanciamentos") {
         return { count: 0, next: null, previous: null, results: [] };
@@ -261,6 +288,10 @@ describe("AgenteRefinanciadosPage", () => {
         return resumoVazio;
       }
 
+      if (path === "contratos/renovacao-resumo") {
+        return aptosResumoPayload;
+      }
+
       if (path === "associados/agentes") {
         return [
           { id: 1, full_name: "Agente Sul" },
@@ -268,8 +299,8 @@ describe("AgenteRefinanciadosPage", () => {
         ];
       }
 
-      if (path === "contratos") {
-        return contratosPayload;
+      if (path === "renovacao-ciclos") {
+        return aptosPayload;
       }
 
       throw new Error(`Unexpected apiFetch path: ${path}`);
@@ -303,10 +334,11 @@ describe("AgenteRefinanciadosPage", () => {
 
     await waitFor(() =>
       expect(mockedApiFetch).toHaveBeenCalledWith(
-        "contratos",
+        "renovacao-ciclos",
         expect.objectContaining({
           query: expect.objectContaining({
-            status_renovacao: ["apto_a_renovar", "pendente_termo_agente"],
+            status: "apto_a_renovar",
+            search: undefined,
             data_inicio: "2026-03-01",
             data_fim: "2026-03-31",
             agente: "2",
@@ -318,20 +350,29 @@ describe("AgenteRefinanciadosPage", () => {
     await user.click(screen.getByRole("button", { name: "Exportar" }));
 
     await waitFor(() =>
-      expect(mockedExportPaginatedRouteReport).toHaveBeenCalledWith(
+      expect(mockedFetchAllPaginatedRows).toHaveBeenCalledWith(
         expect.objectContaining({
-          sourcePath: "contratos",
+          sourcePath: "renovacao-ciclos",
           sourceQuery: {
-            associado: undefined,
-            status_renovacao: ["apto_a_renovar", "pendente_termo_agente"],
+            search: undefined,
+            status: "apto_a_renovar",
             data_inicio: "2026-03-01",
             data_fim: "2026-03-31",
             agente: "2",
           },
+        }),
+      ),
+    );
+
+    await waitFor(() =>
+      expect(mockedExportRouteReport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          route: "/agentes/refinanciados",
+          format: "xlsx",
           filters: expect.objectContaining({
             agente_label: "Agente Norte",
+            columns: ["associado_nome"],
           }),
-          format: "xlsx",
         }),
       ),
     );

@@ -122,6 +122,59 @@ def _is_paid_cycle_status(value: str | None) -> bool:
     return _is_resolved_cycle_status(value)
 
 
+def _is_current_month_trailing_forecast(
+    parcelas: list[dict[str, object]],
+    *,
+    current_month: date,
+) -> bool:
+    if not parcelas:
+        return False
+
+    unresolved = [
+        parcela
+        for parcela in parcelas
+        if not _is_resolved_cycle_status(str(parcela.get("status") or ""))
+    ]
+    if len(unresolved) != 1:
+        return False
+
+    trailing = unresolved[0]
+    trailing_reference = _month_floor(trailing.get("referencia_mes"))
+    if (
+        str(trailing.get("status") or "") != Parcela.Status.EM_PREVISAO
+        or trailing_reference != current_month
+    ):
+        return False
+
+    latest_reference = max(
+        (
+            _month_floor(parcela.get("referencia_mes"))
+            for parcela in parcelas
+            if _month_floor(parcela.get("referencia_mes")) is not None
+        ),
+        default=None,
+    )
+    return trailing_reference is not None and trailing_reference == latest_reference
+
+
+def _renewed_cycle_status(
+    parcelas: list[dict[str, object]],
+    *,
+    current_month: date,
+    cycle_size: int,
+) -> str:
+    paid_count = sum(
+        1
+        for parcela in parcelas
+        if _is_resolved_cycle_status(str(parcela.get("status") or ""))
+    )
+    if paid_count >= cycle_size:
+        return Ciclo.Status.CICLO_RENOVADO
+    if _is_current_month_trailing_forecast(parcelas, current_month=current_month):
+        return Ciclo.Status.ABERTO
+    return Ciclo.Status.PENDENCIA
+
+
 def _month_floor(value: date | None) -> date | None:
     if value is None:
         return None
@@ -439,8 +492,6 @@ def _cycle_phase_status(
         normalized = _normalize_operational_status(refinanciamento_operacional.status)
         if normalized in OPERATIONAL_STATUS_TO_VISUAL_PHASE:
             return OPERATIONAL_STATUS_TO_VISUAL_PHASE[normalized]
-    if next_renewal is not None:
-        return "ciclo_renovado"
     if cycle_status == Ciclo.Status.APTO_A_RENOVAR:
         return "apto_a_renovar"
     return "ciclo_aberto"
@@ -1074,9 +1125,19 @@ def _effective_renewal_first_reference(
 ) -> date:
     origin_refs = _renewal_origin_refs(refinanciamento)
     activation_reference = activated_at.date().replace(day=1)
+    cycle_size = get_contract_cycle_size(contrato)
     if origin_refs:
         next_reference = _add_months(origin_refs[-1].replace(day=1), 1)
-        if _legacy_renewal_has_treasury_payment_proof(
+        if (
+            len(origin_refs) >= max(cycle_size - 1, 1)
+            and activation_reference == next_reference
+        ):
+            # When the renewal is efetivated in the same month as the trailing
+            # competence that still belongs to the origin cycle, keep that
+            # competence inside the current cycle and start the next cycle only
+            # in the following month.
+            candidate = _add_months(next_reference, 1)
+        elif _legacy_renewal_has_treasury_payment_proof(
             contrato,
             refinanciamento,
             activated_at=activated_at,
@@ -1084,6 +1145,7 @@ def _effective_renewal_first_reference(
             candidate = max(next_reference, activation_reference)
         else:
             candidate = next_reference
+        return candidate
     else:
         candidate = activation_reference
 
@@ -1092,7 +1154,6 @@ def _effective_renewal_first_reference(
         for parcela in _query_current_parcelas(contrato)
         if parcela.ciclo_id != refinanciamento.ciclo_destino_id
     }
-    cycle_size = get_contract_cycle_size(contrato)
     safety_limit = 24
     while safety_limit > 0 and any(
         _add_months(candidate, offset) in occupied_references
@@ -1179,12 +1240,57 @@ def _active_operational_refinanciamentos(contrato: Contrato) -> list[Refinanciam
                 "-created_at", "-id"
             )
         )
-    return [
+    filtered = [
         item
         for item in base
-        if item.deleted_at is None
-        and item.legacy_refinanciamento_id is None
-        and item.status in ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES
+        if item.deleted_at is None and item.legacy_refinanciamento_id is None
+    ]
+    if not filtered:
+        return []
+
+    def status_priority(item: Refinanciamento) -> tuple[int, datetime, int]:
+        normalized = _normalize_operational_status(item.status)
+        priority_map = {
+            Refinanciamento.Status.EFETIVADO: 100,
+            Refinanciamento.Status.CONCLUIDO: 90,
+            Refinanciamento.Status.APROVADO_PARA_RENOVACAO: 80,
+            Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO: 70,
+            Refinanciamento.Status.PENDENTE_TERMO_ANALISTA: 60,
+            Refinanciamento.Status.EM_ANALISE_RENOVACAO: 50,
+            Refinanciamento.Status.PENDENTE_TERMO_AGENTE: 40,
+            Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO: 35,
+            Refinanciamento.Status.BLOQUEADO: 30,
+            Refinanciamento.Status.REVERTIDO: 25,
+            Refinanciamento.Status.DESATIVADO: 20,
+            Refinanciamento.Status.APTO_A_RENOVAR: 10,
+        }
+        marker = (
+            item.executado_em
+            or item.data_ativacao_ciclo
+            or item.updated_at
+            or item.created_at
+            or timezone.make_aware(datetime.min)
+        )
+        return (priority_map.get(normalized, 0), marker, item.id)
+
+    best_by_competencia: dict[date, Refinanciamento] = {}
+    for item in filtered:
+        competencia = _month_floor(item.competencia_solicitada) or date.min
+        current = best_by_competencia.get(competencia)
+        if current is None or status_priority(item) > status_priority(current):
+            best_by_competencia[competencia] = item
+
+    return [
+        item
+        for item in sorted(
+            best_by_competencia.values(),
+            key=lambda candidate: (
+                _month_floor(candidate.competencia_solicitada) or date.min,
+                status_priority(candidate),
+            ),
+            reverse=True,
+        )
+        if item.status in ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES
         and not _is_effective_renewal(item)
     ]
 
@@ -1571,9 +1677,16 @@ def _normalize_projected_cycle_rows(
             elif status in {Parcela.Status.NAO_DESCONTADO, PROJECTION_STATUS_QUITADA}:
                 should_move = True
             elif status == Parcela.Status.EM_PREVISAO and referencia_mes is not None:
+                keep_trailing_forecast = _is_current_month_trailing_forecast(
+                    list(cycle.get("parcelas") or []),
+                    current_month=current_month,
+                )
                 if (
                     referencia_mes < current_month
-                    or cycle_number < latest_cycle_number
+                    or (
+                        cycle_number < latest_cycle_number
+                        and not keep_trailing_forecast
+                    )
                     or cycle_status == Ciclo.Status.CICLO_RENOVADO
                 ):
                     should_move = True
@@ -1681,6 +1794,12 @@ def _build_manual_contract_projection(
     include_documents: bool = False,
 ) -> dict[str, object]:
     cycle_size = get_contract_cycle_size(contrato)
+    paid_refs, _, regularized_refs = _merge_financial_references(contrato)
+    resolved_financial_cycle_map = {
+        item.referencia_mes.replace(day=1): item
+        for item in [*paid_refs, *regularized_refs]
+        if item.counts_for_cycle
+    }
     ciclos = list(
         contrato.ciclos.filter(deleted_at__isnull=True).order_by("numero", "id")
     )
@@ -1693,6 +1812,27 @@ def _build_manual_contract_projection(
     parcelas_por_ciclo: dict[int, list[dict[str, object]]] = {}
     unpaid_rows: list[dict[str, object]] = []
     movement_rows: list[dict[str, object]] = []
+
+    def build_financial_row(
+        referencia: date,
+        item: FinancialReference,
+        *,
+        cycle_number: int,
+        slot_number: int,
+    ) -> dict[str, object]:
+        return {
+            **_build_projection_parcela(
+                contrato=contrato,
+                cycle_number=cycle_number,
+                slot_number=slot_number,
+                referencia_mes=referencia,
+                status=item.status,
+                data_pagamento=item.data_pagamento,
+                observacao=item.observacao,
+                valor=item.valor,
+            ),
+            "source": item.source,
+        }
 
     def build_row(
         parcela: Parcela,
@@ -1754,6 +1894,8 @@ def _build_manual_contract_projection(
     ]
     has_unpaid = bool(unresolved_unpaid_rows)
     threshold = get_future_generation_threshold(contrato)
+    renewals = _effective_renewals(contrato)
+    current_month = timezone.localdate().replace(day=1)
     refinanciamento_ativo = _active_operational_refinanciamentos(contrato)
     block_small_value_renewal = is_return_imported_small_value_contract(contrato)
     refinanciamento_operacional = (
@@ -1762,6 +1904,7 @@ def _build_manual_contract_projection(
         else (refinanciamento_ativo[0] if refinanciamento_ativo else None)
     )
     projected_cycles: list[dict[str, object]] = []
+    total_cycle_count = max(latest_cycle_number, 1 + len(renewals))
 
     for ciclo in ciclos:
         cycle_parcelas = sorted(
@@ -1772,34 +1915,112 @@ def _build_manual_contract_projection(
                 int(item.get("id") or 0),
             ),
         )
+        renewal = renewals[ciclo.numero - 2] if ciclo.numero > 1 and ciclo.numero - 2 < len(renewals) else None
+        next_renewal = renewals[ciclo.numero - 1] if ciclo.numero - 1 < len(renewals) else None
+        if renewal is not None:
+            expected_references = [
+                _add_months(renewal.first_reference, offset)
+                for offset in range(cycle_size)
+            ]
+            existing_by_reference = {
+                parcela["referencia_mes"].replace(day=1): parcela for parcela in cycle_parcelas
+            }
+            cycle_parcelas = [
+                build_financial_row(
+                    referencia,
+                    resolved_financial_cycle_map[referencia],
+                    cycle_number=ciclo.numero,
+                    slot_number=slot,
+                )
+                if referencia in resolved_financial_cycle_map
+                else existing_by_reference.get(
+                    referencia,
+                    _build_projection_parcela(
+                        contrato=contrato,
+                        cycle_number=ciclo.numero,
+                        slot_number=slot,
+                        referencia_mes=referencia,
+                        status=Parcela.Status.EM_PREVISAO,
+                    ),
+                )
+                for slot, referencia in enumerate(expected_references, start=1)
+            ]
+        if next_renewal is not None and len(cycle_parcelas) < cycle_size:
+            next_cycle_first_reference = next_renewal.first_reference.replace(day=1)
+            trailing_reference = (
+                _add_months(cycle_parcelas[-1]["referencia_mes"], 1)
+                if cycle_parcelas
+                else _month_floor(ciclo.data_inicio)
+            )
+            while (
+                trailing_reference is not None
+                and len(cycle_parcelas) < cycle_size
+                and trailing_reference < next_cycle_first_reference
+            ):
+                financial_row = resolved_financial_cycle_map.get(trailing_reference)
+                cycle_parcelas.append(
+                    build_financial_row(
+                        trailing_reference,
+                        financial_row,
+                        cycle_number=ciclo.numero,
+                        slot_number=len(cycle_parcelas) + 1,
+                    )
+                    if financial_row is not None
+                    else _build_projection_parcela(
+                        contrato=contrato,
+                        cycle_number=ciclo.numero,
+                        slot_number=len(cycle_parcelas) + 1,
+                        referencia_mes=trailing_reference,
+                        status=Parcela.Status.EM_PREVISAO,
+                    )
+                )
+                trailing_reference = _add_months(trailing_reference, 1)
+
         activation = get_cycle_activation_payload(ciclo)
-        paid_count = sum(1 for parcela in cycle_parcelas if _is_resolved_cycle_status(parcela["status"]))
+        paid_count = sum(
+            1
+            for parcela in cycle_parcelas
+            if _is_resolved_cycle_status(parcela["status"])
+        )
         projected_cycle_status = ciclo.status
         if (
-            ciclo.numero != latest_cycle_number
+            next_renewal is not None
             and projected_cycle_status in {Ciclo.Status.CICLO_RENOVADO, Ciclo.Status.FECHADO}
             and paid_count < cycle_size
         ):
-            projected_cycle_status = Ciclo.Status.PENDENCIA
+            projected_cycle_status = _renewed_cycle_status(
+                cycle_parcelas,
+                current_month=current_month,
+                cycle_size=cycle_size,
+            )
+        elif next_renewal is not None:
+            projected_cycle_status = _renewed_cycle_status(
+                cycle_parcelas,
+                current_month=current_month,
+                cycle_size=cycle_size,
+            )
         if (
-            ciclo.numero == latest_cycle_number
+            ciclo.numero == total_cycle_count
             and refinanciamento_operacional is None
             and paid_count >= threshold
-            and projected_cycle_status not in CONCLUDED_CYCLE_STATUSES
+            and projected_cycle_status != Ciclo.Status.CICLO_RENOVADO
         ):
             projected_cycle_status = Ciclo.Status.APTO_A_RENOVAR
         if (
             block_small_value_renewal
-            and ciclo.numero == latest_cycle_number
+            and ciclo.numero == total_cycle_count
             and projected_cycle_status == Ciclo.Status.APTO_A_RENOVAR
         ):
             projected_cycle_status = blocked_small_value_cycle_status(
                 has_unpaid_months=has_unpaid
             )
-        phase_slug = _manual_phase_slug(
+        phase_slug = _cycle_phase_status(
             contrato=contrato,
             cycle_status=projected_cycle_status,
-            is_latest_cycle=ciclo.numero == latest_cycle_number,
+            next_renewal=next_renewal,
+            refinanciamento_operacional=(
+                refinanciamento_operacional if ciclo.numero == total_cycle_count else None
+            ),
         )
         financial_slug = _cycle_financial_status(
             contrato=contrato,
@@ -1819,8 +2040,12 @@ def _build_manual_contract_projection(
                 "contrato_codigo": contrato.codigo,
                 "contrato_status": contrato.status,
                 "numero": ciclo.numero,
-                "data_inicio": ciclo.data_inicio,
-                "data_fim": ciclo.data_fim,
+                "data_inicio": (
+                    cycle_parcelas[0]["referencia_mes"] if cycle_parcelas else ciclo.data_inicio
+                ),
+                "data_fim": (
+                    cycle_parcelas[-1]["referencia_mes"] if cycle_parcelas else ciclo.data_fim
+                ),
                 "status": projected_cycle_status,
                 "fase_ciclo": phase_slug,
                 "situacao_financeira": financial_slug,
@@ -1830,9 +2055,13 @@ def _build_manual_contract_projection(
                 "data_ativacao_ciclo": activation["data_ativacao_ciclo"],
                 "origem_data_ativacao": activation["origem_data_ativacao"],
                 "ativacao_inferida": activation["ativacao_inferida"],
-                "data_solicitacao_renovacao": activation["data_solicitacao_renovacao"],
-                "data_renovacao": None,
-                "origem_renovacao": "",
+                "data_solicitacao_renovacao": (
+                    next_renewal.activated_at
+                    if next_renewal is not None
+                    else activation["data_solicitacao_renovacao"]
+                ),
+                "data_renovacao": renewal.activated_at if renewal is not None else None,
+                "origem_renovacao": renewal.refinanciamento.origem if renewal is not None else "",
                 "primeira_competencia_ciclo": (
                     cycle_parcelas[0]["referencia_mes"] if cycle_parcelas else ciclo.data_inicio
                 ),
@@ -1842,8 +2071,10 @@ def _build_manual_contract_projection(
                 "resumo_referencias": ", ".join(
                     parcela["referencia_mes"].strftime("%m/%Y") for parcela in cycle_parcelas
                 ),
-                "refinanciamento_id": None,
-                "legacy_refinanciamento_id": None,
+                "refinanciamento_id": renewal.refinanciamento.id if renewal is not None else None,
+                "legacy_refinanciamento_id": (
+                    renewal.refinanciamento.legacy_refinanciamento_id if renewal is not None else None
+                ),
                 "comprovantes_ciclo": comprovantes_ciclo,
                 "termo_antecipacao": termo_antecipacao,
                 "parcelas": [
@@ -1856,25 +2087,84 @@ def _build_manual_contract_projection(
             }
         )
 
+    if total_cycle_count > latest_cycle_number:
+        for cycle_number in range(latest_cycle_number + 1, total_cycle_count + 1):
+            renewal = (
+                renewals[cycle_number - 2]
+                if cycle_number > 1 and cycle_number - 2 < len(renewals)
+                else None
+            )
+            if renewal is None:
+                continue
+            next_renewal = (
+                renewals[cycle_number - 1]
+                if cycle_number - 1 < len(renewals)
+                else None
+            )
+            referencias = [
+                _add_months(renewal.first_reference, offset)
+                for offset in range(cycle_size)
+            ]
+            parcelas_sinteticas = [
+                _build_projection_parcela(
+                    contrato=contrato,
+                    cycle_number=cycle_number,
+                    slot_number=slot,
+                    referencia_mes=referencia,
+                    status=Parcela.Status.EM_PREVISAO,
+                )
+                for slot, referencia in enumerate(referencias, start=1)
+            ]
+            cycle_status = (
+                blocked_small_value_cycle_status(has_unpaid_months=has_unpaid)
+                if block_small_value_renewal and cycle_number == total_cycle_count
+                else Ciclo.Status.ABERTO
+            )
+            phase_slug = _cycle_phase_status(
+                contrato=contrato,
+                cycle_status=cycle_status,
+                next_renewal=next_renewal,
+                refinanciamento_operacional=(
+                    refinanciamento_operacional
+                    if cycle_number == total_cycle_count
+                    else None
+                ),
+            )
+            financial_slug = _cycle_financial_status(
+                contrato=contrato,
+                has_unpaid_months=has_unpaid,
+            )
+            projected_cycles.append(
+                _build_cycle_dict(
+                    contrato=contrato,
+                    cycle_number=cycle_number,
+                    referencias=referencias,
+                    parcelas=parcelas_sinteticas,
+                    status=cycle_status,
+                    phase_slug=phase_slug,
+                    financial_slug=financial_slug,
+                    activation_at=renewal.activated_at,
+                    activation_source=renewal.refinanciamento.origem,
+                    activation_inferred=False,
+                    data_solicitacao_renovacao=renewal.activated_at,
+                    renewal=renewal,
+                    refinanciamento_operacional=(
+                        refinanciamento_operacional
+                        if cycle_number == total_cycle_count
+                        else None
+                    ),
+                    include_documents=include_documents,
+                )
+            )
+
     status_renovacao = ""
     refinanciamento_id: int | None = None
-    current_competencia = resolve_current_renewal_competencia()
-    current_queue_ids = _operational_apt_contract_ids_for_competencia(current_competencia)
     if refinanciamento_operacional:
         status_renovacao = _normalize_operational_status(refinanciamento_operacional.status)
-        if (
-            status_renovacao == Refinanciamento.Status.APTO_A_RENOVAR
-            and current_queue_ids
-            and contrato.id not in current_queue_ids
-        ):
-            status_renovacao = ""
         refinanciamento_id = refinanciamento_operacional.id
     elif projected_cycles and projected_cycles[-1]["status"] == Ciclo.Status.APTO_A_RENOVAR and is_contract_eligible_for_renewal_competencia(
         contrato,
         parcelas=list(projected_cycles[-1].get("parcelas") or []),
-    ) and (
-        contrato.id in current_queue_ids
-        or not current_queue_ids
     ):
         status_renovacao = Refinanciamento.Status.APTO_A_RENOVAR
 
@@ -1969,6 +2259,7 @@ def build_contract_cycle_projection(
     )
 
     cycle_count = 1 + len(renewals)
+    current_month = timezone.localdate().replace(day=1)
     seed_reference = _seed_reference(contrato, paid or unpaid or regularized, renewals)
     eligible_references = _build_eligible_references(
         seed_reference=seed_reference,
@@ -2050,10 +2341,10 @@ def build_contract_cycle_projection(
             )
 
         if next_renewal is not None:
-            cycle_status = (
-                Ciclo.Status.CICLO_RENOVADO
-                if paid_count >= cycle_size
-                else Ciclo.Status.PENDENCIA
+            cycle_status = _renewed_cycle_status(
+                parcelas,
+                current_month=current_month,
+                cycle_size=cycle_size,
             )
         elif paid_count >= threshold:
             cycle_status = (
@@ -2154,16 +2445,8 @@ def build_contract_cycle_projection(
 
     status_renovacao = ""
     refinanciamento_id: int | None = None
-    current_competencia = resolve_current_renewal_competencia()
-    current_queue_ids = _operational_apt_contract_ids_for_competencia(current_competencia)
     if operational_refi is not None:
         status_renovacao = _normalize_operational_status(operational_refi.status)
-        if (
-            status_renovacao == Refinanciamento.Status.APTO_A_RENOVAR
-            and current_queue_ids
-            and contrato.id not in current_queue_ids
-        ):
-            status_renovacao = ""
         refinanciamento_id = operational_refi.id
     elif not block_small_value_renewal and cycles and sum(
         1
@@ -2172,9 +2455,6 @@ def build_contract_cycle_projection(
     ) >= threshold and is_contract_eligible_for_renewal_competencia(
         contrato,
         parcelas=list(cycles[-1].get("parcelas") or []),
-    ) and (
-        contrato.id in current_queue_ids
-        or not current_queue_ids
     ):
         status_renovacao = Refinanciamento.Status.APTO_A_RENOVAR
 

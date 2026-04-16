@@ -513,16 +513,37 @@ def rebuild_contract_cycle_state(
         return report
 
     if contrato.admin_manual_layout_enabled:
-        # Admin overrides write the canonical layout directly to Ciclo/Parcela.
-        # Rebuild must not rematerialize from the automatic engine and undo manual edits,
-        # but it still needs to sync the operational renewal/liquidation queue.
-        cycle_by_number = {
-            ciclo.numero: ciclo
-            for ciclo in Ciclo.objects.filter(
-                contrato=contrato,
-                deleted_at__isnull=True,
-            ).order_by("numero", "id")
-        }
+        # Manual layout contracts still use the same projected cycle timeline as source
+        # of truth, but that projection is derived from the admin-maintained materialized
+        # layout itself. Rebuild must therefore reconcile existing cycles/parcelas to that
+        # projected result instead of only creating missing future cycles; otherwise
+        # statuses and trailing preview months drift after an effective renewal.
+        existing_cycles: dict[int, Ciclo] = {}
+        for ciclo in (
+            Ciclo.all_objects.filter(contrato=contrato)
+            .prefetch_related("parcelas")
+            .order_by("numero", "deleted_at", "id")
+        ):
+            existing_cycles.setdefault(ciclo.numero, ciclo)
+
+        cycle_by_number: dict[int, Ciclo] = {}
+        for desired_cycle in desired_cycles:
+            existing_cycle = existing_cycles.pop(desired_cycle["numero"], None)
+            cycle = _ensure_cycle(contrato, desired_cycle, existing_cycle)
+            cycle_by_number[cycle.numero] = cycle
+
+            current_parcelas = {
+                parcela.numero: parcela
+                for parcela in Parcela.all_objects.filter(ciclo=cycle).order_by(
+                    "numero", "deleted_at", "id"
+                )
+            }
+            for desired_parcela in desired_cycle["parcelas"]:
+                existing = current_parcelas.pop(desired_parcela["numero"], None)
+                _ensure_parcela(cycle, contrato, desired_parcela, existing)
+            _soft_delete_extra_parcelas(list(current_parcelas.values()), report)
+
+        _soft_delete_extra_cycles(list(existing_cycles.values()), report)
         _sync_refinanciamentos(
             contrato,
             desired_cycles,

@@ -56,6 +56,10 @@ def is_return_imported_small_value_contract(contrato: Contrato) -> bool:
         contrato._is_return_imported_small_value_contract = False
         return False
 
+    if bool(getattr(contrato, "allow_small_value_renewal", False)):
+        contrato._is_return_imported_small_value_contract = False
+        return False
+
     mensalidade = _normalized_amount(contrato.valor_mensalidade)
     cpf = only_digits(getattr(contrato.associado, "cpf_cnpj", "") or "")
     result = ArquivoRetornoItem.objects.filter(

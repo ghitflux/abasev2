@@ -15,6 +15,7 @@ from .mobile_legacy_auth import (
     ensure_self_service_roles,
     split_name,
 )
+from .mobile_maintenance import enforce_mobile_maintenance_for_user
 from .models import Role, User, UserRole
 from .services import AgentPortfolioRedistributionService
 
@@ -588,6 +589,7 @@ class LoginSerializer(serializers.Serializer):
         except AuthenticationFailed as exc:
             raise serializers.ValidationError(str(exc.detail))
 
+        enforce_mobile_maintenance_for_user(user)
         attrs["user"] = user
         return attrs
 
@@ -606,6 +608,15 @@ class RefreshSerializer(serializers.Serializer):
     refresh = serializers.CharField()
 
     def validate(self, attrs):
+        try:
+            token = RefreshToken(attrs["refresh"])
+            user_id = token.get("user_id")
+        except (InvalidToken, TokenError):
+            raise serializers.ValidationError("Refresh token invalido ou expirado.")
+
+        user = User.objects.filter(pk=user_id, deleted_at__isnull=True).first()
+        enforce_mobile_maintenance_for_user(user)
+
         serializer = TokenRefreshSerializer(data=attrs)
         try:
             serializer.is_valid(raise_exception=True)

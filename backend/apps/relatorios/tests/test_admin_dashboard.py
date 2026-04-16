@@ -14,6 +14,7 @@ from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.models import EsteiraItem
 from apps.financeiro.models import Despesa
 from apps.importacao.models import PagamentoMensalidade
+from apps.refinanciamento.models import Refinanciamento
 from apps.tesouraria.models import DevolucaoAssociado, LiquidacaoContrato, Pagamento
 
 
@@ -527,6 +528,29 @@ class AdminDashboardViewSetTestCase(TestCase):
         self.assertEqual(row["data_entrada_associacao"], "2026-03-08")
         self.assertEqual(row["parcelas_descontadas"], 1)
         self.assertEqual(row["status_resumo_mensal"], "ativo")
+
+    def test_resumo_mensal_associacao_ignora_efetivado_fantasma(self):
+        ghost_refi = Refinanciamento.objects.create(
+            associado=self.analysis,
+            contrato_origem=Contrato.objects.get(codigo="CTR-A2"),
+            solicitado_por=self.admin,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            valor_refinanciamento=Decimal("90.00"),
+            repasse_agente=Decimal("9.00"),
+        )
+        Refinanciamento.objects.filter(pk=ghost_refi.pk).update(
+            created_at=self._aware_datetime(2026, 4, 14, 9, 0),
+            updated_at=self._aware_datetime(2026, 4, 14, 9, 0),
+        )
+
+        response = self.client.get(
+            "/api/v1/dashboard/admin/resumo-mensal-associacao/",
+            {"competencia": "2026-04"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        april = next(row for row in response.json()["rows"] if row["mes"] == "2026-04-01")
+        self.assertEqual(april["renovacoes_associado"], 0)
 
     def test_resumo_mensal_associacao_detalhes_de_novos_associados_expoem_campos_normalizados(self):
         response = self.client.get(

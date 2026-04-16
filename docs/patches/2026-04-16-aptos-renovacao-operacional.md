@@ -20,6 +20,10 @@ renovacao e `2026-04`.
 - a exportacao da rota era limitada e nao permitia escolher periodo/agente
 - o endpoint `renovacao-ciclos` podia cair na `ultima importacao concluida`,
   em vez da competencia operacional de renovacao
+- contratos com ciclo concluido manualmente no editor avancado nao voltavam para
+  `Aptos a renovar`, mesmo quando elegiveis e sem fluxo novo
+- contratos `30/50` com override manual de renovacao liberado continuavam bloqueados
+  da esteira apta
 
 ## O que foi alterado
 
@@ -36,6 +40,21 @@ renovacao e `2026-04`.
     `build_contract_cycle_projection(...).status_renovacao` nao seja
     `apto_a_renovar`
   - isso retira da aba apta quem ja entrou em fluxo ou ja foi renovado
+  - ciclos `fechado/ciclo_renovado` elegiveis e sem fluxo novo passam a aparecer
+    como `apto_a_renovar` na fila operacional
+
+- [backend/apps/contratos/cycle_projection.py](/mnt/d/apps/abasev2/abasev2/backend/apps/contratos/cycle_projection.py)
+  - o editor avancado/manual passou a promover ciclo concluido para
+    `apto_a_renovar` quando:
+    - e o ciclo mais recente
+    - nao existe fluxo novo de renovacao
+    - o contrato atende a regra de elegibilidade da competencia
+  - contratos `30/50` com `allow_small_value_renewal = true` deixam de ser
+    bloqueados pela projecao
+
+- [backend/apps/contratos/small_value_rules.py](/mnt/d/apps/abasev2/abasev2/backend/apps/contratos/small_value_rules.py)
+  - `allow_small_value_renewal` passou a ser respeitado como override explicito
+    para liberar aptidao no fluxo manual
 
 - [backend/apps/contratos/views.py](/mnt/d/apps/abasev2/abasev2/backend/apps/contratos/views.py)
   - `RenovacaoCicloViewSet.list()` passou a aceitar:
@@ -52,8 +71,25 @@ renovacao e `2026-04`.
 - [backend/apps/contratos/management/commands/repair_renewal_alignment.py](/mnt/d/apps/abasev2/abasev2/backend/apps/contratos/management/commands/repair_renewal_alignment.py)
   - audita e corrige:
     - `efetivado` fantasma
+    - `apto_a_renovar` ofuscado por etapa posterior na mesma competencia
     - associado com `status=apto_a_renovar` fora da fila real
     - associado apto na fila real com status persistido divergente
+
+- [backend/apps/associados/admin_override_service.py](/mnt/d/apps/abasev2/abasev2/backend/apps/associados/admin_override_service.py)
+  - adicionada transicao administrativa segura de renovacao
+  - o editor avancado agora consegue reposicionar a renovacao para:
+    - `apto_a_renovar`
+    - `em_analise_renovacao`
+    - `pendente_termo_agente`
+    - `pendente_termo_analista`
+    - `aprovado_analise_renovacao`
+    - `aprovado_para_renovacao`
+    - `solicitado_para_liquidacao`
+  - a efetivacao continua exclusiva da tesouraria, com comprovantes
+
+- [backend/apps/associados/admin_override_views.py](/mnt/d/apps/abasev2/abasev2/backend/apps/associados/admin_override_views.py)
+  - novo endpoint:
+    - `POST /api/v1/admin-overrides/associados/:id/renewal-stage/`
 
 ### Frontend
 
@@ -77,11 +113,25 @@ renovacao e `2026-04`.
 - [apps/web/src/lib/api/types.ts](/mnt/d/apps/abasev2/abasev2/apps/web/src/lib/api/types.ts)
   - adicionados os tipos do payload operacional de `RenovacaoCicloItem`
 
+- [apps/web/src/app/(dashboard)/associados/[id]/page.tsx](/mnt/d/apps/abasev2/abasev2/apps/web/src/app/(dashboard)/associados/[id]/page.tsx)
+  - o modo editor avancado ganhou a acao `Enviar para etapa`
+  - a acao pede motivo, grava no historico administrativo e chama a transicao segura do backend
+
 - [apps/web/src/app/(dashboard)/agentes/refinanciados/page.test.tsx](/mnt/d/apps/abasev2/abasev2/apps/web/src/app/(dashboard)/agentes/refinanciados/page.test.tsx)
   - cobertura de:
     - filtros da aba apta
     - exportacao usando a fila operacional
     - comportamento por perfil
+
+- [backend/apps/contratos/tests/test_renovacao.py](/mnt/d/apps/abasev2/abasev2/backend/apps/contratos/tests/test_renovacao.py)
+  - cobertura de fila apta para:
+    - associado ainda `ativo` mas elegivel
+    - ciclo `fechado` ainda apto quando nao ha fluxo novo
+
+- [backend/apps/contratos/tests/test_cycle_projection.py](/mnt/d/apps/abasev2/abasev2/backend/apps/contratos/tests/test_cycle_projection.py)
+  - cobertura de editor/manual:
+    - ciclo salvo como apto no editor avancado
+    - contrato `30/50` com override manual liberando aptidao
 
 ## Resultado validado
 
@@ -122,6 +172,7 @@ Os scripts abaixo foram adicionados ao repositório:
 
 - [scripts/audit_renewal_alignment_server.sh](/mnt/d/apps/abasev2/abasev2/scripts/audit_renewal_alignment_server.sh)
 - [scripts/post_deploy_renewal_alignment_server.sh](/mnt/d/apps/abasev2/abasev2/scripts/post_deploy_renewal_alignment_server.sh)
+- [scripts/repair_specific_aptos_server.sh](/mnt/d/apps/abasev2/abasev2/scripts/repair_specific_aptos_server.sh)
 
 Eles assumem:
 
@@ -155,6 +206,22 @@ O script:
 - imprime:
   - `queue_apto`
   - `persisted_apto`
+
+### 3. Correcao especifica por CPF
+
+Para reprocessar contratos/associados que foram ajustados pelo editor avancado:
+
+```bash
+bash scripts/repair_specific_aptos_server.sh 2026-04 13019414334 07937679387
+```
+
+O script:
+
+- reconstrói os contratos ativos dos CPFs informados
+- sincroniza `Associado.status`
+- audita a fila apta
+- confirma se cada CPF entrou na esteira
+- reinicia `backend` e `web`
 
 ## Passo a passo recomendado no servidor
 
@@ -199,6 +266,8 @@ Conferir:
 - exportacao oferece:
   - periodo
   - agente
+- ciclo concluido no editor avancado, se elegivel e sem fluxo novo, volta para
+  `Aptos a renovar`
 
 ### 2. Tesouraria
 

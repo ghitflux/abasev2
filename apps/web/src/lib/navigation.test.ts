@@ -191,10 +191,15 @@ describe("navigation", () => {
         .find((section) => section.title === "Operação")
         ?.items.find((item) => item.title === "Análise")?.children ?? [];
 
+    expect(analiseChildren.map((item) => item.href)).toEqual([
+      "/analise",
+      "/analise/aptos",
+    ]);
     expect(
       analiseChildren.find((item) => item.href === "/analise/aptos")?.title,
-    ).toBe("Contratos para Renovação");
+    ).toBe("Esteira de Renovação");
     expect(canAccessPath("/associados/123", ["ANALISTA"])).toBe(true);
+    expect(canAccessPath("/analise/aptos", ["COORDENADOR"])).toBe(true);
   });
 
   it("renomeia as filas da tesouraria e libera liquidacoes para coordenacao", () => {

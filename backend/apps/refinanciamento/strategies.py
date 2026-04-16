@@ -9,6 +9,8 @@ from apps.contratos.models import Contrato
 from .payment_rules import has_active_refinanciamento
 from .models import Refinanciamento
 
+PAID_RENEWAL_STATUSES = {"descontado", "liquidada", "quitada"}
+
 
 class EligibilityStrategy(ABC):
     @abstractmethod
@@ -34,7 +36,7 @@ class StandardEligibilityStrategy(EligibilityStrategy):
         parcelas_pagas = sum(
             1
             for parcela in ciclo_atual["parcelas"]
-            if parcela["status"] == "descontado"
+            if str(parcela["status"] or "") in PAID_RENEWAL_STATUSES
         )
         mensalidades_livres = parcelas_pagas
         status_renovacao = projection["status_renovacao"]

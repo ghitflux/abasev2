@@ -332,6 +332,57 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("1/3 parcelas do ciclo atual foram quitadas", " ".join(response.json()))
 
+    def test_permita_solicitar_quando_ciclo_tem_liquidada_e_descontado(self):
+        contrato = self._create_contrato(
+            "52345678902",
+            admin_manual_layout_enabled=True,
+        )
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 2, 1),
+            data_fim=date(2026, 4, 1),
+            status=Ciclo.Status.APTO_A_RENOVAR,
+            valor_total=Decimal("1500.00"),
+        )
+        Parcela.objects.bulk_create(
+            [
+                Parcela(
+                    ciclo=ciclo,
+                    associado=contrato.associado,
+                    numero=1,
+                    referencia_mes=date(2026, 2, 1),
+                    valor=Decimal("500.00"),
+                    data_vencimento=date(2026, 2, 10),
+                    status=Parcela.Status.LIQUIDADA,
+                    data_pagamento=date(2026, 2, 15),
+                ),
+                Parcela(
+                    ciclo=ciclo,
+                    associado=contrato.associado,
+                    numero=2,
+                    referencia_mes=date(2026, 3, 1),
+                    valor=Decimal("500.00"),
+                    data_vencimento=date(2026, 3, 10),
+                    status=Parcela.Status.DESCONTADO,
+                    data_pagamento=date(2026, 3, 15),
+                ),
+                Parcela(
+                    ciclo=ciclo,
+                    associado=contrato.associado,
+                    numero=3,
+                    referencia_mes=date(2026, 4, 1),
+                    valor=Decimal("500.00"),
+                    data_vencimento=date(2026, 4, 10),
+                    status=Parcela.Status.EM_PREVISAO,
+                ),
+            ]
+        )
+
+        response = self._solicitar_refinanciamento(contrato)
+
+        self.assertEqual(response.status_code, 201, response.json())
+
     def test_solicitar_exige_termo_de_antecipacao(self):
         contrato = self._create_contrato("53345678901")
         self._create_pagamento(contrato, date(2026, 1, 1))
@@ -570,6 +621,50 @@ class RefinanciamentoPagamentosTestCase(TestCase):
             format="json",
         )
         self.assertEqual(efetivacao.status_code, 200, efetivacao.json())
+
+    def test_tesouraria_efetiva_renovacao_manual_retorna_associado_para_ativo_e_gera_ciclo_destino(self):
+        contrato = self._create_contrato("62345678942", admin_manual_layout_enabled=True)
+        contrato.associado.status = Associado.Status.APTO_A_RENOVAR
+        contrato.associado.save(update_fields=["status", "updated_at"])
+        self._create_manual_cycle_quitado(contrato)
+
+        request = self._solicitar_refinanciamento(contrato, client=self.admin_client)
+        self.assertEqual(request.status_code, 201, request.json())
+        refinanciamento_id = request.json()["id"]
+
+        refinanciamento = Refinanciamento.objects.get(pk=refinanciamento_id)
+        refinanciamento.status = Refinanciamento.Status.APROVADO_PARA_RENOVACAO
+        refinanciamento.save(update_fields=["status", "updated_at"])
+
+        efetivacao = self.tes_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/efetivar/",
+            {
+                "comprovante_associado": SimpleUploadedFile(
+                    "associado.pdf",
+                    b"arquivo associado",
+                    content_type="application/pdf",
+                ),
+                "comprovante_agente": SimpleUploadedFile(
+                    "agente.pdf",
+                    b"arquivo agente",
+                    content_type="application/pdf",
+                ),
+            },
+            format="multipart",
+        )
+        self.assertEqual(efetivacao.status_code, 200, efetivacao.json())
+
+        refinanciamento.refresh_from_db()
+        contrato.associado.refresh_from_db()
+        self.assertEqual(contrato.associado.status, Associado.Status.ATIVO)
+        self.assertIsNotNone(refinanciamento.ciclo_destino)
+        self.assertEqual(refinanciamento.ciclo_destino.numero, 2)
+        self.assertEqual(refinanciamento.ciclo_destino.status, Ciclo.Status.ABERTO)
+        self.assertEqual(refinanciamento.ciclo_destino.parcelas.count(), 3)
+        self.assertEqual(
+            refinanciamento.ciclo_destino.parcelas.filter(status=Parcela.Status.EM_PREVISAO).count(),
+            3,
+        )
 
         refinanciamento.refresh_from_db()
         self.assertEqual(refinanciamento.status, Refinanciamento.Status.EFETIVADO)

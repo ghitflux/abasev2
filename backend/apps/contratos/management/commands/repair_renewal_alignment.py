@@ -36,6 +36,13 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         competencia = self._parse_competencia(options.get("competencia"))
         ghosts = list(self._ghost_effective_queryset().order_by("-updated_at", "-id"))
+        shadowed_aptos = list(
+            self._shadowed_apto_queryset().order_by(
+                "associado__nome_completo",
+                "competencia_solicitada",
+                "id",
+            )
+        )
 
         self.stdout.write(
             self.style.WARNING(
@@ -49,6 +56,19 @@ class Command(BaseCommand):
                 f"competencia={refinanciamento.competencia_solicitada} "
                 f"status_atual={refinanciamento.status} "
                 f"status_sugerido={self._target_status(refinanciamento)}"
+            )
+
+        self.stdout.write(
+            self.style.WARNING(
+                f"Refinanciamentos aptos ofuscados por etapa posterior na mesma competência: {len(shadowed_aptos)}"
+            )
+        )
+        for refinanciamento in shadowed_aptos[:50]:
+            self.stdout.write(
+                f"- refi={refinanciamento.id} cpf={refinanciamento.associado.cpf_cnpj} "
+                f"nome={refinanciamento.associado.nome_completo} "
+                f"competencia={refinanciamento.competencia_solicitada} "
+                f"status_atual={refinanciamento.status}"
             )
 
         stale_associados, missing_associados = self._audit_apto_status_drift(competencia)
@@ -76,6 +96,13 @@ class Command(BaseCommand):
                     rebuild_contract_cycle_state(refinanciamento.contrato_origem, execute=True)
                 affected_associados.add(refinanciamento.associado_id)
 
+            for refinanciamento in shadowed_aptos:
+                refinanciamento.deleted_at = timezone.now()
+                refinanciamento.save(update_fields=["deleted_at", "updated_at"])
+                if refinanciamento.contrato_origem_id:
+                    rebuild_contract_cycle_state(refinanciamento.contrato_origem, execute=True)
+                affected_associados.add(refinanciamento.associado_id)
+
             affected_associados.update(stale_associados)
             affected_associados.update(missing_associados)
             for associado in Associado.objects.filter(id__in=affected_associados):
@@ -84,6 +111,7 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(
                     f"Correção aplicada em {len(ghosts)} refinanciamentos e "
+                    f"{len(shadowed_aptos)} aptos ofuscados e "
                     f"{len(affected_associados)} associados."
                 )
             )
@@ -102,6 +130,48 @@ class Command(BaseCommand):
             executado_em__isnull=True,
             data_ativacao_ciclo__isnull=True,
             ciclo_destino__isnull=True,
+        )
+
+    def _shadowed_apto_queryset(self):
+        final_statuses = [
+            Refinanciamento.Status.EFETIVADO,
+            Refinanciamento.Status.CONCLUIDO,
+            Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+            Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+            Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
+            Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+            Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
+            Refinanciamento.Status.BLOQUEADO,
+            Refinanciamento.Status.REVERTIDO,
+            Refinanciamento.Status.DESATIVADO,
+        ]
+        shadowed_ids: set[int] = set()
+        aptos = list(
+            Refinanciamento.objects.select_related("associado", "contrato_origem").filter(
+                deleted_at__isnull=True,
+                status=Refinanciamento.Status.APTO_A_RENOVAR,
+            )
+        )
+        for refinanciamento in aptos:
+            if not refinanciamento.contrato_origem_id:
+                continue
+            has_newer = Refinanciamento.objects.filter(
+                deleted_at__isnull=True,
+                contrato_origem_id=refinanciamento.contrato_origem_id,
+                competencia_solicitada=refinanciamento.competencia_solicitada,
+                status__in=final_statuses,
+            ).exclude(id=refinanciamento.id).filter(
+                Q(executado_em__isnull=False)
+                | Q(data_ativacao_ciclo__isnull=False)
+                | Q(ciclo_destino__isnull=False)
+                | Q(updated_at__gt=refinanciamento.updated_at)
+                | Q(created_at__gt=refinanciamento.created_at)
+            )
+            if has_newer.exists():
+                shadowed_ids.add(refinanciamento.id)
+        return Refinanciamento.objects.select_related("associado", "contrato_origem").filter(
+            id__in=shadowed_ids
         )
 
     def _target_status(self, refinanciamento: Refinanciamento) -> str:

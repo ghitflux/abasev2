@@ -281,6 +281,47 @@ class AdminOverrideApiTestCase(TestCase):
         self.assertEqual(response.status_code, 400, response.json())
         self.assertEqual(response.json()["detail"], "Informe ao menos um ciclo no layout.")
 
+    def test_admin_can_send_renewal_to_safe_stage(self):
+        refinanciamento = Refinanciamento.objects.create(
+            associado=self.associado,
+            contrato_origem=self.contrato,
+            ciclo_origem=self.ciclo,
+            solicitado_por=self.admin,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.APTO_A_RENOVAR,
+            valor_refinanciamento=Decimal("900.00"),
+            repasse_agente=Decimal("90.00"),
+            origem=Refinanciamento.Origem.OPERACIONAL,
+            cycle_key="2026-02|2026-03|2026-04",
+            ref1=date(2026, 2, 1),
+            ref2=date(2026, 3, 1),
+            ref3=date(2026, 4, 1),
+        )
+
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/renewal-stage/",
+            {
+                "contrato_id": self.contrato.id,
+                "target_stage": "em_analise_renovacao",
+                "motivo": "Reposicionar no fluxo pelo editor",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        refinanciamento.refresh_from_db()
+        self.assertEqual(
+            refinanciamento.status,
+            Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+        )
+        self.assertTrue(
+            AdminOverrideEvent.objects.filter(
+                associado=self.associado,
+                escopo=AdminOverrideEvent.Scope.REFINANCIAMENTO,
+                motivo="Reposicionar no fluxo pelo editor",
+            ).exists()
+        )
+
     def test_save_all_allows_november_reference_inside_cycle(self):
         response = self.admin_client.post(
             f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",

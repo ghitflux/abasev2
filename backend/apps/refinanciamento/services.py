@@ -10,6 +10,7 @@ from rest_framework.exceptions import ValidationError
 from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.cycle_timeline import get_contract_cycle_size
+from apps.contratos.cycle_projection import sync_associado_mother_status
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.models import EsteiraItem, Transicao
 from apps.importacao.models import PagamentoMensalidade
@@ -54,7 +55,8 @@ def _paid_projection_parcelas(parcelas: list[dict[str, object]]) -> list[dict[st
     return [
         parcela
         for parcela in parcelas
-        if parcela["status"] == Parcela.Status.DESCONTADO
+        if parcela["status"]
+        in {Parcela.Status.DESCONTADO, Parcela.Status.LIQUIDADA, "quitada"}
     ]
 
 
@@ -1151,6 +1153,18 @@ class RefinanciamentoService:
 
         rebuild_contract_cycle_state(contrato, execute=True)
         refinanciamento.refresh_from_db()
+        if refinanciamento.ciclo_destino_id is None and refinanciamento.ciclo_origem_id is not None:
+            refinanciamento.ciclo_destino = (
+                Ciclo.objects.filter(
+                    contrato=contrato,
+                    numero=refinanciamento.ciclo_origem.numero + 1,
+                    deleted_at__isnull=True,
+                )
+                .order_by("id")
+                .first()
+            )
+            if refinanciamento.ciclo_destino_id is not None:
+                refinanciamento.save(update_fields=["ciclo_destino", "updated_at"])
         for papel in [Comprovante.Papel.ASSOCIADO, Comprovante.Papel.AGENTE]:
             comprovante = RefinanciamentoService._latest_payment_comprovante(
                 refinanciamento,
@@ -1166,6 +1180,7 @@ class RefinanciamentoService:
             user=user,
             paid_at=executado_em,
         )
+        sync_associado_mother_status(contrato.associado)
 
         RefinanciamentoService._registrar_auditoria(
             contrato,

@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from unittest.mock import patch
 
+from django.utils import timezone
+
 from apps.associados.models import Associado
+from apps.accounts.models import User
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem
 from apps.importacao.reconciliacao import MotorReconciliacao
 from apps.importacao.tests.base import ImportacaoBaseTestCase
+from apps.refinanciamento.models import Refinanciamento
 
 
 class RenovacaoCicloViewSetTestCase(ImportacaoBaseTestCase):
@@ -435,3 +439,398 @@ class RenovacaoCicloViewSetTestCase(ImportacaoBaseTestCase):
         self.assertEqual(row["competencia"], "04/2026")
         self.assertEqual(row["status_visual"], "apto_a_renovar")
         self.assertEqual(row["resultado_importacao"], "sem_competencia")
+
+    def test_listagem_remove_apto_quando_renovacao_foi_efetivada_na_competencia(self):
+        associado = Associado.objects.create(
+            nome_completo="Servidor Renovado em Abril",
+            cpf_cnpj="90123456780",
+            email="90123456780@teste.local",
+            telefone="86999999999",
+            orgao_publico="Órgão Teste",
+            matricula_orgao="MAT-APRIL-02",
+            status=Associado.Status.ATIVO,
+            agente_responsavel=self.tesoureiro,
+        )
+        contrato = Contrato.objects.create(
+            associado=associado,
+            agente=self.tesoureiro,
+            valor_bruto=Decimal("900.00"),
+            valor_liquido=Decimal("900.00"),
+            valor_mensalidade=Decimal("300.00"),
+            prazo_meses=3,
+            status=Contrato.Status.ATIVO,
+            data_primeira_mensalidade=date(2026, 1, 1),
+            data_aprovacao=date(2025, 12, 28),
+        )
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.APTO_A_RENOVAR,
+            valor_total=Decimal("900.00"),
+        )
+        Parcela.objects.bulk_create(
+            [
+                Parcela(
+                    ciclo=ciclo,
+                    numero=1,
+                    referencia_mes=date(2026, 1, 1),
+                    valor=Decimal("300.00"),
+                    data_vencimento=date(2026, 1, 1),
+                    status=Parcela.Status.DESCONTADO,
+                    data_pagamento=date(2026, 1, 15),
+                ),
+                Parcela(
+                    ciclo=ciclo,
+                    numero=2,
+                    referencia_mes=date(2026, 2, 1),
+                    valor=Decimal("300.00"),
+                    data_vencimento=date(2026, 2, 1),
+                    status=Parcela.Status.DESCONTADO,
+                    data_pagamento=date(2026, 2, 15),
+                ),
+                Parcela(
+                    ciclo=ciclo,
+                    numero=3,
+                    referencia_mes=date(2026, 3, 1),
+                    valor=Decimal("300.00"),
+                    data_vencimento=date(2026, 3, 1),
+                    status=Parcela.Status.EM_ABERTO,
+                ),
+            ]
+        )
+        ciclo_destino = Ciclo.objects.create(
+            contrato=contrato,
+            numero=2,
+            data_inicio=date(2026, 4, 1),
+            data_fim=date(2026, 6, 1),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("900.00"),
+        )
+        Refinanciamento.objects.create(
+            associado=associado,
+            contrato_origem=contrato,
+            ciclo_origem=ciclo,
+            ciclo_destino=ciclo_destino,
+            solicitado_por=self.tesoureiro,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            executado_em=timezone.make_aware(datetime(2026, 4, 10, 9, 0)),
+            data_ativacao_ciclo=timezone.make_aware(datetime(2026, 4, 10, 9, 0)),
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/renovacao-ciclos/",
+            {"competencia": "2026-04", "status": "apto_a_renovar", "page_size": 20},
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["count"], 0)
+
+    def test_listagem_apta_restringe_agente_aos_proprios_contratos(self):
+        associado_agente, contrato_agente, _ = self.create_associado_com_contrato(
+            cpf="90111111111",
+            nome="Apto do Agente",
+        )
+        associado_agente.agente_responsavel = self.agente
+        associado_agente.save(update_fields=["agente_responsavel", "updated_at"])
+        contrato_agente.agente = self.agente
+        contrato_agente.save(update_fields=["agente", "updated_at"])
+
+        self.create_associado_com_contrato(
+            cpf="90222222222",
+            nome="Apto de Outro Agente",
+        )
+
+        response = self.agent_client.get(
+            "/api/v1/renovacao-ciclos/",
+            {"competencia": "2025-05", "status": "apto_a_renovar", "page_size": 20},
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["results"][0]["contrato_id"], contrato_agente.id)
+        self.assertEqual(payload["results"][0]["associado_id"], associado_agente.id)
+
+    def test_listagem_apta_inclui_associado_ainda_ativo_quando_contrato_esta_apto(self):
+        associado_base = Associado.objects.create(
+            nome_completo="Base Fila Apta",
+            cpf_cnpj="90233333333",
+            email="90233333333@teste.local",
+            telefone="86999999999",
+            orgao_publico="Órgão Teste",
+            matricula_orgao="MAT-BASE",
+            status=Associado.Status.ATIVO,
+            agente_responsavel=self.tesoureiro,
+        )
+        contrato_base = Contrato.objects.create(
+            associado=associado_base,
+            agente=self.tesoureiro,
+            valor_bruto=Decimal("900.00"),
+            valor_liquido=Decimal("900.00"),
+            valor_mensalidade=Decimal("300.00"),
+            prazo_meses=3,
+            status=Contrato.Status.ATIVO,
+            data_primeira_mensalidade=date(2026, 1, 1),
+            data_aprovacao=date(2025, 12, 28),
+            data_contrato=date(2026, 1, 10),
+        )
+        ciclo_base = Ciclo.objects.create(
+            contrato=contrato_base,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("900.00"),
+        )
+        for numero, referencia in enumerate(
+            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)],
+            start=1,
+        ):
+            Parcela.objects.create(
+                ciclo=ciclo_base,
+                associado=associado_base,
+                numero=numero,
+                referencia_mes=referencia,
+                valor=Decimal("300.00"),
+                data_vencimento=referencia,
+                status=Parcela.Status.DESCONTADO,
+                data_pagamento=referencia,
+            )
+
+        associado = Associado.objects.create(
+            nome_completo="Apto Manual Ainda Ativo",
+            cpf_cnpj="90244444444",
+            email="90244444444@teste.local",
+            telefone="86999999999",
+            orgao_publico="Órgão Teste",
+            matricula_orgao="MAT-MANUAL",
+            status=Associado.Status.ATIVO,
+            agente_responsavel=self.tesoureiro,
+        )
+        contrato = Contrato.objects.create(
+            associado=associado,
+            agente=self.tesoureiro,
+            valor_bruto=Decimal("900.00"),
+            valor_liquido=Decimal("900.00"),
+            valor_mensalidade=Decimal("300.00"),
+            prazo_meses=3,
+            status=Contrato.Status.ATIVO,
+            data_primeira_mensalidade=date(2026, 1, 1),
+            data_aprovacao=date(2025, 12, 28),
+            data_contrato=date(2026, 1, 12),
+            admin_manual_layout_enabled=True,
+        )
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.APTO_A_RENOVAR,
+            valor_total=Decimal("900.00"),
+        )
+        for numero, referencia in enumerate(
+            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)],
+            start=1,
+        ):
+            Parcela.objects.create(
+                ciclo=ciclo,
+                associado=associado,
+                numero=numero,
+                referencia_mes=referencia,
+                valor=Decimal("300.00"),
+                data_vencimento=referencia,
+                status=Parcela.Status.DESCONTADO,
+                data_pagamento=referencia,
+            )
+
+        response = self.tes_client.get(
+            "/api/v1/renovacao-ciclos/",
+            {"competencia": "2026-04", "status": "apto_a_renovar", "page_size": 20},
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        returned_associado_ids = {item["associado_id"] for item in payload["results"]}
+        self.assertIn(associado.id, returned_associado_ids)
+
+    def test_listagem_apta_inclui_ciclo_concluido_quando_elegivel_sem_fluxo_novo(self):
+        associado = Associado.objects.create(
+            nome_completo="Apto Concluido Sem Fluxo",
+            cpf_cnpj="90255555555",
+            email="90255555555@teste.local",
+            telefone="86999999999",
+            orgao_publico="Órgão Teste",
+            matricula_orgao="MAT-CONCLUIDO",
+            status=Associado.Status.ATIVO,
+            agente_responsavel=self.tesoureiro,
+        )
+        contrato = Contrato.objects.create(
+            associado=associado,
+            agente=self.tesoureiro,
+            valor_bruto=Decimal("900.00"),
+            valor_liquido=Decimal("900.00"),
+            valor_mensalidade=Decimal("300.00"),
+            prazo_meses=3,
+            status=Contrato.Status.ATIVO,
+            data_primeira_mensalidade=date(2026, 1, 1),
+            data_aprovacao=date(2025, 12, 28),
+            data_contrato=date(2026, 1, 12),
+            admin_manual_layout_enabled=True,
+        )
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.FECHADO,
+            valor_total=Decimal("900.00"),
+        )
+        for numero, referencia in enumerate(
+            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)],
+            start=1,
+        ):
+            Parcela.objects.create(
+                ciclo=ciclo,
+                associado=associado,
+                numero=numero,
+                referencia_mes=referencia,
+                valor=Decimal("300.00"),
+                data_vencimento=referencia,
+                status=Parcela.Status.DESCONTADO,
+                data_pagamento=referencia,
+            )
+
+        response = self.tes_client.get(
+            "/api/v1/renovacao-ciclos/",
+            {"competencia": "2026-04", "status": "apto_a_renovar", "page_size": 20},
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        returned_associado_ids = {item["associado_id"] for item in payload["results"]}
+        self.assertIn(associado.id, returned_associado_ids)
+
+    @patch("apps.contratos.views.resolve_current_renewal_competencia", return_value=date(2026, 4, 1))
+    def test_resumo_renovacao_mostra_renovados_globais_para_admin_e_proprios_para_agente(self, _competencia_mock):
+        outro_agente = User.objects.create_user(
+            email="outro.agente@abase.local",
+            password="Senha@123",
+            first_name="Outro",
+            last_name="Agente",
+            is_active=True,
+        )
+        outro_agente.roles.add(self.role_agente)
+
+        associado_admin = Associado.objects.create(
+            nome_completo="Associado Renovado Admin",
+            cpf_cnpj="90333333333",
+            email="90333333333@teste.local",
+            telefone="86999999999",
+            orgao_publico="Órgão Teste",
+            matricula_orgao="MAT-RES-ADMIN",
+            status=Associado.Status.ATIVO,
+            agente_responsavel=self.agente,
+        )
+        contrato_admin = Contrato.objects.create(
+            associado=associado_admin,
+            agente=self.agente,
+            valor_bruto=Decimal("900.00"),
+            valor_liquido=Decimal("900.00"),
+            valor_mensalidade=Decimal("300.00"),
+            prazo_meses=3,
+            status=Contrato.Status.ATIVO,
+            data_primeira_mensalidade=date(2026, 1, 1),
+            data_aprovacao=date(2025, 12, 28),
+            data_contrato=date(2026, 1, 10),
+        )
+        ciclo_admin = Ciclo.objects.create(
+            contrato=contrato_admin,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.APTO_A_RENOVAR,
+            valor_total=Decimal("900.00"),
+        )
+        Refinanciamento.objects.create(
+            associado=associado_admin,
+            contrato_origem=contrato_admin,
+            ciclo_origem=ciclo_admin,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 3, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            executado_em=timezone.make_aware(datetime(2026, 3, 10, 10, 0)),
+            data_ativacao_ciclo=timezone.make_aware(datetime(2026, 3, 10, 10, 0)),
+            valor_refinanciamento=Decimal("90.00"),
+            repasse_agente=Decimal("9.00"),
+            origem=Refinanciamento.Origem.OPERACIONAL,
+        )
+
+        associado_outro = Associado.objects.create(
+            nome_completo="Associado Renovado Outro",
+            cpf_cnpj="90444444444",
+            email="90444444444@teste.local",
+            telefone="86999999999",
+            orgao_publico="Órgão Teste",
+            matricula_orgao="MAT-RES-OUTRO",
+            status=Associado.Status.ATIVO,
+            agente_responsavel=outro_agente,
+        )
+        contrato_outro = Contrato.objects.create(
+            associado=associado_outro,
+            agente=outro_agente,
+            valor_bruto=Decimal("900.00"),
+            valor_liquido=Decimal("900.00"),
+            valor_mensalidade=Decimal("300.00"),
+            prazo_meses=3,
+            status=Contrato.Status.ATIVO,
+            data_primeira_mensalidade=date(2026, 1, 1),
+            data_aprovacao=date(2025, 12, 28),
+            data_contrato=date(2026, 1, 12),
+        )
+        ciclo_outro = Ciclo.objects.create(
+            contrato=contrato_outro,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.APTO_A_RENOVAR,
+            valor_total=Decimal("900.00"),
+        )
+        Refinanciamento.objects.create(
+            associado=associado_outro,
+            contrato_origem=contrato_outro,
+            ciclo_origem=ciclo_outro,
+            solicitado_por=outro_agente,
+            competencia_solicitada=date(2026, 2, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            executado_em=timezone.make_aware(datetime(2026, 2, 10, 10, 0)),
+            data_ativacao_ciclo=timezone.make_aware(datetime(2026, 2, 10, 10, 0)),
+            valor_refinanciamento=Decimal("90.00"),
+            repasse_agente=Decimal("9.00"),
+            origem=Refinanciamento.Origem.OPERACIONAL,
+        )
+
+        em_analise = Refinanciamento.objects.create(
+            associado=associado_admin,
+            contrato_origem=contrato_admin,
+            ciclo_origem=ciclo_admin,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
+            valor_refinanciamento=Decimal("90.00"),
+            repasse_agente=Decimal("9.00"),
+            origem=Refinanciamento.Origem.OPERACIONAL,
+        )
+        self.assertIsNotNone(em_analise.id)
+
+        admin_response = self.admin_client.get("/api/v1/contratos/renovacao-resumo/")
+        self.assertEqual(admin_response.status_code, 200, admin_response.json())
+        self.assertEqual(admin_response.json()["renovados"], 2)
+        self.assertEqual(admin_response.json()["em_analise"], 1)
+
+        agent_response = self.agent_client.get("/api/v1/contratos/renovacao-resumo/")
+        self.assertEqual(agent_response.status_code, 200, agent_response.json())
+        self.assertEqual(agent_response.json()["renovados"], 1)
+        self.assertEqual(agent_response.json()["em_analise"], 1)

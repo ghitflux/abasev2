@@ -1431,8 +1431,6 @@ class BaixaManualService:
 
         for parcela in parcela_queryset:
             if parcela.status == Parcela.Status.NAO_DESCONTADO:
-                if latest_file_ids:
-                    continue
                 if (
                     parcela.id in retorno_parcela_ids
                     or (parcela.associado_id, parcela.referencia_mes)

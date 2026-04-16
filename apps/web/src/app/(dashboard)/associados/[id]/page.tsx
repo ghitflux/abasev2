@@ -69,6 +69,13 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 
 const AdminFileManager = dynamic(
@@ -85,6 +92,15 @@ const ADMIN_EDITOR_SECTIONS = [
   "esteira",
   "historico-admin",
 ];
+const SAFE_RENEWAL_STAGE_OPTIONS = [
+  { value: "apto_a_renovar", label: "Apto a renovar" },
+  { value: "em_analise_renovacao", label: "Em análise" },
+  { value: "pendente_termo_agente", label: "Pendente termo do agente" },
+  { value: "pendente_termo_analista", label: "Pendente termo do analista" },
+  { value: "aprovado_analise_renovacao", label: "Aprovado pela análise" },
+  { value: "aprovado_para_renovacao", label: "Aprovado para renovação" },
+  { value: "solicitado_para_liquidacao", label: "Solicitado para liquidação" },
+] as const;
 
 type AssociadoPageProps = {
   params: Promise<{ id: string }>;
@@ -218,6 +234,16 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   );
   const [inativarDialogOpen, setInativarDialogOpen] = React.useState(false);
   const [saveAllOpen, setSaveAllOpen] = React.useState(false);
+  const [renewalStageDialogOpen, setRenewalStageDialogOpen] =
+    React.useState(false);
+  const [renewalStageSelections, setRenewalStageSelections] = React.useState<
+    Record<number, string>
+  >({});
+  const [renewalStageTarget, setRenewalStageTarget] = React.useState<{
+    contratoId: number;
+    contratoCodigo: string;
+    targetStage: string;
+  } | null>(null);
   const contractEditorRefs = React.useRef<
     Record<number, AdminContractEditorHandle | null>
   >({});
@@ -484,6 +510,47 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
         error instanceof Error
           ? error.message
           : "Falha ao salvar alterações administrativas.",
+      );
+    },
+  });
+
+  const renewalStageMutation = useMutation({
+    mutationFn: async ({
+      contratoId,
+      targetStage,
+      motivo,
+    }: {
+      contratoId: number;
+      targetStage: string;
+      motivo: string;
+    }) =>
+      apiFetch<AdminAssociadoEditorPayload>(
+        `admin-overrides/associados/${associadoId}/renewal-stage/`,
+        {
+          method: "POST",
+          body: {
+            contrato_id: contratoId,
+            target_stage: targetStage,
+            motivo,
+          },
+        },
+      ),
+    onSuccess: async (payload) => {
+      toast.success("Etapa de renovação atualizada.");
+      queryClient.setQueryData(
+        ["admin-associado-editor", associadoId],
+        payload,
+      );
+      await Promise.all([
+        associadoQuery.refetch(),
+        adminHistoryQuery.refetch(),
+      ]);
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao reposicionar a renovação.",
       );
     },
   });
@@ -883,6 +950,98 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             !adminEditorQuery.isError &&
             adminEditorQuery.data?.contratos?.length ? (
               <div className="space-y-4">
+                <div className="rounded-[1.5rem] border border-primary/20 bg-primary/5 p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">
+                        Transição segura da renovação
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        Reposiciona o contrato em uma etapa do fluxo de renovação com validação de negócio e registro no histórico.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    {adminEditorQuery.data.contratos.map((contract) => {
+                      const selectedStage =
+                        renewalStageSelections[contract.id] ??
+                        contract.refinanciamento_ativo?.status ??
+                        "apto_a_renovar";
+                      return (
+                        <div
+                          key={`renewal-stage-${contract.id}`}
+                          className="grid gap-3 rounded-2xl border border-border/60 bg-background/60 p-4 lg:grid-cols-[minmax(0,1fr)_18rem_auto]"
+                        >
+                          <div className="min-w-0">
+                            <p className="font-medium text-foreground">
+                              {contract.codigo}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              Atual:{" "}
+                              {(
+                                SAFE_RENEWAL_STAGE_OPTIONS.find(
+                                  (item) =>
+                                    item.value ===
+                                    (contract.refinanciamento_ativo?.status ??
+                                      "apto_a_renovar"),
+                                )?.label ??
+                                contract.refinanciamento_ativo?.status ??
+                                "Apto a renovar"
+                              ).replaceAll("_", " ")}
+                            </p>
+                          </div>
+                          <Select
+                            value={selectedStage}
+                            onValueChange={(value) =>
+                              setRenewalStageSelections((current) => ({
+                                ...current,
+                                [contract.id]: value,
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {SAFE_RENEWAL_STAGE_OPTIONS.map((option) => (
+                                <SelectItem
+                                  key={`${contract.id}-${option.value}`}
+                                  value={option.value}
+                                >
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            disabled={
+                              saveAllMutation.isPending ||
+                              renewalStageMutation.isPending ||
+                              hasUnsavedAdminChanges
+                            }
+                            onClick={() => {
+                              setRenewalStageTarget({
+                                contratoId: contract.id,
+                                contratoCodigo: contract.codigo,
+                                targetStage: selectedStage,
+                              });
+                              setRenewalStageDialogOpen(true);
+                            }}
+                          >
+                            Enviar para etapa
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {hasUnsavedAdminChanges ? (
+                    <p className="mt-3 text-xs text-amber-200">
+                      Salve ou descarte as edições pendentes antes de usar a transição segura.
+                    </p>
+                  ) : null}
+                </div>
                 {adminEditorQuery.data.contratos.map((contract) => (
                   <AdminContractEditor
                     key={`admin-${contract.id}`}
@@ -1150,6 +1309,46 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           } catch {
             // The mutation already shows the error toast.
           }
+        }}
+      />
+      <AdminOverrideConfirmDialog
+        open={renewalStageDialogOpen}
+        onOpenChange={setRenewalStageDialogOpen}
+        title="Enviar renovação para etapa"
+        description="A transição reposiciona a renovação no fluxo operacional e sincroniza o histórico administrativo."
+        summary={
+          renewalStageTarget ? (
+            <div className="grid gap-2 text-sm">
+              <p>
+                Contrato:{" "}
+                <span className="font-medium text-foreground">
+                  {renewalStageTarget.contratoCodigo}
+                </span>
+              </p>
+              <p>
+                Etapa destino:{" "}
+                <span className="font-medium text-foreground">
+                  {SAFE_RENEWAL_STAGE_OPTIONS.find(
+                    (item) => item.value === renewalStageTarget.targetStage,
+                  )?.label ?? renewalStageTarget.targetStage}
+                </span>
+              </p>
+            </div>
+          ) : null
+        }
+        submitLabel="Enviar para etapa"
+        isSubmitting={renewalStageMutation.isPending}
+        onConfirm={async (motivo) => {
+          if (!renewalStageTarget) {
+            return;
+          }
+          await renewalStageMutation.mutateAsync({
+            contratoId: renewalStageTarget.contratoId,
+            targetStage: renewalStageTarget.targetStage,
+            motivo,
+          });
+          setRenewalStageDialogOpen(false);
+          setRenewalStageTarget(null);
         }}
       />
       <ParcelaDetalheDialog

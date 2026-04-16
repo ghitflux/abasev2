@@ -407,6 +407,79 @@ class BaixaManualViewSetTestCase(TestCase):
             item_sem_parcela.id,
         )
 
+    def test_lista_pendentes_preserva_parcela_materializada_sem_item_no_retorno(self):
+        associado_retorno = self._create_associado(
+            cpf="15151515150",
+            nome="Associado Retorno Parcela",
+            matricula="MAT-5150",
+            agente=self.agente_a,
+        )
+        parcela_retorno = self._create_parcela(
+            associado=associado_retorno,
+            agente=self.agente_a,
+            referencia=date(2026, 3, 1),
+            vencimento=date(2026, 3, 10),
+            status=Parcela.Status.NAO_DESCONTADO,
+            valor="300.00",
+            codigo="CTR-RET-MATCH",
+        )
+
+        associado_materializado = self._create_associado(
+            cpf="16161616161",
+            nome="Associado Materializado",
+            matricula="MAT-6161",
+            agente=self.agente_a,
+        )
+        parcela_materializada = self._create_parcela(
+            associado=associado_materializado,
+            agente=self.agente_a,
+            referencia=date(2025, 10, 1),
+            vencimento=date(2025, 10, 10),
+            status=Parcela.Status.NAO_DESCONTADO,
+            valor="150.00",
+            codigo="CTR-RET-FALLBACK",
+        )
+
+        arquivo = self._create_arquivo_retorno(
+            competencia=date(2026, 3, 1),
+            nome="Relatorio_D2102-03-2026.txt",
+        )
+        self._create_retorno_item(
+            arquivo=arquivo,
+            associado=associado_retorno,
+            linha_numero=1,
+            competencia="03/2026",
+            valor="300.00",
+            parcela=parcela_retorno,
+        )
+
+        response = self.client.get(
+            "/api/v1/tesouraria/baixa-manual/",
+            {"status": Parcela.Status.NAO_DESCONTADO},
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        referencias = {
+            (item["cpf_cnpj"], item["referencia_mes"])
+            for item in payload["results"]
+        }
+        self.assertIn(("15151515150", "2026-03-01"), referencias)
+        self.assertIn(("16161616161", "2025-10-01"), referencias)
+        row_by_cpf = {
+            item["cpf_cnpj"]: item
+            for item in payload["results"]
+            if item["cpf_cnpj"] in {"15151515150", "16161616161"}
+        }
+        self.assertEqual(
+            row_by_cpf["15151515150"]["parcela_id"],
+            parcela_retorno.id,
+        )
+        self.assertEqual(
+            row_by_cpf["16161616161"]["parcela_id"],
+            parcela_materializada.id,
+        )
+
     def test_inativar_associado_baixa_parcelas_vencidas(self):
         associado = self._create_associado(
             cpf="15151515151",

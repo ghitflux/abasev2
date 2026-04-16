@@ -25,6 +25,7 @@ from .admin_override_serializers import (
     CycleLayoutOverrideWriteSerializer,
     DocumentoVersionWriteSerializer,
     EsteiraOverrideWriteSerializer,
+    RenewalStageTransitionWriteSerializer,
     RefinanciamentoOverrideWriteSerializer,
 )
 from .serializers import DocumentoSerializer
@@ -149,6 +150,28 @@ class AdminOverrideAssociadoViewSet(GenericViewSet):
         serializer.is_valid(raise_exception=True)
         try:
             payload = AdminOverrideService.apply_save_all(
+                associado=associado,
+                payload=serializer.validated_data,
+                user=request.user,
+            )
+        except AdminOverrideConflict as exc:
+            return _conflict_response(exc)
+        except DjangoValidationError as exc:
+            return _validation_error_response(exc)
+        return Response(AdminOverrideEditorPayloadSerializer(payload).data)
+
+    @extend_schema(
+        request=RenewalStageTransitionWriteSerializer,
+        responses=AdminOverrideEditorPayloadSerializer,
+        operation_id="admin_override_associado_renewal_transition",
+    )
+    @action(detail=True, methods=["post"], url_path="renewal-stage")
+    def renewal_stage(self, request, pk=None):
+        associado = self.get_object()
+        serializer = RenewalStageTransitionWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            payload = AdminOverrideService.apply_safe_renewal_stage_transition(
                 associado=associado,
                 payload=serializer.validated_data,
                 user=request.user,

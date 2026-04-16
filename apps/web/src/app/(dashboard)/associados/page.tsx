@@ -143,6 +143,12 @@ function AssociadoCiclosPanel({ associadoId }: { associadoId: number }) {
   const payload = ciclosQuery.data;
   const ciclos = payload?.ciclos ?? [];
   const mesesNaoPagos = payload?.meses_nao_pagos ?? [];
+  const parcelasNaoDescontadas = mesesNaoPagos.filter(
+    (mes) => !["quitada", "descontado", "liquidada"].includes(String(mes.status)),
+  );
+  const parcelasQuitadasForaDoCiclo = mesesNaoPagos.filter((mes) =>
+    ["quitada", "descontado", "liquidada"].includes(String(mes.status)),
+  );
   if (!ciclos.length && !mesesNaoPagos.length) {
     return <p className="text-sm text-muted-foreground">Nenhum ciclo encontrado.</p>;
   }
@@ -161,12 +167,22 @@ function AssociadoCiclosPanel({ associadoId }: { associadoId: number }) {
               </div>
             </TabsTrigger>
           ))}
-          {mesesNaoPagos.length ? (
+          {parcelasNaoDescontadas.length ? (
             <TabsTrigger value="nao-pagos">
               <div className="flex flex-col items-start">
                 <span>Parcelas não descontadas</span>
                 <span className="text-[10px] font-mono text-muted-foreground">
-                  {mesesNaoPagos.length} registro(s)
+                  {parcelasNaoDescontadas.length} registro(s)
+                </span>
+              </div>
+            </TabsTrigger>
+          ) : null}
+          {parcelasQuitadasForaDoCiclo.length ? (
+            <TabsTrigger value="quitadas-fora-do-ciclo">
+              <div className="flex flex-col items-start">
+                <span>Quitadas fora do ciclo</span>
+                <span className="text-[10px] font-mono text-muted-foreground">
+                  {parcelasQuitadasForaDoCiclo.length} registro(s)
                 </span>
               </div>
             </TabsTrigger>
@@ -214,10 +230,40 @@ function AssociadoCiclosPanel({ associadoId }: { associadoId: number }) {
             </div>
           </TabsContent>
         ))}
-        {mesesNaoPagos.length ? (
+        {parcelasNaoDescontadas.length ? (
           <TabsContent value="nao-pagos" className="pt-4">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {mesesNaoPagos.map((mes) => (
+              {parcelasNaoDescontadas.map((mes) => (
+                <button
+                  key={mes.id}
+                  type="button"
+                  onClick={() =>
+                    setSelectedTarget({
+                      contratoId: mes.contrato_id,
+                      referenciaMes: mes.referencia_mes,
+                      kind: "unpaid",
+                    })
+                  }
+                  className="rounded-2xl border border-border/60 bg-background/70 p-4 text-left transition hover:border-primary/50"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="font-medium">{formatMonthYear(mes.referencia_mes)}</p>
+                    <StatusBadge status={mes.status} />
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">{mes.contrato_codigo}</p>
+                  <p className="text-sm text-muted-foreground">{formatCurrency(mes.valor)}</p>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {mes.observacao || "Sem observação."}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </TabsContent>
+        ) : null}
+        {parcelasQuitadasForaDoCiclo.length ? (
+          <TabsContent value="quitadas-fora-do-ciclo" className="pt-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {parcelasQuitadasForaDoCiclo.map((mes) => (
                 <button
                   key={mes.id}
                   type="button"

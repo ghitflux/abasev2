@@ -1,5 +1,6 @@
 import logging
 
+from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
@@ -18,6 +19,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from core.pagination import StandardResultsSetPagination
 
 from .mobile_legacy_auth import build_password_reset_request, consume_password_reset_token
+from .mobile_maintenance import enforce_mobile_maintenance, enforce_mobile_maintenance_for_user
 from .models import PasswordResetRequest, Role, User
 from .permissions import IsCoordenadorOrAdmin
 from .services import AgentPortfolioRedistributionService, ComissaoService
@@ -94,6 +96,7 @@ class RegisterView(APIView):
 
     @extend_schema(request=SelfServiceRegisterSerializer, responses={201: SelfServiceRegisterSerializer})
     def post(self, request):
+        enforce_mobile_maintenance()
         serializer = SelfServiceRegisterSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         return Response(serializer.save(), status=status.HTTP_201_CREATED)
@@ -108,6 +111,7 @@ class ForgotPasswordView(APIView):
         responses={200: PasswordResetResultSerializer},
     )
     def post(self, request):
+        enforce_mobile_maintenance()
         serializer = SelfServiceForgotPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -137,6 +141,7 @@ class ResetPasswordView(APIView):
     )
     @transaction.atomic
     def post(self, request):
+        enforce_mobile_maintenance()
         serializer = SelfServiceResetPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -259,6 +264,7 @@ class AgentManualPasswordResetView(APIView):
 class MeView(APIView):
     @extend_schema(responses={200: UserSerializer})
     def get(self, request):
+        enforce_mobile_maintenance_for_user(request.user)
         return Response(UserSerializer(request.user).data, status=status.HTTP_200_OK)
 
 

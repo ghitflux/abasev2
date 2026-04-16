@@ -349,6 +349,12 @@ class EsteiraOverrideWriteSerializer(serializers.Serializer):
     observacao = serializers.CharField(required=False, allow_blank=True)
 
 
+class RenewalStageTransitionWriteSerializer(serializers.Serializer):
+    contrato_id = serializers.IntegerField()
+    motivo = serializers.CharField()
+    target_stage = serializers.CharField()
+
+
 class SaveAllContratoCoreWriteSerializer(serializers.Serializer):
     updated_at = serializers.DateTimeField(required=False, allow_null=True)
     status = serializers.CharField(required=False, allow_blank=True)
