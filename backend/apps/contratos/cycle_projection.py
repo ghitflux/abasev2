@@ -2003,7 +2003,7 @@ def _build_manual_contract_projection(
             ciclo.numero == total_cycle_count
             and refinanciamento_operacional is None
             and paid_count >= threshold
-            and projected_cycle_status != Ciclo.Status.CICLO_RENOVADO
+            and projected_cycle_status not in CONCLUDED_CYCLE_STATUSES
         ):
             projected_cycle_status = Ciclo.Status.APTO_A_RENOVAR
         if (

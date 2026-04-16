@@ -19,6 +19,7 @@ from apps.contratos.cycle_projection import (
     build_contract_cycle_projection,
     is_contract_eligible_for_renewal_competencia,
     resolve_associado_mother_status,
+    resolve_current_renewal_competencia,
     sync_associado_mother_status,
 )
 from apps.contratos.cycle_rebuild import rebind_financial_links_by_reference
@@ -31,7 +32,7 @@ from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.contratos.small_value_rules import is_dedicated_small_value_contract
 from apps.esteira.models import EsteiraItem, Transicao
 from apps.importacao.models import ArquivoRetornoItem
-from apps.refinanciamento.models import Comprovante, Refinanciamento
+from apps.refinanciamento.models import Assumption, Comprovante, Item, Refinanciamento
 from apps.tesouraria.models import BaixaManual, LiquidacaoContratoItem
 from core.file_references import build_filefield_reference
 
@@ -370,6 +371,97 @@ def _build_contract_layout_warnings(
         seen.add(key)
         unique_warnings.append(warning)
     return unique_warnings
+
+
+def _renewal_stage_label(value: str) -> str:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return "Sem fila operacional materializada"
+    return SAFE_RENEWAL_STAGE_LABELS.get(
+        normalized,
+        normalized.replace("_", " ").capitalize(),
+    )
+
+
+def _latest_projection_cycle(projection: dict[str, Any]) -> dict[str, Any] | None:
+    cycles = list(sorted(projection.get("cycles") or [], key=lambda item: item["numero"]))
+    return cycles[-1] if cycles else None
+
+
+def _is_paid_projection_status(value: Any) -> bool:
+    return str(value or "") in {
+        Parcela.Status.DESCONTADO,
+        Parcela.Status.LIQUIDADA,
+        "quitada",
+    }
+
+
+def _build_renewal_queue_warnings(
+    contrato: Contrato,
+    *,
+    projection: dict[str, Any],
+    refinanciamento_ativo: Refinanciamento | None,
+) -> list[dict[str, Any]]:
+    latest_cycle = _latest_projection_cycle(projection)
+    latest_cycle_status = str((latest_cycle or {}).get("status") or "")
+    latest_cycle_parcelas = list((latest_cycle or {}).get("parcelas") or [])
+    projection_status = ""
+    if (
+        latest_cycle_status == Ciclo.Status.APTO_A_RENOVAR
+        and is_contract_eligible_for_renewal_competencia(
+            contrato,
+            projection=projection,
+            parcelas=latest_cycle_parcelas,
+        )
+    ):
+        projection_status = Refinanciamento.Status.APTO_A_RENOVAR
+    current_competencia = resolve_current_renewal_competencia()
+
+    if projection_status == Refinanciamento.Status.APTO_A_RENOVAR and refinanciamento_ativo is None:
+        return [
+            _warning_payload(
+                code="renewal_queue_missing",
+                contrato=contrato,
+                message=(
+                    "O contrato aparece como apto na projeção, mas não possui linha operacional "
+                    "materializada na fila de renovação."
+                ),
+                details={
+                    "projection_status": projection_status,
+                    "projection_status_label": _renewal_stage_label(projection_status),
+                    "operational_status": "",
+                    "operational_status_label": _renewal_stage_label(""),
+                    "competencia_atual": current_competencia.isoformat(),
+                },
+            )
+        ]
+
+    if refinanciamento_ativo is None:
+        return []
+
+    operational_status = str(refinanciamento_ativo.status or "")
+    if projection_status == Refinanciamento.Status.APTO_A_RENOVAR:
+        return []
+
+    return [
+        _warning_payload(
+            code="renewal_queue_divergence",
+            contrato=contrato,
+            message=(
+                "A etapa operacional da renovação permanece ativa, mas a competência atual do contrato "
+                "não sustenta essa posição automaticamente. O admin pode corrigir isso usando "
+                "'Enviar para etapa'."
+            ),
+            details={
+                "projection_status": projection_status,
+                "projection_status_label": _renewal_stage_label(projection_status),
+                "operational_status": operational_status,
+                "operational_status_label": _renewal_stage_label(operational_status),
+                "competencia_atual": current_competencia.isoformat(),
+                "refinanciamento_id": refinanciamento_ativo.id,
+            },
+        )
+    ]
 
 
 def _file_reference_payload(filefield, *, request=None) -> dict[str, Any]:
@@ -1132,6 +1224,13 @@ class AdminOverrideService:
                 }
             )
             payload_warnings.extend(_build_contract_layout_warnings(contrato))
+            payload_warnings.extend(
+                _build_renewal_queue_warnings(
+                    contrato,
+                    projection=projection,
+                    refinanciamento_ativo=refinanciamento_ativo,
+                )
+            )
         return {
             "associado": _serialize_associado(associado),
             "contratos": payload_contracts,
@@ -1244,6 +1343,232 @@ class AdminOverrideService:
             raise ValidationError("Contrato inválido para a transição administrativa.") from exc
 
     @staticmethod
+    def _upsert_refinanciamento_items_from_cycle(
+        *,
+        refinanciamento: Refinanciamento,
+        parcelas: list[dict[str, Any]],
+    ) -> None:
+        paid_parcelas = [
+            parcela for parcela in parcelas if _is_paid_projection_status(parcela.get("status"))
+        ]
+        referencias_pagas = [
+            _parse_optional_date(parcela.get("referencia_mes"))
+            for parcela in paid_parcelas
+        ]
+        referencias_pagas = [referencia for referencia in referencias_pagas if referencia is not None]
+        Item.objects.filter(refinanciamento=refinanciamento).exclude(
+            referencia_month__in=referencias_pagas
+        ).delete()
+
+        for parcela in paid_parcelas:
+            referencia = _parse_optional_date(parcela.get("referencia_mes"))
+            if referencia is None:
+                continue
+            Item.objects.update_or_create(
+                refinanciamento=refinanciamento,
+                referencia_month=referencia,
+                defaults={
+                    "pagamento_mensalidade": None,
+                    "status_code": "1",
+                    "valor": _parse_decimal(parcela.get("valor")),
+                    "import_uuid": "",
+                    "source_file_path": "",
+                },
+            )
+
+    @staticmethod
+    def _ensure_refinanciamento_assumption(
+        *,
+        refinanciamento: Refinanciamento,
+        referencias: list[date],
+        user,
+    ) -> Assumption | None:
+        if not refinanciamento.cycle_key:
+            return None
+        now = timezone.now()
+        assumption, _created = Assumption.objects.update_or_create(
+            cadastro=refinanciamento.associado,
+            request_key=refinanciamento.cycle_key,
+            defaults={
+                "cpf_cnpj": refinanciamento.associado.cpf_cnpj,
+                "refs_json": [referencia.isoformat() for referencia in referencias],
+                "solicitado_por": refinanciamento.solicitado_por or user,
+                "status": Assumption.Status.LIBERADO,
+                "solicitado_em": refinanciamento.created_at or now,
+                "liberado_em": now,
+                "assumido_em": None,
+                "finalizado_em": None,
+                "analista": None,
+                "heartbeat_at": None,
+            },
+        )
+        return assumption
+
+    @staticmethod
+    def _materialize_safe_transition_refinanciamento(
+        *,
+        contrato: Contrato,
+        projection: dict[str, Any],
+        user,
+    ) -> Refinanciamento:
+        current_cycle = _latest_projection_cycle(projection)
+        if current_cycle is None:
+            raise ValidationError(
+                "O contrato não possui ciclo projetado para materializar a fila operacional."
+            )
+
+        current_ciclo = (
+            contrato.ciclos.filter(
+                deleted_at__isnull=True,
+                numero=int(current_cycle["numero"]),
+            )
+            .order_by("id")
+            .first()
+        )
+        if current_ciclo is None:
+            raise ValidationError(
+                "O ciclo operacional de referência não foi encontrado para este contrato."
+            )
+
+        referencias = [
+            _parse_optional_date(parcela.get("referencia_mes"))
+            for parcela in list(current_cycle.get("parcelas") or [])
+        ]
+        referencias = [referencia for referencia in referencias if referencia is not None]
+        if not referencias:
+            fallback_referencia = (
+                _parse_optional_date(current_cycle.get("data_fim"))
+                or resolve_current_renewal_competencia()
+            )
+            referencias = [fallback_referencia]
+
+        cycle_key = "|".join(referencia.strftime("%Y-%m") for referencia in referencias)
+        competencia_solicitada = max(referencias).replace(day=1)
+        parcelas = list(current_cycle.get("parcelas") or [])
+        paid_count = sum(
+            1 for parcela in parcelas if _is_paid_projection_status(parcela.get("status"))
+        )
+
+        reusable = (
+            Refinanciamento.objects.filter(
+                contrato_origem=contrato,
+                deleted_at__isnull=True,
+                legacy_refinanciamento_id__isnull=True,
+                origem=Refinanciamento.Origem.OPERACIONAL,
+                ciclo_destino__isnull=True,
+                executado_em__isnull=True,
+                data_ativacao_ciclo__isnull=True,
+            )
+            .filter(cycle_key=cycle_key)
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        if reusable is None:
+            reusable = (
+                Refinanciamento.objects.filter(
+                    contrato_origem=contrato,
+                    deleted_at__isnull=True,
+                    legacy_refinanciamento_id__isnull=True,
+                    origem=Refinanciamento.Origem.OPERACIONAL,
+                    ciclo_destino__isnull=True,
+                    executado_em__isnull=True,
+                    data_ativacao_ciclo__isnull=True,
+                    competencia_solicitada=competencia_solicitada,
+                )
+                .order_by("-created_at", "-id")
+                .first()
+            )
+
+        defaults = {
+            "associado": contrato.associado,
+            "contrato_origem": contrato,
+            "solicitado_por": user,
+            "competencia_solicitada": competencia_solicitada,
+            "status": Refinanciamento.Status.PENDENTE_APTO,
+            "ciclo_origem": current_ciclo,
+            "ciclo_destino": None,
+            "valor_refinanciamento": contrato.valor_liquido or contrato.valor_total_antecipacao,
+            "repasse_agente": contrato.comissao_agente,
+            "mode": "admin_safe_transition",
+            "origem": Refinanciamento.Origem.OPERACIONAL,
+            "cycle_key": cycle_key,
+            "ref1": referencias[0] if referencias else None,
+            "ref2": referencias[1] if len(referencias) > 1 else None,
+            "ref3": referencias[2] if len(referencias) > 2 else None,
+            "ref4": referencias[3] if len(referencias) > 3 else None,
+            "cpf_cnpj_snapshot": contrato.associado.cpf_cnpj,
+            "nome_snapshot": contrato.associado.nome_completo,
+            "agente_snapshot": contrato.agente.full_name if contrato.agente else "",
+            "contrato_codigo_origem": contrato.codigo,
+            "contrato_codigo_novo": "",
+            "parcelas_ok": paid_count,
+            "parcelas_json": [
+                {
+                    "referencia_month": referencia.isoformat(),
+                    "status_code": "1",
+                    "valor": str(contrato.valor_mensalidade),
+                }
+                for referencia in referencias[:paid_count]
+            ],
+            "data_ativacao_ciclo": None,
+            "executado_em": None,
+            "motivo_bloqueio": "",
+            "observacao": "",
+            "analista_note": "",
+            "coordenador_note": "",
+            "reviewed_by": None,
+            "reviewed_at": None,
+            "aprovado_por": None,
+            "bloqueado_por": None,
+            "efetivado_por": None,
+            "termo_antecipacao_path": "",
+            "termo_antecipacao_original_name": "",
+            "termo_antecipacao_mime": "",
+            "termo_antecipacao_size_bytes": None,
+            "termo_antecipacao_uploaded_at": None,
+        }
+
+        if reusable is None:
+            refinanciamento = Refinanciamento.objects.create(**defaults)
+        else:
+            refinanciamento = reusable
+            changed_fields: list[str] = []
+            for field, value in defaults.items():
+                if getattr(refinanciamento, field) != value:
+                    setattr(refinanciamento, field, value)
+                    changed_fields.append(field)
+            if changed_fields:
+                refinanciamento.save(update_fields=[*changed_fields, "updated_at"])
+
+        duplicates = (
+            Refinanciamento.objects.filter(
+                contrato_origem=contrato,
+                deleted_at__isnull=True,
+                legacy_refinanciamento_id__isnull=True,
+                origem=Refinanciamento.Origem.OPERACIONAL,
+                ciclo_destino__isnull=True,
+                executado_em__isnull=True,
+                data_ativacao_ciclo__isnull=True,
+                cycle_key=cycle_key,
+            )
+            .exclude(pk=refinanciamento.pk)
+            .order_by("-created_at", "-id")
+        )
+        for duplicate in duplicates:
+            duplicate.soft_delete()
+
+        AdminOverrideService._upsert_refinanciamento_items_from_cycle(
+            refinanciamento=refinanciamento,
+            parcelas=parcelas,
+        )
+        AdminOverrideService._ensure_refinanciamento_assumption(
+            refinanciamento=refinanciamento,
+            referencias=referencias,
+            user=user,
+        )
+        return refinanciamento
+
+    @staticmethod
     def _force_refinanciamento_status(
         *,
         refinanciamento: Refinanciamento,
@@ -1251,8 +1576,6 @@ class AdminOverrideService:
         motivo: str,
         user,
     ) -> Refinanciamento:
-        from apps.refinanciamento.models import Assumption
-
         normalized = target_status
         if normalized == Refinanciamento.Status.EFETIVADO:
             raise ValidationError(
@@ -1305,6 +1628,7 @@ class AdminOverrideService:
             )
         if assumption is not None:
             if normalized in {
+                Refinanciamento.Status.APTO_A_RENOVAR,
                 Refinanciamento.Status.EM_ANALISE_RENOVACAO,
                 Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
             }:
@@ -1312,6 +1636,8 @@ class AdminOverrideService:
                 assumption.liberado_em = timezone.now()
                 assumption.assumido_em = None
                 assumption.finalizado_em = None
+                if normalized == Refinanciamento.Status.APTO_A_RENOVAR:
+                    assumption.analista = None
                 assumption.heartbeat_at = None
                 assumption.save(
                     update_fields=[
@@ -1319,20 +1645,30 @@ class AdminOverrideService:
                         "liberado_em",
                         "assumido_em",
                         "finalizado_em",
+                        "analista",
                         "heartbeat_at",
                         "updated_at",
                     ]
                 )
-            elif normalized == Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO:
+            elif normalized in {
+                Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
+                Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+                Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+                Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
+            }:
                 assumption.status = Assumption.Status.FINALIZADO
                 if assumption.analista_id is None:
                     assumption.analista = user
                 assumption.finalizado_em = timezone.now()
+                assumption.assumido_em = None
+                assumption.heartbeat_at = None
                 assumption.save(
                     update_fields=[
                         "status",
                         "analista",
                         "finalizado_em",
+                        "assumido_em",
+                        "heartbeat_at",
                         "updated_at",
                     ]
                 )
@@ -1436,141 +1772,36 @@ class AdminOverrideService:
         if target_stage not in SAFE_RENEWAL_STAGE_LABELS:
             raise ValidationError("Etapa de renovação inválida para transição administrativa.")
 
-        from apps.refinanciamento.services import RefinanciamentoService
-
-        projection, refinanciamento = RefinanciamentoService._sync_contract_and_get_refi(contrato)
-        normalized_projection_status = str(projection.get("status_renovacao") or "")
-        normalized_current = (
-            str(refinanciamento.status or "")
-            if refinanciamento is not None
-            else normalized_projection_status
+        rebuild_contract_cycle_state(
+            contrato,
+            execute=True,
+            force_active_operational_status=Refinanciamento.Status.PENDENTE_APTO,
         )
-
-        if target_stage == Refinanciamento.Status.APTO_A_RENOVAR:
-            if refinanciamento is not None:
-                AdminOverrideService._force_refinanciamento_status(
-                    refinanciamento=refinanciamento,
-                    target_status=target_stage,
-                    motivo=motivo,
-                    user=user,
-                )
-            else:
-                if normalized_projection_status != Refinanciamento.Status.APTO_A_RENOVAR:
-                    raise ValidationError(
-                        "O contrato não está elegível para voltar à fila apta na competência atual."
-                    )
-        elif target_stage == Refinanciamento.Status.EM_ANALISE_RENOVACAO:
-            if refinanciamento is None:
-                raise ValidationError(
-                    "A fila operacional de renovação não pôde ser materializada para este contrato."
-                )
-            AdminOverrideService._force_refinanciamento_status(
-                refinanciamento=refinanciamento,
-                target_status=target_stage,
-                motivo=motivo,
+        contrato.refresh_from_db()
+        projection = AdminOverrideService.build_contract_projection_for_response(
+            contrato,
+            include_documents=False,
+        )
+        refinanciamento = _active_operational_refinanciamento(contrato)
+        if refinanciamento is None:
+            refinanciamento = AdminOverrideService._materialize_safe_transition_refinanciamento(
+                contrato=contrato,
+                projection=projection,
                 user=user,
             )
-        elif target_stage == Refinanciamento.Status.PENDENTE_TERMO_AGENTE:
-            if refinanciamento is None:
-                raise ValidationError("Nenhuma renovação operacional ativa foi encontrada.")
-            if normalized_current in {
-                Refinanciamento.Status.EM_ANALISE_RENOVACAO,
-                Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
-            }:
-                RefinanciamentoService.devolver_para_agente(
-                    refinanciamento.id,
-                    user,
-                    motivo,
-                )
-            else:
-                AdminOverrideService._force_refinanciamento_status(
-                    refinanciamento=refinanciamento,
-                    target_status=target_stage,
-                    motivo=motivo,
-                    user=user,
-                )
-        elif target_stage == Refinanciamento.Status.PENDENTE_TERMO_ANALISTA:
-            if refinanciamento is None:
-                raise ValidationError("Nenhuma renovação operacional ativa foi encontrada.")
-            if normalized_current == Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO:
-                RefinanciamentoService.devolver_para_analise(
-                    refinanciamento.id,
-                    user,
-                    motivo,
-                )
-            else:
-                AdminOverrideService._force_refinanciamento_status(
-                    refinanciamento=refinanciamento,
-                    target_status=target_stage,
-                    motivo=motivo,
-                    user=user,
-                )
-        elif target_stage == Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO:
-            if refinanciamento is None:
-                raise ValidationError("Nenhuma renovação operacional ativa foi encontrada.")
-            if normalized_current in {
-                Refinanciamento.Status.EM_ANALISE_RENOVACAO,
-                Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
-            }:
-                RefinanciamentoService.assumir_analise(refinanciamento.id, user)
-                RefinanciamentoService.aprovar_analise(
-                    refinanciamento.id,
-                    user,
-                    motivo,
-                )
-            else:
-                AdminOverrideService._force_refinanciamento_status(
-                    refinanciamento=refinanciamento,
-                    target_status=target_stage,
-                    motivo=motivo,
-                    user=user,
-                )
-        elif target_stage == Refinanciamento.Status.APROVADO_PARA_RENOVACAO:
-            if refinanciamento is None:
-                raise ValidationError("Nenhuma renovação operacional ativa foi encontrada.")
-            if normalized_current in {
-                Refinanciamento.Status.EM_ANALISE_RENOVACAO,
-                Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
-            }:
-                RefinanciamentoService.assumir_analise(refinanciamento.id, user)
-                refinanciamento = RefinanciamentoService.aprovar_analise(
-                    refinanciamento.id,
-                    user,
-                    motivo,
-                )
-                normalized_current = str(refinanciamento.status or "")
-            if normalized_current == Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO:
-                RefinanciamentoService.aprovar(refinanciamento.id, user, motivo)
-            else:
-                AdminOverrideService._force_refinanciamento_status(
-                    refinanciamento=refinanciamento,
-                    target_status=target_stage,
-                    motivo=motivo,
-                    user=user,
-                )
-        elif target_stage == Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO:
-            if normalized_current == Refinanciamento.Status.APTO_A_RENOVAR:
-                RefinanciamentoService.solicitar_liquidacao(contrato.id, user)
-            elif refinanciamento is not None and normalized_current in {
-                Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
-                Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
-            }:
-                RefinanciamentoService.encaminhar_para_liquidacao(
-                    refinanciamento.id,
-                    user,
-                    motivo,
-                )
-            elif refinanciamento is not None:
-                AdminOverrideService._force_refinanciamento_status(
-                    refinanciamento=refinanciamento,
-                    target_status=target_stage,
-                    motivo=motivo,
-                    user=user,
-                )
-            else:
-                raise ValidationError("Nenhuma renovação operacional ativa foi encontrada.")
 
-        rebuild_contract_cycle_state(contrato, execute=True)
+        AdminOverrideService._force_refinanciamento_status(
+            refinanciamento=refinanciamento,
+            target_status=target_stage,
+            motivo=motivo,
+            user=user,
+        )
+
+        rebuild_contract_cycle_state(
+            contrato,
+            execute=True,
+            force_active_operational_status=target_stage,
+        )
         sync_associado_mother_status(associado)
         associado.refresh_from_db()
         return AdminOverrideService.build_associado_editor_payload(associado)
@@ -2305,13 +2536,6 @@ class AdminOverrideService:
                         }
                         for row in rows
                     ],
-                }
-            )
-        if duplicate_conflicts:
-            raise ValidationError(
-                {
-                    "detail": "Não é permitido manter competências duplicadas ativas no mesmo contrato.",
-                    "conflicts": duplicate_conflicts,
                 }
             )
 

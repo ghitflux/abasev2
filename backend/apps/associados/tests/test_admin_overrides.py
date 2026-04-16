@@ -322,6 +322,88 @@ class AdminOverrideApiTestCase(TestCase):
             ).exists()
         )
 
+    def test_editor_warns_when_projection_is_apto_but_operational_queue_is_missing(self):
+        contrato = Contrato.objects.create(
+            associado=self.associado,
+            agente=self.agent,
+            status=Contrato.Status.ATIVO,
+            valor_bruto=Decimal("900.00"),
+            valor_liquido=Decimal("900.00"),
+            valor_mensalidade=Decimal("300.00"),
+            prazo_meses=3,
+            taxa_antecipacao=Decimal("30.00"),
+            margem_disponivel=Decimal("900.00"),
+            valor_total_antecipacao=Decimal("900.00"),
+            doacao_associado=Decimal("0.00"),
+            comissao_agente=Decimal("30.00"),
+            data_contrato=date(2026, 2, 1),
+        )
+        contrato.admin_manual_layout_enabled = True
+        contrato.save(update_fields=["admin_manual_layout_enabled", "updated_at"])
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 2, 1),
+            data_fim=date(2026, 4, 1),
+            status=Ciclo.Status.APTO_A_RENOVAR,
+            valor_total=Decimal("900.00"),
+        )
+        for index, referencia in enumerate(
+            [date(2026, 2, 1), date(2026, 3, 1), date(2026, 4, 1)],
+            start=1,
+        ):
+            Parcela.objects.create(
+                ciclo=ciclo,
+                associado=self.associado,
+                numero=index,
+                referencia_mes=referencia,
+                valor=Decimal("300.00"),
+                data_vencimento=referencia,
+                status=Parcela.Status.DESCONTADO,
+                data_pagamento=referencia,
+            )
+
+        response = self.admin_client.get(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/editor/"
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        warning_codes = {warning["code"] for warning in response.json()["warnings"]}
+        self.assertIn("renewal_queue_missing", warning_codes)
+
+    def test_admin_can_force_contract_back_to_apto_even_without_current_competencia_match(self):
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/renewal-stage/",
+            {
+                "contrato_id": self.contrato.id,
+                "target_stage": Refinanciamento.Status.APTO_A_RENOVAR,
+                "motivo": "Forçar retorno para aptos pela correção administrativa",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        refinanciamento = (
+            Refinanciamento.objects.filter(
+                contrato_origem=self.contrato,
+                origem=Refinanciamento.Origem.OPERACIONAL,
+                deleted_at__isnull=True,
+            )
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        self.assertIsNotNone(refinanciamento)
+        assert refinanciamento is not None
+        self.assertEqual(refinanciamento.status, Refinanciamento.Status.APTO_A_RENOVAR)
+        self.assertTrue(refinanciamento.cycle_key)
+
+        self.esteira.refresh_from_db()
+        self.assertEqual(self.esteira.etapa_atual, EsteiraItem.Etapa.ANALISE)
+        self.assertEqual(self.esteira.status, EsteiraItem.Situacao.AGUARDANDO)
+
+        warning_codes = {warning["code"] for warning in response.json()["warnings"]}
+        self.assertIn("renewal_queue_divergence", warning_codes)
+
     def test_save_all_allows_november_reference_inside_cycle(self):
         response = self.admin_client.post(
             f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",

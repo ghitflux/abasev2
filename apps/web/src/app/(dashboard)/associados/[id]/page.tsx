@@ -537,6 +537,9 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
       ),
     onSuccess: async (payload) => {
       toast.success("Etapa de renovação atualizada.");
+      if (payload.warnings?.length) {
+        toast.warning(formatAdminWarnings(payload.warnings));
+      }
       queryClient.setQueryData(
         ["admin-associado-editor", associadoId],
         payload,
