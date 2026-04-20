@@ -575,6 +575,63 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         )
         self.assertIsNone(refinanciamento.executado_em)
 
+    def test_coordenacao_pode_substituir_termo_agente_na_tesouraria(self):
+        contrato = self._create_contrato("62345678942")
+        self._create_pagamento(contrato, date(2026, 1, 1))
+        self._create_pagamento(contrato, date(2026, 2, 1))
+        self._create_pagamento(contrato, date(2026, 3, 1))
+        request = self._solicitar_refinanciamento(contrato)
+        self.assertEqual(request.status_code, 201, request.json())
+        refinanciamento_id = request.json()["id"]
+
+        self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/assumir_analise/"
+        )
+        self.analyst_client.post(
+            f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar_analise/",
+            {"observacao": "Termo ok"},
+            format="json",
+        )
+        self.coord_client.post(f"/api/v1/refinanciamentos/{refinanciamento_id}/aprovar/")
+
+        response = self.coord_client.post(
+            f"/api/v1/tesouraria/refinanciamentos/{refinanciamento_id}/substituir-termo-agente/",
+            {
+                "arquivo": SimpleUploadedFile(
+                    "termo-ajustado.pdf",
+                    b"novo termo",
+                    content_type="application/pdf",
+                ),
+            },
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        refinanciamento = Refinanciamento.objects.get(pk=refinanciamento_id)
+        termo = refinanciamento.comprovantes.get(
+            tipo=Comprovante.Tipo.TERMO_ANTECIPACAO,
+            deleted_at__isnull=True,
+        )
+        self.assertEqual(
+            refinanciamento.status,
+            Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+        )
+        self.assertEqual(termo.nome_original, "termo-ajustado.pdf")
+        self.assertEqual(termo.origem, Comprovante.Origem.TESOURARIA_RENOVACAO)
+        self.assertEqual(termo.enviado_por, self.coordenador)
+        self.assertEqual(refinanciamento.termo_antecipacao_original_name, "termo-ajustado.pdf")
+        self.assertTrue(refinanciamento.termo_antecipacao_path.endswith("termo-ajustado.pdf"))
+        self.assertIsNotNone(refinanciamento.termo_antecipacao_uploaded_at)
+        self.assertFalse(
+            refinanciamento.comprovantes.filter(
+                tipo__in=[
+                    Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+                    Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+                ],
+                deleted_at__isnull=True,
+            ).exists()
+        )
+
     def test_tesouraria_efetiva_refinanciamento_com_comprovantes_ja_anexados(self):
         contrato = self._create_contrato("62345678943")
         self._create_pagamento(contrato, date(2026, 1, 1))
@@ -880,6 +937,7 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         self.assertEqual(refinanciamento.status, Refinanciamento.Status.APROVADO_PARA_RENOVACAO)
         self.assertIsNone(refinanciamento.executado_em)
         self.assertIsNone(refinanciamento.data_ativacao_ciclo)
+        self.assertIsNone(refinanciamento.ciclo_destino_id)
         self.assertEqual(pagamento.status, Pagamento.Status.PENDENTE)
         self.assertIsNone(pagamento.paid_at)
         self.assertFalse(

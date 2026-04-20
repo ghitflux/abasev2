@@ -40,6 +40,7 @@ from .serializers import (
     SolicitarLiquidacaoRefinanciamentoSerializer,
     SolicitarRefinanciamentoSerializer,
     SubstituirComprovanteRefinanciamentoSerializer,
+    SubstituirTermoAgenteRefinanciamentoSerializer,
 )
 from .services import RefinanciamentoService
 
@@ -631,6 +632,8 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
     def get_permissions(self):
         if self.action in {"efetivar", "substituir_comprovante"}:
             return [permissions.IsAuthenticated(), IsTesoureiroOrAdmin()]
+        if self.action == "substituir_termo_agente":
+            return [permissions.IsAuthenticated(), IsCoordenadorOrTesoureiroOrAdmin()]
         if self.action == "retornar_pendente":
             return [permissions.IsAuthenticated(), IsCoordenadorOrTesoureiroOrAdmin()]
         return [permissions.IsAuthenticated(), IsCoordenadorOrTesoureiroOrAdmin()]
@@ -762,13 +765,10 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
         url_path="retornar-pendente",
     )
     def retornar_pendente(self, request, pk=None):
-        try:
-            refinanciamento = RefinanciamentoService.retornar_para_pendente_pagamento(
-                int(pk),
-                request.user,
-            )
-        except Exception as exc:
-            return Response({"detail": str(exc)}, status=400)
+        refinanciamento = RefinanciamentoService.retornar_para_pendente_pagamento(
+            int(pk),
+            request.user,
+        )
         serializer = RefinanciamentoDetailSerializer(
             refinanciamento, context=self.get_serializer_context()
         )
@@ -784,14 +784,11 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
         motivo = (
             request.data.get("motivo") or ""
         ).strip() or "Linha operacional removida manualmente."
-        try:
-            RefinanciamentoService.limpar_linha_operacional(
-                int(pk),
-                motivo=motivo,
-                user=request.user,
-            )
-        except Exception as exc:
-            return Response({"detail": str(exc)}, status=400)
+        RefinanciamentoService.limpar_linha_operacional(
+            int(pk),
+            motivo=motivo,
+            user=request.user,
+        )
         return Response({"detail": "Linha operacional removida."})
 
     @action(detail=True, methods=["post"], parser_classes=[MultiPartParser], url_path="substituir-comprovante")
@@ -801,6 +798,25 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
         refinanciamento = RefinanciamentoService.substituir_comprovante(
             int(pk),
             papel=payload.validated_data["papel"],
+            arquivo=payload.validated_data["arquivo"],
+            user=request.user,
+        )
+        serializer = RefinanciamentoDetailSerializer(
+            refinanciamento, context=self.get_serializer_context()
+        )
+        return Response(serializer.data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        parser_classes=[MultiPartParser],
+        url_path="substituir-termo-agente",
+    )
+    def substituir_termo_agente(self, request, pk=None):
+        payload = SubstituirTermoAgenteRefinanciamentoSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        refinanciamento = RefinanciamentoService.substituir_termo_agente(
+            int(pk),
             arquivo=payload.validated_data["arquivo"],
             user=request.user,
         )

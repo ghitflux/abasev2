@@ -337,6 +337,114 @@ it("separa termo do agente dos comprovantes de pagamento e mostra o valor libera
   ).toHaveLength(0);
 });
 
+it("permite que coordenacao troque o termo do agente sem liberar comprovantes financeiros", async () => {
+  mockUsePermissions.mockReturnValue({
+    hasAnyRole: (roles: string[]) => roles.includes("COORDENADOR"),
+  });
+
+  mockedApiFetch.mockImplementation(async (path, options) => {
+    if (path === "tesouraria/refinanciamentos/resumo") {
+      return {
+        total: 1,
+        em_analise: 0,
+        assumidos: 0,
+        aprovados: 0,
+        efetivados: 0,
+        concluidos: 0,
+        bloqueados: 0,
+        revertidos: 0,
+        desativados: 0,
+        em_fluxo: 1,
+        com_anexo_agente: 0,
+        repasse_total: "73.50",
+      } satisfies RefinanciamentoResumo;
+    }
+
+    if (path === "tesouraria/refinanciamentos") {
+      const status = options?.query?.status;
+      if (Array.isArray(status) && status.includes("aprovado_para_renovacao")) {
+        return {
+          count: 1,
+          next: null,
+          previous: null,
+          results: [
+            buildRefinanciamento({
+              comprovantes: [
+                {
+                  id: 1,
+                  refinanciamento: 1,
+                  contrato: 11,
+                  ciclo: 3,
+                  tipo: "termo_antecipacao",
+                  papel: "agente",
+                  arquivo: "/media/refi/termo.pdf",
+                  arquivo_referencia: "refi/termo.pdf",
+                  arquivo_disponivel_localmente: true,
+                  tipo_referencia: "local",
+                  nome_original: "termo.pdf",
+                  created_at: "2026-04-01T10:00:00Z",
+                },
+              ],
+            }),
+          ],
+        };
+      }
+      return {
+        count: 0,
+        next: null,
+        previous: null,
+        results: [],
+      };
+    }
+
+    if (path === "tesouraria/refinanciamentos/1/substituir-termo-agente") {
+      expect(options).toEqual(
+        expect.objectContaining({
+          method: "POST",
+          formData: expect.any(FormData),
+        }),
+      );
+      return buildRefinanciamento();
+    }
+
+    throw new Error(`Unexpected path: ${String(path)}`);
+  });
+
+  renderPage();
+
+  await screen.findByText("Termo do agente");
+
+  const termoInput = document.getElementById(
+    "renovacao-1-termo-agente",
+  ) as HTMLInputElement;
+  const associadoInput = document.getElementById(
+    "renovacao-1-associado",
+  ) as HTMLInputElement;
+  const agenteInput = document.getElementById(
+    "renovacao-1-agente",
+  ) as HTMLInputElement;
+
+  expect(termoInput.disabled).toBe(false);
+  expect(associadoInput.disabled).toBe(true);
+  expect(agenteInput.disabled).toBe(true);
+
+  fireEvent.change(termoInput, {
+    target: {
+      files: [new File(["novo termo"], "termo-ajustado.pdf", { type: "application/pdf" })],
+    },
+  });
+
+  await waitFor(() =>
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      "tesouraria/refinanciamentos/1/substituir-termo-agente",
+      expect.objectContaining({
+        method: "POST",
+        formData: expect.any(FormData),
+      }),
+    ),
+  );
+});
+
 it("efetiva a renovacao apenas pela acao explicita quando os dois comprovantes ja existem", async () => {
   const user = userEvent.setup();
 

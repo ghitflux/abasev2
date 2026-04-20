@@ -511,6 +511,10 @@ class SubstituirComprovanteRefinanciamentoSerializer(serializers.Serializer):
     arquivo = serializers.FileField(required=True)
 
 
+class SubstituirTermoAgenteRefinanciamentoSerializer(serializers.Serializer):
+    arquivo = serializers.FileField(required=True)
+
+
 class AprovarAnaliseRefinanciamentoSerializer(serializers.Serializer):
     observacao = serializers.CharField(required=False, allow_blank=True, default="")
 

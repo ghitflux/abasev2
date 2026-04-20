@@ -272,14 +272,171 @@ docker run --rm \
 
 ## 16. Fluxo recomendado com Claude Code + Paramiko
 Use o acesso `root` apenas para bootstrap inicial. Depois disso:
-1. Claude Code conecta via Paramiko.
-2. Atualiza o repositório com `git fetch` e `git checkout`.
-3. Sincroniza `.env.production`.
-4. Executa `docker compose up -d --build`.
-5. Executa migrações e checks.
-6. Se houver import de banco/mídia, envia os artefatos para `/opt/abasev2/shared/import`.
-7. Roda restore do MySQL e restore do volume `backend_media`.
-8. Valida `curl`, `docker compose ps` e logs.
+1. Claude Code conecta via Paramiko usando o usuário `deploy`.
+2. Valida localmente o diff antes de gerar commit.
+3. Faz `commit` e `push` do commit alvo para a branch operacional.
+4. Executa backup preventivo no servidor antes de trocar código.
+5. Atualiza o repositório remoto com `git fetch` + `git pull --ff-only`.
+6. Rebuilda apenas os serviços impactados.
+7. Executa migrações e checks.
+8. Valida `curl`, `docker compose ps`, logs e o fluxo funcional alterado.
+9. Se houver falha, faz rollback para o commit anterior e reabre os serviços.
+
+### 16.1 Pré-check local antes do commit
+
+No repositório local:
+
+```bash
+git status --short
+git diff --check
+python -m py_compile \
+  backend/apps/refinanciamento/serializers.py \
+  backend/apps/refinanciamento/views.py \
+  backend/apps/refinanciamento/services.py
+```
+
+Se houver testes direcionados viáveis no ambiente local, rodar antes do commit. Exemplo para esta correção:
+
+```bash
+cd apps/web
+CI=1 npx jest --runTestsByPath 'src/app/(dashboard)/tesouraria/refinanciamentos/page.test.tsx' --runInBand --watchAll=false
+```
+
+Se o ambiente local não tiver banco de teste pronto, registrar isso no relatório do deploy e não inventar "verde" de suíte que não rodou.
+
+### 16.2 Commit e push do hotfix
+
+Adicionar apenas os arquivos do hotfix:
+
+```bash
+git add \
+  backend/apps/refinanciamento/serializers.py \
+  backend/apps/refinanciamento/views.py \
+  backend/apps/refinanciamento/services.py \
+  backend/apps/refinanciamento/tests/test_refinanciamento_pagamentos.py \
+  apps/web/src/app/'(dashboard)'/tesouraria/refinanciamentos/page.tsx \
+  apps/web/src/app/'(dashboard)'/tesouraria/refinanciamentos/page.test.tsx \
+  docs/DEPLOY_HOSTINGER_VPS_PARAMIKO.md
+```
+
+Commit sugerido para esta entrega:
+
+```bash
+git commit -m "tesouraria: corrige voltar para pendente e libera troca do termo"
+```
+
+Push para a branch operacional:
+
+```bash
+git push origin HEAD:abaseprod
+```
+
+Registrar o SHA publicado:
+
+```bash
+git rev-parse HEAD
+```
+
+Regra:
+- não fazer deploy de worktree suja
+- não fazer `push --force`
+- não editar arquivos direto no servidor para "completar" deploy
+
+### 16.3 Sequência segura de deploy remoto via Paramiko
+
+No servidor, o alvo é sempre `/opt/ABASE/repo` e a branch é `abaseprod`.
+
+Ordem exata:
+
+```bash
+cd /opt/ABASE/repo
+bash deploy/hostinger/scripts/backup_now.sh
+git fetch origin
+git checkout abaseprod
+git pull --ff-only origin abaseprod
+git rev-parse HEAD
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml build backend frontend celery
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml up -d backend frontend celery
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml exec -T backend python manage.py migrate
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml exec -T backend python manage.py check
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml exec -T celery celery -A config inspect ping
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml ps
+```
+
+Para este hotfix de tesouraria, rebuild parcial é suficiente porque os arquivos alterados impactam:
+- `backend`
+- `frontend`
+- `celery`
+
+Não há motivo para reiniciar `mysql` ou `redis`.
+
+### 16.4 Validação funcional pós-deploy
+
+Executar no servidor:
+
+```bash
+curl -I https://abasepiaui.com
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml logs backend --tail=100
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml logs frontend --tail=100
+```
+
+Validar manualmente na aplicação:
+- abrir `Tesouraria > Contratos para Renovação`
+- em uma linha `Efetivada`, usar `Voltar para pendente` e confirmar que a linha volta para a seção pendente
+- validar que `Termo do agente` permite `Anexar` ou `Trocar` para `tesouraria`, `coordenação` e `admin`
+- validar que `Comp. associado` e `Comp. agente` continuam sem escrita para coordenação
+
+### 16.5 Rollback curto
+
+Antes do `git pull`, registrar o commit antigo:
+
+```bash
+cd /opt/ABASE/repo
+git rev-parse HEAD
+```
+
+Se o hotfix quebrar produção:
+
+```bash
+cd /opt/ABASE/repo
+git fetch origin
+git checkout <SHA_ANTERIOR_VALIDADO>
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml build backend frontend celery
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml up -d backend frontend celery
+docker compose -p abase --env-file /opt/ABASE/env/.env.production \
+  -f deploy/hostinger/docker-compose.prod.yml exec -T backend python manage.py check
+```
+
+Se houver rollback, registrar:
+- SHA problemático
+- SHA restaurado
+- hora da reversão
+- motivo funcional do rollback
+
+### 16.6 Execução remota por Paramiko
+
+Quando o deploy for automatizado por Paramiko:
+- usar autenticação por chave SSH, nunca senha
+- tratar cada comando remoto como etapa separada com `check=True`
+- abortar no primeiro comando com exit code não zero
+- registrar stdout/stderr de:
+  - `backup_now.sh`
+  - `git rev-parse HEAD`
+  - `docker compose ps`
+  - `manage.py migrate`
+  - `manage.py check`
+- nunca subir dump SQL ou tarball de mídia para dentro de `/opt/ABASE/repo`
+- staging remoto continua em diretórios fora do checkout git
 
 ## 17. Observações de segurança
 - Não exponha `mysql` nem `redis` publicamente.

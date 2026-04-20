@@ -287,6 +287,7 @@ export default function TesourariaRefinanciamentosPage() {
   const currentYear = React.useMemo(() => String(new Date().getFullYear()), []);
   const { hasAnyRole } = usePermissions();
   const canMutate = hasAnyRole(["ADMIN", "TESOUREIRO"]);
+  const canManageTermo = hasAnyRole(["ADMIN", "COORDENADOR", "TESOUREIRO"]);
   const canRemoverFila = hasAnyRole(["ADMIN", "COORDENADOR"]);
   const canRetornarPendente = hasAnyRole(["ADMIN", "COORDENADOR", "TESOUREIRO"]);
   const canLimparLinha = hasAnyRole(["ADMIN", "COORDENADOR"]);
@@ -479,6 +480,37 @@ export default function TesourariaRefinanciamentosPage() {
     },
   });
 
+  const substituirTermoAgenteMutation = useMutation({
+    mutationFn: async ({
+      refinanciamentoId,
+      arquivo,
+    }: {
+      refinanciamentoId: number;
+      arquivo: File;
+    }) => {
+      const formData = new FormData();
+      formData.set("arquivo", arquivo);
+      return apiFetch<RefinanciamentoItem>(
+        `tesouraria/refinanciamentos/${refinanciamentoId}/substituir-termo-agente`,
+        {
+          method: "POST",
+          formData,
+        },
+      );
+    },
+    onSuccess: () => {
+      toast.success("Termo do agente atualizado.");
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos"] });
+      void queryClient.invalidateQueries({ queryKey: ["tesouraria-refinanciamentos-resumo"] });
+      void queryClient.invalidateQueries({ queryKey: ["agente-refinanciados"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error ? error.message : "Falha ao atualizar termo do agente.",
+      );
+    },
+  });
+
   const efetivarMutation = useMutation({
     mutationFn: async ({
       refinanciamentoId,
@@ -626,6 +658,8 @@ export default function TesourariaRefinanciamentosPage() {
             resolveRenewalAttachments(row);
           const hasAllProofs = hasRenewalPaymentProofs(row);
           const isProcessing =
+            (substituirTermoAgenteMutation.isPending &&
+              substituirTermoAgenteMutation.variables?.refinanciamentoId === row.id) ||
             (substituirComprovanteMutation.isPending &&
               substituirComprovanteMutation.variables?.refinanciamentoId ===
                 row.id) ||
@@ -644,7 +678,14 @@ export default function TesourariaRefinanciamentosPage() {
                   existingReference={termoAgente?.arquivo_referencia}
                   existingReferenceType={termoAgente?.tipo_referencia}
                   existingName={termoAgente?.nome_original}
-                  disabled
+                  disabled={!canManageTermo || isProcessing}
+                  onSelect={(file) =>
+                    substituirTermoAgenteMutation.mutate({
+                      refinanciamentoId: row.id,
+                      arquivo: file,
+                    })
+                  }
+                  onClear={() => undefined}
                 />
                 <CompactUploadButton
                   id={`renovacao-${row.id}-associado`}
@@ -844,7 +885,15 @@ export default function TesourariaRefinanciamentosPage() {
         ),
       },
     ],
-    [canMutate, canRemoverFila, efetivarMutation, excluirMutation, substituirComprovanteMutation],
+    [
+      canManageTermo,
+      canMutate,
+      canRemoverFila,
+      efetivarMutation,
+      excluirMutation,
+      substituirComprovanteMutation,
+      substituirTermoAgenteMutation,
+    ],
   );
 
   const historyColumns = React.useMemo<DataTableColumn<RefinanciamentoItem>[]>(
@@ -856,6 +905,11 @@ export default function TesourariaRefinanciamentosPage() {
         cell: (row) => {
           const { termoAgente, comprovanteAssociado, comprovanteAgente } =
             resolveRenewalAttachments(row);
+          const isProcessing =
+            (substituirTermoAgenteMutation.isPending &&
+              substituirTermoAgenteMutation.variables?.refinanciamentoId === row.id) ||
+            (substituirComprovanteMutation.isPending &&
+              substituirComprovanteMutation.variables?.refinanciamentoId === row.id);
 
           return (
             <div className="flex flex-wrap gap-2">
@@ -868,7 +922,14 @@ export default function TesourariaRefinanciamentosPage() {
                 existingReference={termoAgente?.arquivo_referencia}
                 existingReferenceType={termoAgente?.tipo_referencia}
                 existingName={termoAgente?.nome_original}
-                disabled
+                disabled={!canManageTermo || isProcessing}
+                onSelect={(file) =>
+                  substituirTermoAgenteMutation.mutate({
+                    refinanciamentoId: row.id,
+                    arquivo: file,
+                  })
+                }
+                onClear={() => undefined}
               />
               <CompactUploadButton
                 id={`readonly-${row.id}-associado`}
@@ -881,7 +942,7 @@ export default function TesourariaRefinanciamentosPage() {
                 existingReference={comprovanteAssociado?.arquivo_referencia}
                 existingReferenceType={comprovanteAssociado?.tipo_referencia}
                 existingName={comprovanteAssociado?.nome_original}
-                disabled={!canMutate}
+                disabled={!canMutate || isProcessing}
                 onSelect={(file) =>
                   substituirComprovanteMutation.mutate({
                     refinanciamentoId: row.id,
@@ -902,7 +963,7 @@ export default function TesourariaRefinanciamentosPage() {
                 existingReference={comprovanteAgente?.arquivo_referencia}
                 existingReferenceType={comprovanteAgente?.tipo_referencia}
                 existingName={comprovanteAgente?.nome_original}
-                disabled={!canMutate}
+                disabled={!canMutate || isProcessing}
                 onSelect={(file) =>
                   substituirComprovanteMutation.mutate({
                     refinanciamentoId: row.id,
@@ -1040,11 +1101,13 @@ export default function TesourariaRefinanciamentosPage() {
     ],
     [
       canLimparLinha,
+      canManageTermo,
       canMutate,
       canRetornarPendente,
       limparLinhaMutation,
       retornarPendenteMutation,
       substituirComprovanteMutation,
+      substituirTermoAgenteMutation,
     ],
   );
 

@@ -130,6 +130,20 @@ class RefinanciamentoService:
         )
 
     @staticmethod
+    def _latest_termo_comprovante(
+        refinanciamento: Refinanciamento,
+    ) -> Comprovante | None:
+        return (
+            refinanciamento.comprovantes.filter(
+                deleted_at__isnull=True,
+                tipo=Comprovante.Tipo.TERMO_ANTECIPACAO,
+                papel=Comprovante.Papel.AGENTE,
+            )
+            .order_by("-updated_at", "-created_at", "-id")
+            .first()
+        )
+
+    @staticmethod
     def _upsert_payment_comprovante(
         refinanciamento: Refinanciamento,
         *,
@@ -157,6 +171,56 @@ class RefinanciamentoService:
             "arquivo_referencia_path": "",
             "enviado_por": user,
             "data_pagamento": data_pagamento,
+            "agente_snapshot": contrato.agente.full_name if contrato and contrato.agente else "",
+        }
+        if comprovante is None:
+            return Comprovante.objects.create(**payload)
+
+        for field, value in payload.items():
+            setattr(comprovante, field, value)
+        comprovante.save(
+            update_fields=[
+                "contrato",
+                "ciclo",
+                "tipo",
+                "papel",
+                "origem",
+                "arquivo",
+                "nome_original",
+                "mime",
+                "size_bytes",
+                "arquivo_referencia_path",
+                "enviado_por",
+                "data_pagamento",
+                "agente_snapshot",
+                "updated_at",
+            ]
+        )
+        return comprovante
+
+    @staticmethod
+    def _upsert_termo_comprovante(
+        refinanciamento: Refinanciamento,
+        *,
+        arquivo,
+        user,
+    ) -> Comprovante:
+        comprovante = RefinanciamentoService._latest_termo_comprovante(refinanciamento)
+        contrato = refinanciamento.contrato_origem
+        payload = {
+            "refinanciamento": refinanciamento,
+            "contrato": contrato,
+            "ciclo": refinanciamento.ciclo_origem,
+            "tipo": Comprovante.Tipo.TERMO_ANTECIPACAO,
+            "papel": Comprovante.Papel.AGENTE,
+            "origem": Comprovante.Origem.TESOURARIA_RENOVACAO,
+            "arquivo": arquivo,
+            "nome_original": getattr(arquivo, "name", ""),
+            "mime": getattr(arquivo, "content_type", "") or "",
+            "size_bytes": getattr(arquivo, "size", None),
+            "arquivo_referencia_path": "",
+            "enviado_por": user,
+            "data_pagamento": None,
             "agente_snapshot": contrato.agente.full_name if contrato and contrato.agente else "",
         }
         if comprovante is None:
@@ -983,6 +1047,7 @@ class RefinanciamentoService:
         refinanciamento.observacao = "Renovação devolvida para pendente de pagamento."
         refinanciamento.executado_em = None
         refinanciamento.data_ativacao_ciclo = None
+        refinanciamento.ciclo_destino = None
         refinanciamento.save(
             update_fields=[
                 "status",
@@ -992,6 +1057,7 @@ class RefinanciamentoService:
                 "observacao",
                 "executado_em",
                 "data_ativacao_ciclo",
+                "ciclo_destino",
                 "updated_at",
             ]
         )
@@ -1030,12 +1096,19 @@ class RefinanciamentoService:
                 ]
             )
 
-        RefinanciamentoService._registrar_auditoria(
-            refinanciamento.contrato_origem,
-            user,
-            "retornar_refinanciamento_para_pendente_pagamento",
-            "Renovação devolvida para pendente de pagamento na fila da tesouraria.",
-        )
+        contrato = refinanciamento.contrato_origem
+        if contrato is not None:
+            rebuild_contract_cycle_state(contrato, execute=True)
+            sync_associado_mother_status(contrato.associado)
+            refinanciamento.refresh_from_db()
+
+        if contrato is not None:
+            RefinanciamentoService._registrar_auditoria(
+                contrato,
+                user,
+                "retornar_refinanciamento_para_pendente_pagamento",
+                "Renovação devolvida para pendente de pagamento na fila da tesouraria.",
+            )
         return refinanciamento
 
     @staticmethod
@@ -1222,5 +1295,37 @@ class RefinanciamentoService:
                 ]
             )
 
+        refinanciamento.refresh_from_db()
+        return refinanciamento
+
+    @staticmethod
+    @transaction.atomic
+    def substituir_termo_agente(
+        refinanciamento_id: int,
+        *,
+        arquivo,
+        user,
+    ) -> Refinanciamento:
+        refinanciamento = RefinanciamentoService._get_refinanciamento(refinanciamento_id)
+        comprovante = RefinanciamentoService._upsert_termo_comprovante(
+            refinanciamento,
+            arquivo=arquivo,
+            user=user,
+        )
+        refinanciamento.termo_antecipacao_path = comprovante.arquivo_referencia
+        refinanciamento.termo_antecipacao_original_name = comprovante.nome_original
+        refinanciamento.termo_antecipacao_mime = comprovante.mime
+        refinanciamento.termo_antecipacao_size_bytes = comprovante.size_bytes
+        refinanciamento.termo_antecipacao_uploaded_at = timezone.now()
+        refinanciamento.save(
+            update_fields=[
+                "termo_antecipacao_path",
+                "termo_antecipacao_original_name",
+                "termo_antecipacao_mime",
+                "termo_antecipacao_size_bytes",
+                "termo_antecipacao_uploaded_at",
+                "updated_at",
+            ]
+        )
         refinanciamento.refresh_from_db()
         return refinanciamento
