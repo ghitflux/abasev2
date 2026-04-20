@@ -326,12 +326,21 @@ def _sync_refinanciamentos(
             refinanciamento.save(update_fields=[*changed_fields, "updated_at"])
             report.refinanciamentos_ajustados += 1
 
+    active_refis = _active_operational_refis(contrato)
+    chosen = active_refis[0] if active_refis else None
     threshold = max(cycle_size - 1, 1)
     should_have_operational_refi = False
     block_small_value_renewal = is_return_imported_small_value_contract(contrato)
+    manual_layout_requires_explicit_transition = (
+        contrato.admin_manual_layout_enabled and force_active_operational_status is None
+    )
     if current_cycle is not None and cycle_by_number:
         if force_active_operational_status is not None and not block_small_value_renewal:
             should_have_operational_refi = True
+        elif manual_layout_requires_explicit_transition:
+            # Admin manual layout can project an apt renewal, but the operational
+            # row must only be created by the explicit safe transition endpoint.
+            should_have_operational_refi = bool(chosen)
         else:
             paid_count = sum(
                 1
@@ -343,9 +352,6 @@ def _sync_refinanciamentos(
                 and paid_count >= threshold
                 and len(cycle_by_number) == len(desired_cycles)
             )
-
-    active_refis = _active_operational_refis(contrato)
-    chosen = active_refis[0] if active_refis else None
     if should_have_operational_refi and current_cycle is not None:
         current_number = current_cycle["numero"]
         current_ciclo = cycle_by_number[current_number]

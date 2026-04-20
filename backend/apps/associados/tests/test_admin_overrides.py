@@ -856,6 +856,179 @@ class AdminOverrideApiTestCase(TestCase):
             ).exists()
         )
 
+    def test_save_all_manual_layout_does_not_materialize_renewal_queue_on_rebuild(self):
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",
+            {
+                "motivo": "Editar ciclo elegível sem lançar renovação operacional",
+                "contratos": [
+                    {
+                        "id": self.contrato.id,
+                        "cycles": {
+                            "updated_at": self.contrato.updated_at.isoformat(),
+                            "cycles": [
+                                {
+                                    "id": self.ciclo.id,
+                                    "numero": 1,
+                                    "data_inicio": "2026-01-01",
+                                    "data_fim": "2026-03-01",
+                                    "status": "apto_a_renovar",
+                                    "valor_total": "900.00",
+                                }
+                            ],
+                            "parcelas": [
+                                {
+                                    "id": self.parcela_jan.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 1,
+                                    "referencia_mes": "2026-01-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-01-05",
+                                    "status": "descontado",
+                                    "data_pagamento": "2026-01-05",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_fev.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 2,
+                                    "referencia_mes": "2026-02-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-02-05",
+                                    "status": "descontado",
+                                    "data_pagamento": "2026-02-05",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_mar.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 3,
+                                    "referencia_mes": "2026-03-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-03-05",
+                                    "status": "descontado",
+                                    "data_pagamento": "2026-03-05",
+                                    "layout_bucket": "cycle",
+                                },
+                            ],
+                        },
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        warning_codes = {warning["code"] for warning in response.json()["warnings"]}
+        self.assertIn("renewal_queue_missing", warning_codes)
+        self.assertFalse(
+            Refinanciamento.objects.filter(
+                contrato_origem=self.contrato,
+                origem=Refinanciamento.Origem.OPERACIONAL,
+                deleted_at__isnull=True,
+            ).exists()
+        )
+
+        self.contrato.refresh_from_db()
+        rebuild_contract_cycle_state(self.contrato, execute=True)
+        self.assertFalse(
+            Refinanciamento.objects.filter(
+                contrato_origem=self.contrato,
+                origem=Refinanciamento.Origem.OPERACIONAL,
+                deleted_at__isnull=True,
+            ).exists()
+        )
+
+    def test_manual_renewal_stage_transition_materializes_queue_after_manual_layout_save(self):
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",
+            {
+                "motivo": "Preparar contrato apto em layout manual",
+                "contratos": [
+                    {
+                        "id": self.contrato.id,
+                        "cycles": {
+                            "updated_at": self.contrato.updated_at.isoformat(),
+                            "cycles": [
+                                {
+                                    "id": self.ciclo.id,
+                                    "numero": 1,
+                                    "data_inicio": "2026-01-01",
+                                    "data_fim": "2026-03-01",
+                                    "status": "apto_a_renovar",
+                                    "valor_total": "900.00",
+                                }
+                            ],
+                            "parcelas": [
+                                {
+                                    "id": self.parcela_jan.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 1,
+                                    "referencia_mes": "2026-01-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-01-05",
+                                    "status": "descontado",
+                                    "data_pagamento": "2026-01-05",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_fev.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 2,
+                                    "referencia_mes": "2026-02-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-02-05",
+                                    "status": "descontado",
+                                    "data_pagamento": "2026-02-05",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_mar.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 3,
+                                    "referencia_mes": "2026-03-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-03-05",
+                                    "status": "descontado",
+                                    "data_pagamento": "2026-03-05",
+                                    "layout_bucket": "cycle",
+                                },
+                            ],
+                        },
+                    }
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        transition = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/renewal-stage/",
+            {
+                "contrato_id": self.contrato.id,
+                "target_stage": Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                "motivo": "Lançar renovação manualmente após edição",
+            },
+            format="json",
+        )
+
+        self.assertEqual(transition.status_code, 200, transition.json())
+        refinanciamento = (
+            Refinanciamento.objects.filter(
+                contrato_origem=self.contrato,
+                origem=Refinanciamento.Origem.OPERACIONAL,
+                deleted_at__isnull=True,
+            )
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        self.assertIsNotNone(refinanciamento)
+        assert refinanciamento is not None
+        self.assertEqual(
+            refinanciamento.status,
+            Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+        )
+
     def test_admin_save_all_keeps_november_2025_inside_cycle_for_manual_layout(self):
         self.contrato.data_contrato = date(2025, 10, 1)
         self.contrato.data_aprovacao = date(2025, 10, 1)
