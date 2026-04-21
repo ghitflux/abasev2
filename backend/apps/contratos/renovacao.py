@@ -9,12 +9,14 @@ from rest_framework.exceptions import ValidationError
 
 from apps.importacao.financeiro import build_financeiro_resumo
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem
+from apps.refinanciamento.models import Refinanciamento
 
 from .canonicalization import (
     get_operational_contracts_for_associado,
     operational_contracts_queryset,
 )
 from .cycle_projection import (
+    ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES,
     build_contract_cycle_projection,
     is_contract_eligible_for_renewal_competencia,
     resolve_current_renewal_competencia,
@@ -198,11 +200,32 @@ class RenovacaoCicloService:
             if RenovacaoCicloService._is_paid_status(parcela.get("status"))
         )
         parcelas_total = len(parcelas_projetadas)
-        if not is_contract_eligible_for_renewal_competencia(
-            contrato,
-            competencia=competencia,
-            parcelas=parcelas_projetadas,
-            projection=projection,
+        has_pending_operational_apto = contrato.refinanciamentos.filter(
+            deleted_at__isnull=True,
+            legacy_refinanciamento_id__isnull=True,
+            origem=Refinanciamento.Origem.OPERACIONAL,
+            ciclo_destino__isnull=True,
+            executado_em__isnull=True,
+            data_ativacao_ciclo__isnull=True,
+            status__in=[
+                Refinanciamento.Status.APTO_A_RENOVAR,
+                Refinanciamento.Status.PENDENTE_APTO,
+                Refinanciamento.Status.SOLICITADO,
+            ],
+        ).exists()
+        if (
+            not has_pending_operational_apto
+            and not is_contract_eligible_for_renewal_competencia(
+                contrato,
+                competencia=competencia,
+                parcelas=parcelas_projetadas,
+                projection=projection,
+            )
+        ):
+            return None
+        if (
+            has_pending_operational_apto
+            and status_renovacao not in ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES
         ):
             return None
         status_explicacao = RenovacaoCicloService._build_status_explicacao(

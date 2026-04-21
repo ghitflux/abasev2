@@ -94,6 +94,11 @@ class TesourariaContratoListSerializer(serializers.Serializer):
     data_assinatura = serializers.DateTimeField(source="created_at", read_only=True)
     data_solicitacao = serializers.DateTimeField(source="created_at", read_only=True)
     status = serializers.SerializerMethodField()
+    origem_operacional = serializers.CharField(read_only=True)
+    origem_operacional_label = serializers.CharField(
+        source="get_origem_operacional_display",
+        read_only=True,
+    )
     agente = SimpleUserSerializer(read_only=True)
     agente_nome = serializers.CharField(source="agente.full_name", read_only=True)
     percentual_repasse = serializers.SerializerMethodField()

@@ -14,7 +14,7 @@ from apps.accounts.models import Role, User
 from apps.associados.models import Associado
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, PagamentoMensalidade
-from apps.refinanciamento.models import Comprovante
+from apps.refinanciamento.models import Comprovante, Refinanciamento
 from apps.tesouraria.models import Pagamento
 
 
@@ -309,6 +309,57 @@ class AgentePagamentosViewSetTestCase(TestCase):
         )
         self.assertTrue(row["pagamento_inicial_evidencias"])
         self.assertEqual(row["pagamento_inicial_evidencias"][0]["origem"], "admin_editor")
+
+    def test_pagamento_inicial_nao_usa_comprovantes_de_renovacao(self):
+        contrato = self._create_contract(
+            cpf="14141414141",
+            nome="Associado Renovacao Separada",
+            agente=self.agente,
+        )
+        ciclo_origem = contrato.ciclos.get(numero=1)
+        ciclo_destino = Ciclo.objects.create(
+            contrato=contrato,
+            numero=2,
+            data_inicio=date(2026, 5, 1),
+            data_fim=date(2026, 7, 1),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("1500.00"),
+        )
+        refinanciamento = Refinanciamento.objects.create(
+            associado=contrato.associado,
+            contrato_origem=contrato,
+            ciclo_origem=ciclo_origem,
+            ciclo_destino=ciclo_destino,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 5, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            origem=Refinanciamento.Origem.OPERACIONAL,
+            executado_em=self._aware(datetime(2026, 5, 10, 10, 0)),
+            data_ativacao_ciclo=self._aware(datetime(2026, 5, 10, 10, 0)),
+        )
+        Comprovante.objects.create(
+            contrato=contrato,
+            ciclo=ciclo_destino,
+            refinanciamento=refinanciamento,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+            papel=Comprovante.Papel.ASSOCIADO,
+            origem=Comprovante.Origem.TESOURARIA_RENOVACAO,
+            arquivo=SimpleUploadedFile(
+                "renovacao-associado.pdf",
+                b"renovacao",
+                content_type="application/pdf",
+            ),
+            enviado_por=self.tesoureiro,
+        )
+
+        response = self.tes_client.get("/api/v1/tesouraria/pagamentos/")
+        self.assertEqual(response.status_code, 200, response.json())
+        row = next(
+            item
+            for item in response.json()["results"]
+            if item["contrato_codigo"] == contrato.codigo
+        )
+        self.assertEqual(row["pagamento_inicial_evidencias"], [])
 
     def test_pagamento_inicial_pago_sem_arquivo_retorna_placeholder(self):
         contrato = self._create_contract(

@@ -86,6 +86,10 @@ async function forwardRequest(
   });
 }
 
+function hasNullBodyStatus(status: number) {
+  return status === 204 || status === 205 || status === 304;
+}
+
 export async function proxyRequestForPath(request: Request, path: string[]) {
   const target = new URL(`${API_BASE_URL}/${path.join("/")}/`);
   const incomingUrl = new URL(request.url);
@@ -115,7 +119,9 @@ export async function proxyRequestForPath(request: Request, path: string[]) {
     nextHeaders.set("content-disposition", contentDisposition);
   }
 
-  const payload = await response.arrayBuffer();
+  const payload = hasNullBodyStatus(response.status)
+    ? null
+    : await response.arrayBuffer();
   const nextResponse = new NextResponse(payload, {
     status: response.status,
     headers: nextHeaders,

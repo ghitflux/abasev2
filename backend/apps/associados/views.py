@@ -39,6 +39,7 @@ from .serializers import (
     AssociadoDetailSerializer,
     AssociadoListSerializer,
     AssociadoMetricasSerializer,
+    AssociadoReativarSerializer,
     AssociadoUpdateSerializer,
     DocumentoCreateSerializer,
 )
@@ -157,7 +158,7 @@ class AssociadoViewSet(ModelViewSet):
             return [permissions.IsAuthenticated(), IsOperacionalOrAdmin()]
         if self.action in {"retrieve", "ciclos", "parcela_detalhe"}:
             return [permissions.IsAuthenticated(), IsOperacionalOrAdmin()]
-        if self.action == "inativar":
+        if self.action in {"inativar", "reativar"}:
             return [permissions.IsAuthenticated(), IsCoordenadorOrAdmin()]
         if self.action == "destroy":
             return [permissions.IsAuthenticated()]
@@ -171,12 +172,31 @@ class AssociadoViewSet(ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def inativar(self, request, pk=None):
-        associado = AssociadoService.inativar_associado(self.get_object())
+        associado = AssociadoService.inativar_associado(self.get_object(), request.user)
         serializer = AssociadoDetailSerializer(
             associado,
             context=self.get_serializer_context(),
         )
         return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def reativar(self, request, pk=None):
+        associado = self.get_object()
+        serializer = AssociadoReativarSerializer(
+            data=request.data,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+        associado = AssociadoService.reativar_associado(
+            associado,
+            serializer.validated_data,
+            request.user,
+        )
+        response_serializer = AssociadoDetailSerializer(
+            associado,
+            context=self.get_serializer_context(),
+        )
+        return Response(response_serializer.data)
 
     @action(detail=False, methods=["get"])
     def metricas(self, request):

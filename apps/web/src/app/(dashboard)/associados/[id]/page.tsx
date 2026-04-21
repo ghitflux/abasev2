@@ -31,6 +31,7 @@ import {
   AssociadoContractsOverview,
   AssociadoDocumentsGrid,
 } from "@/components/associados/associado-contracts-overview";
+import AssociadoReactivationDialog from "@/components/associados/associado-reactivation-dialog";
 import CadastroOrigemBadge from "@/components/associados/cadastro-origem-badge";
 import AdminContractEditor from "@/components/associados/admin-contract-editor";
 import type {
@@ -50,6 +51,7 @@ import {
   type ParcelaDetailTarget,
 } from "@/components/contratos/parcela-detalhe-dialog";
 import { DetailRouteSkeleton } from "@/components/shared/page-skeletons";
+import CopySnippet from "@/components/shared/copy-snippet";
 import StatusBadge from "@/components/custom/status-badge";
 import {
   AlertDialog,
@@ -100,6 +102,8 @@ const SAFE_RENEWAL_STAGE_OPTIONS = [
   { value: "aprovado_analise_renovacao", label: "Aprovado pela análise" },
   { value: "aprovado_para_renovacao", label: "Aprovado para renovação" },
   { value: "solicitado_para_liquidacao", label: "Solicitado para liquidação" },
+  { value: "efetivado", label: "Efetivar renovação" },
+  { value: "revertido", label: "Cancelar renovação e manter ativo" },
 ] as const;
 
 type AssociadoPageProps = {
@@ -124,8 +128,44 @@ function isSameDirtyContractState(
 function formatAdminWarnings(warnings: AdminEditorWarning[]) {
   return warnings
     .slice(0, 3)
-    .map((warning) => warning.message)
+    .map((warning) => {
+      if (warning.action === "normalized_last_occurrence") {
+        return `${warning.message} A normalização já foi aplicada.`;
+      }
+      if (warning.action === "use_send_to_stage") {
+        return `${warning.message} Use "Enviar para etapa" se quiser reposicionar a renovação.`;
+      }
+      if (warning.action === "review_cycle_dates") {
+        return `${warning.message} Revise as datas dos ciclos antes da próxima edição.`;
+      }
+      if (warning.action === "review_duplicate_reference") {
+        return `${warning.message} Revise a competência duplicada no editor.`;
+      }
+      return warning.message;
+    })
     .join(" ");
+}
+
+function getAdminWarningSignature(warning: AdminEditorWarning) {
+  return [
+    warning.code,
+    warning.scope ?? "",
+    warning.competencia ?? "",
+    warning.action ?? "",
+    warning.message,
+  ].join("::");
+}
+
+function getUnseenAdminWarnings(
+  warnings: AdminEditorWarning[] | undefined,
+  knownWarnings: AdminEditorWarning[] | undefined,
+) {
+  const knownSignatures = new Set(
+    (knownWarnings ?? []).map(getAdminWarningSignature),
+  );
+  return (warnings ?? []).filter(
+    (warning) => !knownSignatures.has(getAdminWarningSignature(warning)),
+  );
 }
 
 function mergeAccordionSections(
@@ -170,6 +210,8 @@ function collectLocalCycleWarnings(
             severity: "warning",
             contrato_id: contrato.id,
             contrato_codigo: "",
+            scope: "cycle_layout",
+            action: "review_cycle_dates",
             message: `Ciclos ${left.numero} e ${right.numero} possuem datas sobrepostas.`,
             details: {
               cycle_numbers: [left.numero, right.numero],
@@ -201,6 +243,9 @@ function collectLocalCycleWarnings(
         severity: "warning",
         contrato_id: contrato.id,
         contrato_codigo: "",
+        scope: "cycle_layout",
+        competencia: referencia_mes,
+        action: "review_duplicate_reference",
         message: `A competência ${referencia_mes.slice(5, 7)}/${referencia_mes.slice(0, 4)} aparece em mais de uma parcela.`,
         details: {
           referencia_mes,
@@ -233,6 +278,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
     DEFAULT_OPEN_SECTIONS,
   );
   const [inativarDialogOpen, setInativarDialogOpen] = React.useState(false);
+  const [reativarDialogOpen, setReativarDialogOpen] = React.useState(false);
   const [saveAllOpen, setSaveAllOpen] = React.useState(false);
   const [renewalStageDialogOpen, setRenewalStageDialogOpen] =
     React.useState(false);
@@ -296,6 +342,22 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
     enabled: canUseAdminEditor && adminMode,
     ...dashboardRetainedQueryOptions,
   });
+
+  const invalidateAdminRelatedQueries = React.useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["associado", associadoId] });
+    void queryClient.invalidateQueries({
+      queryKey: ["admin-associado-history", associadoId],
+    });
+  }, [associadoId, queryClient]);
+
+  const getCachedAdminWarnings = React.useCallback(() => {
+    return (
+      queryClient.getQueryData<AdminAssociadoEditorPayload>([
+        "admin-associado-editor",
+        associadoId,
+      ])?.warnings ?? []
+    );
+  }, [associadoId, queryClient]);
 
   const inativarAssociadoMutation = useMutation({
     mutationFn: async () =>
@@ -390,25 +452,22 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   }, []);
 
   const handleAdminPayloadRefresh = React.useCallback(
-    async (payload?: AdminAssociadoEditorPayload) => {
+    (payload?: AdminAssociadoEditorPayload) => {
       if (payload) {
         queryClient.setQueryData(
           ["admin-associado-editor", associadoId],
           payload,
         );
       } else {
-        await adminEditorQuery.refetch();
+        void queryClient.invalidateQueries({
+          queryKey: ["admin-associado-editor", associadoId],
+        });
       }
-      await Promise.all([
-        associadoQuery.refetch(),
-        adminHistoryQuery.refetch(),
-      ]);
+      invalidateAdminRelatedQueries();
     },
     [
-      adminEditorQuery,
-      adminHistoryQuery,
       associadoId,
-      associadoQuery,
+      invalidateAdminRelatedQueries,
       queryClient,
     ],
   );
@@ -458,23 +517,12 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
         throw new Error("Nenhuma alteração pendente para salvar.");
       }
       const localWarnings = collectLocalCycleWarnings(pending.contratos);
-      if (localWarnings.length) {
-        const confirmed = window.confirm(
-          [
-            "Foram detectadas sobreposições ou duplicidades no layout.",
-            "",
-            ...localWarnings
-              .slice(0, 5)
-              .map((warning) => `- ${warning.message}`),
-            "",
-            "Deseja salvar mesmo assim?",
-          ].join("\n"),
-        );
-        if (!confirmed) {
-          throw new Error(
-            "Salvamento cancelado para revisão das sobreposições.",
-          );
-        }
+      const unseenLocalWarnings = getUnseenAdminWarnings(
+        localWarnings,
+        getCachedAdminWarnings(),
+      );
+      if (unseenLocalWarnings.length) {
+        toast.warning(formatAdminWarnings(unseenLocalWarnings));
       }
       return apiFetch<AdminAssociadoEditorPayload>(
         `admin-overrides/associados/${associadoId}/save-all/`,
@@ -482,16 +530,22 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           method: "POST",
           body: {
             motivo,
+            dirty_sections: pending.esteira ? ["esteira"] : undefined,
             contratos: pending.contratos,
             esteira: pending.esteira ?? undefined,
           },
         },
       );
     },
-    onSuccess: async (payload) => {
+    onSuccess: (payload) => {
+      const previousWarnings = getCachedAdminWarnings();
       toast.success("Alterações do editor salvas.");
-      if (payload.warnings?.length) {
-        toast.warning(formatAdminWarnings(payload.warnings));
+      const unseenWarnings = getUnseenAdminWarnings(
+        payload.warnings,
+        previousWarnings,
+      );
+      if (unseenWarnings.length) {
+        toast.warning(formatAdminWarnings(unseenWarnings));
       }
       queryClient.setQueryData(
         ["admin-associado-editor", associadoId],
@@ -500,10 +554,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
       setContractDirtyState({});
       setEsteiraDirty(false);
       void queryClient.invalidateQueries({ queryKey: ["tesouraria-baixa-manual"] });
-      await Promise.all([
-        associadoQuery.refetch(),
-        adminHistoryQuery.refetch(),
-      ]);
+      invalidateAdminRelatedQueries();
     },
     onError: (error) => {
       toast.error(
@@ -535,19 +586,21 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           },
         },
       ),
-    onSuccess: async (payload) => {
+    onSuccess: (payload) => {
+      const previousWarnings = getCachedAdminWarnings();
       toast.success("Etapa de renovação atualizada.");
-      if (payload.warnings?.length) {
-        toast.warning(formatAdminWarnings(payload.warnings));
+      const unseenWarnings = getUnseenAdminWarnings(
+        payload.warnings,
+        previousWarnings,
+      );
+      if (unseenWarnings.length) {
+        toast.warning(formatAdminWarnings(unseenWarnings));
       }
       queryClient.setQueryData(
         ["admin-associado-editor", associadoId],
         payload,
       );
-      await Promise.all([
-        associadoQuery.refetch(),
-        adminHistoryQuery.refetch(),
-      ]);
+      invalidateAdminRelatedQueries();
     },
     onError: (error) => {
       toast.error(
@@ -621,6 +674,12 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   if (!associado) {
     return null;
   }
+  const matriculaDisplay =
+    associado.matricula_display ||
+    associado.matricula ||
+    associado.contato?.matricula_servidor ||
+    "";
+  const agenteNome = associado.agente?.full_name || "Sem agente";
 
   return (
     <div className="space-y-6">
@@ -629,12 +688,29 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">
             Associado
           </p>
-          <h1 className="mt-2 text-3xl font-semibold">
-            {associado.nome_completo}
+          <h1 className="mt-2">
+            <CopySnippet
+              label="Nome"
+              value={associado.nome_completo}
+              inline
+              className="max-w-full text-3xl font-semibold leading-tight"
+            />
           </h1>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {matriculaDisplay ? (
+              <CopySnippet label="Matrícula" value={matriculaDisplay} mono />
+            ) : (
+              <span className="inline-flex rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-muted-foreground">
+                Sem matrícula
+              </span>
+            )}
+            <CopySnippet label="CPF" value={associado.cpf_cnpj} mono />
+          </div>
           <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-            <span>{associado.matricula_display || associado.matricula}</span>
-            <span>{associado.cpf_cnpj}</span>
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/60 px-3 py-1 text-xs font-medium text-foreground/90">
+              <UserIcon className="size-3.5 text-primary" />
+              Agente: {agenteNome}
+            </span>
             <CadastroOrigemBadge
               origem={associado.origem_cadastro_slug}
               label={associado.origem_cadastro_label}
@@ -664,6 +740,15 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           <Button variant="outline" asChild>
             <Link href={backHref}>Voltar</Link>
           </Button>
+          {(isAdmin || isCoordinator) && associado.status === "inativo" ? (
+            <Button
+              variant="outline"
+              className="border-emerald-500/40 text-emerald-200"
+              onClick={() => setReativarDialogOpen(true)}
+            >
+              Reativar associado
+            </Button>
+          ) : null}
           {(isAdmin || isCoordinator) && associado.status !== "inativo" ? (
             <Button
               variant="outline"
@@ -1393,6 +1478,17 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <AssociadoReactivationDialog
+        open={reativarDialogOpen}
+        onOpenChange={setReativarDialogOpen}
+        associado={associado}
+        onSuccess={(payload) => {
+          queryClient.setQueryData(["associado", associadoId], payload);
+          void queryClient.invalidateQueries({ queryKey: ["associados"] });
+          void queryClient.invalidateQueries({ queryKey: ["contratos"] });
+          void queryClient.invalidateQueries({ queryKey: ["tesouraria-contratos"] });
+        }}
+      />
     </div>
   );
 }

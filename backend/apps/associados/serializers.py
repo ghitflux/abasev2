@@ -14,6 +14,7 @@ from apps.contratos.cycle_projection import (
     resolve_associado_mother_status,
     resolve_associado_status_renovacao,
 )
+from apps.contratos.models import Contrato
 from apps.contratos.serializers import CicloDetailSerializer, ContratoResumoSerializer
 from core.file_references import build_storage_reference
 
@@ -23,6 +24,7 @@ from .services import AssociadoService
 from .strategies import (
     CadastroValidationStrategy,
     EdicaoValidationStrategy,
+    calculate_contract_financials,
     validate_positive_mensalidade,
 )
 
@@ -78,6 +80,35 @@ def get_associado_cadastro_origin_payload(obj: Associado) -> dict[str, str]:
         "origem_cadastro_slug": "web",
         "origem_cadastro_label": "Web",
     }
+
+
+def get_detail_visible_contracts_for_associado(obj: Associado):
+    contratos = get_operational_contracts_for_associado(obj)
+    if contratos or obj.status != Associado.Status.INATIVO:
+        return contratos
+
+    cached = getattr(obj, "_prefetched_objects_cache", {}).get("contratos")
+    if cached is not None:
+        historicos = [
+            contrato
+            for contrato in cached
+            if contrato.deleted_at is None and contrato.contrato_canonico_id is None
+        ]
+    if cached is None or not historicos:
+        historicos = list(
+            Contrato.objects.filter(
+                associado=obj,
+                deleted_at__isnull=True,
+                contrato_canonico__isnull=True,
+            )
+            .select_related("agente")
+            .prefetch_related("ciclos__parcelas")
+        )
+    return sorted(
+        historicos,
+        key=lambda contrato: (contrato.created_at, contrato.id),
+        reverse=True,
+    )
 
 
 class SimpleUserSerializer(serializers.Serializer):
@@ -302,7 +333,7 @@ class AssociadoListSerializer(serializers.ModelSerializer):
         ]
 
     def _get_active_contracts(self, obj: Associado):
-        return get_operational_contracts_for_associado(obj)
+        return get_detail_visible_contracts_for_associado(obj)
 
     def _contagens_ciclos(self, obj: Associado) -> dict[str, int]:
         cache = self.context.setdefault("_ciclos_cache", {})
@@ -437,7 +468,7 @@ class AssociadoDetailSerializer(serializers.ModelSerializer):
                 self.fields.pop(field_name, None)
 
     def _get_active_contracts(self, obj: Associado):
-        return get_operational_contracts_for_associado(obj)
+        return get_detail_visible_contracts_for_associado(obj)
 
     @extend_schema_field(ContratoResumoSerializer(many=True))
     def get_contratos(self, obj: Associado):
@@ -666,6 +697,70 @@ class AssociadoCreateSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         return AssociadoDetailSerializer(instance, context=self.context).data
+
+
+class AssociadoReativarSerializer(serializers.Serializer):
+    valor_bruto_total = serializers.DecimalField(max_digits=10, decimal_places=2)
+    valor_liquido = serializers.DecimalField(max_digits=10, decimal_places=2)
+    prazo_meses = serializers.IntegerField(min_value=3, max_value=4, default=3)
+    mensalidade = serializers.DecimalField(max_digits=10, decimal_places=2)
+    data_aprovacao = serializers.DateField(required=False, allow_null=True)
+    agente_responsavel_id = serializers.IntegerField(required=True)
+    percentual_repasse = serializers.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+    )
+
+    def validate_mensalidade(self, value):
+        return validate_positive_mensalidade(value, field_name="mensalidade")
+
+    def validate(self, attrs):
+        if not _can_manage_agent_assignment(self.context):
+            raise serializers.ValidationError(
+                "Seu perfil não pode definir agente responsável."
+            )
+
+        agente_responsavel_id = attrs.get("agente_responsavel_id")
+        if not User.objects.filter(
+            id=agente_responsavel_id,
+            is_active=True,
+            user_roles__deleted_at__isnull=True,
+            user_roles__role__codigo="AGENTE",
+        ).exists():
+            raise serializers.ValidationError(
+                {"agente_responsavel_id": "Agente responsável inválido."}
+            )
+
+        sent_percentual_repasse = "percentual_repasse" in self.initial_data
+        percentual_repasse = attrs.get("percentual_repasse")
+        if sent_percentual_repasse and not _can_override_percentual_repasse(self.context):
+            raise serializers.ValidationError(
+                "Seu perfil não pode definir comissão manual no cadastro."
+            )
+        if percentual_repasse is not None and percentual_repasse < 0:
+            raise serializers.ValidationError(
+                {"percentual_repasse": "Informe um percentual válido."}
+            )
+
+        contrato = {
+            "valor_bruto_total": attrs.pop("valor_bruto_total"),
+            "valor_liquido": attrs.pop("valor_liquido"),
+            "prazo_meses": attrs.pop("prazo_meses"),
+            "mensalidade": attrs.pop("mensalidade"),
+            "data_aprovacao": attrs.pop("data_aprovacao", None),
+            "percentual_repasse": attrs.pop("percentual_repasse", None),
+        }
+        contrato.update(
+            calculate_contract_financials(
+                mensalidade=contrato.get("mensalidade"),
+                prazo_meses=contrato.get("prazo_meses"),
+                percentual_repasse=contrato.get("percentual_repasse"),
+            )
+        )
+        attrs["contrato"] = contrato
+        return attrs
 
 
 class AssociadoUpdateSerializer(serializers.ModelSerializer):

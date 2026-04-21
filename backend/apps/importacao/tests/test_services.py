@@ -15,9 +15,11 @@ from django.utils import timezone
 from apps.associados.models import Associado
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Contrato, Parcela
+from apps.refinanciamento.models import Refinanciamento
 from apps.tesouraria.models import DevolucaoAssociado
 
 from .base import ImportacaoBaseTestCase
+from ..dry_run import simular_dry_run
 from ..legacy import LegacyPagamentoSnapshot
 from ..financeiro import build_financeiro_payload
 from ..models import (
@@ -60,6 +62,176 @@ def build_detail_line(
 
 @override_settings(CELERY_TASK_ALWAYS_EAGER=True)
 class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
+    def _dry_run_item(
+        self,
+        *,
+        cpf: str,
+        nome: str,
+        status_codigo: str = "1",
+        valor: Decimal = Decimal("30.00"),
+    ) -> dict:
+        return {
+            "linha_numero": 1,
+            "cpf_cnpj": cpf,
+            "matricula_servidor": "MAT-RET",
+            "nome_servidor": nome,
+            "orgao_pagto_nome": "Órgão Teste",
+            "orgao_pagto_codigo": "001",
+            "orgao_codigo": "001",
+            "valor_descontado": valor,
+            "status_codigo": status_codigo,
+        }
+
+    def test_dry_run_marca_novo_apto_apos_baixa_da_competencia(self):
+        self.create_associado_com_contrato(
+            cpf="10000000001",
+            nome="Servidor Novo Apto",
+            competencia_final=date(2025, 5, 1),
+            status_ultima_parcela=Parcela.Status.EM_ABERTO,
+            valor_mensalidade=Decimal("150.00"),
+        )
+
+        payload = simular_dry_run(
+            date(2025, 5, 1),
+            [
+                self._dry_run_item(
+                    cpf="10000000001",
+                    nome="Servidor Novo Apto",
+                    valor=Decimal("150.00"),
+                )
+            ],
+        )
+
+        self.assertEqual(payload["kpis"]["aptos_a_renovar"], 1)
+        self.assertTrue(payload["items"][0]["ficara_apto_renovar"])
+        self.assertEqual(payload["items"][0]["ciclo_status_depois"], "apto_a_renovar")
+
+    def test_dry_run_nao_conta_contrato_com_fluxo_renovacao_ja_ativo(self):
+        associado, contrato, ciclo = self.create_associado_com_contrato(
+            cpf="10000000002",
+            nome="Servidor Ja Apto",
+            competencia_final=date(2025, 5, 1),
+            status_ultima_parcela=Parcela.Status.DESCONTADO,
+            valor_mensalidade=Decimal("150.00"),
+        )
+        Refinanciamento.objects.create(
+            associado=associado,
+            contrato_origem=contrato,
+            solicitado_por=self.tesoureiro,
+            competencia_solicitada=date(2025, 6, 1),
+            status=Refinanciamento.Status.PENDENTE_APTO,
+            ciclo_origem=ciclo,
+            valor_refinanciamento=Decimal("450.00"),
+            repasse_agente=Decimal("45.00"),
+        )
+
+        payload = simular_dry_run(
+            date(2025, 5, 1),
+            [
+                self._dry_run_item(
+                    cpf="10000000002",
+                    nome="Servidor Ja Apto",
+                )
+            ],
+        )
+
+        self.assertEqual(payload["kpis"]["aptos_a_renovar"], 0)
+        self.assertFalse(payload["items"][0]["ficara_apto_renovar"])
+
+    def test_dry_run_status_apto_do_associado_nao_bloqueia_nova_aptidao(self):
+        associado, _contrato, _ciclo = self.create_associado_com_contrato(
+            cpf="10000000005",
+            nome="Servidor Status Derivado",
+            competencia_final=date(2025, 5, 1),
+            status_ultima_parcela=Parcela.Status.EM_ABERTO,
+            valor_mensalidade=Decimal("150.00"),
+        )
+        associado.status = Associado.Status.APTO_A_RENOVAR
+        associado.save(update_fields=["status", "updated_at"])
+
+        payload = simular_dry_run(
+            date(2025, 5, 1),
+            [
+                self._dry_run_item(
+                    cpf="10000000005",
+                    nome="Servidor Status Derivado",
+                    valor=Decimal("150.00"),
+                )
+            ],
+        )
+
+        self.assertEqual(payload["kpis"]["aptos_a_renovar"], 1)
+        self.assertTrue(payload["items"][0]["ficara_apto_renovar"])
+
+    def test_dry_run_nao_gera_apto_para_retorno_nao_descontado(self):
+        self.create_associado_com_contrato(
+            cpf="10000000003",
+            nome="Servidor Rejeitado",
+            competencia_final=date(2025, 5, 1),
+            status_ultima_parcela=Parcela.Status.EM_ABERTO,
+        )
+
+        payload = simular_dry_run(
+            date(2025, 5, 1),
+            [
+                self._dry_run_item(
+                    cpf="10000000003",
+                    nome="Servidor Rejeitado",
+                    status_codigo="2",
+                )
+            ],
+        )
+
+        self.assertEqual(payload["kpis"]["aptos_a_renovar"], 0)
+        self.assertEqual(payload["items"][0]["resultado"], "nao_descontado")
+        self.assertFalse(payload["items"][0]["ficara_apto_renovar"])
+
+    def test_dry_run_nao_gera_apto_quando_retorno_vira_pendencia_manual(self):
+        self.create_associado_com_contrato(
+            cpf="10000000004",
+            nome="Servidor Pendencia",
+            competencia_final=date(2025, 5, 1),
+            status_ultima_parcela=Parcela.Status.EM_ABERTO,
+        )
+
+        payload = simular_dry_run(
+            date(2025, 5, 1),
+            [
+                self._dry_run_item(
+                    cpf="10000000004",
+                    nome="Servidor Pendencia",
+                    valor=Decimal("31.00"),
+                )
+            ],
+        )
+
+        self.assertEqual(payload["kpis"]["aptos_a_renovar"], 0)
+        self.assertEqual(payload["items"][0]["resultado"], "pendencia_manual")
+        self.assertFalse(payload["items"][0]["ficara_apto_renovar"])
+
+    def test_dry_run_nao_conta_valor_30_50_como_apto_renovar(self):
+        self.create_associado_com_contrato(
+            cpf="10000000006",
+            nome="Servidor Pequeno Valor",
+            competencia_final=date(2025, 5, 1),
+            status_ultima_parcela=Parcela.Status.EM_ABERTO,
+            valor_mensalidade=Decimal("30.00"),
+        )
+
+        payload = simular_dry_run(
+            date(2025, 5, 1),
+            [
+                self._dry_run_item(
+                    cpf="10000000006",
+                    nome="Servidor Pequeno Valor",
+                    valor=Decimal("30.00"),
+                )
+            ],
+        )
+
+        self.assertEqual(payload["kpis"]["aptos_a_renovar"], 0)
+        self.assertFalse(payload["items"][0]["ficara_apto_renovar"])
+
     def test_upload_endpoint_restringe_permissao_e_processa_fixture(self):
         response = self.agent_client.get("/api/v1/importacao/arquivo-retorno/")
         self.assertEqual(response.status_code, 403)

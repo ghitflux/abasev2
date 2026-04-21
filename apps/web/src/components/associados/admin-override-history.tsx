@@ -36,14 +36,16 @@ export default function AdminOverrideHistory({
         method: "POST",
         body: { motivo_reversao: motivo },
       }),
-    onSuccess: async () => {
+    onSuccess: () => {
       toast.success("Operação revertida.");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["associado", associadoId] }),
-        queryClient.invalidateQueries({ queryKey: ["admin-associado-editor", associadoId] }),
-        queryClient.invalidateQueries({ queryKey: ["admin-associado-history", associadoId] }),
-      ]);
       setPendingEvent(null);
+      void queryClient.invalidateQueries({ queryKey: ["associado", associadoId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["admin-associado-editor", associadoId],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["admin-associado-history", associadoId],
+      });
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Falha ao reverter a operação.");

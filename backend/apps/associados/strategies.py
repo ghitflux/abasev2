@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from rest_framework.exceptions import ValidationError
 
 from .models import Associado, only_digits
+
+VALID_PRAZO_ANTECIPACAO = {3, 4}
+TAXA_ANTECIPACAO_PADRAO = Decimal("30.00")
+DOACAO_ASSOCIADO_PERCENTUAL = Decimal("0.30")
+PERCENTUAL_REPASSE_PADRAO = Decimal("10.00")
 
 
 def validate_positive_mensalidade(value, *, field_name: str = "mensalidade"):
@@ -15,6 +20,67 @@ def validate_positive_mensalidade(value, *, field_name: str = "mensalidade"):
             {field_name: "A mensalidade deve ser maior que zero."}
         )
     return mensalidade
+
+
+def validate_prazo_meses(value, *, field_name: str = "prazo_meses") -> int:
+    prazo_meses = int(value or 3)
+    if prazo_meses not in VALID_PRAZO_ANTECIPACAO:
+        raise ValidationError(
+            {field_name: "O prazo do ciclo deve ser 3 ou 4 meses."}
+        )
+    return prazo_meses
+
+
+def _parse_percentual_repasse(value) -> Decimal:
+    if value in (None, ""):
+        return PERCENTUAL_REPASSE_PADRAO
+    try:
+        percentual = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise ValidationError(
+            {"percentual_repasse": "Informe um percentual válido."}
+        ) from exc
+    if percentual < 0:
+        raise ValidationError(
+            {"percentual_repasse": "Informe um percentual válido."}
+        )
+    return percentual
+
+
+def calculate_contract_financials(
+    *,
+    mensalidade,
+    prazo_meses,
+    percentual_repasse=None,
+) -> dict[str, Decimal | int]:
+    mensalidade_decimal = validate_positive_mensalidade(
+        mensalidade,
+        field_name="mensalidade",
+    )
+    prazo_meses_value = validate_prazo_meses(prazo_meses)
+    percentual_repasse_decimal = _parse_percentual_repasse(percentual_repasse)
+
+    valor_total_antecipacao = (
+        mensalidade_decimal * Decimal(prazo_meses_value)
+    ).quantize(Decimal("0.01"))
+    doacao_associado = (
+        valor_total_antecipacao * DOACAO_ASSOCIADO_PERCENTUAL
+    ).quantize(Decimal("0.01"))
+    margem_disponivel = (
+        valor_total_antecipacao - doacao_associado
+    ).quantize(Decimal("0.01"))
+    comissao_agente = (
+        margem_disponivel * (percentual_repasse_decimal / Decimal("100"))
+    ).quantize(Decimal("0.01"))
+
+    return {
+        "prazo_meses": prazo_meses_value,
+        "taxa_antecipacao": TAXA_ANTECIPACAO_PADRAO,
+        "valor_total_antecipacao": valor_total_antecipacao,
+        "doacao_associado": doacao_associado,
+        "margem_disponivel": margem_disponivel,
+        "comissao_agente": comissao_agente,
+    }
 
 
 def build_duplicate_document_message(associado: Associado) -> str:
@@ -58,32 +124,13 @@ class CadastroValidationStrategy(ValidationStrategy):
             )
 
         contrato = data.setdefault("contrato", {})
-        mensalidade = validate_positive_mensalidade(
-            contrato.get("mensalidade"),
-            field_name="mensalidade",
+        contrato.update(
+            calculate_contract_financials(
+                mensalidade=contrato.get("mensalidade"),
+                prazo_meses=contrato.get("prazo_meses"),
+                percentual_repasse=contrato.get("percentual_repasse"),
+            )
         )
-        prazo_meses = int(contrato.get("prazo_meses") or 3)
-        if prazo_meses not in {3, 4}:
-            raise ValidationError({"prazo_meses": "O prazo do ciclo deve ser 3 ou 4 meses."})
-        taxa_antecipacao = Decimal("30.00")
-        valor_total_antecipacao = (mensalidade * Decimal(prazo_meses)).quantize(
-            Decimal("0.01")
-        )
-        doacao_associado = (
-            valor_total_antecipacao * Decimal("0.30")
-        ).quantize(Decimal("0.01"))
-
-        contrato["prazo_meses"] = prazo_meses
-        contrato["taxa_antecipacao"] = taxa_antecipacao
-        contrato["margem_disponivel"] = (
-            valor_total_antecipacao - doacao_associado
-        ).quantize(Decimal("0.01"))
-        contrato["doacao_associado"] = doacao_associado
-
-        contrato["comissao_agente"] = (
-            contrato["margem_disponivel"] * Decimal("0.10")
-        ).quantize(Decimal("0.01"))
-        contrato["valor_total_antecipacao"] = valor_total_antecipacao
 
         data["cpf_cnpj"] = cpf_cnpj
         data["tipo_documento"] = (

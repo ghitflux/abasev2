@@ -82,6 +82,7 @@ class AnaliseViewSetTestCase(TestCase):
         agente: User | None = None,
         contrato_status: str = Contrato.Status.EM_ANALISE,
         associado_status: str = Associado.Status.EM_ANALISE,
+        origem_operacional: str = Contrato.OrigemOperacional.CADASTRO,
     ) -> EsteiraItem:
         agente_responsavel = agente or self.agente
         associado = Associado.objects.create(
@@ -103,6 +104,7 @@ class AnaliseViewSetTestCase(TestCase):
             margem_disponivel="900.00",
             valor_total_antecipacao="1500.00",
             status=contrato_status,
+            origem_operacional=origem_operacional,
         )
         esteira = EsteiraItem.objects.create(
             associado=associado,
@@ -147,6 +149,13 @@ class AnaliseViewSetTestCase(TestCase):
             status=EsteiraItem.Situacao.AGUARDANDO,
             documentos=1,
         )
+        reativacao = self._create_item(
+            suffix="1031",
+            etapa=EsteiraItem.Etapa.ANALISE,
+            status=EsteiraItem.Situacao.AGUARDANDO,
+            documentos=1,
+            origem_operacional=Contrato.OrigemOperacional.REATIVACAO,
+        )
         enviado_coord = self._create_item(
             suffix="104",
             etapa=EsteiraItem.Etapa.COORDENACAO,
@@ -179,8 +188,9 @@ class AnaliseViewSetTestCase(TestCase):
         response = self.analyst_client.get("/api/v1/analise/")
         self.assertEqual(response.status_code, 200, response.json())
         payload = response.json()
-        self.assertEqual(payload["filas"]["novos_contratos"], 1)
-        self.assertEqual(payload["filas"]["ver_todos"], 8)
+        self.assertEqual(payload["filas"]["novos_contratos"], 2)
+        self.assertEqual(payload["filas"]["contratos_reativacao"], 1)
+        self.assertEqual(payload["filas"]["ver_todos"], 9)
         self.assertEqual(payload["filas"]["pendencias"], 2)
         self.assertEqual(payload["filas"]["pendencias_corrigidas"], 1)
         self.assertEqual(payload["filas"]["enviado_tesouraria"], 1)
@@ -193,6 +203,12 @@ class AnaliseViewSetTestCase(TestCase):
         self.assertEqual(response.json()["results"][0]["id"], novo_contrato.id)
         self.assertIn("created_at", response.json()["results"][0])
 
+        response = self.analyst_client.get(
+            "/api/v1/analise/filas/?secao=contratos_reativacao"
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["results"][0]["id"], reativacao.id)
+
         response = self.analyst_client.get("/api/v1/analise/filas/?secao=ver_todos")
         self.assertEqual(response.status_code, 200, response.json())
         ids = {row["id"] for row in response.json()["results"]}
@@ -202,6 +218,7 @@ class AnaliseViewSetTestCase(TestCase):
                 pendencia_aberta.id,
                 corrigida.id,
                 novo_contrato.id,
+                reativacao.id,
                 enviado_coord.id,
                 enviado_tesouraria.id,
                 efetivado.id,

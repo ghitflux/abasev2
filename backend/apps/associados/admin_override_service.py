@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import nullcontext
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -27,6 +28,7 @@ from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.cycle_timeline import (
     get_cycle_activation_payload,
     get_future_generation_threshold,
+    get_next_cycle,
 )
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.contratos.small_value_rules import is_dedicated_small_value_contract
@@ -76,7 +78,13 @@ SAFE_RENEWAL_STAGE_LABELS = {
     Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO: "Aprovado pela análise",
     Refinanciamento.Status.APROVADO_PARA_RENOVACAO: "Aprovado para renovação",
     Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO: "Solicitado para liquidação",
+    Refinanciamento.Status.EFETIVADO: "Efetivar renovação",
+    Refinanciamento.Status.REVERTIDO: "Cancelar renovação e manter ativo",
 }
+ADMIN_REFINANCIAMENTO_EDITOR_STATUS_ERROR = (
+    'O status da renovação não pode ser salvo pelo editor avançado. '
+    'Use "Enviar para etapa" para reposicionar a fila e a tesouraria para efetivar.'
+)
 
 
 def _parse_decimal(value: Any, default: Decimal = Decimal("0.00")) -> Decimal:
@@ -179,12 +187,25 @@ def _warning_payload(
     contrato: Contrato,
     message: str,
     details: dict[str, Any],
+    scope: str | None = None,
+    competencia: date | str | None = None,
+    action: str | None = None,
 ) -> dict[str, Any]:
+    resolved_competencia: str | None
+    if isinstance(competencia, date):
+        resolved_competencia = competencia.isoformat()
+    elif competencia in (None, ""):
+        resolved_competencia = None
+    else:
+        resolved_competencia = str(competencia)
     return {
         "code": code,
         "severity": "warning",
         "contrato_id": contrato.id,
         "contrato_codigo": contrato.codigo or "",
+        "scope": scope or "",
+        "competencia": resolved_competencia,
+        "action": action or "",
         "message": message,
         "details": details,
     }
@@ -252,6 +273,8 @@ def _build_contract_layout_warnings(
                     _warning_payload(
                         code="cycle_date_overlap",
                         contrato=contrato,
+                        scope="cycle_layout",
+                        action="review_cycle_dates",
                         message=(
                             f"Ciclos {left['numero']} e {right['numero']} possuem datas sobrepostas."
                         ),
@@ -323,6 +346,9 @@ def _build_contract_layout_warnings(
                 _warning_payload(
                     code="parcela_outside_cycle_range",
                     contrato=contrato,
+                    scope="cycle_layout",
+                    competencia=referencia_mes,
+                    action="move_reference_into_cycle_range",
                     message=(
                         f"A competência {referencia_mes.strftime('%m/%Y')} está fora do intervalo do ciclo "
                         f"{parcela.get('cycle_number') or '-'}."
@@ -345,6 +371,9 @@ def _build_contract_layout_warnings(
             _warning_payload(
                 code="duplicate_reference_month",
                 contrato=contrato,
+                scope="cycle_layout",
+                competencia=referencia_mes,
+                action="review_duplicate_reference",
                 message=(
                     f"A competência {referencia_mes.strftime('%m/%Y')} aparece em mais de uma parcela."
                 ),
@@ -422,6 +451,9 @@ def _build_renewal_queue_warnings(
             _warning_payload(
                 code="renewal_queue_missing",
                 contrato=contrato,
+                scope="renewal_queue",
+                competencia=current_competencia,
+                action="use_send_to_stage",
                 message=(
                     "O contrato aparece como apto na projeção, mas não possui linha operacional "
                     "materializada na fila de renovação."
@@ -447,6 +479,9 @@ def _build_renewal_queue_warnings(
         _warning_payload(
             code="renewal_queue_divergence",
             contrato=contrato,
+            scope="renewal_queue",
+            competencia=current_competencia,
+            action="use_send_to_stage",
             message=(
                 "A etapa operacional da renovação permanece ativa, mas a competência atual do contrato "
                 "não sustenta essa posição automaticamente. O admin pode corrigir isso usando "
@@ -685,8 +720,314 @@ def _serialize_esteira(esteira: EsteiraItem | None) -> dict[str, Any]:
         "analista_responsavel_id": esteira.analista_responsavel_id,
         "coordenador_responsavel_id": esteira.coordenador_responsavel_id,
         "tesoureiro_responsavel_id": esteira.tesoureiro_responsavel_id,
+        "concluido_em": esteira.concluido_em.isoformat() if esteira.concluido_em else None,
         "updated_at": esteira.updated_at.isoformat() if esteira.updated_at else None,
     }
+
+
+def _dedupe_warning_list(warnings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    unique_warnings: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for warning in warnings:
+        key = (
+            str(warning.get("code") or ""),
+            str(warning.get("scope") or ""),
+            str(warning.get("competencia") or ""),
+            str(warning.get("message") or ""),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_warnings.append(warning)
+    return unique_warnings
+
+
+def _sanitize_save_all_refinanciamento_payload(
+    *,
+    refinanciamento: Refinanciamento,
+    contrato: Contrato,
+    payload: dict[str, Any],
+    warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    sanitized = dict(payload)
+    requested_status = str(sanitized.pop("status", "") or "").strip()
+    if requested_status and requested_status != refinanciamento.status:
+        warnings.append(
+            _warning_payload(
+                code="renewal_status_ignored_in_save_all",
+                contrato=contrato,
+                scope="refinanciamento",
+                competencia=refinanciamento.competencia_solicitada,
+                action="use_safe_transition",
+                message=(
+                    "O status da renovação foi ignorado no salvar em lote. "
+                    'Use "Enviar para etapa" para reposicionar a fila operacional.'
+                ),
+                details={
+                    "refinanciamento_id": refinanciamento.id,
+                    "status_atual": refinanciamento.status,
+                    "status_solicitado": requested_status,
+                },
+            )
+        )
+    return sanitized
+
+
+def _contract_core_payload_has_effective_changes(
+    contrato: Contrato,
+    payload: dict[str, Any],
+) -> bool:
+    current = _serialize_contrato(contrato, include_ciclos=False)
+    comparable_fields = [
+        "status",
+        "valor_bruto",
+        "valor_liquido",
+        "valor_mensalidade",
+        "taxa_antecipacao",
+        "margem_disponivel",
+        "valor_total_antecipacao",
+        "doacao_associado",
+        "comissao_agente",
+        "data_contrato",
+        "data_aprovacao",
+        "data_primeira_mensalidade",
+        "mes_averbacao",
+        "auxilio_liberado_em",
+    ]
+    for field in comparable_fields:
+        if field not in payload:
+            continue
+        current_value = current.get(field)
+        next_value = payload.get(field)
+        if field.startswith("data_") or field in {"mes_averbacao", "auxilio_liberado_em"}:
+            normalized_next = _parse_optional_date(next_value)
+            if (current_value or None) != (
+                normalized_next.isoformat() if normalized_next else None
+            ):
+                return True
+            continue
+        if field in {
+            "valor_bruto",
+            "valor_liquido",
+            "valor_mensalidade",
+            "taxa_antecipacao",
+            "margem_disponivel",
+            "valor_total_antecipacao",
+            "doacao_associado",
+            "comissao_agente",
+        }:
+            if str(current_value or "0.00") != str(_parse_decimal(next_value)):
+                return True
+            continue
+        if str(current_value or "") != str(next_value or ""):
+            return True
+    return False
+
+
+def _refinanciamento_payload_has_effective_changes(
+    refinanciamento: Refinanciamento,
+    payload: dict[str, Any],
+) -> bool:
+    current = _serialize_refinanciamento(refinanciamento)
+    comparable_fields = [
+        "competencia_solicitada",
+        "valor_refinanciamento",
+        "repasse_agente",
+        "executado_em",
+        "data_ativacao_ciclo",
+        "motivo_bloqueio",
+        "observacao",
+        "analista_note",
+        "coordenador_note",
+        "reviewed_by_id",
+    ]
+    for field in comparable_fields:
+        if field not in payload:
+            continue
+        current_value = current.get(field)
+        next_value = payload.get(field)
+        if field == "competencia_solicitada":
+            normalized_next = _parse_optional_date(next_value)
+            if (current_value or None) != (
+                normalized_next.isoformat() if normalized_next else None
+            ):
+                return True
+            continue
+        if field in {"executado_em", "data_ativacao_ciclo"}:
+            normalized_next = parse_datetime(str(next_value)) if next_value else None
+            if (current_value or None) != (
+                normalized_next.isoformat() if normalized_next else None
+            ):
+                return True
+            continue
+        if field in {"valor_refinanciamento", "repasse_agente"}:
+            if str(current_value or "0.00") != str(_parse_decimal(next_value)):
+                return True
+            continue
+        if str(current_value or "") != str(next_value or ""):
+            return True
+    return False
+
+
+def _normalize_cycle_layout_payload_for_compare(payload: dict[str, Any]) -> dict[str, Any]:
+    normalized_cycles = sorted(
+        [
+            {
+                "id": raw_cycle.get("id"),
+                "numero": int(raw_cycle.get("numero") or 0),
+                "data_inicio": (
+                    _parse_optional_date(raw_cycle.get("data_inicio")).isoformat()
+                    if _parse_optional_date(raw_cycle.get("data_inicio"))
+                    else None
+                ),
+                "data_fim": (
+                    _parse_optional_date(raw_cycle.get("data_fim")).isoformat()
+                    if _parse_optional_date(raw_cycle.get("data_fim"))
+                    else None
+                ),
+                "status": _normalize_cycle_status(raw_cycle.get("status")),
+                "valor_total": str(_parse_decimal(raw_cycle.get("valor_total"))),
+            }
+            for raw_cycle in (payload.get("cycles") or [])
+        ],
+        key=lambda item: (int(item["numero"]), int(item["id"] or 0)),
+    )
+    normalized_parcelas = sorted(
+        [
+            {
+                "id": raw_parcela.get("id"),
+                "cycle_ref": str(
+                    raw_parcela.get("cycle_ref")
+                    or raw_parcela.get("cycle_id")
+                    or ""
+                ),
+                "numero": int(raw_parcela.get("numero") or 0),
+                "referencia_mes": (
+                    _parse_optional_date(raw_parcela.get("referencia_mes")).isoformat()
+                    if _parse_optional_date(raw_parcela.get("referencia_mes"))
+                    else None
+                ),
+                "valor": str(_parse_decimal(raw_parcela.get("valor"))),
+                "data_vencimento": (
+                    _parse_optional_date(raw_parcela.get("data_vencimento")).isoformat()
+                    if _parse_optional_date(raw_parcela.get("data_vencimento"))
+                    else None
+                ),
+                "status": str(raw_parcela.get("status") or Parcela.Status.EM_PREVISAO),
+                "data_pagamento": (
+                    _parse_optional_date(raw_parcela.get("data_pagamento")).isoformat()
+                    if _parse_optional_date(raw_parcela.get("data_pagamento"))
+                    else None
+                ),
+                "observacao": str(raw_parcela.get("observacao") or ""),
+                "layout_bucket": str(
+                    raw_parcela.get("layout_bucket") or Parcela.LayoutBucket.CYCLE
+                ),
+            }
+            for raw_parcela in (payload.get("parcelas") or [])
+            if str(raw_parcela.get("status") or "") != Parcela.Status.CANCELADO
+        ],
+        key=lambda item: (
+            str(item["cycle_ref"]),
+            int(item["numero"]),
+            str(item["referencia_mes"] or ""),
+            int(item["id"] or 0),
+        ),
+    )
+    return {
+        "cycles": normalized_cycles,
+        "parcelas": normalized_parcelas,
+    }
+
+
+def _current_cycle_layout_for_compare(contrato: Contrato) -> dict[str, Any]:
+    current_cycles = [
+        {
+            "id": ciclo.id,
+            "numero": ciclo.numero,
+            "data_inicio": ciclo.data_inicio.isoformat() if ciclo.data_inicio else None,
+            "data_fim": ciclo.data_fim.isoformat() if ciclo.data_fim else None,
+            "status": _normalize_cycle_status(ciclo.status),
+            "valor_total": str(ciclo.valor_total),
+        }
+        for ciclo in contrato.ciclos.filter(deleted_at__isnull=True).order_by("numero", "id")
+    ]
+    current_parcelas = [
+        {
+            "id": parcela.id,
+            "cycle_ref": str(parcela.ciclo_id),
+            "numero": parcela.numero,
+            "referencia_mes": parcela.referencia_mes.isoformat()
+            if parcela.referencia_mes
+            else None,
+            "valor": str(parcela.valor),
+            "data_vencimento": parcela.data_vencimento.isoformat()
+            if parcela.data_vencimento
+            else None,
+            "status": parcela.status,
+            "data_pagamento": parcela.data_pagamento.isoformat()
+            if parcela.data_pagamento
+            else None,
+            "observacao": parcela.observacao or "",
+            "layout_bucket": parcela.layout_bucket,
+        }
+        for parcela in (
+            Parcela.all_objects.filter(ciclo__contrato=contrato, deleted_at__isnull=True)
+            .exclude(status=Parcela.Status.CANCELADO)
+            .select_related("ciclo")
+            .order_by("ciclo__numero", "numero", "id")
+        )
+    ]
+    return {
+        "cycles": current_cycles,
+        "parcelas": current_parcelas,
+    }
+
+
+def _cycle_layout_payload_has_effective_changes(
+    contrato: Contrato,
+    payload: dict[str, Any],
+) -> bool:
+    if not contrato.admin_manual_layout_enabled:
+        return True
+    return _normalize_cycle_layout_payload_for_compare(payload) != _current_cycle_layout_for_compare(
+        contrato
+    )
+
+
+def _esteira_payload_has_effective_changes(
+    associado: Associado,
+    payload: dict[str, Any],
+) -> bool:
+    current = _serialize_esteira(getattr(associado, "esteira_item", None))
+    if not current:
+        return bool(payload)
+    comparable_fields = ["etapa_atual", "status", "prioridade", "observacao"]
+    for field in comparable_fields:
+        if field not in payload:
+            continue
+        if str(current.get(field) or "") != str(payload.get(field) or ""):
+            return True
+    return False
+
+
+def _normalize_esteira_conclusion_state(
+    esteira: EsteiraItem | None,
+    *,
+    explicit_transition: bool = False,
+) -> None:
+    if esteira is None:
+        return
+    changed_fields: list[str] = []
+    if esteira.etapa_atual == EsteiraItem.Etapa.CONCLUIDO:
+        if explicit_transition and esteira.concluido_em is None:
+            esteira.concluido_em = timezone.now()
+            changed_fields.append("concluido_em")
+    elif esteira.concluido_em is not None:
+        esteira.concluido_em = None
+        changed_fields.append("concluido_em")
+    if changed_fields:
+        esteira.save(update_fields=[*changed_fields, "updated_at"])
 
 
 def _parcel_financial_flags(parcela: Parcela | None) -> dict[str, bool]:
@@ -816,6 +1157,38 @@ def _active_operational_refinanciamento(contrato: Contrato) -> Refinanciamento |
     return None
 
 
+def _resolve_contract_editor_flags(
+    *,
+    contrato: Contrato,
+    projection: dict[str, Any],
+    refinanciamento_ativo: Refinanciamento | None,
+) -> dict[str, bool]:
+    cycles = list(sorted(projection.get("cycles") or [], key=lambda item: item["numero"]))
+    latest_cycle = cycles[-1] if cycles else None
+    latest_cycle_status = str((latest_cycle or {}).get("status") or "")
+    canonically_eligible = (
+        latest_cycle is not None
+        and latest_cycle_status not in CONCLUDED_CYCLE_STATUSES
+        and is_contract_eligible_for_renewal_competencia(
+            contrato,
+            projection=projection,
+        )
+    )
+    has_operational_renewal = (
+        refinanciamento_ativo is not None
+        and refinanciamento_ativo.status in ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES
+    )
+    return {
+        "ciclo_ja_renovado": latest_cycle_status == Ciclo.Status.CICLO_RENOVADO,
+        "contrato_nao_renovado": (
+            contrato.status == Contrato.Status.ATIVO
+            and latest_cycle is not None
+            and not has_operational_renewal
+            and not canonically_eligible
+        ),
+    }
+
+
 def _manual_phase_slug(
     *,
     contrato: Contrato,
@@ -827,6 +1200,8 @@ def _manual_phase_slug(
         return "contrato_desativado"
     if contrato.status == Contrato.Status.ENCERRADO:
         return "contrato_encerrado"
+    if cycle_status in CONCLUDED_CYCLE_STATUSES:
+        return "ciclo_renovado"
     if is_latest_cycle:
         refinanciamento = _active_operational_refinanciamento(contrato)
         if refinanciamento is not None:
@@ -839,8 +1214,6 @@ def _manual_phase_slug(
             normalized = refinanciamento.status
             if normalized in mapping:
                 return mapping[normalized]
-    if cycle_status in CONCLUDED_CYCLE_STATUSES:
-        return "ciclo_renovado"
     if cycle_status == Ciclo.Status.APTO_A_RENOVAR:
         return "apto_a_renovar"
     return "ciclo_aberto"
@@ -1097,17 +1470,26 @@ class AdminOverrideService:
         return payload
 
     @staticmethod
-    def build_associado_editor_payload(associado: Associado) -> dict[str, Any]:
+    def build_associado_editor_payload(
+        associado: Associado,
+        *,
+        extra_warnings: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         contratos = list(
             associado.contratos.exclude(status=Contrato.Status.CANCELADO).order_by("-created_at")
         )
         payload_contracts: list[dict[str, Any]] = []
-        payload_warnings: list[dict[str, Any]] = []
+        payload_warnings: list[dict[str, Any]] = list(extra_warnings or [])
         for contrato in contratos:
             refinanciamento_ativo = _active_operational_refinanciamento(contrato)
             projection = AdminOverrideService.build_contract_projection_for_response(
                 contrato,
                 include_documents=True,
+            )
+            editor_flags = _resolve_contract_editor_flags(
+                contrato=contrato,
+                projection=projection,
+                refinanciamento_ativo=refinanciamento_ativo,
             )
             current_cycles = {
                 ciclo.numero: ciclo
@@ -1210,6 +1592,8 @@ class AdminOverrideService:
                         if contrato.auxilio_liberado_em
                         else None
                     ),
+                    "ciclo_ja_renovado": editor_flags["ciclo_ja_renovado"],
+                    "contrato_nao_renovado": editor_flags["contrato_nao_renovado"],
                     "ciclos": cycles_payload,
                     "meses_nao_pagos": unpaid_payload,
                     "movimentos_financeiros_avulsos": movement_payload,
@@ -1239,7 +1623,7 @@ class AdminOverrideService:
                 _serialize_documento(documento)
                 for documento in associado.documentos.filter(deleted_at__isnull=True).order_by("tipo", "id")
             ],
-            "warnings": payload_warnings,
+            "warnings": _dedupe_warning_list(payload_warnings),
         }
 
     @staticmethod
@@ -1257,6 +1641,12 @@ class AdminOverrideService:
         esteira_payload = payload.get("esteira")
         if not contratos_payload and not esteira_payload:
             raise ValidationError("Nenhuma alteração pendente foi enviada para salvar.")
+        root_dirty_sections = {
+            str(section).strip()
+            for section in (payload.get("dirty_sections") or [])
+            if str(section).strip()
+        }
+        operation_warnings: list[dict[str, Any]] = []
 
         contratos_by_id = {
             contrato.id: contrato
@@ -1271,24 +1661,45 @@ class AdminOverrideService:
                 deleted_at__isnull=True,
             ).select_related("contrato_origem")
         }
+        touched_contract_ids: set[int] = set()
 
         with transaction.atomic():
             for contract_payload in contratos_payload:
                 contrato = contratos_by_id.get(contract_payload["id"])
                 if contrato is None:
                     raise ValidationError("Contrato inválido para o associado informado.")
+                explicit_contract_sections = "dirty_sections" in contract_payload
+                contract_dirty_sections = {
+                    str(section).strip()
+                    for section in (contract_payload.get("dirty_sections") or [])
+                    if str(section).strip()
+                }
 
                 core_payload = contract_payload.get("core")
-                if core_payload:
+                if (
+                    not explicit_contract_sections
+                    and core_payload
+                    and _contract_core_payload_has_effective_changes(contrato, core_payload)
+                ):
+                    contract_dirty_sections.add("contract_core")
+                if core_payload and "contract_core" in contract_dirty_sections:
                     contrato = AdminOverrideService.apply_contract_core_override(
                         contrato=contrato,
                         payload={**core_payload, "motivo": motivo},
                         user=user,
+                        wrap_atomic=False,
                     )
                     contratos_by_id[contrato.id] = contrato
+                    touched_contract_ids.add(contrato.id)
 
                 cycles_payload = contract_payload.get("cycles")
-                if cycles_payload:
+                if (
+                    not explicit_contract_sections
+                    and cycles_payload
+                    and _cycle_layout_payload_has_effective_changes(contrato, cycles_payload)
+                ):
+                    contract_dirty_sections.add("cycle_layout")
+                if cycles_payload and "cycle_layout" in contract_dirty_sections:
                     cycle_rows = list(cycles_payload.get("cycles") or [])
                     parcela_rows = list(cycles_payload.get("parcelas") or [])
                     if not cycle_rows and not parcela_rows:
@@ -1296,7 +1707,7 @@ class AdminOverrideService:
                     cycles_updated_at = (
                         contrato.updated_at.isoformat() if getattr(contrato, "updated_at", None) else None
                     )
-                    contrato = AdminOverrideService.apply_cycle_layout_override(
+                    contrato, cycle_warnings = AdminOverrideService.apply_cycle_layout_override(
                         contrato=contrato,
                         payload={
                             **cycles_payload,
@@ -1304,30 +1715,80 @@ class AdminOverrideService:
                             "motivo": motivo,
                         },
                         user=user,
+                        wrap_atomic=False,
+                        sync_associado_status=False,
                     )
+                    operation_warnings.extend(cycle_warnings)
                     contratos_by_id[contrato.id] = contrato
+                    touched_contract_ids.add(contrato.id)
 
                 refinanciamento_payload = contract_payload.get("refinanciamento")
+                refinanciamento = None
+                refinanciamento_has_effective_changes = False
                 if refinanciamento_payload:
                     refinanciamento = refinanciamentos_by_id.get(refinanciamento_payload["id"])
+                    if refinanciamento is not None and refinanciamento.contrato_origem_id == contrato.id:
+                        refinanciamento_payload = _sanitize_save_all_refinanciamento_payload(
+                            refinanciamento=refinanciamento,
+                            contrato=contrato,
+                            payload=refinanciamento_payload,
+                            warnings=operation_warnings,
+                        )
+                        refinanciamento_has_effective_changes = (
+                            _refinanciamento_payload_has_effective_changes(
+                                refinanciamento,
+                                refinanciamento_payload,
+                            )
+                        )
+                if (
+                    not explicit_contract_sections
+                    and refinanciamento_payload
+                    and refinanciamento_has_effective_changes
+                ):
+                    contract_dirty_sections.add("refinanciamento")
+                if (
+                    refinanciamento_payload
+                    and "refinanciamento" in contract_dirty_sections
+                    and refinanciamento_has_effective_changes
+                ):
                     if refinanciamento is None or refinanciamento.contrato_origem_id != contrato.id:
                         raise ValidationError("Renovação inválida para o contrato informado.")
                     AdminOverrideService.apply_refinanciamento_override(
                         refinanciamento=refinanciamento,
                         payload={**refinanciamento_payload, "motivo": motivo},
                         user=user,
+                        wrap_atomic=False,
+                        sync_associado_status=False,
                     )
+                    touched_contract_ids.add(contrato.id)
 
-            if esteira_payload:
+            for contrato_id in sorted(touched_contract_ids):
+                contrato = contratos_by_id[contrato_id]
+                contrato.refresh_from_db()
+                rebuild_contract_cycle_state(contrato, execute=True)
+                contratos_by_id[contrato_id] = contrato
+
+            if (
+                "dirty_sections" not in payload
+                and esteira_payload
+                and _esteira_payload_has_effective_changes(associado, esteira_payload)
+            ):
+                root_dirty_sections.add("esteira")
+            if esteira_payload and "esteira" in root_dirty_sections:
                 AdminOverrideService.apply_esteira_override(
                     associado=associado,
                     payload={**esteira_payload, "motivo": motivo},
                     user=user,
+                    wrap_atomic=False,
                 )
+            _normalize_esteira_conclusion_state(getattr(associado, "esteira_item", None))
 
         sync_associado_mother_status(associado)
         associado.refresh_from_db()
-        return AdminOverrideService.build_associado_editor_payload(associado)
+        return AdminOverrideService.build_associado_editor_payload(
+            associado,
+            extra_warnings=operation_warnings,
+        )
 
     @staticmethod
     def _resolve_contract_for_safe_transition(
@@ -1489,7 +1950,7 @@ class AdminOverrideService:
             "ciclo_destino": None,
             "valor_refinanciamento": contrato.valor_liquido or contrato.valor_total_antecipacao,
             "repasse_agente": contrato.comissao_agente,
-            "mode": "admin_safe_transition",
+            "mode": "admin_safe",
             "origem": Refinanciamento.Origem.OPERACIONAL,
             "cycle_key": cycle_key,
             "ref1": referencias[0] if referencias else None,
@@ -1569,6 +2030,276 @@ class AdminOverrideService:
         return refinanciamento
 
     @staticmethod
+    def _transition_renewal_esteira(
+        *,
+        refinanciamento: Refinanciamento,
+        target_status: str,
+        motivo: str,
+        user,
+    ) -> None:
+        esteira = (
+            getattr(refinanciamento.associado, "esteira_item", None)
+            if refinanciamento.associado_id
+            else None
+        )
+        if esteira is None:
+            return
+
+        previous_stage = esteira.etapa_atual
+        previous_status = esteira.status
+
+        if target_status == Refinanciamento.Status.EFETIVADO:
+            esteira.etapa_atual = EsteiraItem.Etapa.CONCLUIDO
+            esteira.status = EsteiraItem.Situacao.APROVADO
+        elif target_status == Refinanciamento.Status.REVERTIDO:
+            esteira.etapa_atual = EsteiraItem.Etapa.CONCLUIDO
+            esteira.status = EsteiraItem.Situacao.REJEITADO
+        elif target_status == Refinanciamento.Status.APTO_A_RENOVAR:
+            esteira.etapa_atual = EsteiraItem.Etapa.ANALISE
+            esteira.status = EsteiraItem.Situacao.AGUARDANDO
+        elif target_status in {
+            Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+            Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+            Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
+            Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+        }:
+            esteira.etapa_atual = EsteiraItem.Etapa.ANALISE
+            esteira.status = (
+                EsteiraItem.Situacao.AGUARDANDO
+                if target_status
+                in {
+                    Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+                    Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
+                }
+                else EsteiraItem.Situacao.EM_ANDAMENTO
+            )
+        else:
+            return
+
+        if previous_stage == esteira.etapa_atual and previous_status == esteira.status:
+            _normalize_esteira_conclusion_state(
+                esteira,
+                explicit_transition=esteira.etapa_atual == EsteiraItem.Etapa.CONCLUIDO,
+            )
+            return
+
+        esteira.save(update_fields=["etapa_atual", "status", "updated_at"])
+        _normalize_esteira_conclusion_state(
+            esteira,
+            explicit_transition=esteira.etapa_atual == EsteiraItem.Etapa.CONCLUIDO,
+        )
+        Transicao.objects.create(
+            esteira_item=esteira,
+            acao="admin_safe_renewal_stage_transition",
+            de_status=previous_stage,
+            para_status=esteira.etapa_atual,
+            de_situacao=previous_status,
+            para_situacao=esteira.status,
+            realizado_por=user,
+            observacao=motivo,
+        )
+
+    @staticmethod
+    def _finalize_refinanciamento_assumption(
+        *,
+        refinanciamento: Refinanciamento,
+        finalized: bool,
+        user,
+    ) -> None:
+        if not refinanciamento.cycle_key:
+            return
+        assumption = (
+            Assumption.objects.filter(
+                cadastro=refinanciamento.associado,
+                request_key=refinanciamento.cycle_key,
+            )
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        if assumption is None:
+            return
+
+        update_fields = [
+            "status",
+            "analista",
+            "assumido_em",
+            "heartbeat_at",
+            "finalizado_em",
+            "updated_at",
+        ]
+        assumption.analista = assumption.analista or user
+        assumption.assumido_em = None
+        assumption.heartbeat_at = None
+        if finalized:
+            assumption.status = Assumption.Status.FINALIZADO
+            assumption.finalizado_em = timezone.now()
+        else:
+            assumption.status = Assumption.Status.LIBERADO
+            assumption.finalizado_em = None
+            assumption.liberado_em = timezone.now()
+            update_fields.append("liberado_em")
+        assumption.save(update_fields=update_fields)
+
+    @staticmethod
+    def _effectivate_refinanciamento_from_existing_cycles(
+        *,
+        refinanciamento: Refinanciamento,
+        motivo: str,
+        user,
+    ) -> Refinanciamento:
+        contrato = refinanciamento.contrato_origem
+        if contrato is None:
+            raise ValidationError("Renovação sem contrato de origem.")
+
+        ciclo_origem = refinanciamento.ciclo_origem
+        if ciclo_origem is None:
+            raise ValidationError(
+                "A renovação não possui ciclo de origem para efetivação administrativa."
+            )
+
+        ciclo_destino = refinanciamento.ciclo_destino or get_next_cycle(contrato, ciclo_origem)
+        if ciclo_destino is None:
+            ciclo_destino = (
+                Ciclo.objects.filter(
+                    contrato=contrato,
+                    numero=ciclo_origem.numero + 1,
+                    deleted_at__isnull=True,
+                )
+                .order_by("id")
+                .first()
+            )
+        if ciclo_destino is None:
+            raise ValidationError(
+                "Não foi encontrado o ciclo seguinte para materializar esta renovação."
+            )
+
+        activation_payload = get_cycle_activation_payload(ciclo_destino)
+        activation_at = activation_payload.get("data_ativacao_ciclo")
+        if activation_at is None:
+            activation_at = ciclo_destino.created_at or timezone.now()
+
+        refinanciamento.status = Refinanciamento.Status.EFETIVADO
+        refinanciamento.ciclo_destino = ciclo_destino
+        refinanciamento.executado_em = activation_at
+        refinanciamento.data_ativacao_ciclo = activation_at
+        refinanciamento.efetivado_por = user
+        refinanciamento.reviewed_by = refinanciamento.reviewed_by or user
+        refinanciamento.reviewed_at = refinanciamento.reviewed_at or activation_at
+        refinanciamento.aprovado_por = refinanciamento.aprovado_por or user
+        refinanciamento.observacao = motivo
+        refinanciamento.motivo_bloqueio = ""
+        refinanciamento.save(
+            update_fields=[
+                "status",
+                "ciclo_destino",
+                "executado_em",
+                "data_ativacao_ciclo",
+                "efetivado_por",
+                "reviewed_by",
+                "reviewed_at",
+                "aprovado_por",
+                "observacao",
+                "motivo_bloqueio",
+                "updated_at",
+            ]
+        )
+        AdminOverrideService._finalize_refinanciamento_assumption(
+            refinanciamento=refinanciamento,
+            finalized=True,
+            user=user,
+        )
+        AdminOverrideService._transition_renewal_esteira(
+            refinanciamento=refinanciamento,
+            target_status=Refinanciamento.Status.EFETIVADO,
+            motivo=motivo,
+            user=user,
+        )
+        return refinanciamento
+
+    @staticmethod
+    def _revert_refinanciamento_keep_associado_active(
+        *,
+        refinanciamento: Refinanciamento,
+        motivo: str,
+        user,
+    ) -> Refinanciamento:
+        refinanciamento.status = Refinanciamento.Status.REVERTIDO
+        refinanciamento.executado_em = None
+        refinanciamento.data_ativacao_ciclo = None
+        refinanciamento.ciclo_destino = None
+        refinanciamento.efetivado_por = None
+        refinanciamento.observacao = motivo
+        refinanciamento.motivo_bloqueio = ""
+        refinanciamento.save(
+            update_fields=[
+                "status",
+                "executado_em",
+                "data_ativacao_ciclo",
+                "ciclo_destino",
+                "efetivado_por",
+                "observacao",
+                "motivo_bloqueio",
+                "updated_at",
+            ]
+        )
+        AdminOverrideService._finalize_refinanciamento_assumption(
+            refinanciamento=refinanciamento,
+            finalized=True,
+            user=user,
+        )
+        AdminOverrideService._transition_renewal_esteira(
+            refinanciamento=refinanciamento,
+            target_status=Refinanciamento.Status.REVERTIDO,
+            motivo=motivo,
+            user=user,
+        )
+        return refinanciamento
+
+    @staticmethod
+    def _materializable_refinanciamento_for_effectivation(
+        contrato: Contrato,
+    ) -> Refinanciamento | None:
+        candidates = (
+            Refinanciamento.objects.filter(
+                contrato_origem=contrato,
+                deleted_at__isnull=True,
+                legacy_refinanciamento_id__isnull=True,
+                origem=Refinanciamento.Origem.OPERACIONAL,
+                ciclo_destino__isnull=True,
+                executado_em__isnull=True,
+                data_ativacao_ciclo__isnull=True,
+            )
+            .filter(
+                status__in=[
+                    Refinanciamento.Status.APTO_A_RENOVAR,
+                    Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
+                    Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                    Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+                    Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
+                    Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+                    Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+                    Refinanciamento.Status.PENDENTE_APTO,
+                    Refinanciamento.Status.SOLICITADO,
+                    Refinanciamento.Status.EM_ANALISE,
+                    Refinanciamento.Status.APROVADO,
+                    Refinanciamento.Status.CONCLUIDO,
+                ]
+            )
+            .order_by("-competencia_solicitada", "-created_at", "-id")
+        )
+        for refinanciamento in candidates:
+            if not refinanciamento.ciclo_origem_id:
+                continue
+            has_next_cycle = Ciclo.objects.filter(
+                contrato=contrato,
+                numero=refinanciamento.ciclo_origem.numero + 1,
+                deleted_at__isnull=True,
+            ).exists()
+            if has_next_cycle:
+                return refinanciamento
+        return None
+
+    @staticmethod
     def _force_refinanciamento_status(
         *,
         refinanciamento: Refinanciamento,
@@ -1577,10 +2308,6 @@ class AdminOverrideService:
         user,
     ) -> Refinanciamento:
         normalized = target_status
-        if normalized == Refinanciamento.Status.EFETIVADO:
-            raise ValidationError(
-                "A efetivação direta não é permitida no editor. Use a tesouraria para anexar comprovantes e materializar o ciclo."
-            )
         if (
             refinanciamento.executado_em is not None
             or refinanciamento.data_ativacao_ciclo is not None
@@ -1591,30 +2318,43 @@ class AdminOverrideService:
             )
 
         before = _serialize_refinanciamento(refinanciamento)
-        refinanciamento.status = normalized
-        refinanciamento.observacao = motivo
-        if normalized == Refinanciamento.Status.APTO_A_RENOVAR:
-            refinanciamento.reviewed_by = None
-            refinanciamento.reviewed_at = None
-            refinanciamento.aprovado_por = None
-        elif normalized in {
-            Refinanciamento.Status.EM_ANALISE_RENOVACAO,
-            Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
-            Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
-        }:
-            refinanciamento.reviewed_by = None
-            refinanciamento.reviewed_at = None
-            refinanciamento.aprovado_por = None
-        elif normalized in {
-            Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
-            Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
-        }:
-            refinanciamento.reviewed_by = user
-            refinanciamento.reviewed_at = timezone.now()
-            if normalized == Refinanciamento.Status.APROVADO_PARA_RENOVACAO:
-                refinanciamento.aprovado_por = user
+        if normalized == Refinanciamento.Status.EFETIVADO:
+            refinanciamento = AdminOverrideService._effectivate_refinanciamento_from_existing_cycles(
+                refinanciamento=refinanciamento,
+                motivo=motivo,
+                user=user,
+            )
+        elif normalized == Refinanciamento.Status.REVERTIDO:
+            refinanciamento = AdminOverrideService._revert_refinanciamento_keep_associado_active(
+                refinanciamento=refinanciamento,
+                motivo=motivo,
+                user=user,
+            )
+        else:
+            refinanciamento.status = normalized
+            refinanciamento.observacao = motivo
+            if normalized == Refinanciamento.Status.APTO_A_RENOVAR:
+                refinanciamento.reviewed_by = None
+                refinanciamento.reviewed_at = None
+                refinanciamento.aprovado_por = None
+            elif normalized in {
+                Refinanciamento.Status.EM_ANALISE_RENOVACAO,
+                Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
+                Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
+            }:
+                refinanciamento.reviewed_by = None
+                refinanciamento.reviewed_at = None
+                refinanciamento.aprovado_por = None
+            elif normalized in {
+                Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
+                Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            }:
+                refinanciamento.reviewed_by = user
+                refinanciamento.reviewed_at = timezone.now()
+                if normalized == Refinanciamento.Status.APROVADO_PARA_RENOVACAO:
+                    refinanciamento.aprovado_por = user
 
-        refinanciamento.save()
+            refinanciamento.save()
 
         assumption = None
         if refinanciamento.cycle_key:
@@ -1674,11 +2414,6 @@ class AdminOverrideService:
                 )
 
         contrato = refinanciamento.contrato_origem
-        esteira = (
-            getattr(refinanciamento.associado, "esteira_item", None)
-            if refinanciamento.associado_id
-            else None
-        )
         if contrato is not None and normalized in {
             Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
             Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
@@ -1691,42 +2426,13 @@ class AdminOverrideService:
                 acao="admin_safe_renewal_stage_transition",
                 observacao=motivo,
             )
-        elif esteira is not None:
-            previous_stage = esteira.etapa_atual
-            previous_status = esteira.status
-            if normalized == Refinanciamento.Status.APTO_A_RENOVAR:
-                esteira.etapa_atual = EsteiraItem.Etapa.ANALISE
-                esteira.status = EsteiraItem.Situacao.AGUARDANDO
-            elif normalized in {
-                Refinanciamento.Status.EM_ANALISE_RENOVACAO,
-                Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
-                Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
-                Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO,
-            }:
-                esteira.etapa_atual = EsteiraItem.Etapa.ANALISE
-                esteira.status = (
-                    EsteiraItem.Situacao.AGUARDANDO
-                    if normalized in {
-                        Refinanciamento.Status.PENDENTE_TERMO_ANALISTA,
-                        Refinanciamento.Status.PENDENTE_TERMO_AGENTE,
-                    }
-                    else EsteiraItem.Situacao.EM_ANDAMENTO
-                )
-            if (
-                previous_stage != esteira.etapa_atual
-                or previous_status != esteira.status
-            ):
-                esteira.save(update_fields=["etapa_atual", "status", "updated_at"])
-                Transicao.objects.create(
-                    esteira_item=esteira,
-                    acao="admin_safe_renewal_stage_transition",
-                    de_status=previous_stage,
-                    para_status=esteira.etapa_atual,
-                    de_situacao=previous_status,
-                    para_situacao=esteira.status,
-                    realizado_por=user,
-                    observacao=motivo,
-                )
+        else:
+            AdminOverrideService._transition_renewal_esteira(
+                refinanciamento=refinanciamento,
+                target_status=normalized,
+                motivo=motivo,
+                user=user,
+            )
 
         after = _serialize_refinanciamento(refinanciamento)
         AdminOverrideService._record_event(
@@ -1772,17 +2478,26 @@ class AdminOverrideService:
         if target_stage not in SAFE_RENEWAL_STAGE_LABELS:
             raise ValidationError("Etapa de renovação inválida para transição administrativa.")
 
-        rebuild_contract_cycle_state(
-            contrato,
-            execute=True,
-            force_active_operational_status=Refinanciamento.Status.PENDENTE_APTO,
-        )
+        if target_stage != Refinanciamento.Status.EFETIVADO:
+            rebuild_contract_cycle_state(
+                contrato,
+                execute=True,
+                force_active_operational_status=Refinanciamento.Status.PENDENTE_APTO,
+            )
         contrato.refresh_from_db()
         projection = AdminOverrideService.build_contract_projection_for_response(
             contrato,
             include_documents=False,
         )
-        refinanciamento = _active_operational_refinanciamento(contrato)
+        refinanciamento = (
+            AdminOverrideService._materializable_refinanciamento_for_effectivation(
+                contrato,
+            )
+            if target_stage == Refinanciamento.Status.EFETIVADO
+            else _active_operational_refinanciamento(contrato)
+        )
+        if refinanciamento is None:
+            refinanciamento = _active_operational_refinanciamento(contrato)
         if refinanciamento is None:
             refinanciamento = AdminOverrideService._materialize_safe_transition_refinanciamento(
                 contrato=contrato,
@@ -1797,10 +2512,15 @@ class AdminOverrideService:
             user=user,
         )
 
+        rebuild_kwargs: dict[str, Any] = {"execute": True}
+        if target_stage not in {
+            Refinanciamento.Status.EFETIVADO,
+            Refinanciamento.Status.REVERTIDO,
+        }:
+            rebuild_kwargs["force_active_operational_status"] = target_stage
         rebuild_contract_cycle_state(
             contrato,
-            execute=True,
-            force_active_operational_status=target_stage,
+            **rebuild_kwargs,
         )
         sync_associado_mother_status(associado)
         associado.refresh_from_db()
@@ -1808,8 +2528,6 @@ class AdminOverrideService:
 
     @staticmethod
     def build_contract_projection_for_response(contrato: Contrato, *, include_documents: bool = True) -> dict[str, Any]:
-        if contrato.admin_manual_layout_enabled:
-            return _build_manual_contract_projection(contrato, include_documents=include_documents)
         return build_contract_cycle_projection(contrato, include_documents=include_documents)
 
     @staticmethod
@@ -2023,8 +2741,10 @@ class AdminOverrideService:
         contrato: Contrato,
         payload: dict[str, Any],
         user,
+        wrap_atomic: bool = True,
     ) -> Contrato:
-        with transaction.atomic():
+        atomic_ctx = transaction.atomic() if wrap_atomic else nullcontext()
+        with atomic_ctx:
             _assert_version(contrato, payload.get("updated_at"))
             motivo = str(payload.get("motivo") or "").strip()
             if not motivo:
@@ -2097,15 +2817,20 @@ class AdminOverrideService:
         refinanciamento: Refinanciamento,
         payload: dict[str, Any],
         user,
+        wrap_atomic: bool = True,
+        sync_associado_status: bool = True,
     ) -> Refinanciamento:
-        with transaction.atomic():
+        atomic_ctx = transaction.atomic() if wrap_atomic else nullcontext()
+        with atomic_ctx:
             _assert_version(refinanciamento, payload.get("updated_at"))
             motivo = str(payload.get("motivo") or "").strip()
             if not motivo:
                 raise ValidationError("O motivo da alteração é obrigatório.")
+            requested_status = str(payload.get("status") or "").strip()
+            if requested_status and requested_status != refinanciamento.status:
+                raise ValidationError(ADMIN_REFINANCIAMENTO_EDITOR_STATUS_ERROR)
             before = _serialize_refinanciamento(refinanciamento)
             for field in [
-                "status",
                 "motivo_bloqueio",
                 "observacao",
                 "analista_note",
@@ -2130,6 +2855,8 @@ class AdminOverrideService:
             if "reviewed_by_id" in payload:
                 refinanciamento.reviewed_by_id = payload.get("reviewed_by_id")
             refinanciamento.save()
+            if sync_associado_status:
+                sync_associado_mother_status(refinanciamento.associado)
             after = _serialize_refinanciamento(refinanciamento)
             AdminOverrideService._record_event(
                 context=_OverrideContext(
@@ -2161,8 +2888,10 @@ class AdminOverrideService:
         associado: Associado,
         payload: dict[str, Any],
         user,
+        wrap_atomic: bool = True,
     ) -> EsteiraItem:
-        with transaction.atomic():
+        atomic_ctx = transaction.atomic() if wrap_atomic else nullcontext()
+        with atomic_ctx:
             esteira = getattr(associado, "esteira_item", None)
             if esteira is None:
                 raise ValidationError("Associado sem item de esteira.")
@@ -2184,6 +2913,7 @@ class AdminOverrideService:
             if "observacao" in payload:
                 esteira.observacao = str(payload.get("observacao") or "")
             esteira.save()
+            _normalize_esteira_conclusion_state(esteira, explicit_transition=True)
             Transicao.objects.create(
                 esteira_item=esteira,
                 acao="admin_override",
@@ -2422,11 +3152,14 @@ class AdminOverrideService:
         contrato: Contrato,
         payload: dict[str, Any],
         user,
-    ) -> Contrato:
+        wrap_atomic: bool = True,
+        sync_associado_status: bool = True,
+    ) -> tuple[Contrato, list[dict[str, Any]]]:
         _assert_version(contrato, payload.get("updated_at"))
         motivo = str(payload.get("motivo") or "").strip()
         if not motivo:
             raise ValidationError("O motivo da alteração é obrigatório.")
+        operation_warnings: list[dict[str, Any]] = []
 
         before_snapshot = AdminOverrideService.build_contract_projection_for_response(
             contrato,
@@ -2521,6 +3254,15 @@ class AdminOverrideService:
             if referencia is None:
                 continue
             references_seen[referencia].append(raw_parcela)
+        last_index_by_reference = {
+            referencia: max(
+                index
+                for index, row in enumerate(parcel_items)
+                if _parse_optional_date(row.get("referencia_mes")) == referencia
+                and str(row.get("status") or "") != Parcela.Status.CANCELADO
+            )
+            for referencia in references_seen
+        }
         duplicate_conflicts = []
         for referencia, rows in sorted(references_seen.items()):
             if len(rows) < 2:
@@ -2528,15 +3270,69 @@ class AdminOverrideService:
             duplicate_conflicts.append(
                 {
                     "referencia_mes": referencia.isoformat(),
-                    "parcelas": [
+                    "preservada": {
+                        "id": rows[-1].get("id"),
+                        "numero": int(rows[-1].get("numero") or 0),
+                        "cycle_ref": rows[-1].get("cycle_ref") or rows[-1].get("cycle_id"),
+                        "layout_bucket": str(
+                            rows[-1].get("layout_bucket") or Parcela.LayoutBucket.CYCLE
+                        ),
+                    },
+                    "removidas": [
                         {
                             "id": row.get("id"),
                             "numero": int(row.get("numero") or 0),
                             "cycle_ref": row.get("cycle_ref") or row.get("cycle_id"),
+                            "layout_bucket": str(
+                                row.get("layout_bucket") or Parcela.LayoutBucket.CYCLE
+                            ),
                         }
-                        for row in rows
+                        for row in rows[:-1]
                     ],
                 }
+            )
+        parcel_items = [
+            raw_parcela
+            for index, raw_parcela in enumerate(parcel_items)
+            if (
+                str(raw_parcela.get("status") or "") == Parcela.Status.CANCELADO
+                or (_parse_optional_date(raw_parcela.get("referencia_mes")) is None)
+                or last_index_by_reference.get(
+                    _parse_optional_date(raw_parcela.get("referencia_mes"))
+                )
+                == index
+            )
+        ]
+        for conflict in duplicate_conflicts:
+            operation_warnings.append(
+                _warning_payload(
+                    code="duplicate_reference_month",
+                    contrato=contrato,
+                    scope="cycle_layout",
+                    competencia=conflict["referencia_mes"],
+                    action="review_duplicate_reference",
+                    message=(
+                        "A competência "
+                        f"{date.fromisoformat(conflict['referencia_mes']).strftime('%m/%Y')} "
+                        "aparecia em mais de uma parcela."
+                    ),
+                    details=conflict,
+                )
+            )
+            operation_warnings.append(
+                _warning_payload(
+                    code="duplicate_reference_normalized",
+                    contrato=contrato,
+                    scope="cycle_layout",
+                    competencia=conflict["referencia_mes"],
+                    action="normalized_last_occurrence",
+                    message=(
+                        "A competência "
+                        f"{date.fromisoformat(conflict['referencia_mes']).strftime('%m/%Y')} "
+                        "estava duplicada. O sistema preservou a última ocorrência salva."
+                    ),
+                    details=conflict,
+                )
             )
 
         cycle_ref_map: dict[str, Ciclo] = {}
@@ -2544,7 +3340,8 @@ class AdminOverrideService:
         touched_parcela_ids: set[int] = set()
         assigned_numbers_by_cycle: defaultdict[int, set[int]] = defaultdict(set)
 
-        with transaction.atomic():
+        atomic_ctx = transaction.atomic() if wrap_atomic else nullcontext()
+        with atomic_ctx:
             # Renumeração temporária: usamos max_numero_existente + 1 + index para garantir
             # que os números temporários sejam únicos globalmente e não colidam com nenhum
             # número já existente. Isso evita violação da constraint (ciclo_id, numero)
@@ -2717,7 +3514,8 @@ class AdminOverrideService:
                 new_parcela_by_reference=new_parcela_by_reference,
             )
 
-        sync_associado_mother_status(contrato.associado)
+        if sync_associado_status:
+            sync_associado_mother_status(contrato.associado)
         after_snapshot = AdminOverrideService.build_contract_projection_for_response(
             contrato,
             include_documents=True,
@@ -2758,7 +3556,7 @@ class AdminOverrideService:
             after_snapshot=after_snapshot,
             changes=changes,
         )
-        return contrato
+        return contrato, _dedupe_warning_list(operation_warnings)
 
     @staticmethod
     def revert_event(
@@ -2904,7 +3702,7 @@ class AdminOverrideService:
                             "layout_bucket": Parcela.LayoutBucket.MOVEMENT,
                         }
                     )
-                AdminOverrideService.apply_cycle_layout_override(
+                _contrato, _warnings = AdminOverrideService.apply_cycle_layout_override(
                     contrato=event.contrato,
                     payload={
                         "updated_at": event.contrato.updated_at.isoformat() if event.contrato.updated_at else None,

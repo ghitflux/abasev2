@@ -2,14 +2,22 @@ import json
 import tempfile
 from datetime import date
 from decimal import Decimal
+from unittest import mock
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
 from apps.associados.models import AdminOverrideEvent, Associado, Documento
-from apps.contratos.cycle_projection import build_contract_cycle_projection
+from apps.contratos.cycle_projection import (
+    ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES,
+    build_contract_cycle_projection,
+    invalidate_operational_apt_queue_cache,
+    resolve_associado_mother_status,
+    sync_associado_mother_status,
+)
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.models import EsteiraItem
@@ -119,6 +127,8 @@ class AdminOverrideApiTestCase(TestCase):
         )
 
     def setUp(self):
+        invalidate_operational_apt_queue_cache()
+        self.addCleanup(invalidate_operational_apt_queue_cache)
         self.admin_client = APIClient()
         self.admin_client.force_authenticate(self.admin)
 
@@ -127,6 +137,89 @@ class AdminOverrideApiTestCase(TestCase):
 
         self.coordinator_client = APIClient()
         self.coordinator_client.force_authenticate(self.coordinator)
+
+    def test_refinanciamento_core_override_syncs_associado_status_after_desativacao(self):
+        self.contrato.admin_manual_layout_enabled = True
+        self.contrato.save(update_fields=["admin_manual_layout_enabled", "updated_at"])
+        refinanciamento = Refinanciamento.objects.create(
+            associado=self.associado,
+            contrato_origem=self.contrato,
+            solicitado_por=self.admin,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.APTO_A_RENOVAR,
+            origem=Refinanciamento.Origem.OPERACIONAL,
+            valor_refinanciamento=Decimal("900.00"),
+            repasse_agente=Decimal("30.00"),
+        )
+
+        with mock.patch(
+            "apps.contratos.cycle_projection.timezone.localdate",
+            return_value=date(2026, 4, 21),
+        ):
+            self.assertTrue(sync_associado_mother_status(self.associado))
+            self.associado.refresh_from_db()
+            self.assertEqual(self.associado.status, "apto_a_renovar")
+
+            response = self.admin_client.post(
+                f"/api/v1/admin-overrides/refinanciamentos/{refinanciamento.id}/core/",
+                {
+                    "updated_at": refinanciamento.updated_at.isoformat(),
+                    "status": Refinanciamento.Status.DESATIVADO,
+                    "motivo": "Desativar renovação após ajuste manual",
+                },
+                format="json",
+            )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.associado.refresh_from_db()
+        refinanciamento.refresh_from_db()
+        self.assertEqual(refinanciamento.status, Refinanciamento.Status.DESATIVADO)
+        self.assertEqual(self.associado.status, Associado.Status.ATIVO)
+
+    def test_admin_save_all_ignores_direct_refinanciamento_status_change(self):
+        refinanciamento = Refinanciamento.objects.create(
+            associado=self.associado,
+            contrato_origem=self.contrato,
+            solicitado_por=self.admin,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.APTO_A_RENOVAR,
+            origem=Refinanciamento.Origem.OPERACIONAL,
+            valor_refinanciamento=Decimal("900.00"),
+            repasse_agente=Decimal("30.00"),
+        )
+
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",
+            {
+                "motivo": "Tentativa incorreta de efetivar pelo editor",
+                "contratos": [
+                    {
+                        "id": self.contrato.id,
+                        "dirty_sections": ["refinanciamento"],
+                        "refinanciamento": {
+                            "id": refinanciamento.id,
+                            "updated_at": refinanciamento.updated_at.isoformat(),
+                            "status": Refinanciamento.Status.EFETIVADO,
+                            "competencia_solicitada": "2026-04-01",
+                            "valor_refinanciamento": "945.00",
+                            "repasse_agente": "94.50",
+                            "observacao": "",
+                            "analista_note": "",
+                            "coordenador_note": "",
+                        },
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        refinanciamento.refresh_from_db()
+        self.assertEqual(refinanciamento.status, Refinanciamento.Status.APTO_A_RENOVAR)
+        self.assertIsNone(refinanciamento.executado_em)
+        payload = response.json()
+        warning_codes = {warning["code"] for warning in payload["warnings"]}
+        self.assertIn("renewal_status_ignored_in_save_all", warning_codes)
 
     def test_admin_override_endpoints_are_admin_only(self):
         response = self.agent_client.get(
@@ -319,6 +412,130 @@ class AdminOverrideApiTestCase(TestCase):
                 associado=self.associado,
                 escopo=AdminOverrideEvent.Scope.REFINANCIAMENTO,
                 motivo="Reposicionar no fluxo pelo editor",
+            ).exists()
+        )
+
+    def test_admin_can_effectivate_renewal_from_existing_cycle(self):
+        self.ciclo.status = Ciclo.Status.FECHADO
+        self.ciclo.save(update_fields=["status", "updated_at"])
+        ciclo_destino = Ciclo.objects.create(
+            contrato=self.contrato,
+            numero=2,
+            data_inicio=date(2026, 4, 1),
+            data_fim=date(2026, 6, 1),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("900.00"),
+        )
+        refinanciamento = Refinanciamento.objects.create(
+            associado=self.associado,
+            contrato_origem=self.contrato,
+            ciclo_origem=self.ciclo,
+            solicitado_por=self.admin,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            valor_refinanciamento=Decimal("900.00"),
+            repasse_agente=Decimal("90.00"),
+            origem=Refinanciamento.Origem.OPERACIONAL,
+            cycle_key="2026-01|2026-02|2026-03",
+            ref1=date(2026, 1, 1),
+            ref2=date(2026, 2, 1),
+            ref3=date(2026, 3, 1),
+        )
+
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/renewal-stage/",
+            {
+                "contrato_id": self.contrato.id,
+                "target_stage": Refinanciamento.Status.EFETIVADO,
+                "motivo": "Materializar renovação já refletida nos ciclos",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        refinanciamento.refresh_from_db()
+        self.esteira.refresh_from_db()
+
+        self.assertEqual(refinanciamento.status, Refinanciamento.Status.EFETIVADO)
+        self.assertEqual(refinanciamento.ciclo_destino_id, ciclo_destino.id)
+        self.assertIsNotNone(refinanciamento.executado_em)
+        self.assertIsNotNone(refinanciamento.data_ativacao_ciclo)
+        self.assertEqual(self.esteira.etapa_atual, EsteiraItem.Etapa.CONCLUIDO)
+        self.assertEqual(self.esteira.status, EsteiraItem.Situacao.APROVADO)
+
+    def test_admin_can_revert_stale_renewal_and_keep_associado_active(self):
+        self.ciclo.status = Ciclo.Status.FECHADO
+        self.ciclo.save(update_fields=["status", "updated_at"])
+        ciclo_destino = Ciclo.objects.create(
+            contrato=self.contrato,
+            numero=2,
+            data_inicio=date(2026, 4, 1),
+            data_fim=date(2026, 6, 1),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("900.00"),
+        )
+        Refinanciamento.objects.create(
+            associado=self.associado,
+            contrato_origem=self.contrato,
+            ciclo_origem=self.ciclo,
+            ciclo_destino=ciclo_destino,
+            solicitado_por=self.admin,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            executado_em=timezone.now(),
+            data_ativacao_ciclo=timezone.now(),
+            valor_refinanciamento=Decimal("900.00"),
+            repasse_agente=Decimal("90.00"),
+            origem=Refinanciamento.Origem.OPERACIONAL,
+            cycle_key="2026-01|2026-02|2026-03",
+            ref1=date(2026, 1, 1),
+            ref2=date(2026, 2, 1),
+            ref3=date(2026, 3, 1),
+        )
+        stale_refinanciamento = Refinanciamento.objects.create(
+            associado=self.associado,
+            contrato_origem=self.contrato,
+            ciclo_origem=ciclo_destino,
+            solicitado_por=self.admin,
+            competencia_solicitada=date(2026, 6, 1),
+            status=Refinanciamento.Status.APTO_A_RENOVAR,
+            valor_refinanciamento=Decimal("900.00"),
+            repasse_agente=Decimal("90.00"),
+            origem=Refinanciamento.Origem.OPERACIONAL,
+            cycle_key="2026-04|2026-05|2026-06",
+            ref1=date(2026, 4, 1),
+            ref2=date(2026, 5, 1),
+            ref3=date(2026, 6, 1),
+        )
+
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/renewal-stage/",
+            {
+                "contrato_id": self.contrato.id,
+                "target_stage": Refinanciamento.Status.REVERTIDO,
+                "motivo": "Cancelar linha operacional residual e manter associado ativo",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        stale_refinanciamento.refresh_from_db()
+        self.assertEqual(stale_refinanciamento.status, Refinanciamento.Status.REVERTIDO)
+        self.assertEqual(resolve_associado_mother_status(self.associado), Associado.Status.ATIVO)
+        projection = build_contract_cycle_projection(self.contrato)
+        self.assertNotEqual(
+            projection["status_renovacao"],
+            Refinanciamento.Status.APTO_A_RENOVAR,
+        )
+        self.assertFalse(
+            Refinanciamento.objects.filter(
+                contrato_origem=self.contrato,
+                deleted_at__isnull=True,
+                legacy_refinanciamento_id__isnull=True,
+                ciclo_destino__isnull=True,
+                executado_em__isnull=True,
+                data_ativacao_ciclo__isnull=True,
+                status__in=ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES,
             ).exists()
         )
 
@@ -1330,6 +1547,154 @@ class AdminOverrideApiTestCase(TestCase):
             ).count(),
             1,
         )
+
+    def test_save_all_respects_explicit_contract_dirty_sections(self):
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",
+            {
+                "motivo": "Salvar apenas o layout do ciclo",
+                "contratos": [
+                    {
+                        "id": self.contrato.id,
+                        "dirty_sections": ["cycle_layout"],
+                        "core": {
+                            "updated_at": self.contrato.updated_at.isoformat(),
+                            "status": Contrato.Status.ENCERRADO,
+                            "valor_liquido": "1400.00",
+                        },
+                        "cycles": {
+                            "updated_at": self.contrato.updated_at.isoformat(),
+                            "cycles": [
+                                {
+                                    "id": self.ciclo.id,
+                                    "numero": 1,
+                                    "data_inicio": "2026-01-01",
+                                    "data_fim": "2026-03-01",
+                                    "status": "aberto",
+                                    "valor_total": "900.00",
+                                }
+                            ],
+                            "parcelas": [
+                                {
+                                    "id": self.parcela_jan.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 1,
+                                    "referencia_mes": "2026-01-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-01-05",
+                                    "status": "descontado",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_fev.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 2,
+                                    "referencia_mes": "2026-02-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-02-10",
+                                    "status": "em_previsao",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_mar.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 3,
+                                    "referencia_mes": "2026-03-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-03-05",
+                                    "status": "em_previsao",
+                                    "layout_bucket": "cycle",
+                                },
+                            ],
+                        },
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.contrato.refresh_from_db()
+        self.parcela_fev.refresh_from_db()
+        self.assertEqual(self.contrato.status, Contrato.Status.ATIVO)
+        self.assertEqual(self.contrato.valor_liquido, Decimal("1200.00"))
+        self.assertEqual(self.parcela_fev.data_vencimento, date(2026, 2, 10))
+        self.assertFalse(
+            AdminOverrideEvent.objects.filter(
+                associado=self.associado,
+                escopo=AdminOverrideEvent.Scope.CONTRATO,
+            ).exists()
+        )
+
+    def test_save_all_cycle_edit_keeps_esteira_stage_and_clears_stale_conclusion_date(self):
+        self.esteira.concluido_em = timezone.now()
+        self.esteira.save(update_fields=["concluido_em", "updated_at"])
+
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",
+            {
+                "motivo": "Editar ciclo sem mover esteira",
+                "contratos": [
+                    {
+                        "id": self.contrato.id,
+                        "dirty_sections": ["cycle_layout"],
+                        "cycles": {
+                            "updated_at": self.contrato.updated_at.isoformat(),
+                            "cycles": [
+                                {
+                                    "id": self.ciclo.id,
+                                    "numero": 1,
+                                    "data_inicio": "2026-01-01",
+                                    "data_fim": "2026-03-01",
+                                    "status": "aberto",
+                                    "valor_total": "900.00",
+                                }
+                            ],
+                            "parcelas": [
+                                {
+                                    "id": self.parcela_jan.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 1,
+                                    "referencia_mes": "2026-01-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-01-05",
+                                    "status": "descontado",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_fev.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 2,
+                                    "referencia_mes": "2026-02-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-02-10",
+                                    "status": "em_previsao",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_mar.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 3,
+                                    "referencia_mes": "2026-03-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-03-05",
+                                    "status": "em_previsao",
+                                    "layout_bucket": "cycle",
+                                },
+                            ],
+                        },
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.esteira.refresh_from_db()
+        self.assertEqual(self.esteira.etapa_atual, EsteiraItem.Etapa.ANALISE)
+        self.assertEqual(self.esteira.status, EsteiraItem.Situacao.AGUARDANDO)
+        self.assertIsNone(self.esteira.concluido_em)
+        self.assertIsNone(response.json()["esteira"]["concluido_em"])
 
     def test_admin_save_all_keeps_november_2025_inside_manual_cycle_when_marked_as_cycle(self):
         associado = Associado.objects.create(

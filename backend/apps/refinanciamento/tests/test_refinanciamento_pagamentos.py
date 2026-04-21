@@ -1475,6 +1475,93 @@ class RefinanciamentoPagamentosTestCase(TestCase):
             [item["tipo"] for item in row["comprovantes"]],
         )
 
+    def test_tesouraria_ignora_efetivado_fantasma_sem_materializacao(self):
+        contrato_real = self._create_contrato("72345678931")
+        real = Refinanciamento.objects.create(
+            associado=contrato_real.associado,
+            contrato_origem=contrato_real,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            valor_refinanciamento=Decimal("900.00"),
+            repasse_agente=Decimal("90.00"),
+            cycle_key="2026-02|2026-03|2026-04",
+            executado_em=timezone.make_aware(datetime(2026, 4, 20, 9, 0)),
+            data_ativacao_ciclo=timezone.make_aware(datetime(2026, 4, 20, 9, 0)),
+        )
+        ghost_contract = self._create_contrato("72345678932")
+        ghost = Refinanciamento.objects.create(
+            associado=ghost_contract.associado,
+            contrato_origem=ghost_contract,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            valor_refinanciamento=Decimal("945.00"),
+            repasse_agente=Decimal("94.50"),
+            cycle_key="2026-03|2026-04",
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/refinanciamentos/",
+            {"status": "efetivado"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        ids = [item["id"] for item in response.json()["results"]]
+        self.assertIn(real.id, ids)
+        self.assertNotIn(ghost.id, ids)
+
+        resumo = self.tes_client.get("/api/v1/tesouraria/refinanciamentos/resumo/")
+        self.assertEqual(resumo.status_code, 200, resumo.json())
+        self.assertEqual(resumo.json()["efetivados"], 1)
+
+    def test_tesouraria_lista_efetivados_inclui_materializacao_por_comprovantes(self):
+        contrato = self._create_contrato("72345678933")
+        refinanciamento = Refinanciamento.objects.create(
+            associado=contrato.associado,
+            contrato_origem=contrato,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
+            valor_refinanciamento=Decimal("945.00"),
+            repasse_agente=Decimal("94.50"),
+            cycle_key="2026-02|2026-03|2026-04",
+        )
+        paid_at = timezone.make_aware(datetime(2026, 4, 20, 9, 0))
+        Comprovante.objects.create(
+            refinanciamento=refinanciamento,
+            contrato=contrato,
+            ciclo=None,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+            papel=Comprovante.Papel.ASSOCIADO,
+            origem=Comprovante.Origem.TESOURARIA_RENOVACAO,
+            arquivo=self._termo_file("assoc.pdf"),
+            nome_original="assoc.pdf",
+            enviado_por=self.admin,
+            data_pagamento=paid_at,
+        )
+        Comprovante.objects.create(
+            refinanciamento=refinanciamento,
+            contrato=contrato,
+            ciclo=None,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+            papel=Comprovante.Papel.AGENTE,
+            origem=Comprovante.Origem.TESOURARIA_RENOVACAO,
+            arquivo=self._termo_file("agente.pdf"),
+            nome_original="agente.pdf",
+            enviado_por=self.admin,
+            data_pagamento=paid_at,
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/refinanciamentos/",
+            {"status": "efetivado"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        ids = [item["id"] for item in response.json()["results"]]
+        self.assertIn(refinanciamento.id, ids)
+
     def test_tesouraria_lista_faz_fallback_do_repasse_quando_refinanciamento_zerado(self):
         contrato = self._create_contrato("72345678922")
         contrato.margem_disponivel = Decimal("630.00")

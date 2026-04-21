@@ -43,6 +43,16 @@ from .serializers import (
     SubstituirTermoAgenteRefinanciamentoSerializer,
 )
 from .services import RefinanciamentoService
+from .services import annotate_renewal_materialization, renewal_materialized_q
+
+
+def _ghost_effectivado_q() -> Q:
+    return Q(
+        status=Refinanciamento.Status.EFETIVADO,
+        executado_em__isnull=True,
+        data_ativacao_ciclo__isnull=True,
+        ciclo_destino__isnull=True,
+    )
 
 
 class BaseRefinanciamentoViewSet(
@@ -64,6 +74,9 @@ class BaseRefinanciamentoViewSet(
         if len(values) == 1 and "," in values[0]:
             return [chunk.strip() for chunk in values[0].split(",") if chunk.strip()]
         return values
+
+    def _should_apply_base_status_filter(self, status_filters: list[str]) -> bool:
+        return True
 
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
@@ -130,6 +143,7 @@ class BaseRefinanciamentoViewSet(
                 output_field=DateTimeField(),
             ),
         )
+        queryset = annotate_renewal_materialization(queryset)
 
         search = self.request.query_params.get("search")
         if search:
@@ -143,7 +157,7 @@ class BaseRefinanciamentoViewSet(
             )
 
         status_filters = self._get_multi_param("status")
-        if status_filters:
+        if status_filters and self._should_apply_base_status_filter(status_filters):
             queryset = queryset.filter(status__in=status_filters)
 
         cycle_key = (self.request.query_params.get("cycle_key") or "").strip()
@@ -629,6 +643,9 @@ class AnalistaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
 
 
 class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
+    def _should_apply_base_status_filter(self, status_filters: list[str]) -> bool:
+        return set(status_filters) != {Refinanciamento.Status.EFETIVADO}
+
     def get_permissions(self):
         if self.action in {"efetivar", "substituir_comprovante"}:
             return [permissions.IsAuthenticated(), IsTesoureiroOrAdmin()]
@@ -648,6 +665,7 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
                 Refinanciamento.Status.DESATIVADO,
             ]
         )
+        queryset = queryset.exclude(_ghost_effectivado_q())
         status_filters = set(self._get_multi_param("status"))
         pending_statuses = {Refinanciamento.Status.APROVADO_PARA_RENOVACAO}
         efetivado_statuses = {Refinanciamento.Status.EFETIVADO}
@@ -676,10 +694,13 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
             return queryset.order_by("-updated_at", "-id")
 
         if status_filters == efetivado_statuses:
-            queryset = queryset.annotate(
+            queryset = queryset.filter(renewal_materialized_q()).annotate(
                 tesouraria_operational_date=Coalesce(
                     "executado_em",
                     "data_ativacao_ciclo",
+                    "linked_payment_paid_at",
+                    "data_pagamento_associado",
+                    "data_pagamento_agente",
                     "updated_at",
                     output_field=DateTimeField(),
                 )

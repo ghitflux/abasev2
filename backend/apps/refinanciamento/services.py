@@ -4,6 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import DateTimeField, Exists, OuterRef, Q, QuerySet, Subquery
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
@@ -58,6 +59,78 @@ def _paid_projection_parcelas(parcelas: list[dict[str, object]]) -> list[dict[st
         if parcela["status"]
         in {Parcela.Status.DESCONTADO, Parcela.Status.LIQUIDADA, "quitada"}
     ]
+
+
+def renewal_materialization_annotations() -> dict[str, object]:
+    linked_payment = Pagamento.all_objects.filter(
+        cadastro_id=OuterRef("associado_id"),
+        contrato_codigo=OuterRef("contrato_origem__codigo"),
+        referencias_externas__refinanciamento_id=OuterRef("pk"),
+        deleted_at__isnull=True,
+        status=Pagamento.Status.PAGO,
+    ).order_by("-paid_at", "-created_at", "-id")
+    comprovantes = Comprovante.objects.filter(
+        refinanciamento_id=OuterRef("pk"),
+        deleted_at__isnull=True,
+    )
+    associado_payment_proof = comprovantes.filter(
+        papel=Comprovante.Papel.ASSOCIADO,
+        tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+    )
+    agente_payment_proof = comprovantes.filter(
+        papel=Comprovante.Papel.AGENTE,
+        tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
+    )
+    return {
+        "has_linked_renewal_payment": Exists(linked_payment),
+        "has_associado_payment_proof": Exists(associado_payment_proof),
+        "has_agente_payment_proof": Exists(agente_payment_proof),
+        "linked_payment_paid_at": Subquery(
+            linked_payment.values("paid_at")[:1],
+            output_field=DateTimeField(),
+        ),
+    }
+
+
+def renewal_materialized_q() -> Q:
+    return (
+        Q(executado_em__isnull=False)
+        | Q(data_ativacao_ciclo__isnull=False)
+        | Q(ciclo_destino__isnull=False)
+        | Q(has_linked_renewal_payment=True)
+        | (
+            Q(has_associado_payment_proof=True)
+            & Q(has_agente_payment_proof=True)
+        )
+    )
+
+
+def annotate_renewal_materialization(
+    queryset: QuerySet[Refinanciamento],
+) -> QuerySet[Refinanciamento]:
+    return queryset.annotate(**renewal_materialization_annotations())
+
+
+def is_renewal_materialized(refinanciamento: Refinanciamento) -> bool:
+    if (
+        refinanciamento.executado_em is not None
+        or refinanciamento.data_ativacao_ciclo is not None
+        or refinanciamento.ciclo_destino_id is not None
+    ):
+        return True
+    linked_payment = RefinanciamentoService._get_renewal_payment(refinanciamento)
+    if linked_payment is not None:
+        return True
+    return bool(
+        RefinanciamentoService._latest_payment_comprovante(
+            refinanciamento,
+            Comprovante.Papel.ASSOCIADO,
+        )
+        and RefinanciamentoService._latest_payment_comprovante(
+            refinanciamento,
+            Comprovante.Papel.AGENTE,
+        )
+    )
 
 
 class RefinanciamentoService:

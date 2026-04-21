@@ -7,6 +7,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
+from rest_framework.exceptions import ValidationError
 
 from apps.accounts.services import ComissaoService
 from apps.contratos.canonicalization import get_operational_contracts_for_associado
@@ -17,7 +18,7 @@ from apps.esteira.services import EsteiraService
 
 from .factories import AssociadoFactory
 from .models import Associado, Documento
-from .strategies import CadastroValidationStrategy
+from .strategies import CadastroValidationStrategy, calculate_contract_financials
 
 
 def add_months(base_date: date, months: int) -> date:
@@ -98,6 +99,126 @@ class AssociadoService:
         return payload
 
     @staticmethod
+    def _resolve_agente_responsavel(actor, agente_responsavel_id=None):
+        agente_responsavel = actor
+        if agente_responsavel_id:
+            agente_responsavel = actor.__class__.objects.get(pk=agente_responsavel_id)
+        return agente_responsavel
+
+    @staticmethod
+    def _resolve_percentual_repasse(
+        *,
+        agente_responsavel,
+        percentual_repasse,
+    ) -> Decimal:
+        if percentual_repasse is not None:
+            return Decimal(str(percentual_repasse))
+        return ComissaoService.resolve_percentual(
+            agente_responsavel.id if agente_responsavel else None
+        )
+
+    @staticmethod
+    def _prepare_contract_financial_payload(
+        contrato_data: dict,
+        *,
+        percentual_repasse: Decimal,
+    ) -> dict:
+        payload = dict(contrato_data)
+        payload.update(
+            calculate_contract_financials(
+                mensalidade=payload.get("mensalidade"),
+                prazo_meses=payload.get("prazo_meses"),
+                percentual_repasse=percentual_repasse,
+            )
+        )
+        payload["percentual_repasse"] = percentual_repasse
+        return payload
+
+    @staticmethod
+    def _create_operational_contract(
+        associado: Associado,
+        *,
+        agente_responsavel,
+        contrato_data: dict,
+        status: str,
+        origem_operacional: str,
+    ) -> Contrato:
+        data_aprovacao, data_primeira_mensalidade, mes_averbacao = (
+            calculate_contract_dates(contrato_data.get("data_aprovacao"))
+        )
+        prazo_meses = int(contrato_data.get("prazo_meses") or 3)
+        valor_mensalidade = Decimal(str(contrato_data.get("mensalidade") or 0))
+
+        contrato = Contrato.objects.create(
+            associado=associado,
+            agente=agente_responsavel,
+            valor_bruto=contrato_data.get("valor_bruto_total", 0),
+            valor_liquido=contrato_data.get("valor_liquido", 0),
+            valor_mensalidade=valor_mensalidade,
+            prazo_meses=prazo_meses,
+            taxa_antecipacao=contrato_data.get("taxa_antecipacao", 0),
+            margem_disponivel=contrato_data.get("margem_disponivel", 0),
+            valor_total_antecipacao=contrato_data.get("valor_total_antecipacao", 0),
+            doacao_associado=contrato_data.get("doacao_associado", Decimal("0.00")),
+            comissao_agente=contrato_data.get("comissao_agente", 0),
+            data_aprovacao=data_aprovacao,
+            data_primeira_mensalidade=data_primeira_mensalidade,
+            mes_averbacao=mes_averbacao,
+            contato_web=True,
+            termos_web=True,
+            status=status,
+            origem_operacional=origem_operacional,
+        )
+        create_cycle_with_parcelas(
+            contrato=contrato,
+            numero=1,
+            competencia_inicial=data_primeira_mensalidade.replace(day=1),
+            parcelas_total=prazo_meses,
+            ciclo_status=Ciclo.Status.ABERTO,
+            parcela_status=Parcela.Status.EM_PREVISAO,
+            data_vencimento_fn=day_of_month,
+            valor_mensalidade=valor_mensalidade,
+            valor_total=contrato.valor_total_antecipacao,
+        )
+        return contrato
+
+    @staticmethod
+    def _has_prior_contract_history(associado: Associado) -> bool:
+        return associado.contratos.filter(deleted_at__isnull=True).exists()
+
+    @staticmethod
+    def _has_open_operational_contract(associado: Associado) -> bool:
+        return associado.contratos.filter(
+            deleted_at__isnull=True,
+            contrato_canonico__isnull=True,
+        ).exclude(
+            status__in=[Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO]
+        ).exists()
+
+    @staticmethod
+    def _validate_reativacao_eligibility(associado: Associado) -> None:
+        if associado.status != Associado.Status.INATIVO:
+            raise ValidationError(
+                {"detail": "A reativação só está disponível para associados inativos."}
+            )
+        if not AssociadoService._has_prior_contract_history(associado):
+            raise ValidationError(
+                {
+                    "detail": (
+                        "A reativação exige histórico anterior de contrato para este associado."
+                    )
+                }
+            )
+        if AssociadoService._has_open_operational_contract(associado):
+            raise ValidationError(
+                {
+                    "detail": (
+                        "Já existe um contrato operacional em andamento para este associado."
+                    )
+                }
+            )
+
+    @staticmethod
     @transaction.atomic
     def criar_associado_completo(validated_data, agente):
         dados = CadastroValidationStrategy().validate(validated_data)
@@ -107,15 +228,19 @@ class AssociadoService:
         contato_data = dados.pop("contato")
         documentos_payload = dados.pop("documentos_payload", [])
         contrato_data = dados.pop("contrato")
-        agente_responsavel = agente
         agente_responsavel_id = dados.pop("agente_responsavel_id", None)
-        if agente_responsavel_id:
-            agente_responsavel = agente.__class__.objects.get(pk=agente_responsavel_id)
-        percentual_repasse = contrato_data.get("percentual_repasse")
-        if percentual_repasse is None:
-            percentual_repasse = ComissaoService.resolve_percentual(
-                agente_responsavel.id if agente_responsavel else None
-            )
+        agente_responsavel = AssociadoService._resolve_agente_responsavel(
+            agente,
+            agente_responsavel_id,
+        )
+        percentual_repasse = AssociadoService._resolve_percentual_repasse(
+            agente_responsavel=agente_responsavel,
+            percentual_repasse=contrato_data.get("percentual_repasse"),
+        )
+        contrato_data = AssociadoService._prepare_contract_financial_payload(
+            contrato_data,
+            percentual_repasse=percentual_repasse,
+        )
 
         associado_data = {
             "cpf_cnpj": dados["cpf_cnpj"],
@@ -156,41 +281,12 @@ class AssociadoService:
                 associado_data, agente_responsavel
             )
 
-        data_aprovacao, data_primeira_mensalidade, mes_averbacao = (
-            calculate_contract_dates(contrato_data.get("data_aprovacao"))
-        )
-        prazo_meses = int(contrato_data.get("prazo_meses") or 3)
-        valor_mensalidade = Decimal(str(contrato_data.get("mensalidade") or 0))
-
-        contrato = Contrato.objects.create(
-            associado=associado,
-            agente=agente_responsavel,
-            valor_bruto=contrato_data.get("valor_bruto_total", 0),
-            valor_liquido=contrato_data.get("valor_liquido", 0),
-            valor_mensalidade=valor_mensalidade,
-            prazo_meses=prazo_meses,
-            taxa_antecipacao=contrato_data.get("taxa_antecipacao", 0),
-            margem_disponivel=contrato_data.get("margem_disponivel", 0),
-            valor_total_antecipacao=contrato_data.get("valor_total_antecipacao", 0),
-            doacao_associado=contrato_data.get("doacao_associado", Decimal("0.00")),
-            comissao_agente=contrato_data.get("comissao_agente", 0),
-            data_aprovacao=data_aprovacao,
-            data_primeira_mensalidade=data_primeira_mensalidade,
-            mes_averbacao=mes_averbacao,
-            contato_web=True,
-            termos_web=True,
+        AssociadoService._create_operational_contract(
+            associado,
+            agente_responsavel=agente_responsavel,
+            contrato_data=contrato_data,
             status=Contrato.Status.EM_ANALISE,
-        )
-        create_cycle_with_parcelas(
-            contrato=contrato,
-            numero=1,
-            competencia_inicial=data_primeira_mensalidade.replace(day=1),
-            parcelas_total=prazo_meses,
-            ciclo_status=Ciclo.Status.ABERTO,
-            parcela_status=Parcela.Status.EM_PREVISAO,
-            data_vencimento_fn=day_of_month,
-            valor_mensalidade=valor_mensalidade,
-            valor_total=contrato.valor_total_antecipacao,
+            origem_operacional=Contrato.OrigemOperacional.CADASTRO,
         )
 
         EsteiraService.garantir_item_inicial_cadastro(
@@ -210,9 +306,59 @@ class AssociadoService:
 
     @staticmethod
     @transaction.atomic
-    def inativar_associado(associado: Associado) -> Associado:
+    def inativar_associado(associado: Associado, user=None) -> Associado:
+        EsteiraService.normalizar_inativacao_associado(associado, user)
         associado.status = Associado.Status.INATIVO
         associado.save(update_fields=["status", "updated_at"])
+        return associado
+
+    @staticmethod
+    @transaction.atomic
+    def reativar_associado(associado: Associado, validated_data, user) -> Associado:
+        AssociadoService._validate_reativacao_eligibility(associado)
+
+        contrato_data = dict(validated_data.get("contrato") or {})
+        agente_responsavel = AssociadoService._resolve_agente_responsavel(
+            user,
+            validated_data.get("agente_responsavel_id"),
+        )
+        percentual_repasse = AssociadoService._resolve_percentual_repasse(
+            agente_responsavel=agente_responsavel,
+            percentual_repasse=contrato_data.get("percentual_repasse"),
+        )
+        contrato_data = AssociadoService._prepare_contract_financial_payload(
+            contrato_data,
+            percentual_repasse=percentual_repasse,
+        )
+
+        associado.agente_responsavel = agente_responsavel
+        associado.auxilio_taxa = percentual_repasse
+        associado.status = Associado.Status.EM_ANALISE
+        associado.save(
+            update_fields=[
+                "agente_responsavel",
+                "auxilio_taxa",
+                "status",
+                "updated_at",
+            ]
+        )
+
+        contrato = AssociadoService._create_operational_contract(
+            associado,
+            agente_responsavel=agente_responsavel,
+            contrato_data=contrato_data,
+            status=Contrato.Status.EM_ANALISE,
+            origem_operacional=Contrato.OrigemOperacional.REATIVACAO,
+        )
+        EsteiraService.enviar_reativacao_para_analise(
+            associado,
+            user,
+            observacao=(
+                "Reativação enviada para análise. "
+                f"Novo contrato {contrato.codigo} criado."
+            ),
+        )
+        associado.refresh_from_db()
         return associado
 
     @staticmethod

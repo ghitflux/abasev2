@@ -345,22 +345,21 @@ export default function DryRunModal({
                   Impacto após confirmação
                 </h3>
                 <div className="space-y-3">
-                  {/* Aptos a renovar */}
-                  {kpis.aptos_a_renovar > 0 && (
-                    <button
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <KpiCard
+                      label="Ficarão aptos a renovar"
+                      value={kpis.aptos_a_renovar}
+                      sub="Associados que entrarão em Aptos a renovar após confirmar este retorno."
+                      icon={<CheckCircle2Icon className="size-4" />}
+                      colorClass={
+                        kpis.aptos_a_renovar > 0
+                          ? "text-emerald-300"
+                          : "text-muted-foreground"
+                      }
+                      clickable={kpis.aptos_a_renovar > 0}
                       onClick={() => setActiveDetail("aptos_renovar")}
-                      className="flex w-full items-center justify-between gap-3 rounded-2xl border border-emerald-400/20 bg-emerald-500/5 px-4 py-3.5 text-left text-sm transition-colors hover:border-emerald-400/30 hover:bg-emerald-500/10"
-                    >
-                      <span className="flex items-center gap-2 font-medium text-emerald-200">
-                        <CheckCircle2Icon className="size-4" />
-                        {kpis.aptos_a_renovar} associado{kpis.aptos_a_renovar !== 1 ? "s" : ""} ficarão{" "}
-                        <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2 py-0.5 font-semibold">
-                          APTOS A RENOVAR
-                        </span>
-                      </span>
-                      <ChevronRightIcon className="size-4 shrink-0 text-emerald-300/80" />
-                    </button>
-                  )}
+                    />
+                  </div>
 
                   {/* Mudanças de status de associados */}
                   {kpis.mudancas_status_associado.length > 0 && (

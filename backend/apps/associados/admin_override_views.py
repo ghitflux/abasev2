@@ -227,7 +227,7 @@ class AdminOverrideContratoViewSet(GenericViewSet):
         serializer = CycleLayoutOverrideWriteSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            AdminOverrideService.apply_cycle_layout_override(
+            _contrato, operation_warnings = AdminOverrideService.apply_cycle_layout_override(
                 contrato=contrato,
                 payload=serializer.validated_data,
                 user=request.user,
@@ -236,7 +236,10 @@ class AdminOverrideContratoViewSet(GenericViewSet):
             return _conflict_response(exc)
         except DjangoValidationError as exc:
             return _validation_error_response(exc)
-        payload = AdminOverrideService.build_associado_editor_payload(contrato.associado)
+        payload = AdminOverrideService.build_associado_editor_payload(
+            contrato.associado,
+            extra_warnings=operation_warnings,
+        )
         return Response(AdminOverrideEditorPayloadSerializer(payload).data)
 
 

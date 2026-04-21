@@ -1,18 +1,29 @@
 "use client";
 
 import * as React from "react";
+import { DownloadIcon } from "lucide-react";
 
 import type { DryRunItem } from "@/gen/models/DryRunItem";
 import CopySnippet from "@/components/shared/copy-snippet";
 import StatusBadge from "@/components/custom/status-badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { formatCurrency } from "@/lib/formatters";
 import { maskCPFCNPJ } from "@/lib/masks";
+import { exportRows, type TableExportColumn } from "@/lib/table-export";
 
 type Props = {
   open: boolean;
@@ -23,31 +34,203 @@ type Props = {
 
 const PAGE_SIZE = 15;
 
+function normalizeSearchValue(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function formatStatusText(value: string | null | undefined) {
+  if (!value) {
+    return "—";
+  }
+  return value.replaceAll("_", " ");
+}
+
+function buildSearchHaystack(item: DryRunItem) {
+  return normalizeSearchValue(
+    [
+      item.associado_nome,
+      item.nome_servidor,
+      item.cpf_cnpj,
+      maskCPFCNPJ(item.cpf_cnpj),
+      item.matricula_servidor,
+      item.orgao_pagto_nome,
+      item.associado_status_antes,
+      item.associado_status_depois,
+      item.ciclo_status_antes,
+      item.ciclo_status_depois,
+      item.ficara_apto_renovar
+        ? "Entrará em Aptos a renovar após confirmar"
+        : "Sem ação automática",
+    ].join(" "),
+  );
+}
+
+function slugifyFilename(value: string) {
+  return normalizeSearchValue(value)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 export default function DryRunDetailDialog({ open, onOpenChange, title, items }: Props) {
   const [page, setPage] = React.useState(1);
+  const [search, setSearch] = React.useState("");
+  const deferredSearch = React.useDeferredValue(search);
 
-  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
-  const pageItems = items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const filteredItems = React.useMemo(() => {
+    const terms = normalizeSearchValue(deferredSearch)
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!terms.length) {
+      return items;
+    }
+    return items.filter((item) => {
+      const haystack = buildSearchHaystack(item);
+      return terms.every((term) => haystack.includes(term));
+    });
+  }, [deferredSearch, items]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
+  const pageItems = filteredItems.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  const exportColumns = React.useMemo<TableExportColumn<DryRunItem>[]>(
+    () => [
+      {
+        header: "Associado",
+        value: (item) => item.associado_nome || item.nome_servidor || "—",
+      },
+      {
+        header: "CPF",
+        value: (item) => maskCPFCNPJ(item.cpf_cnpj),
+      },
+      {
+        header: "Matricula",
+        value: (item) => item.matricula_servidor || "—",
+      },
+      {
+        header: "Orgao",
+        value: (item) => item.orgao_pagto_nome || "—",
+      },
+      {
+        header: "Valor",
+        value: (item) => item.valor_descontado,
+      },
+      {
+        header: "Status Associado Antes",
+        value: (item) => formatStatusText(item.associado_status_antes),
+      },
+      {
+        header: "Status Associado Depois",
+        value: (item) => formatStatusText(item.associado_status_depois),
+      },
+      {
+        header: "Ciclo Antes",
+        value: (item) => formatStatusText(item.ciclo_status_antes),
+      },
+      {
+        header: "Ciclo Depois",
+        value: (item) => formatStatusText(item.ciclo_status_depois),
+      },
+      {
+        header: "Acao",
+        value: (item) =>
+          item.ficara_apto_renovar
+            ? "Entrara em Aptos a renovar apos confirmar"
+            : "Sem acao automatica",
+      },
+    ],
+    [],
+  );
+
+  const handleExport = React.useCallback(
+    (format: "csv" | "pdf" | "excel" | "xlsx") => {
+      exportRows(
+        format,
+        title,
+        `${slugifyFilename(title) || "detalhes-previa-importacao"}-${new Date()
+          .toISOString()
+          .slice(0, 10)}`,
+        exportColumns,
+        filteredItems,
+      );
+    },
+    [exportColumns, filteredItems, title],
+  );
 
   React.useEffect(() => {
+    if (!open) {
+      setSearch("");
+    }
     setPage(1);
-  }, [open]);
+  }, [open, search, title]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="grid max-h-[calc(100vh-2rem)] w-[96vw] max-w-[96vw] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden border-border/60 bg-background/95 p-0 sm:max-w-none 2xl:max-w-[100rem]">
-        <DialogHeader className="shrink-0 border-b border-border/60 px-6 py-4">
-          <DialogTitle className="text-base">{title}</DialogTitle>
-          <p className="text-xs text-muted-foreground">
-            {items.length} associado{items.length !== 1 ? "s" : ""}
-          </p>
-        </DialogHeader>
+        <div className="sticky top-0 z-20 shrink-0 border-b border-border/60 bg-background/95 px-6 py-4 backdrop-blur">
+          <DialogHeader className="gap-1">
+            <DialogTitle className="text-base">{title}</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
+              {search.trim()
+                ? `${filteredItems.length} de ${items.length} associado${items.length !== 1 ? "s" : ""}`
+                : `${items.length} associado${items.length !== 1 ? "s" : ""}`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="mt-3 flex flex-col gap-3 border-t border-border/40 pt-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 flex-1 gap-3">
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar por associado, CPF, matrícula ou órgão..."
+                aria-label="Buscar associados da prévia"
+                className="rounded-2xl bg-card/60"
+              />
+              {search.trim() ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-2xl"
+                  onClick={() => setSearch("")}
+                >
+                  Limpar
+                </Button>
+              ) : null}
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-2xl"
+                  disabled={filteredItems.length === 0}
+                >
+                  <DownloadIcon className="size-4" />
+                  Exportar
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="rounded-xl">
+                <DropdownMenuItem onClick={() => handleExport("csv")}>
+                  CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport("xlsx")}>
+                  XLS
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => handleExport("pdf")}>
+                  PDF
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
 
         <div className="min-h-0 overflow-y-auto">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[72rem] text-sm">
-              <thead>
-                <tr className="border-b border-border/60 bg-muted/20">
+              <thead className="sticky top-0 z-10">
+                <tr className="border-b border-border/60 bg-background/95">
                   <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Associado
                   </th>
@@ -69,13 +252,18 @@ export default function DryRunDetailDialog({ open, onOpenChange, title, items }:
                   <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Ciclo Depois
                   </th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Ação
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {pageItems.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-sm text-muted-foreground">
-                      Nenhum registro nesta categoria.
+                    <td colSpan={8} className="px-4 py-8 text-center text-sm text-muted-foreground">
+                      {search.trim()
+                        ? "Nenhum registro encontrado para essa busca."
+                        : "Nenhum registro nesta categoria."}
                     </td>
                   </tr>
                 ) : (
@@ -129,6 +317,17 @@ export default function DryRunDetailDialog({ open, onOpenChange, title, items }:
                           <StatusBadge status={item.ciclo_status_depois} />
                         ) : (
                           <span className="text-muted-foreground">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {item.ficara_apto_renovar ? (
+                          <span className="inline-flex max-w-[14rem] rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-200">
+                            Entrará em Aptos a renovar após confirmar
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            Sem ação automática
+                          </span>
                         )}
                       </td>
                     </tr>

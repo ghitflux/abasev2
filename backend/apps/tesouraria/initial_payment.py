@@ -280,11 +280,6 @@ def build_initial_payment_evidences(
         ),
     }
     comprovantes = list(_contract_comprovantes(contrato))
-    if not comprovantes:
-        comprovantes = _payment_refinanciamento_comprovantes(
-            contrato,
-            pagamento=pagamento,
-        )
     if comprovantes:
         evidence_rows: list[dict[str, object]] = []
         for comprovante in comprovantes:

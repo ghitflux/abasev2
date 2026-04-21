@@ -201,6 +201,7 @@ class EsteiraListSerializer(serializers.ModelSerializer):
             "etapa_atual",
             "status",
             "assumido_em",
+            "concluido_em",
             "created_at",
             "updated_at",
         ]

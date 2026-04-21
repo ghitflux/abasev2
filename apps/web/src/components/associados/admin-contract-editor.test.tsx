@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import AdminContractEditor from "./admin-contract-editor";
 import type { AdminContractEditorHandle } from "./admin-contract-editor";
 import { buildCyclesPayload } from "./admin-contract-editor";
+import { buildRefinanciamentoPayload } from "./admin-contract-editor";
 import type { AdminEditorContrato } from "@/lib/api/types";
 
 jest.mock("@/components/custom/calendar-competencia", () => {
@@ -83,6 +84,7 @@ const contractFixture: AdminEditorContrato = {
   valor_bruto: "1000.00",
   valor_liquido: "900.00",
   valor_mensalidade: "75.00",
+  prazo_meses: 3,
   taxa_antecipacao: "1.50",
   margem_disponivel: "250.00",
   valor_total_antecipacao: "100.00",
@@ -93,6 +95,8 @@ const contractFixture: AdminEditorContrato = {
   data_primeira_mensalidade: "2025-11-01",
   mes_averbacao: "2025-10-01",
   auxilio_liberado_em: null,
+  ciclo_ja_renovado: false,
+  contrato_nao_renovado: false,
   ciclos: [],
   refinanciamento_ativo: null,
   meses_nao_pagos: [],
@@ -285,5 +289,35 @@ describe("AdminContractEditor", () => {
       },
     ]);
     expect(payload.parcelas[0]?.cycle_ref).toBe("auto-fallback-cycle-1");
+  });
+
+  it("remove status do payload de refinanciamento salvo em lote", () => {
+    const payload = buildRefinanciamentoPayload({
+      id: 88,
+      status: "apto_a_renovar",
+      competencia_solicitada: "2026-04-01",
+      valor_refinanciamento: "945.00",
+      repasse_agente: "94.50",
+      executado_em: null,
+      data_ativacao_ciclo: null,
+      motivo_bloqueio: "",
+      observacao: "ajuste",
+      analista_note: "",
+      coordenador_note: "",
+      reviewed_by_id: null,
+      updated_at: "2026-04-21T12:00:00Z",
+    });
+
+    expect(payload).toEqual({
+      id: 88,
+      updated_at: "2026-04-21T12:00:00Z",
+      valor_refinanciamento: "945.00",
+      repasse_agente: "94.50",
+      competencia_solicitada: "2026-04-01",
+      observacao: "ajuste",
+      analista_note: "",
+      coordenador_note: "",
+    });
+    expect(payload && "status" in payload).toBe(false);
   });
 });

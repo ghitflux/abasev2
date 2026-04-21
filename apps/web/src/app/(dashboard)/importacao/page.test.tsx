@@ -512,6 +512,62 @@ describe("ImportacaoPage", () => {
     expect(
       within(dialog).getByText("Associados importados"),
     ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Ficarão aptos a renovar"),
+    ).toBeInTheDocument();
+  });
+
+  it("abre a tabela de associados que ficarao aptos a renovar na previa", async () => {
+    const user = userEvent.setup();
+
+    mockedApiFetch.mockImplementation(async (path, options) => {
+      if (path === "importacao/arquivo-retorno") {
+        return historyPayload;
+      }
+
+      if (path === "importacao/arquivo-retorno/upload") {
+        const arquivo = options?.formData?.get("arquivo") as File | null;
+        return {
+          ...latestImport,
+          status: "aguardando_confirmacao",
+          arquivo_nome: arquivo?.name ?? latestImport.arquivo_nome,
+          dry_run_resultado: dryRunResultado,
+        };
+      }
+      if (path === `importacao/arquivo-retorno/${latestImport.id}/cancelar`) {
+        return undefined;
+      }
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    const { container } = renderPage();
+    const input = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["conteudo"], "retorno_dry_run.txt", {
+      type: "text/plain",
+    });
+
+    await user.upload(input, file);
+    await user.click(
+      await screen.findByRole("button", { name: /Ficarão aptos a renovar/i }),
+    );
+
+    const dialogs = await screen.findAllByRole("dialog");
+    const detailDialog = dialogs[dialogs.length - 1];
+    expect(
+      within(detailDialog).getByText("Ficarão aptos a renovar"),
+    ).toBeInTheDocument();
+    expect(
+      within(detailDialog).getByPlaceholderText(
+        "Buscar por associado, CPF, matrícula ou órgão...",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(detailDialog).getByText(
+        "Entrará em Aptos a renovar após confirmar",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("confirma a importação a partir do modal de dry-run", async () => {
@@ -642,6 +698,56 @@ describe("ImportacaoPage", () => {
       `importacao/arquivo-retorno/${latestImport.id}/cancelar`,
       expect.objectContaining({ method: "POST" }),
     );
+  });
+
+  it("evita chamadas duplicadas ao cancelar e fechar a previa em sequencia", async () => {
+    const user = userEvent.setup();
+    let resolveCancel: (() => void) | undefined;
+
+    mockedApiFetch.mockImplementation(async (path) => {
+      if (path === "importacao/arquivo-retorno") {
+        return historyPayload;
+      }
+
+      if (path === "importacao/arquivo-retorno/upload") {
+        return {
+          ...latestImport,
+          status: "aguardando_confirmacao",
+          dry_run_resultado: dryRunResultado,
+        };
+      }
+      if (path === `importacao/arquivo-retorno/${latestImport.id}/cancelar`) {
+        return new Promise<void>((resolve) => {
+          resolveCancel = resolve;
+        });
+      }
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    const { container } = renderPage();
+    const input = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["conteudo"], "retorno_dry_run.txt", {
+      type: "text/plain",
+    });
+
+    await user.upload(input, file);
+    await user.click(
+      await screen.findByRole("button", { name: /^cancelar$/i }),
+    );
+    await user.click(await screen.findByRole("button", { name: /^close$/i }));
+
+    expect(
+      mockedApiFetch.mock.calls.filter(
+        ([path]) =>
+          path === `importacao/arquivo-retorno/${latestImport.id}/cancelar`,
+      ),
+    ).toHaveLength(1);
+
+    await act(async () => {
+      resolveCancel?.();
+    });
   });
 
   it("mantem o modal aberto quando cancelar falha e permite nova tentativa", async () => {

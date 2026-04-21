@@ -81,7 +81,6 @@ export default function AdminOverrideConfirmDialog({
           className="space-y-4"
           onSubmit={form.handleSubmit(async (values) => {
             await onConfirm(values.motivo);
-            onOpenChange(false);
           })}
         >
           <Field>

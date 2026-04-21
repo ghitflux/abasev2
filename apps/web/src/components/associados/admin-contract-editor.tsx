@@ -63,7 +63,7 @@ const cicloStatusOptions = [
   { value: "futuro", label: "Futuro" },
   { value: "aberto", label: "Aberto" },
   { value: "pendencia", label: "Pendência" },
-  { value: "ciclo_renovado", label: "Ciclo renovado" },
+  { value: "ciclo_renovado", label: "Ciclo já renovado" },
   { value: "apto_a_renovar", label: "Apto a renovar" },
   { value: "concluido", label: "Concluído" },
 ] as const;
@@ -75,17 +75,6 @@ const parcelaStatusOptions = [
   "descontado",
   "liquidada",
   "nao_descontado",
-];
-
-const refinanciamentoStatusOptions = [
-  "apto_a_renovar",
-  "em_analise_renovacao",
-  "aprovado_analise_renovacao",
-  "aprovado_para_renovacao",
-  "bloqueado",
-  "desativado",
-  "revertido",
-  "efetivado",
 ];
 
 type ContractDraft = AdminEditorContrato & {
@@ -147,7 +136,6 @@ export type SaveAllCyclesPayload = {
 export type SaveAllRefinanciamentoPayload = {
   id: number;
   updated_at: string | null;
-  status: string;
   valor_refinanciamento: string;
   repasse_agente: string;
   competencia_solicitada: string;
@@ -164,6 +152,7 @@ export type ContractEditorDirtyState = {
 
 export type AdminContractEditorPendingChanges = {
   id: number;
+  dirty_sections?: Array<"contract_core" | "cycle_layout" | "refinanciamento">;
   core?: SaveAllContratoCorePayload;
   cycles?: SaveAllCyclesPayload;
   refinanciamento?: SaveAllRefinanciamentoPayload;
@@ -410,7 +399,7 @@ export function buildCyclesPayload(contract: ContractDraft): SaveAllCyclesPayloa
   };
 }
 
-function buildRefinanciamentoPayload(
+export function buildRefinanciamentoPayload(
   refinanciamento: ContractDraft["refinanciamento_ativo"],
 ): SaveAllRefinanciamentoPayload | null {
   if (!refinanciamento) {
@@ -420,7 +409,6 @@ function buildRefinanciamentoPayload(
   return {
     id: refinanciamento.id,
     updated_at: refinanciamento.updated_at,
-    status: refinanciamento.status,
     valor_refinanciamento: refinanciamento.valor_refinanciamento,
     repasse_agente: refinanciamento.repasse_agente,
     competencia_solicitada: refinanciamento.competencia_solicitada,
@@ -536,18 +524,27 @@ const AdminContractEditor = React.forwardRef<AdminContractEditorHandle, Props>(
       ref,
       () => ({
         getPendingChanges() {
+          const dirtySections: Array<
+            "contract_core" | "cycle_layout" | "refinanciamento"
+          > = [];
           const pending: AdminContractEditorPendingChanges = {
             id: contract.id,
           };
 
           if (dirtyState.core) {
+            dirtySections.push("contract_core");
             pending.core = currentCorePayload;
           }
           if (dirtyState.cycles) {
+            dirtySections.push("cycle_layout");
             pending.cycles = currentCyclesPayload;
           }
           if (dirtyState.refinanciamento && currentRefiPayload) {
+            dirtySections.push("refinanciamento");
             pending.refinanciamento = currentRefiPayload;
+          }
+          if (dirtySections.length) {
+            pending.dirty_sections = dirtySections;
           }
 
           return pending.core || pending.cycles || pending.refinanciamento
@@ -1423,31 +1420,19 @@ const AdminContractEditor = React.forwardRef<AdminContractEditorHandle, Props>(
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <AdminField
-                  label="Status"
-                  tooltip="Estado operacional da renovação atualmente vinculada ao contrato."
+                  label="Etapa atual"
+                  tooltip='O status da renovação é controlado pela transição segura acima e pela tesouraria. O editor avançado não efetiva nem reposiciona a fila diretamente.'
                 >
-                  <Select
-                    value={draft.refinanciamento_ativo.status}
-                    onValueChange={(value) =>
-                      setDraft((current) => ({
-                        ...current,
-                        refinanciamento_ativo: current.refinanciamento_ativo
-                          ? { ...current.refinanciamento_ativo, status: value }
-                          : null,
-                      }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {refinanciamentoStatusOptions.map((status) => (
-                        <SelectItem key={status} value={status}>
-                          {status.replaceAll("_", " ")}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="space-y-2 rounded-2xl border border-border/60 bg-background/60 p-3">
+                    <StatusBadge
+                      status={draft.refinanciamento_ativo.status}
+                      label={draft.refinanciamento_ativo.status.replaceAll("_", " ")}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Use <strong>Enviar para etapa</strong> para mudar a fila da renovação e a
+                      tesouraria para anexar comprovantes e efetivar.
+                    </p>
+                  </div>
                 </AdminField>
                 <AdminField
                   label="Valor"

@@ -9,6 +9,7 @@ import { saveAllEsteiraWriteSchema } from "./saveAllEsteiraWriteSchema.ts";
 
 export const adminOverrideSaveAllWriteSchema = z.object({
   motivo: z.string(),
+  dirty_sections: z.array(z.enum(["esteira"])).optional(),
   get contratos() {
     return z.array(saveAllContratoWriteSchema).optional();
   },

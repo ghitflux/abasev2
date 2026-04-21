@@ -35,6 +35,7 @@ from .models import DocIssue, DocReupload, EsteiraItem, Pendencia
 class AnaliseService:
     FILA_SECOES = (
         "novos_contratos",
+        "contratos_reativacao",
         "ver_todos",
         "pendencias",
         "pendencias_corrigidas",
@@ -144,6 +145,9 @@ class AnaliseService:
                     Pagamento.objects.filter(cadastro_id=OuterRef("associado_id"))
                 ),
                 latest_contract_status=Subquery(latest_contract.values("status")[:1]),
+                latest_contract_origin=Subquery(
+                    latest_contract.values("origem_operacional")[:1]
+                ),
                 resolved_pendencias_count=Count(
                     "pendencias",
                     filter=Q(pendencias__status=Pendencia.Status.RESOLVIDA),
@@ -282,6 +286,22 @@ class AnaliseService:
                 Q(has_open_pendencia=True)
                 | Q(has_received_reupload=True)
                 | Q(resolved_pendencias_count__gt=0)
+                | Q(latest_contract_origin=Contrato.OrigemOperacional.REATIVACAO)
+                | Q(associado__status__in=[
+                    Associado.Status.ATIVO,
+                    Associado.Status.INADIMPLENTE,
+                    Associado.Status.INATIVO,
+                ])
+            ).order_by("-updated_at", "-created_at")
+
+        if secao == "contratos_reativacao":
+            return queryset.filter(
+                etapa_atual=EsteiraItem.Etapa.ANALISE,
+                latest_contract_origin=Contrato.OrigemOperacional.REATIVACAO,
+            ).exclude(
+                Q(has_open_pendencia=True)
+                | Q(has_received_reupload=True)
+                | Q(resolved_pendencias_count__gt=0)
                 | Q(associado__status__in=[
                     Associado.Status.ATIVO,
                     Associado.Status.INADIMPLENTE,
@@ -311,7 +331,7 @@ class AnaliseService:
                 etapa_atual=EsteiraItem.Etapa.CONCLUIDO
             ).exclude(
                 associado__status=Associado.Status.INATIVO
-            ).order_by("-concluido_em", "-updated_at", "-created_at")
+            ).order_by("-concluido_em", "-created_at", "-id")
 
         return queryset.filter(
             latest_contract_status=Contrato.Status.CANCELADO

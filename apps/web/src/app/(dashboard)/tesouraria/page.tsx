@@ -100,6 +100,7 @@ type TesourariaPagamentoFilter =
 type TesourariaSectionFilter =
   | "todos"
   | "pendente"
+  | "reativacao"
   | "concluido"
   | "liquidado"
   | "cancelado";
@@ -230,6 +231,9 @@ function formatTesourariaValores(row: TesourariaContratoItem) {
 
 function formatTesourariaStatus(row: TesourariaContratoItem) {
   const parts = [toStatusLabel(row.status)];
+  if (row.origem_operacional === "reativacao") {
+    parts.push(row.origem_operacional_label || "Reativação");
+  }
   if (row.cancelamento_tipo) {
     parts.push(
       row.cancelamento_tipo === "desistente" ? "Desistente" : "Cancelado",
@@ -297,6 +301,7 @@ function useTesourariaQuery({
   page,
   search,
   pagamento,
+  origemOperacional,
   dataInicio,
   dataFim,
   agente,
@@ -307,6 +312,7 @@ function useTesourariaQuery({
   page: number;
   search: string;
   pagamento: TesourariaPagamentoFilter;
+  origemOperacional?: string;
   dataInicio?: Date;
   dataFim?: Date;
   agente: string;
@@ -318,6 +324,7 @@ function useTesourariaQuery({
     queryKey: [
       "tesouraria-contratos",
       pagamento,
+      origemOperacional,
       page,
       search,
       dataInicio?.toISOString(),
@@ -335,6 +342,7 @@ function useTesourariaQuery({
             page,
             page_size: PAGE_SIZE,
             pagamento,
+            origem_operacional: origemOperacional || undefined,
             search: search || undefined,
             data_inicio: toFilterDate(dataInicio),
             data_fim: toFilterDate(dataFim),
@@ -358,6 +366,7 @@ export default function TesourariaPage() {
   const [search, setSearch] = React.useState("");
   const [isExporting, setIsExporting] = React.useState(false);
   const [pagePending, setPagePending] = React.useState(1);
+  const [pageReactivation, setPageReactivation] = React.useState(1);
   const [pagePaid, setPagePaid] = React.useState(1);
   const [pageLiquidated, setPageLiquidated] = React.useState(1);
   const [pageCanceled, setPageCanceled] = React.useState(1);
@@ -404,6 +413,19 @@ export default function TesourariaPage() {
     page: pagePending,
     search,
     pagamento: "pendente",
+    origemOperacional: "cadastro",
+    dataInicio,
+    dataFim,
+    agente: agenteFiltro,
+    statusContrato,
+    situacaoEsteira,
+    ordering,
+  });
+  const reactivationQuery = useTesourariaQuery({
+    page: pageReactivation,
+    search,
+    pagamento: "pendente",
+    origemOperacional: "reativacao",
     dataInicio,
     dataFim,
     agente: agenteFiltro,
@@ -833,7 +855,16 @@ export default function TesourariaPage() {
       {
         id: "nome",
         header: "Nome",
-        cell: (row) => <p className="font-medium">{row.nome}</p>,
+        cell: (row) => (
+          <div className="space-y-1">
+            <p className="font-medium">{row.nome}</p>
+            {row.origem_operacional === "reativacao" ? (
+              <Badge className="rounded-full bg-emerald-500/15 text-emerald-200">
+                {row.origem_operacional_label || "Reativação"}
+              </Badge>
+            ) : null}
+          </div>
+        ),
       },
       {
         id: "matricula_cpf",
@@ -925,6 +956,11 @@ export default function TesourariaPage() {
         cell: (row) => (
           <div className="space-y-1">
             <StatusBadge status={row.status} />
+            {row.origem_operacional === "reativacao" ? (
+              <Badge className="rounded-full bg-emerald-500/15 text-emerald-200">
+                {row.origem_operacional_label || "Reativação"}
+              </Badge>
+            ) : null}
             {row.cancelamento_tipo ? (
               <Badge className="rounded-full bg-rose-500/15 text-rose-200">
                 {row.cancelamento_tipo === "desistente"
@@ -958,10 +994,36 @@ export default function TesourariaPage() {
 
       setIsExporting(true);
       try {
-        const pagamentos =
+        const sources =
           visibleSection === "todos"
-            ? (["pendente", "concluido", "liquidado", "cancelado"] as const)
-            : ([visibleSection] as const);
+            ? ([
+                {
+                  pagamento: "pendente" as const,
+                  origem_operacional: "cadastro" as const,
+                },
+                {
+                  pagamento: "pendente" as const,
+                  origem_operacional: "reativacao" as const,
+                },
+                { pagamento: "concluido" as const },
+                { pagamento: "liquidado" as const },
+                { pagamento: "cancelado" as const },
+              ] as const)
+            : visibleSection === "pendente"
+              ? ([
+                  {
+                    pagamento: "pendente" as const,
+                    origem_operacional: "cadastro" as const,
+                  },
+                ] as const)
+              : visibleSection === "reativacao"
+                ? ([
+                    {
+                      pagamento: "pendente" as const,
+                      origem_operacional: "reativacao" as const,
+                    },
+                  ] as const)
+                : ([{ pagamento: visibleSection }] as const);
         const sharedQuery = {
           search: search || undefined,
           data_inicio: toFilterDate(dataInicio),
@@ -978,12 +1040,16 @@ export default function TesourariaPage() {
 
         const fetchedRows = (
           await Promise.all(
-            pagamentos.map((pagamento) =>
+            sources.map((source) =>
               fetchAllPaginatedRows<TesourariaContratoItem>({
                 sourcePath: "tesouraria/contratos",
                 sourceQuery: {
                   ...sharedQuery,
-                  pagamento,
+                  pagamento: source.pagamento,
+                  origem_operacional:
+                    "origem_operacional" in source
+                      ? source.origem_operacional
+                      : undefined,
                 },
               }),
             ),
@@ -1009,7 +1075,12 @@ export default function TesourariaPage() {
           rows: exportRows,
           filters: {
             ...sharedQuery,
-            pagamento: pagamentos,
+            pagamento: sources.map((source) =>
+              "origem_operacional" in source &&
+              source.origem_operacional === "reativacao"
+                ? "reativacao"
+                : source.pagamento,
+            ),
             totais: {
               total_registros: scopedRows.length,
               total_auxilio_liberado: scopedRows
@@ -1065,6 +1136,7 @@ export default function TesourariaPage() {
 
   const handleRefresh = () => {
     setPagePending(1);
+    setPageReactivation(1);
     setPagePaid(1);
     setPageLiquidated(1);
     setPageCanceled(1);
@@ -1078,6 +1150,7 @@ export default function TesourariaPage() {
   };
 
   const pendingRows = pendingQuery.data?.results ?? [];
+  const reactivationRows = reactivationQuery.data?.results ?? [];
   const paidRows = paidQuery.data?.results ?? [];
   const liquidatedRows = liquidatedQuery.data?.results ?? [];
   const canceledRows = canceledQuery.data?.results ?? [];
@@ -1097,16 +1170,18 @@ export default function TesourariaPage() {
   });
   const kpiCounts = {
     pendente: pendingQuery.data?.count ?? 0,
+    reativacao: reactivationQuery.data?.count ?? 0,
     concluido: paidQuery.data?.count ?? 0,
     liquidado: liquidatedQuery.data?.count ?? 0,
     cancelado: canceledQuery.data?.count ?? 0,
   };
   const totalKpiCount =
     kpiCounts.pendente +
+    kpiCounts.reativacao +
     kpiCounts.concluido +
     kpiCounts.liquidado +
     kpiCounts.cancelado;
-  const shouldShowSection = (section: TesourariaPagamentoFilter) =>
+  const shouldShowSection = (section: TesourariaSectionFilter) =>
     visibleSection === "todos" || visibleSection === section;
   const kpiCards = [
     {
@@ -1124,6 +1199,14 @@ export default function TesourariaPage() {
       value: kpiCounts.pendente,
       tone: "warning" as const,
       icon: Clock3Icon,
+    },
+    {
+      key: "reativacao" as const,
+      label: "Reativações",
+      tooltip: "Contratos de reativação aguardando efetivação na tesouraria.",
+      value: kpiCounts.reativacao,
+      tone: "positive" as const,
+      icon: CheckCircle2Icon,
     },
     {
       key: "concluido" as const,
@@ -1461,6 +1544,42 @@ export default function TesourariaPage() {
             onPageChange={setPagePending}
             emptyMessage="Nenhum contrato pendente para os filtros informados."
             loading={pendingQuery.isLoading}
+            skeletonRows={PAGE_SIZE}
+          />
+        </section>
+      ) : null}
+
+      {shouldShowSection("reativacao") ? (
+        <section className="space-y-4">
+          <header className="flex items-center justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-[0.28em] text-emerald-300">
+                Reativações
+              </p>
+              <h2 className="text-xl font-semibold">
+                Reativações aguardando tesouraria
+              </h2>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Mostrando{" "}
+              {buildRangeLabel(
+                pageReactivation,
+                reactivationRows.length,
+                reactivationQuery.data?.count ?? 0,
+              )}
+            </p>
+          </header>
+          <DataTable
+            data={reactivationRows}
+            columns={columns}
+            currentPage={pageReactivation}
+            totalPages={Math.max(
+              1,
+              Math.ceil((reactivationQuery.data?.count ?? 0) / PAGE_SIZE),
+            )}
+            onPageChange={setPageReactivation}
+            emptyMessage="Nenhuma reativação pendente para os filtros informados."
+            loading={reactivationQuery.isLoading}
             skeletonRows={PAGE_SIZE}
           />
         </section>

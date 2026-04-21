@@ -122,6 +122,18 @@ const FILA_SECTIONS: Array<{
       `${summary?.filas.pendencias ?? 0} seguem com pendência documental`,
   },
   {
+    key: "contratos_reativacao",
+    title: "Contratos para Reativação",
+    tooltip:
+      "Reativações de associados inativos que precisam de aprovação do analista antes da tesouraria.",
+    description:
+      "Reativações aguardando triagem do analista antes da efetivação financeira.",
+    emptyMessage: "Nenhuma reativação aguardando análise no momento.",
+    tone: "neutral",
+    icon: FileTextIcon,
+    delta: () => "Após aprovação, segue para tesouraria",
+  },
+  {
     key: "ver_todos",
     title: "Ver todos",
     description:
@@ -731,7 +743,11 @@ export default function AnalisePage() {
           rows,
           scope,
           referenceDate,
-          getCandidates: (row) => [row.updated_at ?? row.created_at],
+          getCandidates: (row) => [
+            row.etapa_atual === "concluido"
+              ? row.concluido_em ?? row.created_at
+              : row.updated_at ?? row.created_at,
+          ],
         });
         const exportRows = scopedRows.map((row) => ({
           nome:
@@ -749,7 +765,10 @@ export default function AnalisePage() {
           etapa: row.etapa_atual,
           status: row.status,
           agente: row.agente?.full_name ?? "-",
-          criado_em: row.updated_at ?? row.created_at ?? "",
+          criado_em:
+            row.etapa_atual === "concluido"
+              ? row.concluido_em ?? row.created_at ?? ""
+              : row.updated_at ?? row.created_at ?? "",
         }));
         await exportRouteReport({
           route: "/analise",

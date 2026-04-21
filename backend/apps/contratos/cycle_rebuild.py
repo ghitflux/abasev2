@@ -16,6 +16,7 @@ from .cycle_projection import (
     _is_effective_renewal,
     _is_paid_cycle_status,
     build_contract_cycle_projection,
+    has_cancelled_operational_refinanciamento,
     refinanciamento_matches_contract_timeline,
 )
 from .cycle_timeline import get_contract_cycle_size
@@ -331,12 +332,41 @@ def _sync_refinanciamentos(
     threshold = max(cycle_size - 1, 1)
     should_have_operational_refi = False
     block_small_value_renewal = is_return_imported_small_value_contract(contrato)
+    current_cycle_references = (
+        [parcela["referencia_mes"] for parcela in current_cycle["parcelas"]]
+        if current_cycle is not None
+        else []
+    )
+    current_cycle_key = (
+        "|".join(referencia.strftime("%Y-%m") for referencia in current_cycle_references)
+        if current_cycle_references
+        else None
+    )
+    current_cycle_competencia = (
+        max(current_cycle_references).replace(day=1)
+        if current_cycle_references
+        else current_cycle["data_fim"].replace(day=1)
+        if current_cycle is not None
+        else None
+    )
+    cancelled_current_cycle_renewal = (
+        force_active_operational_status is None
+        and chosen is None
+        and current_cycle is not None
+        and has_cancelled_operational_refinanciamento(
+            contrato,
+            cycle_key=current_cycle_key,
+            competencia=current_cycle_competencia,
+        )
+    )
     manual_layout_requires_explicit_transition = (
         contrato.admin_manual_layout_enabled and force_active_operational_status is None
     )
     if current_cycle is not None and cycle_by_number:
         if force_active_operational_status is not None and not block_small_value_renewal:
             should_have_operational_refi = True
+        elif cancelled_current_cycle_renewal:
+            should_have_operational_refi = False
         elif manual_layout_requires_explicit_transition:
             # Admin manual layout can project an apt renewal, but the operational
             # row must only be created by the explicit safe transition endpoint.
@@ -355,13 +385,9 @@ def _sync_refinanciamentos(
     if should_have_operational_refi and current_cycle is not None:
         current_number = current_cycle["numero"]
         current_ciclo = cycle_by_number[current_number]
-        referencias = [parcela["referencia_mes"] for parcela in current_cycle["parcelas"]]
-        cycle_key = "|".join(referencia.strftime("%Y-%m") for referencia in referencias)
-        competencia_solicitada = (
-            max(referencias).replace(day=1)
-            if referencias
-            else current_cycle["data_fim"].replace(day=1)
-        )
+        referencias = current_cycle_references
+        cycle_key = current_cycle_key or ""
+        competencia_solicitada = current_cycle_competencia or current_cycle["data_fim"].replace(day=1)
         paid_count = sum(
             1
             for parcela in current_cycle["parcelas"]

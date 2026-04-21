@@ -131,6 +131,7 @@ class TesourariaService:
         agente: str | None = None,
         status_contrato: str | None = None,
         situacao_esteira: str | None = None,
+        origem_operacional: str | None = None,
         ordering: str | None = None,
     ):
         ordering_map = {
@@ -337,6 +338,11 @@ class TesourariaService:
         }:
             queryset = queryset.filter(associado__esteira_item__status=situacao_esteira)
 
+        if origem_operacional and origem_operacional in {
+            choice[0] for choice in Contrato.OrigemOperacional.choices
+        }:
+            queryset = queryset.filter(origem_operacional=origem_operacional)
+
         return queryset
 
     @staticmethod
@@ -354,6 +360,26 @@ class TesourariaService:
             )
         except Contrato.DoesNotExist as exc:
             raise ValidationError("Contrato não encontrado.") from exc
+
+    @staticmethod
+    def _restore_associado_status_after_pending_reativacao(contrato: Contrato) -> None:
+        if contrato.origem_operacional != Contrato.OrigemOperacional.REATIVACAO:
+            return
+
+        associado = contrato.associado
+        possui_outro_contrato_operacional = associado.contratos.filter(
+            deleted_at__isnull=True,
+            contrato_canonico__isnull=True,
+        ).exclude(pk=contrato.pk).exclude(
+            status__in=[Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO]
+        ).exists()
+        if possui_outro_contrato_operacional:
+            return
+
+        Associado.objects.filter(pk=associado.pk).update(
+            status=Associado.Status.INATIVO,
+            updated_at=timezone.now(),
+        )
 
     @staticmethod
     def _payment_tipo_for_papel(papel: str) -> str:
@@ -744,6 +770,7 @@ class TesourariaService:
         from apps.esteira.services import EsteiraService
 
         EsteiraService.excluir_solicitacao(esteira_item, user)
+        TesourariaService._restore_associado_status_after_pending_reativacao(contrato)
         contrato.refresh_from_db()
         return contrato
 
@@ -803,6 +830,12 @@ class TesourariaService:
                 observacao=contrato.cancelamento_motivo,
             )
 
+        TesourariaService._restore_associado_status_after_pending_reativacao(contrato)
+        if contrato.origem_operacional == Contrato.OrigemOperacional.REATIVACAO:
+            Associado.objects.filter(pk=contrato.associado_id).update(
+                status=Associado.Status.INATIVO,
+                updated_at=timezone.now(),
+            )
         return contrato
 
 

@@ -4,11 +4,14 @@ Signals do app associados.
 Responsabilidade principal: manter Contrato.status sincronizado com
 Associado.status sempre que o status do associado é alterado.
 
-Regra: Contrato sempre reflete o estado do associado.
+Regra: Contrato operacional reflete o estado do associado.
   cadastrado / importado / pendente  →  rascunho
   em_analise                         →  em_analise
   ativo / inadimplente               →  ativo
   inativo                            →  cancelado
+
+Contratos já cancelados são histórico operacional. Eles não podem ser
+reativados por uma mudança posterior de status do associado.
 """
 
 from __future__ import annotations
@@ -51,11 +54,12 @@ def sync_contrato_status_on_associado_change(
     if novo_status_contrato is None:
         return
 
-    (
-        Contrato.objects.filter(
-            associado_id=instance.pk,
-            deleted_at__isnull=True,
-        )
-        .exclude(status=Contrato.Status.ENCERRADO)
-        .update(status=novo_status_contrato)
-    )
+    contratos = Contrato.objects.filter(
+        associado_id=instance.pk,
+        deleted_at__isnull=True,
+    ).exclude(status=Contrato.Status.ENCERRADO)
+
+    if novo_status_contrato != Contrato.Status.CANCELADO:
+        contratos = contratos.exclude(status=Contrato.Status.CANCELADO)
+
+    contratos.update(status=novo_status_contrato)

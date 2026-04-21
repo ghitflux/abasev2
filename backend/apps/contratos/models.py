@@ -24,6 +24,10 @@ class Contrato(BaseModel):
         ENCERRADO = "encerrado", "Encerrado"
         CANCELADO = "cancelado", "Cancelado"
 
+    class OrigemOperacional(models.TextChoices):
+        CADASTRO = "cadastro", "Cadastro"
+        REATIVACAO = "reativacao", "Reativação"
+
     class TipoUnificacao(models.TextChoices):
         RETIMP_SHADOW = "retimp_shadow", "Contrato RETIMP sombra"
         DUPLICATE_CTR_SHADOW = "duplicate_ctr_shadow", "Contrato CTR duplicado sombra"
@@ -94,6 +98,11 @@ class Contrato(BaseModel):
         null=True,
         blank=True,
         related_name="contratos_sombra",
+    )
+    origem_operacional = models.CharField(
+        max_length=20,
+        choices=OrigemOperacional.choices,
+        default=OrigemOperacional.CADASTRO,
     )
     tipo_unificacao = models.CharField(
         max_length=30,

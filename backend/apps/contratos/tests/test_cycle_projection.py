@@ -15,9 +15,11 @@ from apps.contratos.cycle_projection import (
     build_contract_cycle_projection,
     get_associado_visual_status_payload,
     get_contract_visual_status_payload,
+    invalidate_operational_apt_queue_cache,
     resolve_current_renewal_competencia,
     resolve_associado_mother_status,
     resolve_associado_status_renovacao,
+    sync_associado_mother_status,
 )
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, PagamentoMensalidade
@@ -52,6 +54,8 @@ class CycleProjectionTestCase(TestCase):
 
     def setUp(self):
         super().setUp()
+        invalidate_operational_apt_queue_cache()
+        self.addCleanup(invalidate_operational_apt_queue_cache)
         self._localdate_patcher = mock.patch(
             "apps.contratos.cycle_projection.timezone.localdate",
             return_value=date(2026, 3, 21),
@@ -1126,6 +1130,49 @@ class CycleProjectionTestCase(TestCase):
             "Concluído",
         )
 
+    def test_manual_layout_with_only_movement_rows_has_no_visible_cycle(self):
+        associado = self._create_associado("22299922235", "Manual Avulso")
+        contrato = self._create_contrato(
+            associado=associado,
+            data_primeira_mensalidade=date(2026, 1, 1),
+        )
+        contrato.admin_manual_layout_enabled = True
+        contrato.save(update_fields=["admin_manual_layout_enabled", "updated_at"])
+
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.FECHADO,
+            valor_total=Decimal("90.00"),
+        )
+        for index, referencia in enumerate(
+            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)],
+            start=1,
+        ):
+            Parcela.objects.create(
+                ciclo=ciclo,
+                associado=associado,
+                numero=index,
+                referencia_mes=referencia,
+                valor=Decimal("30.00"),
+                data_vencimento=referencia,
+                status=Parcela.Status.DESCONTADO,
+                data_pagamento=referencia,
+                layout_bucket=Parcela.LayoutBucket.MOVEMENT,
+            )
+
+        projection = build_contract_cycle_projection(contrato)
+
+        self.assertEqual(projection["cycles"], [])
+        self.assertEqual(
+            [item["referencia_mes"] for item in projection["movimentos_financeiros_avulsos"]],
+            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)],
+        )
+        self.assertEqual(projection["unpaid_months"], [])
+        self.assertEqual(projection["status_renovacao"], "")
+
     def test_projection_keeps_current_month_preview_inside_renewed_cycle_with_future_cycle_materialized(self):
         associado = self._create_associado("11199922240", "Jose Americo Replica")
         contrato = self._create_contrato(
@@ -2027,6 +2074,88 @@ class CycleProjectionTestCase(TestCase):
         self.assertEqual(termo["tipo_referencia"], "local")
         self.assertIn("termo-fallback.pdf", termo["arquivo_referencia"])
 
+    def test_renewal_documents_linked_only_to_refinanciamento_are_shown_on_destination_cycle(self):
+        associado = self._create_associado("90120230355", "DOCUMENTO REFI DESTINO")
+        contrato = self._create_contrato(
+            associado=associado,
+            data_primeira_mensalidade=date(2025, 10, 1),
+        )
+        self._create_financial_row(contrato, date(2025, 10, 1), status_code="1")
+        self._create_financial_row(contrato, date(2025, 11, 1), status_code="1")
+        self._create_financial_row(contrato, date(2025, 12, 1), status_code="1")
+        self._create_financial_row(contrato, date(2026, 1, 1), status_code="1")
+
+        ciclo_destino = Ciclo.objects.create(
+            contrato=contrato,
+            numero=2,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("900.00"),
+        )
+        refinanciamento = Refinanciamento.objects.create(
+            associado=associado,
+            contrato_origem=contrato,
+            ciclo_destino=ciclo_destino,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 1, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            origem=Refinanciamento.Origem.OPERACIONAL,
+            data_ativacao_ciclo=timezone.make_aware(
+                datetime(2026, 1, 19, 16, 40, 21)
+            ),
+            executado_em=timezone.make_aware(
+                datetime(2026, 1, 19, 16, 40, 21)
+            ),
+            cycle_key="2025-10|2025-11|2025-12",
+            ref1=date(2025, 10, 1),
+            ref2=date(2025, 11, 1),
+            ref3=date(2025, 12, 1),
+            cpf_cnpj_snapshot=associado.cpf_cnpj,
+            nome_snapshot=associado.nome_completo,
+            contrato_codigo_origem=contrato.codigo,
+        )
+        associado_doc = Comprovante.objects.create(
+            refinanciamento=refinanciamento,
+            tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
+            papel=Comprovante.Papel.ASSOCIADO,
+            arquivo=SimpleUploadedFile("associado-refi.pdf", b"assoc", content_type="application/pdf"),
+            nome_original="associado-refi.pdf",
+            origem=Comprovante.Origem.TESOURARIA_RENOVACAO,
+            enviado_por=self.agente,
+        )
+        agente_termo = Comprovante.objects.create(
+            refinanciamento=refinanciamento,
+            contrato=contrato,
+            ciclo=contrato.ciclos.order_by("numero").first(),
+            tipo=Comprovante.Tipo.TERMO_ANTECIPACAO,
+            papel=Comprovante.Papel.AGENTE,
+            arquivo=SimpleUploadedFile("termo-agente.pdf", b"termo", content_type="application/pdf"),
+            nome_original="termo-agente.pdf",
+            origem=Comprovante.Origem.SOLICITACAO_RENOVACAO,
+            enviado_por=self.agente,
+        )
+        termo_operacional = Comprovante.objects.create(
+            refinanciamento=refinanciamento,
+            contrato=contrato,
+            ciclo=ciclo_destino,
+            tipo=Comprovante.Tipo.TERMO_ANTECIPACAO,
+            papel=Comprovante.Papel.OPERACIONAL,
+            arquivo=SimpleUploadedFile("termo-operacional.pdf", b"termo", content_type="application/pdf"),
+            nome_original="termo-operacional.pdf",
+            origem=Comprovante.Origem.TESOURARIA_RENOVACAO,
+            enviado_por=self.agente,
+        )
+
+        projection = build_contract_cycle_projection(contrato, include_documents=True)
+        cycles = sorted(projection["cycles"], key=lambda item: item["numero"])
+        destination = cycles[1]
+        document_ids = {item["id"] for item in destination["comprovantes_ciclo"]}
+
+        self.assertEqual(destination["termo_antecipacao"]["id"], termo_operacional.id)
+        self.assertIn(associado_doc.id, document_ids)
+        self.assertIn(agente_termo.id, document_ids)
+
     def test_associado_mother_status_is_apto_when_latest_cycle_is_apto(self):
         associado = self._create_associado("81111111111", "STATUS MAE APTO")
         contrato = self._create_contrato(
@@ -2132,6 +2261,115 @@ class CycleProjectionTestCase(TestCase):
         latest_cycle = max(projection["cycles"], key=lambda item: item["numero"])
         self.assertEqual(latest_cycle["status"], Ciclo.Status.CICLO_RENOVADO)
         self.assertEqual(resolve_associado_mother_status(associado), Associado.Status.ATIVO)
+
+    def test_associado_mother_status_ignores_residual_apto_when_latest_cycle_is_closed(self):
+        associado = self._create_associado("82222222224", "STATUS MAE CICLO FECHADO")
+        contrato = self._create_contrato(
+            associado=associado,
+            data_primeira_mensalidade=date(2025, 10, 1),
+        )
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2025, 10, 1),
+            data_fim=date(2025, 12, 1),
+            status=Ciclo.Status.FECHADO,
+            valor_total=Decimal("900.00"),
+        )
+        for numero, referencia in enumerate(
+            [date(2025, 10, 1), date(2025, 11, 1), date(2025, 12, 1)],
+            start=1,
+        ):
+            Parcela.objects.create(
+                ciclo=ciclo,
+                associado=associado,
+                numero=numero,
+                referencia_mes=referencia,
+                valor=Decimal("300.00"),
+                data_vencimento=referencia,
+                status=Parcela.Status.DESCONTADO,
+                data_pagamento=referencia,
+            )
+        contrato.admin_manual_layout_enabled = True
+        contrato.save(update_fields=["admin_manual_layout_enabled", "updated_at"])
+        Refinanciamento.objects.create(
+            associado=associado,
+            contrato_origem=contrato,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2026, 3, 1),
+            status=Refinanciamento.Status.APTO_A_RENOVAR,
+            origem=Refinanciamento.Origem.OPERACIONAL,
+            valor_refinanciamento=Decimal("900.00"),
+            repasse_agente=Decimal("30.00"),
+        )
+
+        self.assertEqual(resolve_associado_mother_status(associado), Associado.Status.ATIVO)
+
+    def test_sync_associado_mother_status_clears_cached_operational_apt_queue_after_manual_override(self):
+        associado = self._create_associado("82222222223", "STATUS MAE CACHE LIMPO")
+        contrato = self._create_contrato(
+            associado=associado,
+            data_primeira_mensalidade=date(2026, 1, 1),
+        )
+        self._create_financial_row(contrato, date(2026, 1, 1), status_code="1")
+        self._create_financial_row(contrato, date(2026, 2, 1), status_code="1")
+        self._create_financial_row(contrato, date(2026, 3, 1), status_code="1")
+
+        self.assertEqual(resolve_associado_mother_status(associado), "apto_a_renovar")
+        self.assertTrue(sync_associado_mother_status(associado))
+        associado.refresh_from_db()
+        self.assertEqual(associado.status, "apto_a_renovar")
+
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("900.00"),
+        )
+        for numero, (referencia, status) in enumerate(
+            [
+                (date(2026, 1, 1), Parcela.Status.DESCONTADO),
+                (date(2026, 2, 1), Parcela.Status.EM_PREVISAO),
+                (date(2026, 3, 1), Parcela.Status.EM_PREVISAO),
+            ],
+            start=1,
+        ):
+            Parcela.objects.create(
+                ciclo=ciclo,
+                associado=associado,
+                numero=numero,
+                referencia_mes=referencia,
+                valor=Decimal("300.00"),
+                data_vencimento=referencia,
+                status=status,
+                data_pagamento=referencia if status == Parcela.Status.DESCONTADO else None,
+            )
+        Refinanciamento.objects.create(
+            associado=associado,
+            contrato_origem=contrato,
+            solicitado_por=self.agente,
+            competencia_solicitada=resolve_current_renewal_competencia(),
+            status=Refinanciamento.Status.DESATIVADO,
+            origem=Refinanciamento.Origem.OPERACIONAL,
+        )
+        contrato.admin_manual_layout_enabled = True
+        contrato.save(update_fields=["admin_manual_layout_enabled", "updated_at"])
+
+        projection = build_contract_cycle_projection(contrato)
+        self.assertEqual(projection["status_renovacao"], "")
+        latest_cycle = max(projection["cycles"], key=lambda item: item["numero"])
+        self.assertEqual(latest_cycle["fase_ciclo"], "ciclo_aberto")
+
+        self.assertTrue(sync_associado_mother_status(associado))
+        associado.refresh_from_db()
+        self.assertEqual(associado.status, Associado.Status.ATIVO)
+        self.assertEqual(resolve_associado_mother_status(associado), Associado.Status.ATIVO)
+        self.assertEqual(
+            get_associado_visual_status_payload(associado)["status_visual_slug"],
+            "ciclo_aberto",
+        )
 
     def test_associado_status_renovacao_nao_fica_apto_quando_renovou_na_competencia(self):
         associado = self._create_associado("83333333333", "STATUS MAE RENOVADO ABRIL")

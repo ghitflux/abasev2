@@ -121,6 +121,8 @@ class AdminOverrideContratoEditorSerializer(serializers.Serializer):
     data_primeira_mensalidade = serializers.DateField(read_only=True, allow_null=True)
     mes_averbacao = serializers.DateField(read_only=True, allow_null=True)
     auxilio_liberado_em = serializers.DateField(read_only=True, allow_null=True)
+    ciclo_ja_renovado = serializers.BooleanField(read_only=True)
+    contrato_nao_renovado = serializers.BooleanField(read_only=True)
     ciclos = AdminOverrideCicloEditorSerializer(many=True, read_only=True)
     meses_nao_pagos = AdminOverrideParcelaEditorSerializer(many=True, read_only=True)
     movimentos_financeiros_avulsos = AdminOverrideParcelaEditorSerializer(
@@ -184,6 +186,7 @@ class AdminOverrideEsteiraReadSerializer(serializers.Serializer):
     analista_responsavel_id = serializers.IntegerField(read_only=True, allow_null=True)
     coordenador_responsavel_id = serializers.IntegerField(read_only=True, allow_null=True)
     tesoureiro_responsavel_id = serializers.IntegerField(read_only=True, allow_null=True)
+    concluido_em = serializers.DateTimeField(read_only=True, allow_null=True)
     updated_at = serializers.DateTimeField(read_only=True, allow_null=True)
 
 
@@ -192,6 +195,9 @@ class AdminOverrideWarningSerializer(serializers.Serializer):
     severity = serializers.CharField(read_only=True)
     contrato_id = serializers.IntegerField(read_only=True, allow_null=True)
     contrato_codigo = serializers.CharField(read_only=True, allow_blank=True)
+    scope = serializers.CharField(read_only=True, allow_blank=True)
+    competencia = serializers.DateField(read_only=True, allow_null=True)
+    action = serializers.CharField(read_only=True, allow_blank=True)
     message = serializers.CharField(read_only=True)
     details = serializers.JSONField(read_only=True)
 
@@ -467,6 +473,13 @@ class SaveAllCycleLayoutWriteSerializer(serializers.Serializer):
 
 class SaveAllContratoWriteSerializer(serializers.Serializer):
     id = serializers.IntegerField()
+    dirty_sections = serializers.ListField(
+        child=serializers.ChoiceField(
+            choices=["contract_core", "cycle_layout", "refinanciamento"]
+        ),
+        required=False,
+        allow_empty=True,
+    )
     core = SaveAllContratoCoreWriteSerializer(required=False)
     cycles = SaveAllCycleLayoutWriteSerializer(required=False)
     refinanciamento = SaveAllRefinanciamentoWriteSerializer(required=False)
@@ -474,6 +487,11 @@ class SaveAllContratoWriteSerializer(serializers.Serializer):
 
 class AdminOverrideSaveAllWriteSerializer(serializers.Serializer):
     motivo = serializers.CharField()
+    dirty_sections = serializers.ListField(
+        child=serializers.ChoiceField(choices=["esteira"]),
+        required=False,
+        allow_empty=True,
+    )
     contratos = SaveAllContratoWriteSerializer(many=True, required=False)
     esteira = SaveAllEsteiraWriteSerializer(required=False)
 

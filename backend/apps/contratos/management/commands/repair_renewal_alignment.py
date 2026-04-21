@@ -9,8 +9,14 @@ from django.utils import timezone
 from apps.associados.models import Associado
 from apps.contratos.cycle_projection import sync_associado_mother_status
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
+from apps.contratos.models import Ciclo
 from apps.contratos.renovacao import RenovacaoCicloService
 from apps.refinanciamento.models import Comprovante, Refinanciamento
+from apps.refinanciamento.services import (
+    RefinanciamentoService,
+    annotate_renewal_materialization,
+    renewal_materialized_q,
+)
 from apps.relatorios.dashboard_service import AdminDashboardService, DashboardFilters
 
 
@@ -43,6 +49,13 @@ class Command(BaseCommand):
                 "id",
             )
         )
+        historical_materialized = list(
+            self._historical_materialized_queryset().order_by(
+                "associado__nome_completo",
+                "competencia_solicitada",
+                "id",
+            )
+        )
 
         self.stdout.write(
             self.style.WARNING(
@@ -64,6 +77,20 @@ class Command(BaseCommand):
             )
         )
         for refinanciamento in shadowed_aptos[:50]:
+            self.stdout.write(
+                f"- refi={refinanciamento.id} cpf={refinanciamento.associado.cpf_cnpj} "
+                f"nome={refinanciamento.associado.nome_completo} "
+                f"competencia={refinanciamento.competencia_solicitada} "
+                f"status_atual={refinanciamento.status}"
+            )
+
+        self.stdout.write(
+            self.style.WARNING(
+                "Renovações materializadas fora da seção efetivada da tesouraria: "
+                f"{len(historical_materialized)}"
+            )
+        )
+        for refinanciamento in historical_materialized[:50]:
             self.stdout.write(
                 f"- refi={refinanciamento.id} cpf={refinanciamento.associado.cpf_cnpj} "
                 f"nome={refinanciamento.associado.nome_completo} "
@@ -103,6 +130,12 @@ class Command(BaseCommand):
                     rebuild_contract_cycle_state(refinanciamento.contrato_origem, execute=True)
                 affected_associados.add(refinanciamento.associado_id)
 
+            repaired_materialized = 0
+            for refinanciamento in historical_materialized:
+                if self._repair_materialized_historical_refinanciamento(refinanciamento):
+                    repaired_materialized += 1
+                    affected_associados.add(refinanciamento.associado_id)
+
             affected_associados.update(stale_associados)
             affected_associados.update(missing_associados)
             for associado in Associado.objects.filter(id__in=affected_associados):
@@ -112,6 +145,7 @@ class Command(BaseCommand):
                 self.style.SUCCESS(
                     f"Correção aplicada em {len(ghosts)} refinanciamentos e "
                     f"{len(shadowed_aptos)} aptos ofuscados e "
+                    f"{repaired_materialized} materializados históricos e "
                     f"{len(affected_associados)} associados."
                 )
             )
@@ -187,6 +221,97 @@ class Command(BaseCommand):
         if has_coord_progress:
             return Refinanciamento.Status.APROVADO_PARA_RENOVACAO
         return Refinanciamento.Status.APTO_A_RENOVAR
+
+    def _historical_materialized_queryset(self):
+        cancelados = {
+            Refinanciamento.Status.BLOQUEADO,
+            Refinanciamento.Status.REVERTIDO,
+            Refinanciamento.Status.DESATIVADO,
+        }
+        return annotate_renewal_materialization(
+            Refinanciamento.objects.select_related(
+                "associado",
+                "contrato_origem",
+                "ciclo_origem",
+                "ciclo_destino",
+            ).filter(deleted_at__isnull=True)
+        ).filter(renewal_materialized_q()).exclude(
+            status=Refinanciamento.Status.EFETIVADO,
+        ).exclude(
+            status__in=cancelados,
+        )
+
+    def _repair_materialized_historical_refinanciamento(
+        self,
+        refinanciamento: Refinanciamento,
+    ) -> bool:
+        contrato = refinanciamento.contrato_origem
+        if contrato is None:
+            return False
+
+        repaired = False
+        payment = RefinanciamentoService._get_renewal_payment(refinanciamento)
+        comprovante_associado = RefinanciamentoService._latest_payment_comprovante(
+            refinanciamento,
+            Comprovante.Papel.ASSOCIADO,
+        )
+        comprovante_agente = RefinanciamentoService._latest_payment_comprovante(
+            refinanciamento,
+            Comprovante.Papel.AGENTE,
+        )
+        effective_dt = (
+            refinanciamento.executado_em
+            or refinanciamento.data_ativacao_ciclo
+            or getattr(payment, "paid_at", None)
+            or getattr(comprovante_associado, "data_pagamento", None)
+            or getattr(comprovante_agente, "data_pagamento", None)
+            or getattr(comprovante_associado, "updated_at", None)
+            or getattr(comprovante_agente, "updated_at", None)
+        )
+
+        changed_fields: list[str] = []
+        if refinanciamento.status != Refinanciamento.Status.EFETIVADO:
+            refinanciamento.status = Refinanciamento.Status.EFETIVADO
+            changed_fields.append("status")
+        if effective_dt is not None and refinanciamento.executado_em is None:
+            refinanciamento.executado_em = effective_dt
+            changed_fields.append("executado_em")
+        if effective_dt is not None and refinanciamento.data_ativacao_ciclo is None:
+            refinanciamento.data_ativacao_ciclo = effective_dt
+            changed_fields.append("data_ativacao_ciclo")
+
+        if refinanciamento.ciclo_destino_id is None and refinanciamento.ciclo_origem_id is not None:
+            if changed_fields:
+                refinanciamento.save(update_fields=[*changed_fields, "updated_at"])
+                repaired = True
+                changed_fields = []
+            rebuild_contract_cycle_state(contrato, execute=True)
+            refinanciamento.refresh_from_db()
+            refinanciamento.ciclo_destino = (
+                Ciclo.objects.filter(
+                    contrato=contrato,
+                    numero=refinanciamento.ciclo_origem.numero + 1,
+                    deleted_at__isnull=True,
+                )
+                .order_by("id")
+                .first()
+            )
+            if refinanciamento.ciclo_destino_id is not None:
+                changed_fields.append("ciclo_destino")
+
+        if changed_fields:
+            refinanciamento.save(update_fields=[*changed_fields, "updated_at"])
+            repaired = True
+
+        if refinanciamento.ciclo_destino_id is not None:
+            updated = refinanciamento.comprovantes.filter(deleted_at__isnull=True).exclude(
+                ciclo_id=refinanciamento.ciclo_destino_id
+            ).update(ciclo=refinanciamento.ciclo_destino)
+            repaired = repaired or bool(updated)
+
+        if contrato:
+            rebuild_contract_cycle_state(contrato, execute=True)
+        return repaired
 
     def _audit_apto_status_drift(self, competencia: date) -> tuple[set[int], set[int]]:
         queue_rows = RenovacaoCicloService.listar_detalhes(

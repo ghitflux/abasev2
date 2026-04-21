@@ -1,0 +1,316 @@
+import tempfile
+from datetime import date
+from decimal import Decimal
+
+from django.test import TestCase, override_settings
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from apps.accounts.models import Role, User
+from apps.associados.models import Associado
+from apps.contratos.competencia import create_cycle_with_parcelas
+from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.esteira.models import EsteiraItem
+from apps.esteira.services import EsteiraService
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class AssociadoReactivationTestCase(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.role_admin = Role.objects.create(codigo="ADMIN", nome="Administrador")
+        cls.role_coord = Role.objects.create(
+            codigo="COORDENADOR",
+            nome="Coordenador",
+        )
+        cls.role_tes = Role.objects.create(codigo="TESOUREIRO", nome="Tesoureiro")
+        cls.role_agente = Role.objects.create(codigo="AGENTE", nome="Agente")
+        cls.role_analista = Role.objects.create(codigo="ANALISTA", nome="Analista")
+
+        cls.admin = cls._create_user("admin.reativacao@teste.local", cls.role_admin, "Admin")
+        cls.coordenador = cls._create_user(
+            "coord.reativacao@teste.local",
+            cls.role_coord,
+            "Coord",
+        )
+        cls.tesoureiro = cls._create_user(
+            "tes.reativacao@teste.local",
+            cls.role_tes,
+            "Tesouraria",
+        )
+        cls.analista = cls._create_user(
+            "analista.reativacao@teste.local",
+            cls.role_analista,
+            "Analista",
+        )
+        cls.agente_a = cls._create_user(
+            "agente.a@teste.local",
+            cls.role_agente,
+            "Agente A",
+        )
+        cls.agente_b = cls._create_user(
+            "agente.b@teste.local",
+            cls.role_agente,
+            "Agente B",
+        )
+
+    @classmethod
+    def _create_user(cls, email: str, role: Role, first_name: str) -> User:
+        user = User.objects.create_user(
+            email=email,
+            password="Senha@123",
+            first_name=first_name,
+            last_name="ABASE",
+            is_active=True,
+        )
+        user.roles.add(role)
+        return user
+
+    def setUp(self):
+        self.coord_client = APIClient()
+        self.coord_client.force_authenticate(self.coordenador)
+
+        self.tes_client = APIClient()
+        self.tes_client.force_authenticate(self.tesoureiro)
+
+        self.analyst_client = APIClient()
+        self.analyst_client.force_authenticate(self.analista)
+
+    def _create_inactive_associado(self, *, cpf: str) -> Associado:
+        associado = Associado.objects.create(
+            nome_completo="Associado Inativo",
+            cpf_cnpj=cpf,
+            telefone="86999999999",
+            email="inativo@teste.local",
+            orgao_publico="SEFAZ",
+            status=Associado.Status.INATIVO,
+            agente_responsavel=self.agente_a,
+            auxilio_taxa=Decimal("10.00"),
+        )
+        contrato = Contrato.objects.create(
+            associado=associado,
+            agente=self.agente_a,
+            status=Contrato.Status.CANCELADO,
+            origem_operacional=Contrato.OrigemOperacional.CADASTRO,
+            valor_bruto=Decimal("1500.00"),
+            valor_liquido=Decimal("1200.00"),
+            valor_mensalidade=Decimal("500.00"),
+            prazo_meses=3,
+            taxa_antecipacao=Decimal("30.00"),
+            margem_disponivel=Decimal("1050.00"),
+            valor_total_antecipacao=Decimal("1500.00"),
+            doacao_associado=Decimal("450.00"),
+            comissao_agente=Decimal("105.00"),
+            data_aprovacao=date(2025, 9, 1),
+            data_primeira_mensalidade=date(2025, 10, 5),
+            mes_averbacao=date(2025, 9, 1),
+            cancelado_em=timezone.now(),
+        )
+        create_cycle_with_parcelas(
+            contrato=contrato,
+            numero=1,
+            competencia_inicial=date(2025, 10, 1),
+            parcelas_total=3,
+            ciclo_status=Ciclo.Status.FECHADO,
+            parcela_status=Parcela.Status.DESCONTADO,
+            valor_mensalidade=Decimal("500.00"),
+            valor_total=Decimal("1500.00"),
+        )
+        EsteiraItem.objects.create(
+            associado=associado,
+            etapa_atual=EsteiraItem.Etapa.CONCLUIDO,
+            status=EsteiraItem.Situacao.REJEITADO,
+            concluido_em=timezone.now(),
+            observacao="Contrato anterior finalizado.",
+        )
+        return associado
+
+    def _reativacao_payload(self, *, agente_id: int, percentual_repasse: str | None = None):
+        payload = {
+            "valor_bruto_total": "1500.00",
+            "valor_liquido": "1200.00",
+            "prazo_meses": 3,
+            "mensalidade": "500.00",
+            "data_aprovacao": "2026-04-21",
+            "agente_responsavel_id": agente_id,
+        }
+        if percentual_repasse is not None:
+            payload["percentual_repasse"] = percentual_repasse
+        return payload
+
+    def test_reativacao_cria_novo_contrato_e_reusa_item_da_esteira(self):
+        associado = self._create_inactive_associado(cpf="70000000001")
+        esteira_id = associado.esteira_item.id
+        contrato_anterior = associado.contratos.order_by("-id").first()
+
+        response = self.coord_client.post(
+            f"/api/v1/associados/{associado.id}/reativar/",
+            self._reativacao_payload(
+                agente_id=self.agente_b.id,
+                percentual_repasse="14.00",
+            ),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        associado.refresh_from_db()
+        novo_contrato = associado.contratos.order_by("-id").first()
+        contrato_anterior.refresh_from_db()
+        self.assertIsNotNone(novo_contrato)
+        self.assertNotEqual(novo_contrato.id, contrato_anterior.id)
+        self.assertEqual(contrato_anterior.status, Contrato.Status.CANCELADO)
+        self.assertEqual(associado.status, Associado.Status.EM_ANALISE)
+        self.assertEqual(associado.agente_responsavel, self.agente_b)
+        self.assertEqual(associado.auxilio_taxa, Decimal("14.00"))
+        self.assertEqual(novo_contrato.agente, self.agente_b)
+        self.assertEqual(novo_contrato.status, Contrato.Status.EM_ANALISE)
+        self.assertEqual(
+            novo_contrato.origem_operacional,
+            Contrato.OrigemOperacional.REATIVACAO,
+        )
+        self.assertEqual(novo_contrato.margem_disponivel, Decimal("1050.00"))
+        self.assertEqual(novo_contrato.valor_total_antecipacao, Decimal("1500.00"))
+        self.assertEqual(novo_contrato.doacao_associado, Decimal("450.00"))
+        self.assertEqual(novo_contrato.comissao_agente, Decimal("147.00"))
+        self.assertEqual(novo_contrato.ciclos.count(), 1)
+        self.assertEqual(novo_contrato.ciclos.first().parcelas.count(), 3)
+
+        associado.esteira_item.refresh_from_db()
+        self.assertEqual(associado.esteira_item.id, esteira_id)
+        self.assertEqual(associado.esteira_item.etapa_atual, EsteiraItem.Etapa.ANALISE)
+        self.assertEqual(associado.esteira_item.status, EsteiraItem.Situacao.AGUARDANDO)
+        self.assertTrue(
+            associado.esteira_item.transicoes.filter(
+                acao="reativar_associado"
+            ).exists()
+        )
+
+    def test_reativacao_bloqueia_novo_fluxo_se_ja_existe_contrato_operacional(self):
+        associado = self._create_inactive_associado(cpf="70000000002")
+        Contrato.objects.create(
+            associado=associado,
+            agente=self.agente_a,
+            status=Contrato.Status.EM_ANALISE,
+            origem_operacional=Contrato.OrigemOperacional.CADASTRO,
+            valor_bruto=Decimal("1500.00"),
+            valor_liquido=Decimal("1200.00"),
+            valor_mensalidade=Decimal("500.00"),
+            prazo_meses=3,
+            taxa_antecipacao=Decimal("30.00"),
+            margem_disponivel=Decimal("1050.00"),
+            valor_total_antecipacao=Decimal("1500.00"),
+            doacao_associado=Decimal("450.00"),
+            comissao_agente=Decimal("105.00"),
+            data_aprovacao=date(2026, 4, 1),
+            data_primeira_mensalidade=date(2026, 5, 5),
+            mes_averbacao=date(2026, 4, 1),
+        )
+
+        response = self.coord_client.post(
+            f"/api/v1/associados/{associado.id}/reativar/",
+            self._reativacao_payload(agente_id=self.agente_a.id),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400, response.json())
+        self.assertEqual(
+            response.json()["detail"],
+            "Já existe um contrato operacional em andamento para este associado.",
+        )
+
+    def test_associado_inativo_exibe_contrato_historico_no_detalhe(self):
+        associado = self._create_inactive_associado(cpf="70000000004")
+
+        response = self.coord_client.get(f"/api/v1/associados/{associado.id}/")
+
+        self.assertEqual(response.status_code, 200, response.json())
+        contratos = response.json()["contratos"]
+        self.assertEqual(len(contratos), 1)
+        self.assertEqual(contratos[0]["status"], Contrato.Status.CANCELADO)
+        self.assertEqual(len(contratos[0]["ciclos"]), 1)
+        self.assertGreater(len(contratos[0]["ciclos"][0]["parcelas"]), 0)
+
+    def test_reativacao_reusa_esteira_residual_sem_contrato_operacional(self):
+        associado = self._create_inactive_associado(cpf="70000000005")
+        esteira = associado.esteira_item
+        esteira.etapa_atual = EsteiraItem.Etapa.ANALISE
+        esteira.status = EsteiraItem.Situacao.EM_ANDAMENTO
+        esteira.save(update_fields=["etapa_atual", "status", "updated_at"])
+
+        response = self.coord_client.post(
+            f"/api/v1/associados/{associado.id}/reativar/",
+            self._reativacao_payload(agente_id=self.agente_a.id),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        associado.esteira_item.refresh_from_db()
+        self.assertEqual(associado.esteira_item.etapa_atual, EsteiraItem.Etapa.ANALISE)
+        self.assertEqual(associado.esteira_item.status, EsteiraItem.Situacao.AGUARDANDO)
+
+    def test_tesouraria_filtra_reativacoes_e_cancelamento_retorna_para_inativo(self):
+        associado = self._create_inactive_associado(cpf="70000000003")
+
+        response = self.coord_client.post(
+            f"/api/v1/associados/{associado.id}/reativar/",
+            self._reativacao_payload(agente_id=self.agente_a.id),
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        associado.refresh_from_db()
+        contrato = associado.contratos.order_by("-id").first()
+
+        list_response = self.tes_client.get(
+            "/api/v1/tesouraria/contratos/",
+            {
+                "pagamento": "pendente",
+                "origem_operacional": "reativacao",
+            },
+        )
+        self.assertEqual(list_response.status_code, 200, list_response.json())
+        self.assertEqual(list_response.json()["results"], [])
+
+        EsteiraService.assumir(associado.esteira_item, self.analista)
+        EsteiraService.aprovar(associado.esteira_item, self.analista)
+        associado.esteira_item.refresh_from_db()
+        self.assertEqual(associado.esteira_item.etapa_atual, EsteiraItem.Etapa.TESOURARIA)
+
+        list_response = self.tes_client.get(
+            "/api/v1/tesouraria/contratos/",
+            {
+                "pagamento": "pendente",
+                "origem_operacional": "reativacao",
+            },
+        )
+        self.assertEqual(list_response.status_code, 200, list_response.json())
+        rows = list_response.json()["results"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["id"], contrato.id)
+        self.assertEqual(rows[0]["origem_operacional"], "reativacao")
+        self.assertEqual(rows[0]["origem_operacional_label"], "Reativação")
+
+        default_list_response = self.tes_client.get(
+            "/api/v1/tesouraria/contratos/",
+            {
+                "pagamento": "pendente",
+                "origem_operacional": "cadastro",
+            },
+        )
+        self.assertEqual(default_list_response.status_code, 200, default_list_response.json())
+        ids = {row["id"] for row in default_list_response.json()["results"]}
+        self.assertNotIn(contrato.id, ids)
+
+        cancel_response = self.tes_client.post(
+            f"/api/v1/tesouraria/contratos/{contrato.id}/cancelar/",
+            {
+                "tipo": "cancelado",
+                "motivo": "Reativação interrompida.",
+            },
+            format="json",
+        )
+        self.assertEqual(cancel_response.status_code, 200, cancel_response.json())
+        associado.refresh_from_db()
+        contrato.refresh_from_db()
+        self.assertEqual(contrato.status, Contrato.Status.CANCELADO)
+        self.assertEqual(associado.status, Associado.Status.INATIVO)

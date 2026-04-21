@@ -367,6 +367,7 @@ export type EsteiraResumo = {
   status: string;
   prioridade: number;
   observacao?: string;
+  concluido_em?: string | null;
   updated_at?: string | null;
   pendencias: Array<{
     id: number;
@@ -588,6 +589,8 @@ export type AdminEditorContrato = {
   data_primeira_mensalidade: string | null;
   mes_averbacao: string | null;
   auxilio_liberado_em: string | null;
+  ciclo_ja_renovado: boolean;
+  contrato_nao_renovado: boolean;
   ciclos: AdminEditorCiclo[];
   meses_nao_pagos: AdminEditorParcela[];
   movimentos_financeiros_avulsos: AdminEditorParcela[];
@@ -633,6 +636,9 @@ export type AdminEditorWarning = {
   severity: string;
   contrato_id: number | null;
   contrato_codigo: string;
+  scope?: string;
+  competencia?: string | null;
+  action?: string;
   message: string;
   details: Record<string, unknown>;
 };
@@ -676,6 +682,7 @@ export type EsteiraItem = {
   etapa_atual: string;
   status: string;
   assumido_em: string | null;
+  concluido_em?: string | null;
   created_at?: string;
   updated_at?: string | null;
   documentos?: Documento[];
@@ -703,6 +710,7 @@ export type EsteiraItem = {
 
 export type AnaliseSectionKey =
   | "novos_contratos"
+  | "contratos_reativacao"
   | "ver_todos"
   | "pendencias"
   | "pendencias_corrigidas"
@@ -920,6 +928,8 @@ export type TesourariaContratoItem = {
   data_assinatura: string;
   data_solicitacao: string;
   status: string;
+  origem_operacional: string;
+  origem_operacional_label: string;
   agente?: SimpleUser | null;
   agente_nome: string;
   percentual_repasse: string;

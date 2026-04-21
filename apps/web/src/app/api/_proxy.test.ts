@@ -84,4 +84,36 @@ describe("proxyRequestForPath", () => {
     ]);
     expect(proxiedUrl.searchParams.get("page")).toBe("1");
   });
+
+  it("nao encaminha body ao reconstruir respostas 204", async () => {
+    global.fetch = jest.fn().mockResolvedValue(
+      {
+        status: 204,
+        headers: {
+          get: () => null,
+        },
+        arrayBuffer: async () => new Uint8Array().buffer,
+      },
+    ) as typeof global.fetch;
+
+    const { proxyRequestForPath } = await import("@/app/api/_proxy");
+    const request = {
+      method: "POST",
+      url: "http://localhost:3000/api/backend/importacao/arquivo-retorno/46/cancelar",
+      headers: new Headers(),
+      arrayBuffer: async () => new Uint8Array().buffer,
+      text: async () => "",
+      formData: async () => new FormData(),
+    } as unknown as Request;
+
+    const response = await proxyRequestForPath(request, [
+      "importacao",
+      "arquivo-retorno",
+      "46",
+      "cancelar",
+    ]);
+
+    expect(response.status).toBe(204);
+    expect(response.body).toBeNull();
+  });
 });

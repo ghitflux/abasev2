@@ -77,6 +77,8 @@ class EsteiraItem(BaseModel):
 
     def save(self, *args, **kwargs):
         self.status_atual = self.etapa_atual
+        if self.etapa_atual != self.Etapa.CONCLUIDO:
+            self.concluido_em = None
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:

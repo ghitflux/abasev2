@@ -483,6 +483,7 @@ export default function ImportacaoPage() {
   const [uploadProgress, setUploadProgress] = React.useState(0);
   const [dryRunPreview, setDryRunPreview] =
     React.useState<DryRunPreviewState | null>(null);
+  const cancelDryRunRequestedRef = React.useRef(false);
   const [historyCompetencia, setHistoryCompetencia] = React.useState("");
   const [historyStatus, setHistoryStatus] = React.useState("todos");
   const [latestMetricDialogConfig, setLatestMetricDialogConfig] =
@@ -827,6 +828,7 @@ export default function ImportacaoPage() {
         method: "POST",
       }),
     onSuccess: () => {
+      cancelDryRunRequestedRef.current = false;
       setDryRunPreview(null);
       setUploadFile(null);
       setUploadProgress(0);
@@ -834,6 +836,7 @@ export default function ImportacaoPage() {
       invalidateImportacao();
     },
     onError: (error) => {
+      cancelDryRunRequestedRef.current = false;
       toast.error(
         error instanceof Error
           ? error.message
@@ -843,6 +846,17 @@ export default function ImportacaoPage() {
   });
   const isDryRunBusy =
     confirmarMutation.isPending || cancelarMutation.isPending;
+  const cancelDryRunPreview = React.useCallback(() => {
+    if (
+      !dryRunPreview ||
+      isDryRunBusy ||
+      cancelDryRunRequestedRef.current
+    ) {
+      return;
+    }
+    cancelDryRunRequestedRef.current = true;
+    cancelarMutation.mutate(dryRunPreview.arquivoId);
+  }, [cancelarMutation, dryRunPreview, isDryRunBusy]);
 
   const descontadosQuery = useV1ImportacaoArquivoRetornoDescontadosList(
     latestId,
@@ -1344,16 +1358,16 @@ export default function ImportacaoPage() {
         <DryRunModal
           open
           onOpenChange={(open) => {
-            if (open || isDryRunBusy) {
+            if (open) {
               return;
             }
-            cancelarMutation.mutate(dryRunPreview.arquivoId);
+            cancelDryRunPreview();
           }}
           arquivoNome={dryRunPreview.arquivoNome}
           competenciaDisplay={dryRunPreview.competenciaDisplay}
           dryRunData={dryRunPreview.dryRunData}
           onConfirm={() => confirmarMutation.mutate(dryRunPreview.arquivoId)}
-          onCancel={() => cancelarMutation.mutate(dryRunPreview.arquivoId)}
+          onCancel={cancelDryRunPreview}
           isConfirming={confirmarMutation.isPending}
           isCanceling={cancelarMutation.isPending}
         />

@@ -157,6 +157,7 @@ class TesourariaContratoViewSet(
             agente=self.request.query_params.get("agente"),
             status_contrato=self.request.query_params.get("status_contrato"),
             situacao_esteira=self.request.query_params.get("situacao_esteira"),
+            origem_operacional=self.request.query_params.get("origem_operacional"),
             ordering=self.request.query_params.get("ordering"),
         )
 

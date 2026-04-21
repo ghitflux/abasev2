@@ -103,7 +103,7 @@ class EsteiraService:
         }:
             return (
                 "preserve",
-                EsteiraItem.Situacao.REJEITADO,
+                EsteiraItem.Situacao.APROVADO,
                 "Item removido da fila com histórico preservado. O status real do associado/contrato já está consolidado.",
             )
 
@@ -171,6 +171,194 @@ class EsteiraService:
         )
 
     @staticmethod
+    def _pending_reactivation_contract(esteira_item: EsteiraItem) -> Contrato | None:
+        return (
+            Contrato.objects.filter(
+                associado_id=esteira_item.associado_id,
+                deleted_at__isnull=True,
+                contrato_canonico__isnull=True,
+                origem_operacional=Contrato.OrigemOperacional.REATIVACAO,
+            )
+            .exclude(
+                status__in=[
+                    Contrato.Status.ATIVO,
+                    Contrato.Status.CANCELADO,
+                    Contrato.Status.ENCERRADO,
+                ]
+            )
+            .order_by("-created_at", "-id")
+            .first()
+        )
+
+    @staticmethod
+    def _reset_item_to_stage(
+        esteira_item: EsteiraItem,
+        *,
+        user,
+        target_stage: str,
+        action: str,
+        observacao: str,
+    ) -> None:
+        de_etapa = esteira_item.etapa_atual
+        de_situacao = esteira_item.status
+        EsteiraService._cancelar_pendencias_abertas(esteira_item, user)
+        esteira_item.etapa_atual = target_stage
+        esteira_item.status = EsteiraItem.Situacao.AGUARDANDO
+        esteira_item.observacao = observacao
+        esteira_item.assumido_em = None
+        esteira_item.heartbeat_at = None
+        esteira_item.concluido_em = None
+        esteira_item.analista_responsavel = None
+        esteira_item.coordenador_responsavel = None
+        esteira_item.tesoureiro_responsavel = None
+        esteira_item.save(
+            update_fields=[
+                "etapa_atual",
+                "status",
+                "observacao",
+                "assumido_em",
+                "heartbeat_at",
+                "concluido_em",
+                "analista_responsavel",
+                "coordenador_responsavel",
+                "tesoureiro_responsavel",
+                "updated_at",
+            ]
+        )
+        EsteiraService._registrar_transicao(
+            esteira_item,
+            user,
+            action,
+            de_etapa,
+            target_stage,
+            de_situacao,
+            EsteiraItem.Situacao.AGUARDANDO,
+            observacao,
+        )
+
+    @staticmethod
+    def normalizar_inativacao_associado(
+        associado: Associado,
+        user=None,
+        *,
+        observacao: str = "Associado inativado; fila operacional residual finalizada.",
+    ) -> None:
+        esteira_item = EsteiraItem.objects.filter(associado=associado).first()
+        if esteira_item is None:
+            return
+        if (
+            esteira_item.etapa_atual == EsteiraItem.Etapa.CONCLUIDO
+            and esteira_item.status
+            in {EsteiraItem.Situacao.APROVADO, EsteiraItem.Situacao.REJEITADO}
+        ):
+            return
+
+        de_etapa = esteira_item.etapa_atual
+        de_situacao = esteira_item.status
+        now = timezone.now()
+        if user is not None:
+            EsteiraService._cancelar_pendencias_abertas(esteira_item, user)
+        esteira_item.etapa_atual = EsteiraItem.Etapa.CONCLUIDO
+        esteira_item.status = EsteiraItem.Situacao.REJEITADO
+        esteira_item.concluido_em = now
+        esteira_item.observacao = observacao
+        esteira_item.assumido_em = None
+        esteira_item.heartbeat_at = None
+        esteira_item.analista_responsavel = None
+        esteira_item.coordenador_responsavel = None
+        esteira_item.tesoureiro_responsavel = None
+        esteira_item.save(
+            update_fields=[
+                "etapa_atual",
+                "status",
+                "concluido_em",
+                "observacao",
+                "assumido_em",
+                "heartbeat_at",
+                "analista_responsavel",
+                "coordenador_responsavel",
+                "tesoureiro_responsavel",
+                "updated_at",
+            ]
+        )
+        if user is not None:
+            EsteiraService._registrar_transicao(
+                esteira_item,
+                user,
+                "inativar_associado",
+                de_etapa,
+                EsteiraItem.Etapa.CONCLUIDO,
+                de_situacao,
+                EsteiraItem.Situacao.REJEITADO,
+                observacao,
+            )
+
+    @staticmethod
+    def _cancel_pending_reactivation(
+        esteira_item: EsteiraItem,
+        *,
+        user,
+        action: str,
+        observacao: str,
+    ) -> bool:
+        contrato = EsteiraService._pending_reactivation_contract(esteira_item)
+        if contrato is None:
+            return False
+
+        de_etapa = esteira_item.etapa_atual
+        de_situacao = esteira_item.status
+        now = timezone.now()
+        EsteiraService._cancelar_pendencias_abertas(esteira_item, user)
+
+        contrato.status = Contrato.Status.CANCELADO
+        contrato.cancelamento_tipo = Contrato.CancelamentoTipo.CANCELADO
+        contrato.cancelamento_motivo = observacao
+        contrato.cancelado_em = now
+        contrato.save(
+            update_fields=[
+                "status",
+                "cancelamento_tipo",
+                "cancelamento_motivo",
+                "cancelado_em",
+                "updated_at",
+            ]
+        )
+
+        associado = esteira_item.associado
+        associado.status = Associado.Status.INATIVO
+        associado.save(update_fields=["status", "updated_at"])
+
+        esteira_item.etapa_atual = EsteiraItem.Etapa.CONCLUIDO
+        esteira_item.status = EsteiraItem.Situacao.REJEITADO
+        esteira_item.concluido_em = now
+        esteira_item.observacao = observacao
+        esteira_item.assumido_em = None
+        esteira_item.heartbeat_at = None
+        esteira_item.save(
+            update_fields=[
+                "etapa_atual",
+                "status",
+                "concluido_em",
+                "observacao",
+                "assumido_em",
+                "heartbeat_at",
+                "updated_at",
+            ]
+        )
+        if user is not None:
+            EsteiraService._registrar_transicao(
+                esteira_item,
+                user,
+                action,
+                de_etapa,
+                EsteiraItem.Etapa.CONCLUIDO,
+                de_situacao,
+                EsteiraItem.Situacao.REJEITADO,
+                observacao,
+            )
+        return True
+
+    @staticmethod
     @transaction.atomic
     def garantir_item_inicial_cadastro(
         associado: Associado,
@@ -198,6 +386,45 @@ class EsteiraService:
             observacao,
         )
         return esteira_item, True
+
+    @staticmethod
+    @transaction.atomic
+    def enviar_reativacao_para_analise(
+        associado: Associado,
+        user,
+        *,
+        observacao: str = "Reativação enviada para análise.",
+    ) -> tuple[EsteiraItem, bool]:
+        esteira_item = EsteiraItem.objects.filter(associado=associado).first()
+        created = esteira_item is None
+
+        if esteira_item is None:
+            esteira_item = EsteiraItem.objects.create(
+                associado=associado,
+                etapa_atual=EsteiraItem.Etapa.ANALISE,
+                status=EsteiraItem.Situacao.AGUARDANDO,
+                observacao=observacao,
+            )
+            EsteiraService._registrar_transicao(
+                esteira_item,
+                user,
+                "reativar_associado",
+                EsteiraItem.Etapa.CONCLUIDO,
+                EsteiraItem.Etapa.ANALISE,
+                EsteiraItem.Situacao.REJEITADO,
+                EsteiraItem.Situacao.AGUARDANDO,
+                observacao,
+            )
+        else:
+            EsteiraService._reset_item_to_stage(
+                esteira_item,
+                user=user,
+                target_stage=EsteiraItem.Etapa.ANALISE,
+                action="reativar_associado",
+                observacao=observacao,
+            )
+
+        return esteira_item, created
 
     @staticmethod
     def _validar_acao(esteira_item, acao: str):
@@ -234,6 +461,9 @@ class EsteiraService:
 
     @staticmethod
     def _destino_aprovacao_analise(esteira_item: EsteiraItem) -> str:
+        if EsteiraService._pending_reactivation_contract(esteira_item) is not None:
+            return EsteiraItem.Etapa.TESOURARIA
+
         possui_refinanciamento_pendente = Refinanciamento.objects.filter(
             associado_id=esteira_item.associado_id,
             status__in=[
@@ -421,6 +651,21 @@ class EsteiraService:
     @staticmethod
     @transaction.atomic
     def excluir_solicitacao(esteira_item: EsteiraItem, user=None) -> None:
+        if EsteiraService._pending_reactivation_contract(esteira_item) is not None:
+            if not EsteiraService._user_can_delete_broadly(
+                user
+            ) and not EsteiraService._can_delete_restricted(esteira_item):
+                raise ValidationError(
+                    "Somente itens aguardando, sem assunção e sem responsáveis podem ser excluídos."
+                )
+            EsteiraService._cancel_pending_reactivation(
+                esteira_item,
+                user=user,
+                action="excluir_preservando_historico",
+                observacao="Reativação cancelada com histórico anterior preservado.",
+            )
+            return
+
         if EsteiraService._user_can_delete_broadly(user):
             mode, target_status, observacao = (
                 EsteiraService._resolve_operational_delete_mode(esteira_item)
@@ -455,6 +700,15 @@ class EsteiraService:
             and esteira_item.analista_responsavel_id != user.id
         ):
             raise ValidationError("Este item foi assumido por outro analista.")
+
+        if EsteiraService._cancel_pending_reactivation(
+            esteira_item,
+            user=user,
+            action="reprovar",
+            observacao=observacao
+            or "Reativação reprovada na análise com histórico anterior preservado.",
+        ):
+            return
 
         EsteiraService._registrar_transicao(
             esteira_item,

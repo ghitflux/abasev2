@@ -10,6 +10,9 @@ import { saveAllRefinanciamentoWriteSchema } from "./saveAllRefinanciamentoWrite
 
 export const saveAllContratoWriteSchema = z.object({
   id: z.int(),
+  dirty_sections: z
+    .array(z.enum(["contract_core", "cycle_layout", "refinanciamento"]))
+    .optional(),
   get core() {
     return saveAllContratoCoreWriteSchema.optional();
   },

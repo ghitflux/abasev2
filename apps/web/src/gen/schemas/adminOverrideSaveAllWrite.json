@@ -2,12 +2,26 @@
   "type": "object",
   "properties": {
     "motivo": { "type": "string" },
+    "dirty_sections": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["esteira"]
+      }
+    },
     "contratos": {
       "type": "array",
       "items": {
         "type": "object",
         "properties": {
           "id": { "type": "integer" },
+          "dirty_sections": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["contract_core", "cycle_layout", "refinanciamento"]
+            }
+          },
           "core": {
             "type": "object",
             "properties": {

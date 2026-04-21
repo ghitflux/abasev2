@@ -17,6 +17,7 @@ import {
   AssociadoDocumentsGrid,
 } from "@/components/associados/associado-contracts-overview";
 import CadastroOrigemBadge from "@/components/associados/cadastro-origem-badge";
+import CopySnippet from "@/components/shared/copy-snippet";
 import StatusBadge from "@/components/custom/status-badge";
 import {
   Dialog,
@@ -86,6 +87,12 @@ export default function AssociadoDetailsDialog({
   });
 
   const associado = query.data;
+  const matriculaDisplay =
+    associado?.matricula_display ||
+    associado?.matricula ||
+    associado?.contato?.matricula_servidor ||
+    "";
+  const agenteNome = associado?.agente?.full_name || "Sem agente";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -113,14 +120,33 @@ export default function AssociadoDetailsDialog({
                 <p className="text-sm uppercase tracking-[0.2em] text-muted-foreground">
                   Associado
                 </p>
-                <h2 className="mt-2 text-2xl font-semibold">
-                  {associado.nome_completo}
+                <h2 className="mt-2">
+                  <CopySnippet
+                    label="Nome"
+                    value={associado.nome_completo}
+                    inline
+                    className="max-w-full text-2xl font-semibold leading-tight"
+                  />
                 </h2>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {matriculaDisplay ? (
+                    <CopySnippet
+                      label="Matrícula"
+                      value={matriculaDisplay}
+                      mono
+                    />
+                  ) : (
+                    <span className="inline-flex rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs text-muted-foreground">
+                      Sem matrícula
+                    </span>
+                  )}
+                  <CopySnippet label="CPF" value={associado.cpf_cnpj} mono />
+                </div>
                 <div className="mt-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-                  <span>
-                    {associado.matricula_display || associado.matricula}
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/70 px-3 py-1 text-xs font-medium text-foreground/90">
+                    <UserIcon className="size-3.5 text-primary" />
+                    Agente: {agenteNome}
                   </span>
-                  <span>{associado.cpf_cnpj}</span>
                   {associado.contratos[0]?.doacao_associado ? (
                     <span>
                       Doação:{" "}

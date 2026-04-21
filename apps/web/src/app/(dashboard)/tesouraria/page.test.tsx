@@ -153,10 +153,13 @@ function buildContrato(overrides: Partial<Record<string, unknown>> = {}) {
     data_assinatura: overrides.data_assinatura ?? "2026-04-01T12:00:00Z",
     data_solicitacao: overrides.data_solicitacao ?? "2026-04-01T12:00:00Z",
     status: overrides.status ?? "concluido",
+    origem_operacional: overrides.origem_operacional ?? "cadastro",
+    origem_operacional_label: overrides.origem_operacional_label ?? "Cadastro",
     agente: overrides.agente ?? null,
     agente_nome: overrides.agente_nome ?? "Agente Padrão",
     percentual_repasse: overrides.percentual_repasse ?? "10.00",
     comissao_agente: overrides.comissao_agente ?? "50.00",
+    valor_mensalidade: overrides.valor_mensalidade ?? "500.00",
     margem_disponivel: overrides.margem_disponivel ?? "500.00",
     comprovantes:
       overrides.comprovantes ??
@@ -449,6 +452,75 @@ it("remove o limpar externo e atualiza os kpis conforme o periodo filtrado", asy
 
   expect(screen.getByText("Contratos efetivados")).toBeInTheDocument();
   expect(screen.queryByText("Aguardando efetivação PIX")).not.toBeInTheDocument();
+});
+
+it("mostra a seção de reativações separada dos cadastros pendentes", async () => {
+  const user = userEvent.setup();
+
+  mockedApiFetch.mockImplementation(async (path, options) => {
+    if (path === "tesouraria/contratos/agentes") {
+      return [];
+    }
+    if (path !== "tesouraria/contratos") {
+      throw new Error(`Unexpected path: ${String(path)}`);
+    }
+
+    const pagamento = options?.query?.pagamento;
+    const origemOperacional = options?.query?.origem_operacional;
+
+    if (pagamento === "pendente" && origemOperacional === "cadastro") {
+      return {
+        count: 1,
+        next: null,
+        previous: null,
+        results: [buildContrato({ status: "pendente", nome: "Cadastro padrão" })],
+      };
+    }
+
+    if (pagamento === "pendente" && origemOperacional === "reativacao") {
+      return {
+        count: 1,
+        next: null,
+        previous: null,
+        results: [
+          buildContrato({
+            id: 2,
+            status: "pendente",
+            nome: "Associado Reativado",
+            origem_operacional: "reativacao",
+            origem_operacional_label: "Reativação",
+          }),
+        ],
+      };
+    }
+
+    return {
+      count: 0,
+      next: null,
+      previous: null,
+      results: [],
+    };
+  });
+
+  renderPage();
+
+  await waitFor(() => expect(findKpiCard("Reativações", "1")).toBeTruthy());
+  expect(screen.getByText("Aguardando efetivação PIX")).toBeInTheDocument();
+  expect(
+    screen.getByText("Reativações aguardando tesouraria"),
+  ).toBeInTheDocument();
+  expect(screen.getByText("Associado Reativado")).toBeInTheDocument();
+
+  const reativacoesCard = findKpiCard("Reativações", "1");
+  expect(reativacoesCard).toBeTruthy();
+  await user.click(reativacoesCard!);
+
+  expect(
+    screen.queryByText("Aguardando efetivação PIX"),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.getByText("Reativações aguardando tesouraria"),
+  ).toBeInTheDocument();
 });
 
 it("carrega usuarios no filtro de agente e expõe ordem crescente, decrescente e congelados", async () => {
