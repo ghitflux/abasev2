@@ -424,6 +424,12 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
       queryClient.setQueryData(["associado", associadoId], payload);
       await queryClient.invalidateQueries({ queryKey: ["associados"] });
       await queryClient.invalidateQueries({ queryKey: ["contratos"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["admin-associado-editor", associadoId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["admin-associado-history", associadoId],
+      });
     },
     onError: (error) => {
       toast.error(

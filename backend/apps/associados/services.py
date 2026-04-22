@@ -50,7 +50,7 @@ class AssociadoService:
     INACTIVATION_STATUS_TARGETS = {
         "inativo": Associado.Status.INATIVO,
         "inativo_inadimplente": Associado.Status.INADIMPLENTE,
-        "inativo_passivel_renovacao": Associado.Status.APTO_A_RENOVAR,
+        "inativo_passivel_renovacao": Associado.Status.INATIVO,
     }
 
     """Camada de serviço para lógica de negócio de associados."""
