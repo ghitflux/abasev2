@@ -445,7 +445,10 @@ class EsteiraService:
         *,
         observacao: str = "Reativação enviada para análise.",
     ) -> tuple[EsteiraItem, bool]:
-        esteira_item = EsteiraItem.objects.filter(associado=associado).first()
+        # Usa all_objects para encontrar o item mesmo que soft-deletado —
+        # inativações anteriores podem ter soft-deletado o item, mas o unique
+        # constraint de associado_id no banco ainda o mantém.
+        esteira_item = EsteiraItem.all_objects.filter(associado=associado).first()
         created = esteira_item is None
 
         if esteira_item is None:
@@ -466,6 +469,8 @@ class EsteiraService:
                 observacao,
             )
         else:
+            if esteira_item.deleted_at is not None:
+                esteira_item.restore()
             EsteiraService._reset_item_to_stage(
                 esteira_item,
                 user=user,
