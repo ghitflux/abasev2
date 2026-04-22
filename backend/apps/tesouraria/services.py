@@ -353,6 +353,12 @@ class TesourariaService:
             choice[0] for choice in Contrato.OrigemOperacional.choices
         }:
             queryset = queryset.filter(origem_operacional=origem_operacional)
+            if origem_operacional == Contrato.OrigemOperacional.REATIVACAO:
+                # Na secao de reativacoes exibe apenas contratos pendentes,
+                # nao reativacoes antigas ja canceladas/encerradas.
+                queryset = queryset.exclude(
+                    status__in=[Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO]
+                )
 
         return queryset
 
@@ -1001,6 +1007,26 @@ class TesourariaService:
         from apps.esteira.services import EsteiraService
 
         observacao = "Linha operacional removida pela tesouraria com histórico preservado."
+
+        # Contrato ja cancelado/encerrado: nao fechar a esteira caso ainda exista
+        # uma reativacao pendente ativa (evita cancelar o contrato mais recente).
+        if contrato.status in [Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO]:
+            pending = EsteiraService._pending_reactivation_contract(esteira_item)
+            if pending is not None:
+                TesourariaService._registrar_remocao_contrato_sem_fechar_esteira(
+                    esteira_item,
+                    user=user,
+                    observacao=observacao,
+                )
+                return contrato
+            # Sem reativacao pendente: fecha a esteira normalmente
+            EsteiraService.remover_fila_operacional(
+                esteira_item,
+                user,
+                observacao=observacao,
+            )
+            return contrato
+
         if TesourariaService._is_pending_reactivation_contract(contrato):
             now = timezone.now()
             contrato.status = Contrato.Status.CANCELADO
