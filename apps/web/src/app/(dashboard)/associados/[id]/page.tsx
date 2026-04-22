@@ -99,13 +99,28 @@ const ADMIN_EDITOR_SECTIONS = [
 const INACTIVATION_OPTIONS = [
   {
     value: "inativo_inadimplente",
-    label: "Inativo inadimplente",
-    description: "Use quando a inativação deve manter o associado na régua de inadimplência.",
+    label: "Inadimplente",
+    description: "Associado não realizou os pagamentos devidos.",
   },
   {
     value: "inativo_passivel_renovacao",
-    label: "Inativo passível de renovação",
-    description: "Use quando a inativação deve preservar o caso para tratamento de renovação.",
+    label: "Passível de renovação",
+    description: "Inativação com possibilidade de renovação futura.",
+  },
+  {
+    value: "inativo_a_pedido",
+    label: "A pedido do associado",
+    description: "Associado solicitou o encerramento voluntário.",
+  },
+  {
+    value: "inativo_falecimento",
+    label: "Falecimento",
+    description: "Associado faleceu.",
+  },
+  {
+    value: "inativo_outros",
+    label: "Outros motivos",
+    description: "Outros motivos não listados acima.",
   },
 ] as const;
 type InactivationTarget = (typeof INACTIVATION_OPTIONS)[number]["value"];

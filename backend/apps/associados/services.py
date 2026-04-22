@@ -47,10 +47,13 @@ def calculate_contract_dates(data_aprovacao: date | None) -> tuple[date, date, d
 
 
 class AssociadoService:
-    INACTIVATION_STATUS_TARGETS = {
-        "inativo": Associado.Status.INATIVO,
-        "inativo_inadimplente": Associado.Status.INADIMPLENTE,
-        "inativo_passivel_renovacao": Associado.Status.INATIVO,
+    INACTIVATION_MOTIVOS = {
+        "inativo": "inativo",
+        "inativo_inadimplente": "inadimplente",
+        "inativo_passivel_renovacao": "passível de renovação",
+        "inativo_a_pedido": "a pedido do associado",
+        "inativo_falecimento": "falecimento",
+        "inativo_outros": "outros motivos",
     }
 
     """Camada de serviço para lógica de negócio de associados."""
@@ -458,22 +461,18 @@ class AssociadoService:
         *,
         status_destino: str | None = None,
     ) -> Associado:
-        target_status = AssociadoService.INACTIVATION_STATUS_TARGETS.get(
-            str(status_destino or "inativo").strip()
-        )
-        if target_status is None:
+        motivo_key = str(status_destino or "inativo").strip()
+        label = AssociadoService.INACTIVATION_MOTIVOS.get(motivo_key)
+        if label is None:
             raise ValidationError(
                 {
                     "status_destino": [
-                        "Escolha inativo, inativo_inadimplente ou inativo_passivel_renovacao."
+                        "Escolha um motivo válido: "
+                        + ", ".join(AssociadoService.INACTIVATION_MOTIVOS.keys())
                     ]
                 }
             )
-        label = {
-            Associado.Status.INATIVO: "inativo",
-            Associado.Status.INADIMPLENTE: "inativo inadimplente",
-            Associado.Status.APTO_A_RENOVAR: "inativo passível de renovação",
-        }[target_status]
+        target_status = Associado.Status.INATIVO
         previous_status = associado.status
         before_associado = AssociadoService._serialize_associado_inactivation_snapshot(
             associado
