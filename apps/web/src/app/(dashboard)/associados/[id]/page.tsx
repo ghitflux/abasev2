@@ -913,7 +913,8 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           <Button variant="outline" asChild>
             <Link href={backHref}>Voltar</Link>
           </Button>
-          {(isAdmin || isCoordinator) && associado.status === "inativo" ? (
+          {(isAdmin || isCoordinator) &&
+          (associado.status === "inativo" || associado.status === "inadimplente") ? (
             <Button
               variant="outline"
               className="border-emerald-500/40 text-emerald-200"
@@ -922,7 +923,9 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
               Iniciar reativação
             </Button>
           ) : null}
-          {(isAdmin || isCoordinator) && associado.status !== "inativo" ? (
+          {(isAdmin || isCoordinator) &&
+          associado.status !== "inativo" &&
+          associado.status !== "inadimplente" ? (
             <Button
               variant="outline"
               className="border-amber-500/40 text-amber-200"
