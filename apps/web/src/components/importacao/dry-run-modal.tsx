@@ -43,6 +43,7 @@ type DetailKey =
   | "pendencias"
   | "ciclo_aberto"
   | "aptos_renovar"
+  | "inativos_com_desconto"
   | "v3050_descontaram"
   | "v3050_nao_descontaram"
   | { mudanca: "assoc"; antes: string; depois: string }
@@ -72,6 +73,8 @@ function filterItems(items: DryRunItem[], key: DetailKey): DryRunItem[] {
     if (key === "pendencias") return items.filter((i) => i.resultado === "pendencia_manual");
     if (key === "ciclo_aberto") return items.filter((i) => i.resultado === "ciclo_aberto");
     if (key === "aptos_renovar") return items.filter((i) => i.ficara_apto_renovar);
+    if (key === "inativos_com_desconto")
+      return items.filter((i) => i.desconto_em_associado_inativo);
     if (key === "v3050_descontaram")
       return items.filter((i) => i.categoria === "valores_30_50" && i.resultado === "baixa_efetuada");
     if (key === "v3050_nao_descontaram")
@@ -99,6 +102,7 @@ function detailTitle(key: DetailKey): string {
       pendencias: "Pendências manuais",
       ciclo_aberto: "Sem parcela elegível (ciclo aberto)",
       aptos_renovar: "Ficarão aptos a renovar",
+      inativos_com_desconto: "Associados inativos com desconto efetuado",
       v3050_descontaram: "Parcelas R$30/R$50 — descontadas",
       v3050_nao_descontaram: "Parcelas R$30/R$50 — não descontadas",
     };
@@ -359,6 +363,17 @@ export default function DryRunModal({
                       clickable={kpis.aptos_a_renovar > 0}
                       onClick={() => setActiveDetail("aptos_renovar")}
                     />
+                    {kpis.associados_inativos_com_desconto > 0 && (
+                      <KpiCard
+                        label="Inativos com desconto efetuado"
+                        value={kpis.associados_inativos_com_desconto}
+                        sub="Associados inativos encontrados no retorno com baixa financeira efetivada."
+                        icon={<AlertTriangleIcon className="size-4" />}
+                        colorClass="text-amber-300"
+                        clickable
+                        onClick={() => setActiveDetail("inativos_com_desconto")}
+                      />
+                    )}
                   </div>
 
                   {/* Mudanças de status de associados */}
@@ -397,7 +412,21 @@ export default function DryRunModal({
                     </div>
                   )}
 
+                  {kpis.associados_inativos_com_desconto > 0 && (
+                    <div className="flex items-start gap-2 rounded-2xl border border-amber-400/25 bg-amber-400/5 px-4 py-3 text-sm text-amber-200">
+                      <AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />
+                      <span>
+                        <strong>{kpis.associados_inativos_com_desconto}</strong> associado
+                        {kpis.associados_inativos_com_desconto !== 1 ? "s" : ""} inativo
+                        {kpis.associados_inativos_com_desconto !== 1 ? "s" : ""} aparece
+                        {kpis.associados_inativos_com_desconto !== 1 ? "m" : ""} com desconto
+                        efetivado neste retorno. Revise a listagem antes de confirmar a importação.
+                      </span>
+                    </div>
+                  )}
+
                   {kpis.aptos_a_renovar === 0 &&
+                    kpis.associados_inativos_com_desconto === 0 &&
                     kpis.mudancas_status_associado.length === 0 &&
                     kpis.mudancas_status_ciclo.length === 0 && (
                       <p className="text-sm text-muted-foreground">

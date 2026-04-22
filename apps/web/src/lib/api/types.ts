@@ -623,11 +623,21 @@ export type AdminAssociadoSnapshot = {
   updated_at?: string | null;
 };
 
+export type AdminInactivationReversal = {
+  event_id: number | null;
+  available: boolean;
+  previous_status: string;
+  target_status: string;
+  event_created_at: string | null;
+  realizado_por: SimpleUser | null;
+};
+
 export type AdminAssociadoEditorPayload = {
   associado: AdminAssociadoSnapshot;
   contratos: AdminEditorContrato[];
   esteira?: EsteiraResumo | null;
   documentos: Documento[];
+  inactivation_reversal?: AdminInactivationReversal | null;
   warnings?: AdminEditorWarning[];
 };
 
@@ -949,6 +959,12 @@ export type TesourariaContratoItem = {
   cancelamento_tipo?: string;
   cancelamento_motivo?: string;
   cancelado_em?: string | null;
+  reactivation_cycle_preview?: {
+    ultima_parcela_paga: string | null;
+    competencia_inicial_sugerida: string;
+    competencias_sugeridas: string[];
+    parcelas_total: number;
+  } | null;
 };
 
 export type ConfirmacaoItem = {

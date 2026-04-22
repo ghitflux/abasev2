@@ -34,6 +34,7 @@ const items = [
     ciclo_status_antes: "aberto",
     ciclo_status_depois: "apto_a_renovar",
     ficara_apto_renovar: true,
+    desconto_em_associado_inativo: false,
     categoria: "mensalidades",
   },
   {
@@ -52,6 +53,7 @@ const items = [
     ciclo_status_antes: "aberto",
     ciclo_status_depois: "apto_a_renovar",
     ficara_apto_renovar: true,
+    desconto_em_associado_inativo: false,
     categoria: "mensalidades",
   },
 ];

@@ -487,6 +487,52 @@ class TestFluxoCompleto(TestCase):
         self.assertIn(contrato_congelado.id, ids)
         self.assertNotIn(contrato_aberto.id, ids)
 
+    def test_tesouraria_pode_devolver_contrato_para_analise(self):
+        associado = self._criar_associado("17345678964")
+        contrato = self._levar_para_tesouraria(associado)
+
+        response = self.tes_client.post(
+            f"/api/v1/tesouraria/contratos/{contrato.id}/pendenciar/",
+            {
+                "tipo": "tesouraria",
+                "descricao": "Revisar anexos e validar a divergência antes da efetivação.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        esteira = associado.esteira_item
+        esteira.refresh_from_db()
+        pendencia = Pendencia.objects.get(esteira_item=esteira)
+
+        self.assertEqual(esteira.etapa_atual, EsteiraItem.Etapa.ANALISE)
+        self.assertEqual(esteira.status, EsteiraItem.Situacao.PENDENCIADO)
+        self.assertFalse(pendencia.retornado_para_agente)
+        self.assertEqual(pendencia.tipo, "tesouraria")
+
+    def test_tesouraria_pode_devolver_reativacao_para_analise(self):
+        associado = self._criar_associado("17345678965")
+        contrato = associado.contratos.get()
+        contrato.origem_operacional = Contrato.OrigemOperacional.REATIVACAO
+        contrato.save(update_fields=["origem_operacional", "updated_at"])
+        contrato = self._levar_para_tesouraria(associado)
+
+        response = self.tes_client.post(
+            f"/api/v1/tesouraria/contratos/{contrato.id}/pendenciar/",
+            {
+                "tipo": "tesouraria",
+                "descricao": "Reativação voltou para análise para ajuste documental.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        esteira = associado.esteira_item
+        esteira.refresh_from_db()
+
+        self.assertEqual(esteira.etapa_atual, EsteiraItem.Etapa.ANALISE)
+        self.assertEqual(esteira.status, EsteiraItem.Situacao.PENDENCIADO)
+
     def test_tesouraria_pode_cancelar_contrato_e_listar_liquidado_com_alias_visual(self):
         associado_cancelado = self._criar_associado("17345678907")
         contrato_cancelado = self._levar_para_tesouraria(associado_cancelado)
@@ -839,6 +885,7 @@ class TestFluxoCompleto(TestCase):
         associado.save(update_fields=["status", "updated_at"])
         contrato.status = Contrato.Status.ATIVO
         contrato.save(update_fields=["status", "updated_at"])
+        esteira_id = associado.esteira_item.id
 
         response = self.coord_client.post(
             f"/api/v1/tesouraria/contratos/{contrato.id}/excluir/"
@@ -847,12 +894,13 @@ class TestFluxoCompleto(TestCase):
 
         associado.refresh_from_db()
         contrato.refresh_from_db()
-        associado.esteira_item.refresh_from_db()
+        esteira_item = EsteiraItem.all_objects.get(pk=esteira_id)
         self.assertEqual(associado.status, Associado.Status.ATIVO)
         self.assertEqual(contrato.status, Contrato.Status.ATIVO)
-        self.assertEqual(associado.esteira_item.etapa_atual, EsteiraItem.Etapa.CONCLUIDO)
-        self.assertEqual(associado.esteira_item.status, EsteiraItem.Situacao.APROVADO)
-        self.assertIsNotNone(associado.esteira_item.concluido_em)
+        self.assertEqual(esteira_item.etapa_atual, EsteiraItem.Etapa.CONCLUIDO)
+        self.assertEqual(esteira_item.status, EsteiraItem.Situacao.REJEITADO)
+        self.assertIsNotNone(esteira_item.concluido_em)
+        self.assertIsNotNone(esteira_item.deleted_at)
 
     def test_coordenacao_tem_acesso_de_leitura_as_rotas_da_tesouraria(self):
         associado = self._criar_associado("62345678903")

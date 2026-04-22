@@ -88,6 +88,12 @@ type Props = {
     payload?: AdminAssociadoEditorPayload,
   ) => Promise<void> | void;
   onDirtyChange?: (state: ContractEditorDirtyState) => void;
+  renewalStageOptions?: ReadonlyArray<{ value: string; label: string }>;
+  selectedRenewalStage?: string;
+  onSelectedRenewalStageChange?: (value: string) => void;
+  onRequestRenewalStageTransition?: () => void;
+  renewalTransitionDisabled?: boolean;
+  renewalTransitionPending?: boolean;
 };
 
 export type SaveAllContratoCorePayload = {
@@ -434,7 +440,18 @@ function createContractDraft(contract: AdminEditorContrato): ContractDraft {
 
 const AdminContractEditor = React.forwardRef<AdminContractEditorHandle, Props>(
   function AdminContractEditor(
-    { associadoId, contract, onPayloadRefresh, onDirtyChange }: Props,
+    {
+      associadoId,
+      contract,
+      onPayloadRefresh,
+      onDirtyChange,
+      renewalStageOptions = [],
+      selectedRenewalStage,
+      onSelectedRenewalStageChange,
+      onRequestRenewalStageTransition,
+      renewalTransitionDisabled = false,
+      renewalTransitionPending = false,
+    }: Props,
     ref,
   ) {
     const [draft, setDraft] = React.useState<ContractDraft>(
@@ -1432,6 +1449,46 @@ const AdminContractEditor = React.forwardRef<AdminContractEditorHandle, Props>(
                       Use <strong>Enviar para etapa</strong> para mudar a fila da renovação e a
                       tesouraria para anexar comprovantes e efetivar.
                     </p>
+                    {renewalStageOptions.length ? (
+                      <div className="grid gap-2 pt-2">
+                        <Select
+                          value={
+                            selectedRenewalStage ??
+                            draft.refinanciamento_ativo.status
+                          }
+                          onValueChange={(value) =>
+                            onSelectedRenewalStageChange?.(value)
+                          }
+                        >
+                          <SelectTrigger className="bg-card/60">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {renewalStageOptions.map((option) => (
+                              <SelectItem
+                                key={`${draft.id}-${option.value}`}
+                                value={option.value}
+                              >
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={onRequestRenewalStageTransition}
+                          disabled={
+                            renewalTransitionDisabled ||
+                            !onRequestRenewalStageTransition
+                          }
+                        >
+                          {renewalTransitionPending
+                            ? "Aplicando etapa..."
+                            : "Aplicar etapa da renovação"}
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 </AdminField>
                 <AdminField

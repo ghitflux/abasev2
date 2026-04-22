@@ -222,24 +222,14 @@ def _resolve_or_create_associado(user, payload: dict[str, object]) -> Associado:
 
 
 def _upsert_documento(*, associado: Associado, tipo: str, upload, observacao: str = "") -> Documento:
-    documento = Documento.objects.filter(associado=associado, tipo=tipo).first()
-    if documento is None:
-        documento = Documento.objects.create(
-            associado=associado,
-            tipo=tipo,
-            arquivo=upload,
-            origem=Documento.Origem.OUTRO,
-            status=Documento.Status.PENDENTE,
-            observacao=observacao,
-        )
-        return documento
-
-    documento.arquivo = upload
-    documento.origem = Documento.Origem.OUTRO
-    documento.status = Documento.Status.PENDENTE
-    documento.observacao = observacao
-    documento.save(update_fields=["arquivo", "origem", "status", "observacao", "updated_at"])
-    return documento
+    return Documento.objects.create(
+        associado=associado,
+        tipo=tipo,
+        arquivo=upload,
+        origem=Documento.Origem.OUTRO,
+        status=Documento.Status.PENDENTE,
+        observacao=observacao,
+    )
 
 
 class LegacyAssociadoMeView(LegacyMobileAPIView):

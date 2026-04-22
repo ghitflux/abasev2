@@ -66,6 +66,10 @@ export type DryRunItem = {
    */
   ficara_apto_renovar: boolean;
   /**
+   * @type boolean
+   */
+  desconto_em_associado_inativo: boolean;
+  /**
    * @type string
    */
   categoria: string;

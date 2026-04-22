@@ -127,7 +127,7 @@ class AssociadoPermissionsTestCase(TestCase):
         self.assertIn("ciclos", response.json())
         self.assertIn("meses_nao_pagos", response.json())
 
-    def test_coordenador_nao_pode_editar_associado_nem_enviar_documentos(self):
+    def test_coordenador_nao_pode_editar_associado_mas_pode_enviar_documentos(self):
         update_response = self.coord_client.patch(
             f"/api/v1/associados/{self.associado.id}/",
             {"nome_completo": "Nao Deve Atualizar"},
@@ -146,7 +146,7 @@ class AssociadoPermissionsTestCase(TestCase):
         )
 
         self.assertEqual(update_response.status_code, 403)
-        self.assertEqual(documentos_response.status_code, 403)
+        self.assertEqual(documentos_response.status_code, 201, documentos_response.json())
 
     def test_agente_pode_visualizar_proprio_associado(self):
         response = self.agent_client.get(f"/api/v1/associados/{self.associado.id}/")
@@ -257,7 +257,7 @@ class AssociadoPermissionsTestCase(TestCase):
         self.assertEqual(response.json()["agente_nome"], self.agente.full_name)
         self.assertIn(self.agente.full_name, response.json()["message"])
 
-    def test_upload_do_mesmo_tipo_substitui_documento_existente(self):
+    def test_upload_do_mesmo_tipo_adiciona_nova_versao_sem_substituir(self):
         response = self.agent_client.post(
             f"/api/v1/associados/{self.associado.id}/documentos/",
             {
@@ -271,9 +271,36 @@ class AssociadoPermissionsTestCase(TestCase):
         )
 
         self.assertEqual(response.status_code, 201, response.json())
-        documentos = Documento.objects.filter(associado=self.associado, tipo=Documento.Tipo.CPF)
-        self.assertEqual(documentos.count(), 1)
-        self.assertIn("documento-atualizado", documentos.get().arquivo.name)
+        documentos = Documento.objects.filter(
+            associado=self.associado,
+            tipo=Documento.Tipo.CPF,
+            deleted_at__isnull=True,
+        ).order_by("id")
+        self.assertEqual(documentos.count(), 2)
+        self.assertIn("documento.pdf", documentos.first().arquivo.name)
+        self.assertIn("documento-atualizado", documentos.last().arquivo.name)
+
+    def test_analista_pode_enviar_nova_versao_de_documento(self):
+        response = self.analyst_client.post(
+            f"/api/v1/associados/{self.associado.id}/documentos/",
+            {
+                "tipo": Documento.Tipo.CONTRACHEQUE,
+                "arquivo": SimpleUploadedFile(
+                    "analise.pdf",
+                    b"conteudo",
+                    content_type="application/pdf",
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        self.assertTrue(
+            Documento.objects.filter(
+                associado=self.associado,
+                tipo=Documento.Tipo.CONTRACHEQUE,
+                deleted_at__isnull=True,
+            ).exists()
+        )
 
     def test_create_duplicado_retorna_nome_do_agente_responsavel(self):
         response = self.agent_client.post(
@@ -485,6 +512,26 @@ class AssociadoPermissionsTestCase(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
         self.associado.refresh_from_db()
         self.assertEqual(self.associado.status, Associado.Status.INATIVO)
+
+    def test_coordenador_pode_inativar_associado_como_inadimplente(self):
+        response = self.coord_client.post(
+            f"/api/v1/associados/{self.associado.id}/inativar/",
+            {"status_destino": "inativo_inadimplente"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        self.associado.refresh_from_db()
+        self.assertEqual(self.associado.status, Associado.Status.INADIMPLENTE)
+
+    def test_coordenador_pode_inativar_associado_como_passivel_de_renovacao(self):
+        response = self.coord_client.post(
+            f"/api/v1/associados/{self.associado.id}/inativar/",
+            {"status_destino": "inativo_passivel_renovacao"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        self.associado.refresh_from_db()
+        self.assertEqual(self.associado.status, Associado.Status.APTO_A_RENOVAR)
 
     def test_admin_nao_pode_excluir_associado(self):
         response = self.admin_client.delete(f"/api/v1/associados/{self.associado.id}/")

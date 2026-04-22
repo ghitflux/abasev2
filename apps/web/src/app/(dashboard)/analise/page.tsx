@@ -469,14 +469,21 @@ export default function AnalisePage() {
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (item: EsteiraItem) => {
-      await apiFetch(`esteira/${item.id}`, {
-        method: "DELETE",
+  const removeQueueMutation = useMutation({
+    mutationFn: async ({
+      item,
+      observacao,
+    }: {
+      item: EsteiraItem;
+      observacao?: string;
+    }) => {
+      await apiFetch(`esteira/${item.id}/remover-fila`, {
+        method: "POST",
+        body: observacao ? { observacao } : {},
       });
     },
     onSuccess: () => {
-      toast.success("Solicitação excluída com sucesso.");
+      toast.success("Linha removida da fila com histórico preservado.");
       setDialogState(null);
       setObservacao("");
       invalidateAnaliseQueries();
@@ -485,7 +492,7 @@ export default function AnalisePage() {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Falha ao excluir solicitação.",
+          : "Falha ao remover linha da fila.",
       );
     },
   });
@@ -582,13 +589,13 @@ export default function AnalisePage() {
                 Reprovar
               </Button>
             ) : null}
-            {row.acoes_disponiveis.includes("excluir") ? (
+            {row.etapa_atual === "analise" && isAnalistaEnabled ? (
               <Button
                 size="sm"
-                variant="destructive"
+                variant="outline"
                 onClick={() => setDialogState({ mode: "excluir", item: row })}
               >
-                Excluir
+                Remover da fila
               </Button>
             ) : null}
           </div>
@@ -681,7 +688,7 @@ export default function AnalisePage() {
         cell: (row) => row.analista_responsavel?.full_name ?? "Sem responsável",
       },
     ],
-    [actionMutation],
+    [actionMutation, isAnalistaEnabled],
   );
 
   const activeFiltersCount =
@@ -724,11 +731,19 @@ export default function AnalisePage() {
 
   const handleExportAnalise = React.useCallback(
     async (exportFilters: ReportExportFilters, fmt: "pdf" | "xlsx") => {
-      const { scope, referenceDate, agente: exportAgente } = exportFilters;
+      const {
+        scope,
+        referenceDate,
+        agente: exportAgente,
+        origemOperacional,
+      } = exportFilters;
       setIsExporting(true);
       try {
         const sourceQuery = {
-          secao: "ver_todos",
+          secao:
+            origemOperacional === "reativacao"
+              ? "contratos_reativacao"
+              : "ver_todos",
           search: debouncedSearch || undefined,
           agente: exportAgente || agenteFilter || undefined,
           analista: analistaFilter || undefined,
@@ -776,6 +791,7 @@ export default function AnalisePage() {
           rows: exportRows,
           filters: {
             ...sourceQuery,
+            origem_operacional: origemOperacional,
             total_registros: exportRows.length,
             ...describeReportScope(scope, referenceDate),
           },
@@ -786,7 +802,13 @@ export default function AnalisePage() {
         setIsExporting(false);
       }
     },
-    [agenteFilter, analistaFilter, debouncedSearch, etapaFilter, statusFilter],
+    [
+      agenteFilter,
+      analistaFilter,
+      debouncedSearch,
+      etapaFilter,
+      statusFilter,
+    ],
   );
 
   if (status !== "authenticated") {
@@ -826,7 +848,7 @@ export default function AnalisePage() {
           </h1>
           <p className="max-w-4xl text-sm text-muted-foreground">
             Painel consolidado das filas da esteira para revisar documentação,
-            acompanhar encaminhamentos, excluir solicitações elegíveis e entrar
+            acompanhar encaminhamentos, remover linhas operacionais e entrar
             no detalhe completo de cada associado.
           </p>
         </div>
@@ -1045,6 +1067,9 @@ export default function AnalisePage() {
             label="Exportar"
             agentOptions={agentOptions}
             showFilters
+            originOptions={[
+              { value: "reativacao", label: "Reativações" },
+            ]}
             initialScope={
               dataInicio &&
               dataFim &&
@@ -1151,7 +1176,7 @@ export default function AnalisePage() {
                   : dialogState?.mode === "reprovar"
                     ? "Reprovar cadastro"
                     : dialogState?.mode === "excluir"
-                      ? "Excluir solicitação"
+                      ? "Remover da fila"
                       : dialogState?.mode === "correcao"
                         ? "Solicitar correção"
                         : "Documentos e formulário"}
@@ -1164,7 +1189,7 @@ export default function AnalisePage() {
                   : dialogState?.mode === "reprovar"
                     ? `A reprovação do contrato ${dialogState.item.contrato?.codigo} removerá o cadastro do associado e toda a árvore contratual das filas operacionais.`
                     : dialogState?.mode === "excluir"
-                      ? `Confirme a exclusão lógica da solicitação ${dialogState.item.contrato?.codigo}. O associado, a esteira e a árvore contratual ativa serão removidos das filas operacionais.`
+                      ? `Confirme a remoção da solicitação ${dialogState.item.contrato?.codigo} da fila operacional. O associado, documentos e histórico serão mantidos.`
                       : dialogState?.mode === "correcao"
                         ? "Informe a observação que deve ser enviada ao agente."
                         : "Documentos anexados e resumo rápido do cadastro em análise."}
@@ -1349,14 +1374,17 @@ export default function AnalisePage() {
           ) : null}
 
           {dialogState?.mode === "correcao" ||
-          dialogState?.mode === "reprovar" ? (
+          dialogState?.mode === "reprovar" ||
+          dialogState?.mode === "excluir" ? (
             <Textarea
               value={observacao}
               onChange={(event) => setObservacao(event.target.value)}
               placeholder={
                 dialogState?.mode === "reprovar"
                   ? "Motivo da reprovação do cadastro..."
-                  : "Descreva a correção necessária..."
+                  : dialogState?.mode === "excluir"
+                    ? "Motivo opcional para remover esta linha da fila..."
+                    : "Descreva a correção necessária..."
               }
               className="min-h-32"
             />
@@ -1433,9 +1461,15 @@ export default function AnalisePage() {
             {dialogState?.mode === "excluir" ? (
               <Button
                 variant="destructive"
-                onClick={() => deleteMutation.mutate(dialogState.item)}
+                onClick={() =>
+                  removeQueueMutation.mutate({
+                    item: dialogState.item,
+                    observacao: observacao.trim() || undefined,
+                  })
+                }
+                disabled={removeQueueMutation.isPending}
               >
-                Excluir solicitação
+                Remover da fila
               </Button>
             ) : null}
           </DialogFooter>

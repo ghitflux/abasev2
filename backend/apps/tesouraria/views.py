@@ -64,6 +64,7 @@ from .serializers import (
     LiquidacaoContratoListSerializer,
     LiquidacaoKpisSerializer,
     LiquidarContratoSerializer,
+    PendenciarContratoSerializer,
     RegistrarDevolucaoSerializer,
     ReverterLiquidacaoSerializer,
     ReverterDevolucaoSerializer,
@@ -178,6 +179,7 @@ class TesourariaContratoViewSet(
             payload.validated_data.get("comprovante_associado"),
             payload.validated_data.get("comprovante_agente"),
             request.user,
+            competencias_ciclo=payload.validated_data.get("competencias_ciclo"),
         )
         serializer = self.get_serializer(contrato)
         return Response(serializer.data)
@@ -220,6 +222,19 @@ class TesourariaContratoViewSet(
             payload.validated_data["tipo"],
             payload.validated_data["motivo"],
             request.user,
+        )
+        serializer = self.get_serializer(contrato)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"])
+    def pendenciar(self, request, pk=None):
+        payload = PendenciarContratoSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        contrato = TesourariaService.pendenciar_para_analise(
+            pk,
+            tipo=payload.validated_data["tipo"],
+            descricao=payload.validated_data["descricao"],
+            user=request.user,
         )
         serializer = self.get_serializer(contrato)
         return Response(serializer.data)

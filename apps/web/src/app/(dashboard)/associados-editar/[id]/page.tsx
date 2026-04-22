@@ -16,7 +16,7 @@ export default async function EditarAssociadoPage({
   const adminMode = resolvedSearchParams?.admin === "1";
 
   return (
-    <RoleGuard allow={["ADMIN"]}>
+    <RoleGuard allow={["ADMIN", "COORDENADOR"]}>
       <EditarAssociadoPageClient associadoId={associadoId} adminMode={adminMode} />
     </RoleGuard>
   );

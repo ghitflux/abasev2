@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import type { AssociadoDetail, SimpleUser } from "@/lib/api/types";
+import type { AssociadoDetail, Documento, SimpleUser } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
 import { buildBackendFileUrl } from "@/lib/backend-files";
 import {
@@ -126,6 +126,14 @@ const PRAZO_ANTECIPACAO_OPTIONS = [
   { value: "4", label: "4 parcelas" },
 ];
 const TAXA_ANTECIPACAO_PADRAO = 30;
+
+function getDocumentoOrder(documento: Documento) {
+  const timestamp =
+    Date.parse(documento.updated_at ?? "") ||
+    Date.parse(documento.created_at ?? "") ||
+    0;
+  return timestamp || documento.id;
+}
 
 const schema = z
   .object({
@@ -387,7 +395,8 @@ export default function AssociadoForm({
   const { startRouteTransition } = useRouteTransition();
   const { user } = useAuth();
   const { hasRole } = usePermissions();
-  const isAdminEditMode = mode === "edit" && hasRole("ADMIN");
+  const isAdminEditMode =
+    mode === "edit" && (hasRole("ADMIN") || hasRole("COORDENADOR"));
   const canManageAgentAssignment =
     hasRole("ADMIN") ||
     hasRole("ANALISTA") ||
@@ -457,13 +466,24 @@ export default function AssociadoForm({
   const doacaoAssociado = valorTotalAntecipacao - margemDisponivel;
   const contratoAtual = initialData?.contratos?.[0];
   const currentDocumentsByType = React.useMemo(
-    () =>
-      new Map<string, NonNullable<AssociadoDetail["documentos"]>[number]>(
-        (initialData?.documentos ?? []).map((documento) => [
-          documento.tipo,
-          documento,
-        ]),
-      ),
+    () => {
+      const map = new Map<
+        string,
+        { latest: NonNullable<AssociadoDetail["documentos"]>[number]; total: number }
+      >();
+      for (const documento of initialData?.documentos ?? []) {
+        const current = map.get(documento.tipo);
+        if (!current) {
+          map.set(documento.tipo, { latest: documento, total: 1 });
+          continue;
+        }
+        current.total += 1;
+        if (getDocumentoOrder(documento) >= getDocumentoOrder(current.latest)) {
+          current.latest = documento;
+        }
+      }
+      return map;
+    },
     [initialData?.documentos],
   );
   const resolvedTitle =
@@ -1776,16 +1796,17 @@ export default function AssociadoForm({
                     </CardTitle>
                     <p className="text-sm text-muted-foreground">
                       {mode === "edit"
-                        ? "Revise os anexos atuais e envie um novo arquivo quando precisar substituir o documento."
+                        ? "Revise os anexos atuais e envie um novo arquivo para adicionar uma versão sem apagar o histórico."
                         : "Os arquivos enviados aqui são anexados após o cadastro principal."}
                     </p>
                   </CardHeader>
                   <CardContent>
                     <div className="grid gap-4 md:grid-cols-4">
                       {documentFields.map((field) => {
-                        const currentDocument = currentDocumentsByType.get(
+                        const currentDocumentEntry = currentDocumentsByType.get(
                           field.key,
                         );
+                        const currentDocument = currentDocumentEntry?.latest;
 
                         return (
                           <div
@@ -1812,8 +1833,12 @@ export default function AssociadoForm({
                                     />
                                   </div>
                                   <p className="mt-2 text-xs text-muted-foreground">
-                                    Envie um novo arquivo abaixo para substituir
-                                    este anexo.
+                                    Envie um novo arquivo abaixo para adicionar
+                                    uma nova versão mantendo este anexo no
+                                    histórico.
+                                    {currentDocumentEntry.total > 1
+                                      ? ` Histórico atual: ${currentDocumentEntry.total} versões.`
+                                      : ""}
                                   </p>
                                 </div>
                               ) : (

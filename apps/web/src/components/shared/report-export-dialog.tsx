@@ -39,6 +39,7 @@ export type ReportExportFilters = {
   agente?: string;
   status?: string;
   esteira?: string;
+  origemOperacional?: string;
   pagamentoFeito?: string;
   columns?: string[];
 };
@@ -49,6 +50,7 @@ type ReportExportDialogProps = {
   agentOptions?: SelectOption[];
   statusOptions?: Array<{ value: string; label: string }>;
   esteiraOptions?: Array<{ value: string; label: string }>;
+  originOptions?: Array<{ value: string; label: string }>;
   paymentOptions?: Array<{ value: string; label: string }>;
   showFilters?: boolean;
   /** Oculta o seletor de período/data — use quando os dados já estão filtrados externamente */
@@ -70,6 +72,7 @@ export default function ReportExportDialog({
   agentOptions = [],
   statusOptions = [],
   esteiraOptions = [],
+  originOptions = [],
   paymentOptions = [],
   showFilters = false,
   hideScope = false,
@@ -92,6 +95,7 @@ export default function ReportExportDialog({
   const [agente, setAgente] = React.useState("");
   const [status, setStatus] = React.useState("todos");
   const [esteira, setEsteira] = React.useState("todos");
+  const [origemOperacional, setOrigemOperacional] = React.useState("todos");
   const [pagamentoFeito, setPagamentoFeito] = React.useState("todos");
   const [selectedColumns, setSelectedColumns] = React.useState<string[]>([]);
   const [isExporting, setIsExporting] = React.useState(false);
@@ -129,6 +133,7 @@ export default function ReportExportDialog({
     setAgente("");
     setStatus("todos");
     setEsteira("todos");
+    setOrigemOperacional("todos");
     setPagamentoFeito("todos");
   }, [initialDayRef, initialMonthRef, initialScope, open]);
 
@@ -155,6 +160,8 @@ export default function ReportExportDialog({
           agente: agente || undefined,
           status: status === "todos" ? undefined : status,
           esteira: esteira === "todos" ? undefined : esteira,
+          origemOperacional:
+            origemOperacional === "todos" ? undefined : origemOperacional,
           pagamentoFeito:
             pagamentoFeito === "todos" ? undefined : pagamentoFeito,
           columns: selectedColumns.length ? selectedColumns : undefined,
@@ -316,6 +323,28 @@ export default function ReportExportDialog({
                     <SelectContent>
                       <SelectItem value="todos">Todas</SelectItem>
                       {esteiraOptions.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {originOptions.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Origem operacional</Label>
+                  <Select
+                    value={origemOperacional}
+                    onValueChange={setOrigemOperacional}
+                  >
+                    <SelectTrigger className="rounded-xl border-border/60 bg-card/60">
+                      <SelectValue placeholder="Todas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todas</SelectItem>
+                      {originOptions.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>
                           {opt.label}
                         </SelectItem>

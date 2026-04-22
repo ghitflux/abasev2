@@ -232,6 +232,35 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
         self.assertEqual(payload["kpis"]["aptos_a_renovar"], 0)
         self.assertFalse(payload["items"][0]["ficara_apto_renovar"])
 
+    def test_dry_run_sinaliza_desconto_em_associado_inativo(self):
+        associado, _contrato, _ciclo = self.create_associado_com_contrato(
+            cpf="10000000007",
+            nome="Servidor Inativo",
+            competencia_final=date(2025, 5, 1),
+            status_ultima_parcela=Parcela.Status.EM_ABERTO,
+            valor_mensalidade=Decimal("150.00"),
+        )
+        associado.status = Associado.Status.INATIVO
+        associado.save(update_fields=["status", "updated_at"])
+
+        payload = simular_dry_run(
+            date(2025, 5, 1),
+            [
+                self._dry_run_item(
+                    cpf="10000000007",
+                    nome="Servidor Inativo",
+                    valor=Decimal("150.00"),
+                )
+            ],
+        )
+
+        self.assertEqual(payload["kpis"]["associados_inativos_com_desconto"], 1)
+        self.assertTrue(payload["items"][0]["desconto_em_associado_inativo"])
+        self.assertEqual(
+            payload["items"][0]["associado_status_depois"],
+            Associado.Status.INATIVO,
+        )
+
     def test_upload_endpoint_restringe_permissao_e_processa_fixture(self):
         response = self.agent_client.get("/api/v1/importacao/arquivo-retorno/")
         self.assertEqual(response.status_code, 403)
@@ -326,6 +355,66 @@ class ArquivoRetornoServiceTestCase(ImportacaoBaseTestCase):
         self.assertEqual(detail_payload["results"][0]["agente_responsavel"], "Tes ABASE")
         self.assertIsNotNone(detail_payload["results"][0]["associado_id"])
         self.assertTrue(detail_payload["results"][0]["associado_matricula"])
+
+    def test_processamento_baixa_parcela_de_inativo_sem_reativar_associado(self):
+        associado, _contrato, ciclo = self.create_associado_com_contrato(
+            cpf="10000000008",
+            nome="Servidor Inativo Processado",
+            competencia_final=date(2025, 5, 1),
+            status_ultima_parcela=Parcela.Status.EM_ABERTO,
+            valor_mensalidade=Decimal("150.00"),
+        )
+        associado.status = Associado.Status.INATIVO
+        associado.save(update_fields=["status", "updated_at"])
+
+        arquivo = self.create_arquivo_retorno(nome="retorno_inativo_processado.txt")
+        parsed = SimpleNamespace(
+            meta=SimpleNamespace(
+                competencia="05/2025",
+                data_geracao="22/04/2026",
+                entidade="ABASE",
+                sistema_origem="ETIPI/iNETConsig",
+            ),
+            items=[
+                {
+                    "linha_numero": 1,
+                    "cpf_cnpj": associado.cpf_cnpj,
+                    "matricula_servidor": "MAT-INATIVO",
+                    "nome_servidor": associado.nome_completo,
+                    "cargo": "SERVIDOR",
+                    "competencia": "05/2025",
+                    "valor_descontado": Decimal("150.00"),
+                    "status_codigo": "1",
+                    "status_desconto": ArquivoRetornoItem.StatusDesconto.EFETIVADO,
+                    "status_descricao": "Lançado e Efetivado",
+                    "motivo_rejeicao": None,
+                    "orgao_codigo": "001",
+                    "orgao_pagto_codigo": "001",
+                    "orgao_pagto_nome": associado.orgao_publico,
+                    "payload_bruto": {},
+                }
+            ],
+            warnings=[],
+        )
+
+        service = ArquivoRetornoService()
+        with patch.object(service.parser, "parse", return_value=parsed):
+            service.processar(arquivo.id)
+
+        associado.refresh_from_db()
+        parcela = Parcela.objects.get(ciclo=ciclo, referencia_mes=date(2025, 5, 1))
+        item = ArquivoRetornoItem.objects.get(
+            arquivo_retorno=arquivo,
+            cpf_cnpj=associado.cpf_cnpj,
+        )
+
+        self.assertEqual(associado.status, Associado.Status.INATIVO)
+        self.assertEqual(parcela.status, Parcela.Status.DESCONTADO)
+        self.assertIsNotNone(parcela.data_pagamento)
+        self.assertEqual(
+            item.resultado_processamento,
+            ArquivoRetornoItem.ResultadoProcessamento.BAIXA_EFETUADA,
+        )
 
     def test_list_filtra_por_competencia_e_periodo(self):
         arquivo_jan = self.create_arquivo_retorno(nome="retorno_janeiro.txt")

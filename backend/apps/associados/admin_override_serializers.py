@@ -202,11 +202,24 @@ class AdminOverrideWarningSerializer(serializers.Serializer):
     details = serializers.JSONField(read_only=True)
 
 
+class AdminOverrideInactivationReversalSerializer(serializers.Serializer):
+    event_id = serializers.IntegerField(read_only=True, allow_null=True)
+    available = serializers.BooleanField(read_only=True)
+    previous_status = serializers.CharField(read_only=True, allow_blank=True)
+    target_status = serializers.CharField(read_only=True, allow_blank=True)
+    event_created_at = serializers.DateTimeField(read_only=True, allow_null=True)
+    realizado_por = SimpleUserSerializer(read_only=True, allow_null=True)
+
+
 class AdminOverrideEditorPayloadSerializer(serializers.Serializer):
     associado = AssociadoAdminSnapshotSerializer(read_only=True)
     contratos = AdminOverrideContratoEditorSerializer(many=True, read_only=True)
     esteira = AdminOverrideEsteiraReadSerializer(read_only=True, allow_null=True)
     documentos = AdminOverrideDocumentoReadSerializer(many=True, read_only=True)
+    inactivation_reversal = AdminOverrideInactivationReversalSerializer(
+        read_only=True,
+        allow_null=True,
+    )
     warnings = AdminOverrideWarningSerializer(many=True, read_only=True)
 
 

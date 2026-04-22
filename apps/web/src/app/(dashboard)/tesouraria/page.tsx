@@ -187,10 +187,10 @@ function getOperationalDeleteCopy(row: TesourariaContratoItem) {
   }
 
   return {
-    title: "Excluir cadastro pré-operacional",
+    title: "Remover da fila preservando histórico",
     description:
-      "O pacote operacional ainda não foi consolidado. A exclusão apagará o cadastro pré-operacional, documentos e contrato em análise.",
-    confirmLabel: "Excluir cadastro",
+      "O associado, documentos e histórico serão preservados. Apenas a linha operacional deixará de aparecer na fila.",
+    confirmLabel: "Remover da fila",
   };
 }
 
@@ -202,11 +202,11 @@ function formatTesourariaAcoes(row: TesourariaContratoItem) {
     );
   }
   if (row.status === "pendente" || row.status === "congelado") {
-    actions.push("Congelar", "Cancelar contrato");
+    actions.push("Congelar", "Pendenciar para análise", "Cancelar contrato");
   }
   actions.push(
     row.status === "pendente" || row.status === "congelado"
-      ? "Excluir cadastro"
+      ? "Remover da fila"
       : "Remover da fila",
   );
   if (row.status === "cancelado" && row.cancelamento_tipo === "desistente") {
@@ -240,6 +240,14 @@ function formatTesourariaStatus(row: TesourariaContratoItem) {
     );
   }
   return parts.join(" | ");
+}
+
+function formatCompetenciaLabel(value: string) {
+  const [year, month] = value.split("-").map((part) => Number(part));
+  if (!year || !month) {
+    return value;
+  }
+  return format(new Date(year, month - 1, 1), "MM/yyyy");
 }
 
 function buildTesourariaExportRow(row: TesourariaContratoItem) {
@@ -390,6 +398,9 @@ export default function TesourariaPage() {
   const [freezeTarget, setFreezeTarget] =
     React.useState<TesourariaContratoItem | null>(null);
   const [freezeReason, setFreezeReason] = React.useState("");
+  const [pendenciarTarget, setPendenciarTarget] =
+    React.useState<TesourariaContratoItem | null>(null);
+  const [pendenciaDescricao, setPendenciaDescricao] = React.useState("");
   const [cancelTarget, setCancelTarget] =
     React.useState<TesourariaContratoItem | null>(null);
   const [cancelReason, setCancelReason] = React.useState("");
@@ -401,6 +412,8 @@ export default function TesourariaPage() {
   const [detailTarget, setDetailTarget] =
     React.useState<TesourariaContratoItem | null>(null);
   const [deleteTarget, setDeleteTarget] =
+    React.useState<TesourariaContratoItem | null>(null);
+  const [effectivationTarget, setEffectivationTarget] =
     React.useState<TesourariaContratoItem | null>(null);
   const agentesFiltroQuery = useQuery({
     queryKey: ["tesouraria-contratos-agentes"],
@@ -497,6 +510,50 @@ export default function TesourariaPage() {
     },
   });
 
+  const pendenciarMutation = useMutation({
+    mutationFn: async ({
+      contratoId,
+      descricao,
+    }: {
+      contratoId: number;
+      descricao: string;
+    }) =>
+      apiFetch<TesourariaContratoItem>(
+        `tesouraria/contratos/${contratoId}/pendenciar`,
+        {
+          method: "POST",
+          body: {
+            tipo: "tesouraria",
+            descricao,
+          },
+        },
+      ),
+    onSuccess: () => {
+      toast.success("Contrato retornado da tesouraria para a análise.");
+      setPendenciarTarget(null);
+      setPendenciaDescricao("");
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-contratos"],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["analise-resumo"],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["analise-filas"],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ["dashboard-esteira"],
+      });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao devolver contrato para a análise.",
+      );
+    },
+  });
+
   const averbarMutation = useMutation({
     mutationFn: async ({ contratoId }: { contratoId: number }) =>
       apiFetch<TesourariaContratoItem>(
@@ -543,7 +600,7 @@ export default function TesourariaPage() {
       );
     },
     onSuccess: () => {
-      toast.success("Comprovante substituído.");
+      toast.success("Nova versão do comprovante adicionada.");
       void queryClient.invalidateQueries({
         queryKey: ["tesouraria-contratos"],
       });
@@ -552,22 +609,31 @@ export default function TesourariaPage() {
       toast.error(
         error instanceof Error
           ? error.message
-          : "Falha ao substituir o comprovante.",
+          : "Falha ao adicionar nova versão do comprovante.",
       );
     },
   });
 
   const efetivarMutation = useMutation({
-    mutationFn: async ({ contratoId }: { contratoId: number }) =>
+    mutationFn: async ({
+      contratoId,
+      competenciasCiclo,
+    }: {
+      contratoId: number;
+      competenciasCiclo?: string[];
+    }) =>
       apiFetch<TesourariaContratoItem>(
         `tesouraria/contratos/${contratoId}/efetivar`,
         {
           method: "POST",
-          body: {},
+          body: competenciasCiclo
+            ? { competencias_ciclo: competenciasCiclo }
+            : {},
         },
       ),
     onSuccess: () => {
       toast.success("Contrato efetivado com sucesso.");
+      setEffectivationTarget(null);
       void queryClient.invalidateQueries({
         queryKey: ["tesouraria-contratos"],
       });
@@ -594,9 +660,7 @@ export default function TesourariaPage() {
     onSuccess: (_, variables) => {
       const target = deleteTarget;
       toast.success(
-        target && getOperationalDeleteCopy(target).confirmLabel === "Excluir cadastro"
-          ? "Cadastro pré-operacional excluído."
-          : "Item removido da fila com histórico preservado.",
+        "Item removido da fila com histórico preservado.",
       );
       setDeleteTarget(null);
       void queryClient.invalidateQueries({
@@ -756,7 +820,7 @@ export default function TesourariaPage() {
                   ? hasAllProofs
                     ? "Os dois comprovantes já estão anexados. Clique em Efetivar para concluir."
                     : "A efetivação exige comprovante do associado e do agente. O upload isolado não conclui a etapa."
-                  : "Os comprovantes podem ser substituídos a qualquer momento."}
+                  : "Novos comprovantes são adicionados ao histórico sem apagar versões anteriores."}
               </p>
             </div>
           );
@@ -790,6 +854,8 @@ export default function TesourariaPage() {
             row.status === "pendente" || row.status === "congelado";
           const canCancel =
             row.status === "pendente" || row.status === "congelado";
+          const canPendenciar =
+            row.status === "pendente" || row.status === "congelado";
           const canEfetivar =
             (row.status === "pendente" || row.status === "congelado") &&
             !row.dispensa_pagamento_inicial;
@@ -813,7 +879,13 @@ export default function TesourariaPage() {
                 size="sm"
                 variant="outline"
                 className="border-emerald-500/40 text-emerald-200"
-                onClick={() => efetivarMutation.mutate({ contratoId: row.id })}
+                onClick={() => {
+                  if (row.origem_operacional === "reativacao") {
+                    setEffectivationTarget(row);
+                    return;
+                  }
+                  efetivarMutation.mutate({ contratoId: row.id });
+                }}
                 disabled={!canEfetivar || !hasAllProofs || !canMutate || isEfetivando}
               >
                 <CheckCircle2Icon className="size-4" />
@@ -828,6 +900,15 @@ export default function TesourariaPage() {
               >
                 <LockIcon className="size-4" />
                 Congelar
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-sky-500/40 text-sky-200"
+                onClick={() => setPendenciarTarget(row)}
+                disabled={!canPendenciar || !canMutate}
+              >
+                Pendenciar para análise
               </Button>
               <Button
                 size="sm"
@@ -989,6 +1070,7 @@ export default function TesourariaPage() {
         agente: exportAgente,
         status: exportStatus,
         esteira: exportEsteira,
+        origemOperacional: exportOrigemOperacional,
         columns: selectedColumns,
       } = exportFilters;
 
@@ -997,33 +1079,21 @@ export default function TesourariaPage() {
         const sources =
           visibleSection === "todos"
             ? ([
-                {
-                  pagamento: "pendente" as const,
-                  origem_operacional: "cadastro" as const,
-                },
-                {
-                  pagamento: "pendente" as const,
-                  origem_operacional: "reativacao" as const,
-                },
+                { pagamento: "pendente" as const },
                 { pagamento: "concluido" as const },
                 { pagamento: "liquidado" as const },
                 { pagamento: "cancelado" as const },
               ] as const)
-            : visibleSection === "pendente"
-              ? ([
-                  {
-                    pagamento: "pendente" as const,
-                    origem_operacional: "cadastro" as const,
-                  },
-                ] as const)
-              : visibleSection === "reativacao"
-                ? ([
-                    {
-                      pagamento: "pendente" as const,
-                      origem_operacional: "reativacao" as const,
-                    },
-                  ] as const)
-                : ([{ pagamento: visibleSection }] as const);
+            : visibleSection === "pendente" || visibleSection === "reativacao"
+              ? ([{ pagamento: "pendente" as const }] as const)
+              : ([{ pagamento: visibleSection }] as const);
+        const origemOperacional =
+          exportOrigemOperacional ||
+          (visibleSection === "pendente"
+            ? "cadastro"
+            : visibleSection === "reativacao"
+              ? "reativacao"
+              : undefined);
         const sharedQuery = {
           search: search || undefined,
           data_inicio: toFilterDate(dataInicio),
@@ -1035,6 +1105,7 @@ export default function TesourariaPage() {
           situacao_esteira:
             exportEsteira ||
             (situacaoEsteira !== "todos" ? situacaoEsteira : undefined),
+          origem_operacional: origemOperacional,
           ordering,
         };
 
@@ -1046,10 +1117,6 @@ export default function TesourariaPage() {
                 sourceQuery: {
                   ...sharedQuery,
                   pagamento: source.pagamento,
-                  origem_operacional:
-                    "origem_operacional" in source
-                      ? source.origem_operacional
-                      : undefined,
                 },
               }),
             ),
@@ -1075,12 +1142,7 @@ export default function TesourariaPage() {
           rows: exportRows,
           filters: {
             ...sharedQuery,
-            pagamento: sources.map((source) =>
-              "origem_operacional" in source &&
-              source.origem_operacional === "reativacao"
-                ? "reativacao"
-                : source.pagamento,
-            ),
+            pagamento: sources.map((source) => source.pagamento),
             totais: {
               total_registros: scopedRows.length,
               total_auxilio_liberado: scopedRows
@@ -1488,6 +1550,10 @@ export default function TesourariaPage() {
           label="Exportar"
           showFilters
           agentOptions={agentOptions}
+          originOptions={[
+            { value: "cadastro", label: "Novos contratos" },
+            { value: "reativacao", label: "Reativações" },
+          ]}
           statusOptions={[
             { value: "ativo", label: "Ativo" },
             { value: "cancelado", label: "Cancelado" },
@@ -1730,6 +1796,60 @@ export default function TesourariaPage() {
       </Dialog>
 
       <Dialog
+        open={!!pendenciarTarget}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendenciarTarget(null);
+            setPendenciaDescricao("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Pendenciar para análise</DialogTitle>
+            <DialogDescription>
+              Devolva o contrato para a análise com a orientação do que precisa
+              ser revisado antes da efetivação.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            value={pendenciaDescricao}
+            onChange={(event) => setPendenciaDescricao(event.target.value)}
+            placeholder="Descreva o ajuste necessário para a análise..."
+            className="min-h-32"
+          />
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPendenciarTarget(null);
+                setPendenciaDescricao("");
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={() => {
+                if (!pendenciarTarget || !pendenciaDescricao.trim()) {
+                  toast.error(
+                    "Informe o motivo para devolver o contrato à análise.",
+                  );
+                  return;
+                }
+                pendenciarMutation.mutate({
+                  contratoId: pendenciarTarget.id,
+                  descricao: pendenciaDescricao,
+                });
+              }}
+              disabled={pendenciarMutation.isPending}
+            >
+              Enviar para análise
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={!!bankTarget}
         onOpenChange={(open) => !open && setBankTarget(null)}
       >
@@ -1843,13 +1963,124 @@ export default function TesourariaPage() {
       </Dialog>
 
       <Dialog
+        open={!!effectivationTarget}
+        onOpenChange={(open) => !open && setEffectivationTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar ciclo da reativação</DialogTitle>
+            <DialogDescription>
+              A efetivação fechará o ciclo anterior e abrirá um novo ciclo com
+              as parcelas confirmadas abaixo.
+            </DialogDescription>
+          </DialogHeader>
+          {effectivationTarget ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-border/60 bg-card/60 p-4 text-sm">
+                <p className="font-medium">{effectivationTarget.nome}</p>
+                <p className="text-muted-foreground">
+                  {effectivationTarget.matricula || "Sem matrícula"} ·{" "}
+                  {maskCPFCNPJ(effectivationTarget.cpf_cnpj)}
+                </p>
+              </div>
+              <div className="grid gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-sm">
+                <InfoLine
+                  label="Última parcela paga"
+                  value={
+                    effectivationTarget.reactivation_cycle_preview
+                      ?.ultima_parcela_paga
+                      ? formatCompetenciaLabel(
+                          effectivationTarget.reactivation_cycle_preview
+                            .ultima_parcela_paga,
+                        )
+                      : "Sem parcela liquidada anterior"
+                  }
+                />
+                <InfoLine
+                  label="Início sugerido"
+                  value={
+                    effectivationTarget.reactivation_cycle_preview
+                      ?.competencia_inicial_sugerida
+                      ? formatCompetenciaLabel(
+                          effectivationTarget.reactivation_cycle_preview
+                            .competencia_inicial_sugerida,
+                        )
+                      : "Não calculado"
+                  }
+                />
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                    Parcelas do novo ciclo
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {effectivationTarget.reactivation_cycle_preview
+                      ?.competencias_sugeridas?.length ? (
+                      effectivationTarget.reactivation_cycle_preview.competencias_sugeridas.map(
+                        (competencia) => (
+                          <Badge
+                            key={competencia}
+                            className="rounded-full bg-emerald-500/15 text-emerald-200"
+                          >
+                            {formatCompetenciaLabel(competencia)}
+                          </Badge>
+                        ),
+                      )
+                    ) : (
+                      <span className="text-muted-foreground">
+                        Nenhuma parcela sugerida pela API.
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEffectivationTarget(null)}
+            >
+              Voltar
+            </Button>
+            <Button
+              disabled={
+                !effectivationTarget ||
+                !effectivationTarget.reactivation_cycle_preview
+                  ?.competencias_sugeridas?.length ||
+                efetivarMutation.isPending
+              }
+              onClick={() => {
+                const competencias =
+                  effectivationTarget?.reactivation_cycle_preview
+                    ?.competencias_sugeridas;
+                if (!effectivationTarget || !competencias?.length) {
+                  toast.error(
+                    "A API não retornou parcelas sugeridas para a reativação.",
+                  );
+                  return;
+                }
+                efetivarMutation.mutate({
+                  contratoId: effectivationTarget.id,
+                  competenciasCiclo: competencias,
+                });
+              }}
+            >
+              Confirmar e efetivar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
       >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {deleteTarget ? getOperationalDeleteCopy(deleteTarget).title : "Excluir item operacional"}
+              {deleteTarget
+                ? getOperationalDeleteCopy(deleteTarget).title
+                : "Remover da fila"}
             </DialogTitle>
             <DialogDescription>
               {deleteTarget

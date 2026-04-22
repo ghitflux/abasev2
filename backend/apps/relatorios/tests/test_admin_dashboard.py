@@ -255,6 +255,18 @@ class AdminDashboardViewSetTestCase(TestCase):
         apt_cycle.parcelas.filter(numero=1).update(status=Parcela.Status.EM_ABERTO)
         apt_cycle.parcelas.filter(numero=2).update(status=Parcela.Status.DESCONTADO, data_pagamento=date(2026, 4, 10))
         apt_cycle.parcelas.filter(numero=3).update(status=Parcela.Status.DESCONTADO, data_pagamento=date(2026, 5, 10))
+        self.renewed_refinancing = Refinanciamento.objects.create(
+            associado=self.renewed,
+            contrato_origem=self.renewed_contract,
+            solicitado_por=self.admin,
+            competencia_solicitada=date(2026, 3, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            valor_refinanciamento=Decimal("90.00"),
+            repasse_agente=Decimal("9.00"),
+            cycle_key="2026-01|2026-02|2026-03",
+            executado_em=self._aware_datetime(2026, 3, 17, 11, 39),
+            data_ativacao_ciclo=self._aware_datetime(2026, 3, 17, 11, 39),
+        )
 
         EsteiraItem.objects.create(
             associado=self.analysis,
@@ -435,6 +447,32 @@ class AdminDashboardViewSetTestCase(TestCase):
         self.assertEqual(cards["receita_liquida_associacao"]["value"], "59.50")
         self.assertEqual(len(payload["projection_area"]), 3)
         self.assertGreater(cards["projecao_total"]["numeric_value"], 0)
+
+    def test_tesouraria_expoe_cards_de_associados_30_50_ativos_e_inativos(self):
+        associado_inativo = self._create_associado(
+            nome="Iris Inativa",
+            cpf="77777777777",
+            status=Associado.Status.INATIVO,
+            agente=self.agente_b,
+            created_at=self._aware_datetime(2026, 1, 12),
+        )
+        self._create_contract_with_cycle(
+            associado=associado_inativo,
+            agente=self.agente_b,
+            codigo="CTR-B4",
+            data_contrato=date(2026, 1, 12),
+            auxilio_liberado_em=date(2026, 1, 15),
+            cycle_status=Ciclo.Status.FECHADO,
+            march_status=Parcela.Status.DESCONTADO,
+            monthly_value=Decimal("50.00"),
+        )
+
+        response = self.client.get("/api/v1/dashboard/admin/tesouraria/", {"competencia": "2026-03"})
+        self.assertEqual(response.status_code, 200, response.json())
+        cards = {item["key"]: item for item in response.json()["cards"]}
+
+        self.assertEqual(cards["mensalidade_baixa_associados_ativos"]["numeric_value"], 3.0)
+        self.assertEqual(cards["mensalidade_baixa_associados_inativos"]["numeric_value"], 1.0)
 
     def test_tesouraria_respeita_day_e_valida_conflito_com_competencia(self):
         response = self.client.get(

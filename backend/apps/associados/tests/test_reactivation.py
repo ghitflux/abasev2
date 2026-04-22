@@ -2,6 +2,7 @@ import tempfile
 from datetime import date
 from decimal import Decimal
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -76,7 +77,13 @@ class AssociadoReactivationTestCase(TestCase):
         self.analyst_client = APIClient()
         self.analyst_client.force_authenticate(self.analista)
 
-    def _create_inactive_associado(self, *, cpf: str) -> Associado:
+    def _create_inactive_associado(
+        self,
+        *,
+        cpf: str,
+        competencia_inicial: date = date(2025, 10, 1),
+    ) -> Associado:
+        data_aprovacao = competencia_inicial.replace(day=1)
         associado = Associado.objects.create(
             nome_completo="Associado Inativo",
             cpf_cnpj=cpf,
@@ -101,15 +108,15 @@ class AssociadoReactivationTestCase(TestCase):
             valor_total_antecipacao=Decimal("1500.00"),
             doacao_associado=Decimal("450.00"),
             comissao_agente=Decimal("105.00"),
-            data_aprovacao=date(2025, 9, 1),
-            data_primeira_mensalidade=date(2025, 10, 5),
-            mes_averbacao=date(2025, 9, 1),
+            data_aprovacao=data_aprovacao,
+            data_primeira_mensalidade=competencia_inicial.replace(day=5),
+            mes_averbacao=data_aprovacao,
             cancelado_em=timezone.now(),
         )
         create_cycle_with_parcelas(
             contrato=contrato,
             numero=1,
-            competencia_inicial=date(2025, 10, 1),
+            competencia_inicial=competencia_inicial,
             parcelas_total=3,
             ciclo_status=Ciclo.Status.FECHADO,
             parcela_status=Parcela.Status.DESCONTADO,
@@ -172,13 +179,91 @@ class AssociadoReactivationTestCase(TestCase):
         self.assertEqual(novo_contrato.valor_total_antecipacao, Decimal("1500.00"))
         self.assertEqual(novo_contrato.doacao_associado, Decimal("450.00"))
         self.assertEqual(novo_contrato.comissao_agente, Decimal("147.00"))
-        self.assertEqual(novo_contrato.ciclos.count(), 1)
-        self.assertEqual(novo_contrato.ciclos.first().parcelas.count(), 3)
+        self.assertEqual(novo_contrato.ciclos.count(), 0)
 
         associado.esteira_item.refresh_from_db()
         self.assertEqual(associado.esteira_item.id, esteira_id)
         self.assertEqual(associado.esteira_item.etapa_atual, EsteiraItem.Etapa.ANALISE)
         self.assertEqual(associado.esteira_item.status, EsteiraItem.Situacao.AGUARDANDO)
+
+    def test_efetivacao_reativacao_cria_ciclo_abril_maio_junho(self):
+        associado = self._create_inactive_associado(
+            cpf="70000000006",
+            competencia_inicial=date(2026, 1, 1),
+        )
+
+        response = self.coord_client.post(
+            f"/api/v1/associados/{associado.id}/reativar/",
+            self._reativacao_payload(agente_id=self.agente_a.id),
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        associado.refresh_from_db()
+        novo_contrato = associado.contratos.order_by("-id").first()
+        self.assertEqual(novo_contrato.ciclos.count(), 0)
+
+        EsteiraService.assumir(associado.esteira_item, self.analista)
+        EsteiraService.aprovar(associado.esteira_item, self.analista)
+
+        list_response = self.tes_client.get(
+            "/api/v1/tesouraria/contratos/",
+            {"pagamento": "pendente", "origem_operacional": "reativacao"},
+        )
+        self.assertEqual(list_response.status_code, 200, list_response.json())
+        row = list_response.json()["results"][0]
+        self.assertEqual(
+            row["reactivation_cycle_preview"]["ultima_parcela_paga"],
+            "2026-03-01",
+        )
+        self.assertEqual(
+            row["reactivation_cycle_preview"]["competencias_sugeridas"],
+            ["2026-04-01", "2026-05-01", "2026-06-01"],
+        )
+
+        for papel in ["associado", "agente"]:
+            upload_response = self.tes_client.post(
+                f"/api/v1/tesouraria/contratos/{novo_contrato.id}/substituir-comprovante/",
+                {
+                    "papel": papel,
+                    "arquivo": SimpleUploadedFile(
+                        f"{papel}.pdf",
+                        b"arquivo",
+                        content_type="application/pdf",
+                    ),
+                },
+                format="multipart",
+            )
+            self.assertEqual(upload_response.status_code, 200, upload_response.json())
+
+        efetivar = self.tes_client.post(
+            f"/api/v1/tesouraria/contratos/{novo_contrato.id}/efetivar/",
+            {
+                "competencias_ciclo": [
+                    "2026-04-01",
+                    "2026-05-01",
+                    "2026-06-01",
+                ]
+            },
+            format="json",
+        )
+        self.assertEqual(efetivar.status_code, 200, efetivar.json())
+
+        associado.refresh_from_db()
+        novo_contrato.refresh_from_db()
+        ciclo_anterior = (
+            associado.contratos.exclude(id=novo_contrato.id)
+            .first()
+            .ciclos.first()
+        )
+        ciclo_novo = novo_contrato.ciclos.get()
+        self.assertEqual(associado.status, Associado.Status.ATIVO)
+        self.assertEqual(novo_contrato.status, Contrato.Status.ATIVO)
+        self.assertEqual(ciclo_anterior.status, Ciclo.Status.FECHADO)
+        self.assertEqual(ciclo_novo.status, Ciclo.Status.ABERTO)
+        self.assertEqual(
+            list(ciclo_novo.parcelas.order_by("referencia_mes").values_list("referencia_mes", flat=True)),
+            [date(2026, 4, 1), date(2026, 5, 1), date(2026, 6, 1)],
+        )
         self.assertTrue(
             associado.esteira_item.transicoes.filter(
                 acao="reativar_associado"

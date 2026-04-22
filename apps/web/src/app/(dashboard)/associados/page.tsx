@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import {
+  ChevronDownIcon,
   ChevronRightIcon,
   EyeIcon,
   FilterIcon,
@@ -24,6 +25,10 @@ import type {
   SimpleUser,
 } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
+import {
+  MENSALIDADE_FAIXAS,
+  PARCELAS_PAGAS_FAIXAS,
+} from "@/lib/associado-filter-presets";
 import {
   dashboardOptionsQueryOptions,
   dashboardRetainedQueryOptions,
@@ -46,7 +51,9 @@ import { InlinePanelSkeleton, MetricCardSkeleton } from "@/components/shared/pag
 import StatsCard from "@/components/shared/stats-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -72,6 +79,8 @@ type FiltersState = {
   agente: string;
   numero_ciclos: string;
   perfil_ciclo: string;
+  faixa_mensalidade: string[];
+  faixa_parcelas: string[];
 };
 
 type AssociadoMetricKey = "total" | "ativos" | "em_analise" | "inativos" | "liquidados";
@@ -127,6 +136,91 @@ const METRIC_META: Record<
   inativos: { title: "Inativos", tone: "warning", icon: UserXIcon },
   liquidados: { title: "Liquidados", tone: "positive", icon: HandCoinsIcon },
 };
+
+function MultiSelectFilterField({
+  label,
+  placeholder,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  placeholder: string;
+  options: ReadonlyArray<{ value: string; label: string }>;
+  value: string[];
+  onChange: React.Dispatch<React.SetStateAction<string[]>>;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const selectedOptions = options.filter((option) => value.includes(option.value));
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-medium">{label}</p>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="outline"
+            className="h-11 w-full justify-between rounded-xl border-border/60 bg-card/60"
+          >
+            <span className="truncate text-left">
+              {selectedOptions.length
+                ? selectedOptions.map((option) => option.label).join(", ")
+                : placeholder}
+            </span>
+            <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[var(--radix-popover-trigger-width)] rounded-2xl border-border/60 p-3">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">Selecione uma ou mais faixas</p>
+              {value.length ? (
+                <Button type="button" variant="ghost" size="sm" onClick={() => onChange([])}>
+                  Limpar
+                </Button>
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              {options.map((option) => {
+                const checked = value.includes(option.value);
+                return (
+                  <label
+                    key={option.value}
+                    className="flex cursor-pointer items-center gap-3 rounded-xl border border-border/40 px-3 py-2 hover:bg-accent/40"
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(nextChecked) => {
+                        onChange((current) =>
+                          nextChecked
+                            ? [...current, option.value]
+                            : current.filter((item) => item !== option.value),
+                        );
+                      }}
+                    />
+                    <span className="text-sm">{option.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+      {selectedOptions.length ? (
+        <div className="flex flex-wrap gap-2">
+          {selectedOptions.map((option) => (
+            <Badge
+              key={option.value}
+              className="rounded-full bg-primary/15 px-3 py-1 text-primary"
+            >
+              {option.label}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function AssociadoCiclosPanel({ associadoId }: { associadoId: number }) {
   const [selectedTarget, setSelectedTarget] =
@@ -318,6 +412,8 @@ function AssociadosPageContent() {
     agente: "",
     numero_ciclos: "",
     perfil_ciclo: "",
+    faixa_mensalidade: [],
+    faixa_parcelas: [],
   });
   const debouncedSearch = useDebouncedValue(search, 300);
 
@@ -336,6 +432,10 @@ function AssociadosPageContent() {
       agente: filters.agente || undefined,
       numero_ciclos: filters.numero_ciclos || undefined,
       perfil_ciclo: filters.perfil_ciclo || undefined,
+      faixa_mensalidade: filters.faixa_mensalidade.length
+        ? filters.faixa_mensalidade
+        : undefined,
+      faixa_parcelas: filters.faixa_parcelas.length ? filters.faixa_parcelas : undefined,
     }),
     [debouncedSearch, filters],
   );
@@ -389,6 +489,8 @@ function AssociadosPageContent() {
     Boolean(filters.agente),
     Boolean(filters.numero_ciclos),
     Boolean(filters.perfil_ciclo),
+    filters.faixa_mensalidade.length > 0,
+    filters.faixa_parcelas.length > 0,
   ].filter(Boolean).length;
 
   const columns = React.useMemo<DataTableColumn<AssociadoListItem>[]>(
@@ -707,6 +809,38 @@ function AssociadosPageContent() {
                   </div>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
+                  <MultiSelectFilterField
+                    label="Faixas de parcelas pagas"
+                    placeholder="Todas as faixas"
+                    options={PARCELAS_PAGAS_FAIXAS}
+                    value={filters.faixa_parcelas}
+                    onChange={(nextValue) =>
+                      setFilters((current) => ({
+                        ...current,
+                        faixa_parcelas:
+                          typeof nextValue === "function"
+                            ? nextValue(current.faixa_parcelas)
+                            : nextValue,
+                      }))
+                    }
+                  />
+                  <MultiSelectFilterField
+                    label="Faixas de mensalidade"
+                    placeholder="Todas as faixas"
+                    options={MENSALIDADE_FAIXAS}
+                    value={filters.faixa_mensalidade}
+                    onChange={(nextValue) =>
+                      setFilters((current) => ({
+                        ...current,
+                        faixa_mensalidade:
+                          typeof nextValue === "function"
+                            ? nextValue(current.faixa_mensalidade)
+                            : nextValue,
+                      }))
+                    }
+                  />
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <p className="text-sm font-medium">Data inicial</p>
                     <DatePicker
@@ -747,6 +881,8 @@ function AssociadosPageContent() {
                       agente: "",
                       numero_ciclos: "",
                       perfil_ciclo: "",
+                      faixa_mensalidade: [],
+                      faixa_parcelas: [],
                     });
                     setPage(1);
                   }}

@@ -117,6 +117,7 @@ const dryRunResultado = {
     valor_previsto: "90.00",
     valor_real: "30.00",
     aptos_a_renovar: 1,
+    associados_inativos_com_desconto: 0,
     valores_30_50: {
       descontaram: { count: 1, valor_total: "30.00" },
       nao_descontaram: { count: 1, valor_total: "30.00" },
@@ -145,7 +146,33 @@ const dryRunResultado = {
       ciclo_status_antes: "aberto",
       ciclo_status_depois: "apto_a_renovar",
       ficara_apto_renovar: true,
+      desconto_em_associado_inativo: false,
       categoria: "valores_30_50",
+    },
+  ],
+};
+
+const dryRunResultadoComInativo = {
+  kpis: {
+    ...dryRunResultado.kpis,
+    aptos_a_renovar: 0,
+    associados_inativos_com_desconto: 1,
+    mudancas_status_associado: [],
+    mudancas_status_ciclo: [],
+  },
+  items: [
+    {
+      ...dryRunResultado.items[0],
+      cpf_cnpj: "70486310310",
+      nome_servidor: "RAQUEL PEREIRA DE OLIVEIRA",
+      associado_nome: "Raquel Pereira de Oliveira",
+      associado_status_antes: "inativo",
+      associado_status_depois: "inativo",
+      ciclo_status_antes: "fechado",
+      ciclo_status_depois: "fechado",
+      ficara_apto_renovar: false,
+      desconto_em_associado_inativo: true,
+      categoria: "mensalidades",
     },
   ],
 };
@@ -567,6 +594,55 @@ describe("ImportacaoPage", () => {
       within(detailDialog).getByText(
         "Entrará em Aptos a renovar após confirmar",
       ),
+    ).toBeInTheDocument();
+  });
+
+  it("sinaliza associados inativos com desconto efetuado na previa", async () => {
+    const user = userEvent.setup();
+
+    mockedApiFetch.mockImplementation(async (path, options) => {
+      if (path === "importacao/arquivo-retorno") {
+        return historyPayload;
+      }
+
+      if (path === "importacao/arquivo-retorno/upload") {
+        const arquivo = options?.formData?.get("arquivo") as File | null;
+        return {
+          ...latestImport,
+          status: "aguardando_confirmacao",
+          arquivo_nome: arquivo?.name ?? latestImport.arquivo_nome,
+          dry_run_resultado: dryRunResultadoComInativo,
+        };
+      }
+      if (path === `importacao/arquivo-retorno/${latestImport.id}/cancelar`) {
+        return undefined;
+      }
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    const { container } = renderPage();
+    const input = container.querySelector(
+      'input[type="file"]',
+    ) as HTMLInputElement;
+    const file = new File(["conteudo"], "retorno_dry_run.txt", {
+      type: "text/plain",
+    });
+
+    await user.upload(input, file);
+    await user.click(
+      await screen.findByRole("button", { name: /Inativos com desconto efetuado/i }),
+    );
+
+    const dialogs = await screen.findAllByRole("dialog");
+    const detailDialog = dialogs[dialogs.length - 1];
+    expect(
+      within(detailDialog).getByText("Associados inativos com desconto efetuado"),
+    ).toBeInTheDocument();
+    expect(
+      within(detailDialog).getByText("Raquel Pereira de Oliveira"),
+    ).toBeInTheDocument();
+    expect(
+      within(detailDialog).getByText("Retorno descontou associado inativo"),
     ).toBeInTheDocument();
   });
 

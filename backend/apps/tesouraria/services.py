@@ -29,9 +29,15 @@ from rest_framework.exceptions import ValidationError
 from apps.accounts.models import User
 from apps.associados.models import Associado
 from apps.contratos.canonicalization import operational_contracts_queryset
-from apps.contratos.competencia import propagate_competencia_status
+from apps.contratos.competencia import (
+    create_cycle_with_parcelas,
+    list_month_references,
+    parcela_has_financial_evidence,
+    propagate_competencia_status,
+    sync_competencia_locks_for_references,
+)
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
-from apps.contratos.models import Contrato, Parcela
+from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.models import EsteiraItem, Transicao
 from apps.financeiro.models import Despesa
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, PagamentoMensalidade
@@ -162,6 +168,7 @@ class TesourariaService:
                         EsteiraItem.Etapa.TESOURARIA,
                         EsteiraItem.Etapa.CONCLUIDO,
                     ])
+                    & Q(associado__esteira_item__deleted_at__isnull=True)
                     & ~Q(
                         associado__esteira_item__etapa_atual=EsteiraItem.Etapa.CONCLUIDO,
                         associado__esteira_item__status=EsteiraItem.Situacao.REJEITADO,
@@ -382,6 +389,158 @@ class TesourariaService:
         )
 
     @staticmethod
+    def _day_of_month(month_date: date, target_day: int = 5) -> date:
+        return month_date.replace(
+            day=min(target_day, monthrange(month_date.year, month_date.month)[1])
+        )
+
+    @staticmethod
+    def _latest_paid_parcela_for_reactivation(contrato: Contrato) -> Parcela | None:
+        return (
+            Parcela.objects.select_related("ciclo", "ciclo__contrato")
+            .filter(
+                associado_id=contrato.associado_id,
+                status__in=[Parcela.Status.DESCONTADO, Parcela.Status.LIQUIDADA],
+            )
+            .exclude(ciclo__contrato_id=contrato.id)
+            .order_by("-referencia_mes", "-data_pagamento", "-updated_at", "-id")
+            .first()
+        )
+
+    @staticmethod
+    def build_reactivation_cycle_preview(contrato: Contrato) -> dict[str, object] | None:
+        if contrato.origem_operacional != Contrato.OrigemOperacional.REATIVACAO:
+            return None
+
+        last_paid = TesourariaService._latest_paid_parcela_for_reactivation(contrato)
+        if last_paid is not None:
+            competencia_inicial = shift_month(last_paid.referencia_mes.replace(day=1), 1)
+        elif contrato.data_primeira_mensalidade:
+            competencia_inicial = contrato.data_primeira_mensalidade.replace(day=1)
+        else:
+            competencia_inicial = timezone.localdate().replace(day=1)
+
+        parcelas_total = int(contrato.prazo_meses or 3)
+        competencias = list_month_references(competencia_inicial, parcelas_total)
+        return {
+            "ultima_parcela_paga": last_paid.referencia_mes.isoformat()
+            if last_paid
+            else None,
+            "competencia_inicial_sugerida": competencia_inicial.isoformat(),
+            "competencias_sugeridas": [
+                competencia.isoformat() for competencia in competencias
+            ],
+            "parcelas_total": parcelas_total,
+        }
+
+    @staticmethod
+    def _normalize_reactivation_competencias(
+        contrato: Contrato,
+        competencias_ciclo,
+    ) -> list[date]:
+        if contrato.origem_operacional != Contrato.OrigemOperacional.REATIVACAO:
+            return []
+        if not competencias_ciclo:
+            raise ValidationError(
+                {
+                    "competencias_ciclo": [
+                        "Confirme as parcelas que irão compor o ciclo da reativação."
+                    ]
+                }
+            )
+
+        competencias = sorted(
+            {item.replace(day=1) for item in competencias_ciclo}
+        )
+        parcelas_total = int(contrato.prazo_meses or 3)
+        if len(competencias) != parcelas_total:
+            raise ValidationError(
+                {
+                    "competencias_ciclo": [
+                        f"Confirme exatamente {parcelas_total} parcela(s) para o ciclo da reativação."
+                    ]
+                }
+            )
+
+        expected = list_month_references(competencias[0], parcelas_total)
+        if competencias != expected:
+            raise ValidationError(
+                {
+                    "competencias_ciclo": [
+                        "As competências do ciclo da reativação devem ser meses consecutivos."
+                    ]
+                }
+            )
+        return competencias
+
+    @staticmethod
+    def _prepare_reactivation_cycle_effectivation(
+        contrato: Contrato,
+        *,
+        competencias: list[date],
+    ) -> Ciclo | None:
+        if contrato.origem_operacional != Contrato.OrigemOperacional.REATIVACAO:
+            return None
+
+        if contrato.ciclos.filter(deleted_at__isnull=True).exists():
+            raise ValidationError(
+                "Este contrato de reativação já possui ciclo materializado."
+            )
+
+        last_paid = TesourariaService._latest_paid_parcela_for_reactivation(contrato)
+        if last_paid is not None and last_paid.ciclo_id:
+            last_cycle = last_paid.ciclo
+            if last_cycle.status != Ciclo.Status.FECHADO:
+                last_cycle.status = Ciclo.Status.FECHADO
+                last_cycle.save(update_fields=["status", "updated_at"])
+
+        conflicts = (
+            Parcela.objects.select_related("ciclo", "ciclo__contrato")
+            .filter(
+                associado_id=contrato.associado_id,
+                referencia_mes__in=competencias,
+            )
+            .exclude(ciclo__contrato_id=contrato.id)
+            .order_by("referencia_mes", "id")
+        )
+        references_to_sync = set(competencias)
+        for parcela in conflicts:
+            if parcela_has_financial_evidence(parcela):
+                raise ValidationError(
+                    {
+                        "competencias_ciclo": [
+                            "A competência "
+                            f"{parcela.referencia_mes.strftime('%m/%Y')} já possui evidência financeira."
+                        ]
+                    }
+                )
+            parcela.status = Parcela.Status.CANCELADO
+            parcela.observacao = (
+                (parcela.observacao or "").strip()
+                + "\nParcela cancelada para materialização da reativação."
+            ).strip()
+            parcela.save(update_fields=["status", "observacao", "updated_at"])
+            parcela.soft_delete()
+            references_to_sync.add(parcela.referencia_mes)
+
+        ciclo, _parcelas = create_cycle_with_parcelas(
+            contrato=contrato,
+            numero=1,
+            competencia_inicial=competencias[0],
+            parcelas_total=len(competencias),
+            ciclo_status=Ciclo.Status.ABERTO,
+            parcela_status=Parcela.Status.EM_PREVISAO,
+            data_vencimento_fn=TesourariaService._day_of_month,
+            valor_mensalidade=contrato.valor_mensalidade,
+            valor_total=contrato.valor_total_antecipacao,
+        )
+        sync_competencia_locks_for_references(
+            associado_id=contrato.associado_id,
+            referencias=sorted(references_to_sync),
+        )
+        return ciclo
+
+    @staticmethod
     def _payment_tipo_for_papel(papel: str) -> str:
         return (
             Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO
@@ -415,10 +574,6 @@ class TesourariaService:
         data_pagamento: datetime,
         ciclo=None,
     ) -> Comprovante:
-        comprovante = TesourariaService._latest_contract_payment_comprovante(
-            contrato,
-            papel,
-        )
         payload = {
             "contrato": contrato,
             "ciclo": ciclo,
@@ -435,30 +590,7 @@ class TesourariaService:
             "data_pagamento": data_pagamento,
             "agente_snapshot": contrato.agente.full_name if contrato.agente else "",
         }
-        if comprovante is None:
-            return Comprovante.objects.create(**payload)
-
-        for field, value in payload.items():
-            setattr(comprovante, field, value)
-        comprovante.save(
-            update_fields=[
-                "contrato",
-                "ciclo",
-                "papel",
-                "tipo",
-                "origem",
-                "arquivo",
-                "nome_original",
-                "mime",
-                "size_bytes",
-                "arquivo_referencia_path",
-                "enviado_por",
-                "data_pagamento",
-                "agente_snapshot",
-                "updated_at",
-            ]
-        )
-        return comprovante
+        return Comprovante.objects.create(**payload)
 
     @staticmethod
     def _sync_initial_payment_paths(pagamento: Pagamento, contrato: Contrato) -> Pagamento:
@@ -575,12 +707,18 @@ class TesourariaService:
         *,
         user,
         paid_at: datetime,
+        competencias_ciclo=None,
     ) -> Contrato:
         esteira_item = getattr(contrato.associado, "esteira_item", None)
         if not esteira_item or esteira_item.etapa_atual != EsteiraItem.Etapa.TESOURARIA:
             raise ValidationError(
                 "Contrato não está disponível para efetivação na tesouraria."
             )
+
+        reactivation_competencias = TesourariaService._normalize_reactivation_competencias(
+            contrato,
+            competencias_ciclo,
+        )
 
         contrato.status = Contrato.Status.ATIVO
         contrato.auxilio_liberado_em = timezone.localdate()
@@ -598,8 +736,15 @@ class TesourariaService:
         contrato.associado.status = Associado.Status.ATIVO
         contrato.associado.save(update_fields=["status", "updated_at"])
 
-        rebuild_contract_cycle_state(contrato, execute=True)
-        contrato.refresh_from_db()
+        if contrato.origem_operacional == Contrato.OrigemOperacional.REATIVACAO:
+            TesourariaService._prepare_reactivation_cycle_effectivation(
+                contrato,
+                competencias=reactivation_competencias,
+            )
+            contrato.refresh_from_db()
+        else:
+            rebuild_contract_cycle_state(contrato, execute=True)
+            contrato.refresh_from_db()
         TesourariaService._sync_contract_evidence_cycle(contrato)
         TesourariaService._upsert_initial_payment(contrato, user=user, paid_at=paid_at)
 
@@ -625,7 +770,14 @@ class TesourariaService:
 
     @staticmethod
     @transaction.atomic
-    def efetivar_contrato(contrato_id, comprovante_associado, comprovante_agente, user):
+    def efetivar_contrato(
+        contrato_id,
+        comprovante_associado,
+        comprovante_agente,
+        user,
+        *,
+        competencias_ciclo=None,
+    ):
         contrato = TesourariaService._get_contrato(int(contrato_id))
         paid_at = timezone.now()
         if comprovante_associado:
@@ -655,6 +807,7 @@ class TesourariaService:
             contrato,
             user=user,
             paid_at=paid_at,
+            competencias_ciclo=competencias_ciclo,
         )
 
     @staticmethod
@@ -731,6 +884,37 @@ class TesourariaService:
         return contrato
 
     @staticmethod
+    @transaction.atomic
+    def pendenciar_para_analise(
+        contrato_id: int,
+        *,
+        tipo: str,
+        descricao: str,
+        user,
+    ) -> Contrato:
+        contrato = TesourariaService._get_contrato(int(contrato_id))
+        esteira_item = getattr(contrato.associado, "esteira_item", None)
+        if not esteira_item or esteira_item.etapa_atual != EsteiraItem.Etapa.TESOURARIA:
+            raise ValidationError(
+                "Contrato não está disponível para retorno da tesouraria para a análise."
+            )
+
+        descricao_normalizada = (descricao or "").strip()
+        if not descricao_normalizada:
+            raise ValidationError({"descricao": ["Descreva o motivo da pendência."]})
+
+        from apps.esteira.services import EsteiraService
+
+        EsteiraService.pendenciar(
+            esteira_item,
+            user,
+            (tipo or "tesouraria").strip(),
+            descricao_normalizada,
+        )
+        contrato.refresh_from_db()
+        return contrato
+
+    @staticmethod
     def obter_dados_bancarios(contrato_id):
         contrato = TesourariaService._get_contrato(int(contrato_id))
         return contrato.associado.build_dados_bancarios_payload()
@@ -769,8 +953,11 @@ class TesourariaService:
             raise ValidationError("Contrato sem item operacional vinculado.")
         from apps.esteira.services import EsteiraService
 
-        EsteiraService.excluir_solicitacao(esteira_item, user)
-        TesourariaService._restore_associado_status_after_pending_reativacao(contrato)
+        EsteiraService.remover_fila_operacional(
+            esteira_item,
+            user,
+            observacao="Linha operacional removida pela tesouraria com histórico preservado.",
+        )
         contrato.refresh_from_db()
         return contrato
 

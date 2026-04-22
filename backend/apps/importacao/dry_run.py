@@ -161,6 +161,7 @@ def _simular_item(raw: dict, competencia: date) -> dict:
             "ciclo_status_antes": None,
             "ciclo_status_depois": None,
             "ficara_apto_renovar": False,
+            "desconto_em_associado_inativo": False,
             "associado_importado": associado_importado,
             "_associado_id": None,
             "_contrato_id": None,
@@ -199,6 +200,9 @@ def _simular_item(raw: dict, competencia: date) -> dict:
             "ciclo_status_antes": None,
             "ciclo_status_depois": None,
             "ficara_apto_renovar": False,
+            "desconto_em_associado_inativo": (
+                resultado == "baixa_efetuada" and associado.status == Associado.Status.INATIVO
+            ),
             "associado_importado": False,
             "_associado_id": associado.id,
             "_contrato_id": None,
@@ -220,6 +224,9 @@ def _simular_item(raw: dict, competencia: date) -> dict:
         "ciclo_status_antes": ciclo_antes,
         "ciclo_status_depois": ciclo_antes,
         "ficara_apto_renovar": False,
+        "desconto_em_associado_inativo": (
+            resultado == "baixa_efetuada" and associado.status == Associado.Status.INATIVO
+        ),
         "associado_importado": associado_importado,
         "_associado_id": associado.id,
         "_contrato_id": parcela.ciclo.contrato_id,
@@ -414,6 +421,7 @@ def _build_kpis(resultados: list[dict]) -> dict:
     pendencia = [r for r in resultados if r["resultado"] == "pendencia_manual"]
     ciclo_aberto = [r for r in resultados if r["resultado"] == "ciclo_aberto"]
     aptos = [r for r in resultados if r["ficara_apto_renovar"]]
+    inativos_com_desconto = [r for r in resultados if r["desconto_em_associado_inativo"]]
     associados_importados = [r for r in resultados if r.get("associado_importado")]
 
     valor_previsto = sum((_to_decimal(r["valor_descontado"]) for r in resultados), Decimal("0"))
@@ -451,6 +459,7 @@ def _build_kpis(resultados: list[dict]) -> dict:
         "valor_previsto": str(valor_previsto),
         "valor_real": str(valor_real),
         "aptos_a_renovar": len(aptos),
+        "associados_inativos_com_desconto": len(inativos_com_desconto),
         "valores_30_50": {
             "descontaram": {
                 "count": len(v3050_desc),

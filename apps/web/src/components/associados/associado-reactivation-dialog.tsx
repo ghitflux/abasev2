@@ -67,6 +67,14 @@ const DOCUMENT_ACCEPT = {
   "image/jpeg": [".jpg", ".jpeg"],
 };
 
+function getDocumentoOrder(documento: Documento) {
+  const timestamp =
+    Date.parse(documento.updated_at ?? "") ||
+    Date.parse(documento.created_at ?? "") ||
+    0;
+  return timestamp || documento.id;
+}
+
 type ReactivationDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -153,10 +161,24 @@ export default function AssociadoReactivationDialog({
   }, [associado, open]);
 
   const currentDocumentsByType = React.useMemo(
-    () =>
-      new Map(
-        (associado.documentos ?? []).map((documento) => [documento.tipo, documento]),
-      ),
+    () => {
+      const map = new Map<
+        string,
+        { latest: Documento; total: number }
+      >();
+      for (const documento of associado.documentos ?? []) {
+        const current = map.get(documento.tipo);
+        if (!current) {
+          map.set(documento.tipo, { latest: documento, total: 1 });
+          continue;
+        }
+        current.total += 1;
+        if (getDocumentoOrder(documento) >= getDocumentoOrder(current.latest)) {
+          current.latest = documento;
+        }
+      }
+      return map;
+    },
     [associado.documentos],
   );
 
@@ -245,14 +267,15 @@ export default function AssociadoReactivationDialog({
   }, []);
 
   const renderCurrentDocument = React.useCallback(
-    (documento?: Documento) => {
-      if (!documento) {
+    (entry?: { latest: Documento; total: number }) => {
+      if (!entry) {
         return (
           <p className="text-xs text-muted-foreground">
             Nenhum anexo atual para este tipo.
           </p>
         );
       }
+      const documento = entry.latest;
 
       return (
         <div className="rounded-2xl border border-border/60 bg-background/50 p-3">
@@ -269,7 +292,8 @@ export default function AssociadoReactivationDialog({
               "Abrir anexo atual"}
           </a>
           <p className="mt-1 text-xs text-muted-foreground">
-            Status atual: {documento.status || "pendente"}
+            Versão mais recente: {documento.status || "pendente"}
+            {entry.total > 1 ? ` · ${entry.total} versões no histórico` : ""}
           </p>
         </div>
       );
@@ -285,7 +309,7 @@ export default function AssociadoReactivationDialog({
             <DialogTitle>Reativar associado</DialogTitle>
             <DialogDescription>
               Crie um novo contrato para {associado.nome_completo} e envie a
-              solicitação direto para a tesouraria, preservando o histórico
+              solicitação para a análise, preservando o histórico
               anterior.
             </DialogDescription>
           </DialogHeader>
@@ -536,8 +560,8 @@ export default function AssociadoReactivationDialog({
               <div className="mb-4">
                 <h3 className="text-base font-semibold">Anexos atualizados</h3>
                 <p className="text-sm text-muted-foreground">
-                  Os arquivos enviados aqui substituem os anexos atuais do
-                  associado para a nova reativação.
+                  Os arquivos enviados aqui adicionam uma nova versão ao
+                  histórico do associado para a reativação.
                 </p>
               </div>
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -579,10 +603,10 @@ export default function AssociadoReactivationDialog({
               {reactivationMutation.isPending ? (
                 <>
                   <LoaderCircleIcon className="size-4 animate-spin" />
-                  Enviando para tesouraria
+                  Enviando para análise
                 </>
               ) : (
-                "Enviar reativação"
+                "Enviar reativação para análise"
               )}
             </Button>
           </DialogFooter>

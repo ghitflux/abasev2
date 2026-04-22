@@ -931,6 +931,156 @@ class AdminOverrideApiTestCase(TestCase):
         ]
         self.assertIn("2026-02-01", unpaid_refs)
 
+    def test_save_all_keeps_nao_descontado_inside_cycle_and_unpaid_summary(self):
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",
+            {
+                "motivo": "Manter parcela inadimplente no ciclo",
+                "contratos": [
+                    {
+                        "id": self.contrato.id,
+                        "cycles": {
+                            "updated_at": self.contrato.updated_at.isoformat(),
+                            "cycles": [
+                                {
+                                    "id": self.ciclo.id,
+                                    "numero": 1,
+                                    "data_inicio": "2026-01-01",
+                                    "data_fim": "2026-03-01",
+                                    "status": "pendencia",
+                                    "valor_total": "900.00",
+                                }
+                            ],
+                            "parcelas": [
+                                {
+                                    "id": self.parcela_jan.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 1,
+                                    "referencia_mes": "2026-01-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-01-05",
+                                    "status": "descontado",
+                                    "data_pagamento": None,
+                                    "observacao": "",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_fev.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 2,
+                                    "referencia_mes": "2026-02-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-02-05",
+                                    "status": "nao_descontado",
+                                    "data_pagamento": None,
+                                    "observacao": "Não descontada no retorno",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_mar.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 3,
+                                    "referencia_mes": "2026-03-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-03-05",
+                                    "status": "em_previsao",
+                                    "data_pagamento": None,
+                                    "observacao": "",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_fev.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 2,
+                                    "referencia_mes": "2026-02-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-02-05",
+                                    "status": "nao_descontado",
+                                    "data_pagamento": None,
+                                    "observacao": "Não descontada no retorno",
+                                    "layout_bucket": "unpaid",
+                                },
+                            ],
+                        },
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.parcela_fev.refresh_from_db()
+        self.assertIsNone(self.parcela_fev.deleted_at)
+        self.assertEqual(self.parcela_fev.layout_bucket, Parcela.LayoutBucket.CYCLE)
+        self.assertEqual(self.parcela_fev.status, Parcela.Status.NAO_DESCONTADO)
+
+        self.contrato.refresh_from_db()
+        projection = build_contract_cycle_projection(self.contrato)
+        ordered_cycles = sorted(projection["cycles"], key=lambda item: item["numero"])
+        self.assertIn(
+            date(2026, 2, 1),
+            [parcela["referencia_mes"] for parcela in ordered_cycles[0]["parcelas"]],
+        )
+        self.assertIn(
+            date(2026, 2, 1),
+            [item["referencia_mes"] for item in projection["unpaid_months"]],
+        )
+
+        detail = self.admin_client.get(f"/api/v1/associados/{self.associado.id}/")
+        self.assertEqual(detail.status_code, 200, detail.json())
+        detail_contrato = detail.json()["contratos"][0]
+        detail_ciclo = detail_contrato["ciclos"][0]
+        self.assertIn(
+            "2026-02-01",
+            [parcela["referencia_mes"] for parcela in detail_ciclo["parcelas"]],
+        )
+        self.assertIn(
+            "2026-02-01",
+            [item["referencia_mes"] for item in detail_contrato["meses_nao_pagos"]],
+        )
+
+    def test_admin_editor_can_revert_inactivation_to_previous_status(self):
+        response = self.admin_client.post(
+            f"/api/v1/associados/{self.associado.id}/inativar/",
+            {"status_destino": "inativo_inadimplente"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        self.associado.refresh_from_db()
+        self.esteira.refresh_from_db()
+        self.assertEqual(self.associado.status, Associado.Status.INADIMPLENTE)
+        self.assertEqual(self.esteira.etapa_atual, EsteiraItem.Etapa.CONCLUIDO)
+        self.assertEqual(self.esteira.status, EsteiraItem.Situacao.REJEITADO)
+
+        editor = self.admin_client.get(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/editor/"
+        )
+        self.assertEqual(editor.status_code, 200, editor.json())
+        self.assertEqual(
+            editor.json()["inactivation_reversal"]["previous_status"],
+            Associado.Status.ATIVO,
+        )
+        self.assertTrue(editor.json()["inactivation_reversal"]["available"])
+        event_id = editor.json()["inactivation_reversal"]["event_id"]
+        self.assertIsNotNone(event_id)
+
+        revert = self.admin_client.post(
+            f"/api/v1/admin-overrides/events/{event_id}/reverter/",
+            {"motivo_reversao": "Inativação feita por engano"},
+            format="json",
+        )
+        self.assertEqual(revert.status_code, 200, revert.json())
+
+        self.associado.refresh_from_db()
+        self.esteira.refresh_from_db()
+        self.assertEqual(self.associado.status, Associado.Status.ATIVO)
+        self.assertEqual(self.esteira.etapa_atual, EsteiraItem.Etapa.ANALISE)
+        self.assertEqual(self.esteira.status, EsteiraItem.Situacao.AGUARDANDO)
+
+        event = AdminOverrideEvent.objects.get(pk=event_id)
+        self.assertIsNotNone(event.revertida_em)
+
     def test_save_all_returns_validation_message_for_invalid_cycle_reference(self):
         response = self.admin_client.post(
             f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",
@@ -1928,14 +2078,14 @@ class AdminOverrideApiTestCase(TestCase):
 
         self.assertEqual(response.status_code, 200, response.json())
         self.documento.refresh_from_db()
-        self.assertIsNotNone(self.documento.deleted_at)
+        self.assertIsNone(self.documento.deleted_at)
         self.assertEqual(
             Documento.objects.filter(
                 associado=self.associado,
                 tipo=Documento.Tipo.CPF,
                 deleted_at__isnull=True,
             ).count(),
-            1,
+            2,
         )
         self.assertTrue(
             AdminOverrideEvent.objects.filter(

@@ -145,6 +145,27 @@ class EsteiraViewSet(
         EsteiraService.excluir_solicitacao(esteira_item, request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @action(detail=True, methods=["post"], url_path="remover-fila")
+    def remover_fila(self, request, pk=None):
+        user = request.user
+        if not (
+            user.has_role("ADMIN")
+            or user.has_role("COORDENADOR")
+            or user.has_role("ANALISTA")
+        ):
+            raise PermissionDenied(
+                "Somente admin, coordenador ou analista podem remover itens da fila."
+            )
+        observacao = (
+            request.data.get("observacao") or ""
+        ).strip() or "Linha operacional removida manualmente com histórico preservado."
+        EsteiraService.remover_fila_operacional(
+            self.get_object(),
+            request.user,
+            observacao=observacao,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=True, methods=["post"])
     def assumir(self, request, pk=None):
         esteira_item = EsteiraService.assumir(self.get_object(), request.user)

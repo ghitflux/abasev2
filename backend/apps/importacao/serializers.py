@@ -327,6 +327,7 @@ class DryRunKpisSerializer(serializers.Serializer):
     valor_previsto = serializers.DecimalField(max_digits=14, decimal_places=2)
     valor_real = serializers.DecimalField(max_digits=14, decimal_places=2)
     aptos_a_renovar = serializers.IntegerField()
+    associados_inativos_com_desconto = serializers.IntegerField()
     valores_30_50 = DryRunValores3050Serializer()
     mudancas_status_associado = DryRunMudancaStatusSerializer(many=True)
     mudancas_status_ciclo = DryRunMudancaStatusSerializer(many=True)
@@ -348,6 +349,7 @@ class DryRunItemSerializer(serializers.Serializer):
     ciclo_status_antes = serializers.CharField(allow_null=True)
     ciclo_status_depois = serializers.CharField(allow_null=True)
     ficara_apto_renovar = serializers.BooleanField()
+    desconto_em_associado_inativo = serializers.BooleanField()
     categoria = serializers.CharField()
 
 

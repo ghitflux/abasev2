@@ -60,6 +60,12 @@
 - [x] Adicionada busca visível dentro do modal `Ficarão aptos a renovar`.
 - [x] Toolbar de busca/exportação do modal ficou fixa no topo durante o scroll.
 - [x] Adicionada exportação do conteúdo filtrado em `CSV`, `XLS` e `PDF`.
+- [x] Validado que a importação do retorno ainda pode baixar parcela de associado `inativo` sem reativá-lo.
+- [x] Dry-run da prévia passou a sinalizar `associados inativos com desconto`.
+- [x] Adicionado card `Inativos com desconto efetuado` na prévia da importação.
+- [x] O card novo abre listagem detalhada dos associados inativos impactados pelo arquivo retorno.
+- [x] A coluna de ação no modal de detalhes passou a exibir `Retorno descontou associado inativo`.
+- [x] Documentação de deploy desta frente criada em `docs/patches/2026-04-22-importacao-retorno-inativos-preview.md`.
 
 ## Editor avançado: sincronização e desempenho
 
@@ -85,6 +91,38 @@
 - [x] Fluxo passou a aceitar atualização de anexos no mesmo padrão do cadastro/edição.
 - [x] Criado endpoint `POST /api/v1/associados/:id/reativar/`.
 - [x] Tesouraria passou a aceitar filtro por `origem_operacional`.
+- [x] Reativação deixou de materializar ciclo no ato da solicitação.
+- [x] Tesouraria passou a exigir confirmação de `competencias_ciclo` para efetivar reativação.
+- [x] Preview de ciclo de reativação passou a sugerir o mês seguinte à última parcela paga.
+- [x] Efetivação de reativação fecha o ciclo histórico anterior e abre o novo ciclo como `aberto`.
+- [x] Associado é marcado como `ativo` após efetivação real da reativação.
+- [x] Cancelamento de reativação antes da efetivação preserva retorno do associado para `inativo`.
+
+## Anexos versionados e remoção de filas
+
+- [x] Upload de documento repetido passou a criar nova linha `Documento`, mantendo a versão antiga no histórico.
+- [x] Upload de documento foi liberado para `ADMIN`, `COORDENADOR`, `ANALISTA` e `AGENTE` responsável.
+- [x] Reupload mobile/legado passou a adicionar nova versão sem substituir arquivo anterior.
+- [x] Editor avançado deixou de aplicar `soft_delete()` na versão anterior ao versionar documento ou comprovante.
+- [x] Tesouraria passou a adicionar nova versão de comprovantes sem apagar anexos anteriores.
+- [x] Criado endpoint `POST /api/v1/esteira/:id/remover-fila/`.
+- [x] Dashboard de análise passou a exibir `Remover da fila` para analista em itens da etapa de análise.
+- [x] Novos contratos/reativações da tesouraria passaram a remover apenas a linha operacional da fila.
+- [x] Renovações da tesouraria passaram a ocultar a linha operacional via `limpar_linha_operacional`.
+- [x] Documentação de deploy desta frente criada em `docs/patches/2026-04-22-reativacao-anexos-filas.md`.
+
+## Inativação e editor avançado
+
+- [x] Inativação no detalhe do associado passou a pedir confirmação do destino operacional.
+- [x] Opções disponíveis: `Inativo inadimplente` e `Inativo passível de renovação`.
+- [x] API de inativação passou a aceitar `status_destino`, mantendo compatibilidade quando o campo não é enviado.
+- [x] Modo editor avançado passou a expor `Reverter inativação` quando existe evento administrativo reversível.
+- [x] Reversão de inativação volta o associado para o status anterior sem abrir fluxo padrão de reativação.
+- [x] Reversão administrativa passou a restaurar a linha da esteira a partir do snapshot do evento.
+- [x] Editor avançado segue acessível para ajustes de cadastro e ciclos mesmo com o associado inativo.
+- [x] Editor avançado passou a preservar parcela `nao_descontado` dentro do ciclo manual.
+- [x] Competência inadimplente pode aparecer no resumo de meses não descontados sem sumir da lista de parcelas do ciclo.
+- [x] Documentação de deploy de reativação/anexos/filas atualizada com estes dois ajustes.
 
 ## Renovação fantasma após edição administrativa
 
@@ -112,6 +150,9 @@
 - [x] Testes focados de frontend para página do associado, modal de importação e diálogo de confirmação.
 - [x] `git diff --check` executado nas rodadas de fechamento.
 - [x] Auditorias em banco e shell do container para CPFs e refinanciamentos citados.
+- [x] Testes focados de backend do patch de reativação/anexos/filas passaram com `Ran 13 tests ... OK`.
+- [x] Testes focados de inativação/editor avançado passaram com `Ran 5 tests ... OK`.
+- [x] Jest focado do detalhe do associado passou com `1 passed, 4 tests passed`.
 
 ## Observações operacionais
 

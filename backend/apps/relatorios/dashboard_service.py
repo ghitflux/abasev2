@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 
-from django.db.models import Case, Count, DateTimeField, DecimalField, F, IntegerField, OuterRef, Prefetch, Q, QuerySet, Subquery, Sum, Value, When
+from django.db.models import Case, Count, DateTimeField, DecimalField, F, IntegerField, Min, OuterRef, Prefetch, Q, QuerySet, Subquery, Sum, Value, When
 from django.db.models.functions import Coalesce, TruncMonth
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
@@ -25,6 +25,10 @@ from apps.financeiro.models import Despesa
 from apps.importacao.financeiro import canonicalize_pagamentos
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, PagamentoMensalidade
 from apps.refinanciamento.models import Refinanciamento
+from apps.refinanciamento.services import (
+    annotate_renewal_materialization,
+    renewal_materialized_q,
+)
 from apps.tesouraria.models import (
     DevolucaoAssociado,
     LiquidacaoContrato,
@@ -73,6 +77,7 @@ class DashboardFilters:
     competencia: date
     date_start: date | None = None
     date_end: date | None = None
+    period_mode: str | None = None
     day: date | None = None
     agent_id: int | None = None
     status: str | None = None
@@ -87,6 +92,7 @@ class AdminDashboardService:
         competencia: str | None,
         date_start: str | None,
         date_end: str | None,
+        period_mode: str | None,
         day: str | None,
         agent_id: str | None,
         status: str | None,
@@ -102,6 +108,7 @@ class AdminDashboardService:
             competencia=parse_competencia_query(competencia),
             date_start=parse_date_query(date_start, "date_start"),
             date_end=parse_date_query(date_end, "date_end"),
+            period_mode=(period_mode or "").strip() or None,
             day=parse_date_query(day, "day"),
             agent_id=parsed_agent_id,
             status=(status or "").strip() or None,
@@ -780,24 +787,30 @@ class AdminDashboardService:
         status: str | None = None,
     ) -> QuerySet[Refinanciamento]:
         queryset = (
-            Refinanciamento.objects.select_related(
-                "associado",
-                "contrato_origem",
-                "contrato_origem__agente",
+            annotate_renewal_materialization(
+                Refinanciamento.objects.select_related(
+                    "associado",
+                    "contrato_origem",
+                    "contrato_origem__agente",
+                ).filter(
+                    deleted_at__isnull=True,
+                )
             )
-            .filter(
-                deleted_at__isnull=True,
-                status=Refinanciamento.Status.EFETIVADO,
-            )
-            .filter(
-                Q(executado_em__isnull=False)
-                | Q(data_ativacao_ciclo__isnull=False)
-                | Q(ciclo_destino__isnull=False)
+            .filter(renewal_materialized_q())
+            .exclude(
+                status__in=[
+                    Refinanciamento.Status.BLOQUEADO,
+                    Refinanciamento.Status.REVERTIDO,
+                    Refinanciamento.Status.DESATIVADO,
+                ]
             )
             .annotate(
                 effective_reference=Coalesce(
                     "executado_em",
                     "data_ativacao_ciclo",
+                    "linked_payment_paid_at",
+                    "associado_payment_proof_paid_at",
+                    "agente_payment_proof_paid_at",
                     "updated_at",
                     output_field=DateTimeField(),
                 ),
@@ -815,6 +828,72 @@ class AdminDashboardService:
         if status:
             queryset = queryset.filter(associado__status=status)
         return queryset
+
+    @staticmethod
+    def _resolve_resumo_mensal_date_window(filters: DashboardFilters) -> tuple[list[date], date, date]:
+        if filters.date_start and filters.date_end:
+            range_start = filters.date_start.replace(day=1)
+            range_end = filters.date_end.replace(day=1)
+            months: list[date] = []
+            current = range_start
+            while current <= range_end:
+                months.append(current)
+                current = add_months(current, 1)
+            return months, months[0], add_months(months[-1], 1)
+
+        if filters.period_mode == "all":
+            candidates: list[date] = []
+
+            contract_dates = AdminDashboardService._contracts_base(filters.agent_id)
+            if filters.status:
+                contract_dates = contract_dates.filter(associado__status=filters.status)
+            first_effective = contract_dates.exclude(auxilio_liberado_em__isnull=True).aggregate(
+                value=Min("auxilio_liberado_em")
+            )["value"]
+            if first_effective:
+                candidates.append(first_effective.replace(day=1))
+
+            liquidation_dates = LiquidacaoContrato.objects.filter(revertida_em__isnull=True)
+            if filters.agent_id:
+                liquidation_dates = liquidation_dates.filter(
+                    Q(contrato__agente_id=filters.agent_id)
+                    | Q(contrato__associado__agente_responsavel_id=filters.agent_id)
+                )
+            if filters.status:
+                liquidation_dates = liquidation_dates.filter(contrato__associado__status=filters.status)
+            first_liquidation = liquidation_dates.aggregate(value=Min("data_liquidacao"))["value"]
+            if first_liquidation:
+                candidates.append(first_liquidation.replace(day=1))
+
+            expense_dates = Despesa.objects.filter(
+                natureza__in=[
+                    Despesa.Natureza.COMPLEMENTO_RECEITA,
+                    Despesa.Natureza.DESPESA_OPERACIONAL,
+                ],
+                status=Despesa.Status.PAGO,
+            )
+            first_expense = expense_dates.aggregate(value=Min("data_pagamento"))["value"]
+            if first_expense:
+                candidates.append(first_expense.replace(day=1))
+
+            first_renewal = AdminDashboardService._effective_renewal_queryset(
+                agent_id=filters.agent_id,
+                status=filters.status,
+            ).aggregate(value=Min("effective_reference"))["value"]
+            if first_renewal:
+                candidates.append(first_renewal.date().replace(day=1))
+
+            start_month = min(candidates) if candidates else filters.competencia
+            end_month = add_months(filters.competencia, 1)
+            months: list[date] = []
+            current = start_month
+            while current < end_month:
+                months.append(current)
+                current = add_months(current, 1)
+            return months or [filters.competencia], start_month, end_month
+
+        months = AdminDashboardService._trend_months(filters.competencia, count=12)
+        return months, months[0], add_months(filters.competencia, 1)
 
     @staticmethod
     def _renewed_associados_for_month(
@@ -887,6 +966,10 @@ class AdminDashboardService:
         )
         for row in effective_rows:
             month = row["competencia_mes"]
+            if isinstance(month, datetime):
+                month = month.date()
+            if isinstance(month, date):
+                month = month.replace(day=1)
             if not isinstance(month, date) or month not in months_set:
                 continue
             contract_id = int(row["contrato_origem_id"] or 0)
@@ -1568,6 +1651,13 @@ class AdminDashboardService:
             )
             for payment in ok_payments
         }
+        received_associados.update(
+            {
+                f"id:{liquidacao.contrato.associado_id}"
+                for liquidacao in liquidacoes
+                if liquidacao.contrato_id and liquidacao.contrato.associado_id
+            }
+        )
         received_associados_count = len(received_associados)
         received_associados_label = (
             "associado" if received_associados_count == 1 else "associados"
@@ -1606,6 +1696,25 @@ class AdminDashboardService:
         mensalidade_baixa_sem_desconto = mensalidade_baixa_total - mensalidade_baixa_com_desconto
         mensalidade_baixa_valor = (
             parcelas_baixas_qs.aggregate(total=Sum("valor"))["total"] or Decimal("0.00")
+        )
+        contratos_mensalidade_baixa_qs = AdminDashboardService._contracts_base(
+            filters.agent_id
+        ).filter(valor_mensalidade__in=MENSALIDADE_BAIXA_VALUES)
+        if filters.status:
+            contratos_mensalidade_baixa_qs = contratos_mensalidade_baixa_qs.filter(
+                associado__status=filters.status
+            )
+        mensalidade_baixa_associados_ativos = (
+            contratos_mensalidade_baixa_qs.filter(associado__status=Associado.Status.ATIVO)
+            .values("associado_id")
+            .distinct()
+            .count()
+        )
+        mensalidade_baixa_associados_inativos = (
+            contratos_mensalidade_baixa_qs.filter(associado__status=Associado.Status.INATIVO)
+            .values("associado_id")
+            .distinct()
+            .count()
         )
 
         treasury_payouts = list(AdminDashboardService._payments_saida_base(filters))
@@ -1790,6 +1899,22 @@ class AdminDashboardService:
                     detail_metric="mensalidade_baixa_valor",
                     description="Soma dos valores de todas as parcelas de mensalidade R$30/50 na competencia.",
                 ),
+                AdminDashboardService._metric_card(
+                    key="mensalidade_baixa_associados_ativos",
+                    label="Associados R$30/50 ativos",
+                    numeric_value=mensalidade_baixa_associados_ativos,
+                    tone="positive",
+                    detail_metric="mensalidade_baixa_associados_ativos",
+                    description="Associados ativos com contrato operacional de mensalidade R$30 ou R$50.",
+                ),
+                AdminDashboardService._metric_card(
+                    key="mensalidade_baixa_associados_inativos",
+                    label="Associados R$30/50 inativos",
+                    numeric_value=mensalidade_baixa_associados_inativos,
+                    tone="warning",
+                    detail_metric="mensalidade_baixa_associados_inativos",
+                    description="Associados inativos com histórico operacional de mensalidade R$30 ou R$50.",
+                ),
             ],
             "projection_area": projection_points,
             "movement_bars": [
@@ -1842,21 +1967,9 @@ class AdminDashboardService:
 
     @staticmethod
     def resumo_mensal_associacao(filters: DashboardFilters) -> dict[str, object]:
-        if filters.date_start and filters.date_end:
-            # Período personalizado: lista todos os meses do intervalo
-            range_start = filters.date_start.replace(day=1)
-            range_end = filters.date_end.replace(day=1)
-            months = []
-            current = range_start
-            while current <= range_end:
-                months.append(current)
-                current = add_months(current, 1)
-            start_month = months[0]
-            end_month = add_months(months[-1], 1)
-        else:
-            months = AdminDashboardService._trend_months(filters.competencia, count=12)
-            start_month = months[0]
-            end_month = add_months(filters.competencia, 1)
+        months, start_month, end_month = AdminDashboardService._resolve_resumo_mensal_date_window(
+            filters
+        )
         zero = Decimal("0.00")
 
         complementos_por_mes = {month: zero for month in months}
@@ -2951,9 +3064,36 @@ class AdminDashboardService:
             "mensalidade_baixa_descontado",
             "mensalidade_baixa_pendente",
             "mensalidade_baixa_valor",
+            "mensalidade_baixa_associados_ativos",
+            "mensalidade_baixa_associados_inativos",
         ):
             MENSALIDADE_BAIXA_VALUES = [Decimal("30.00"), Decimal("50.00")]
             PARCELA_OK_STATUSES = ("descontado", "efetivado")
+            if metric in {
+                "mensalidade_baixa_associados_ativos",
+                "mensalidade_baixa_associados_inativos",
+            }:
+                associado_status = (
+                    Associado.Status.ATIVO
+                    if metric == "mensalidade_baixa_associados_ativos"
+                    else Associado.Status.INATIVO
+                )
+                contratos_qs = AdminDashboardService._contracts_base(filters.agent_id).filter(
+                    valor_mensalidade__in=MENSALIDADE_BAIXA_VALUES,
+                    associado__status=associado_status,
+                )
+                if filters.status:
+                    contratos_qs = contratos_qs.filter(associado__status=filters.status)
+                return [
+                    AdminDashboardService._detail_row_from_contract(
+                        contrato,
+                        origem="Associado R$30/50",
+                        observacao=(
+                            "Contrato operacional enquadrado na faixa de mensalidade R$30/R$50."
+                        ),
+                    )
+                    for contrato in contratos_qs.distinct()
+                ]
             parcelas_qs = Parcela.objects.filter(
                 ciclo__contrato__valor_mensalidade__in=MENSALIDADE_BAIXA_VALUES,
                 referencia_mes__year=filters.competencia.year,

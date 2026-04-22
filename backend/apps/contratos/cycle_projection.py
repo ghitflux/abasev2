@@ -1990,6 +1990,15 @@ def _build_manual_contract_projection(
                 }
             )
             continue
+        if parcela.status == Parcela.Status.NAO_DESCONTADO:
+            unpaid_rows.append(
+                {
+                    "contrato_id": contrato.id,
+                    "contrato_codigo": contrato.codigo,
+                    **row,
+                    "source": "admin_override_cycle",
+                }
+            )
         parcelas_por_ciclo.setdefault(parcela.ciclo_id, []).append(row)
 
     unresolved_unpaid_rows = [

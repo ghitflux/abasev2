@@ -531,6 +531,34 @@ class AnaliseViewSetTestCase(TestCase):
             [],
         )
 
+    def test_remover_fila_preserva_associado_documentos_e_historico(self):
+        item = self._create_item(
+            suffix="40220",
+            documentos=1,
+            status=EsteiraItem.Situacao.EM_ANDAMENTO,
+            analista=self.analista,
+        )
+        associado_id = item.associado_id
+        documento_id = item.associado.documentos.get().id
+
+        response = self.analyst_client.post(
+            f"/api/v1/esteira/{item.id}/remover-fila/",
+            {"observacao": "Linha duplicada na análise"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 204)
+
+        item = EsteiraItem.all_objects.get(pk=item.id)
+        self.assertIsNotNone(item.deleted_at)
+        self.assertEqual(item.etapa_atual, EsteiraItem.Etapa.CONCLUIDO)
+        self.assertEqual(item.status, EsteiraItem.Situacao.REJEITADO)
+        self.assertEqual(item.observacao, "Linha duplicada na análise")
+        self.assertTrue(Associado.objects.filter(pk=associado_id).exists())
+        self.assertTrue(Documento.objects.filter(pk=documento_id).exists())
+        self.assertTrue(
+            item.transicoes.filter(acao="remover_fila_operacional").exists()
+        )
+
     def test_admin_exclui_item_consolidado_preservando_historico(self):
         item = self._create_item(
             suffix="40221",

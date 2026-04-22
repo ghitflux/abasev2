@@ -118,8 +118,54 @@ jest.mock("@/components/associados/admin-override-history", () => {
 });
 
 jest.mock("@/components/associados/admin-override-confirm-dialog", () => {
-  function AdminOverrideConfirmDialogMock() {
-    return null;
+  const React = require("react");
+
+  function AdminOverrideConfirmDialogMock({
+    open,
+    title,
+    submitLabel,
+    onConfirm,
+  }: {
+    open: boolean;
+    title: string;
+    submitLabel?: string;
+    onConfirm: (motivo: string) => Promise<void> | void;
+  }) {
+    const [motivo, setMotivo] = React.useState("");
+    const [confirmado, setConfirmado] = React.useState(false);
+
+    if (!open) {
+      return null;
+    }
+
+    return (
+      <div>
+        <h2>{title}</h2>
+        <textarea
+          aria-label="Motivo"
+          value={motivo}
+          onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => setMotivo(event.target.value)}
+        />
+        <input
+          aria-label="Confirmação"
+          type="checkbox"
+          checked={confirmado}
+          onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+            setConfirmado(event.target.checked)
+          }
+        />
+        <button
+          type="button"
+          onClick={() => {
+            if (confirmado) {
+              void onConfirm(motivo);
+            }
+          }}
+        >
+          {submitLabel ?? "Salvar alteração"}
+        </button>
+      </div>
+    );
   }
 
   AdminOverrideConfirmDialogMock.displayName = "AdminOverrideConfirmDialogMock";
@@ -136,6 +182,23 @@ jest.mock("@/components/contratos/parcela-detalhe-dialog", () => ({
 jest.mock("@/components/shared/page-skeletons", () => ({
   DetailRouteSkeleton: () => <div>DetailRouteSkeletonMock</div>,
 }));
+
+beforeAll(() => {
+  Object.defineProperties(HTMLElement.prototype, {
+    hasPointerCapture: {
+      configurable: true,
+      value: jest.fn(() => false),
+    },
+    setPointerCapture: {
+      configurable: true,
+      value: jest.fn(),
+    },
+    releasePointerCapture: {
+      configurable: true,
+      value: jest.fn(),
+    },
+  });
+});
 
 const mockedApiFetch = jest.mocked(apiFetch);
 
@@ -206,6 +269,14 @@ const editorFixture = {
     transicoes: [],
   },
   documentos: [],
+  inactivation_reversal: {
+    event_id: null,
+    available: false,
+    previous_status: "",
+    target_status: "",
+    event_created_at: null,
+    realizado_por: null,
+  },
   warnings: [],
 };
 
@@ -290,12 +361,66 @@ describe("AssociadoPage admin editor", () => {
     expect(screen.getByText("AdminEsteiraEditorMock")).toBeInTheDocument();
     expect(screen.getByText("AdminOverrideHistoryMock")).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "Editar cadastro" }),
-    ).toHaveAttribute("href", "/associados-editar/26?admin=1");
+      screen
+        .getAllByRole("link", { name: "Editar cadastro" })
+        .every((link) => link.getAttribute("href") === "/associados-editar/26?admin=1"),
+    ).toBe(true);
 
     expect(mockReplace).toHaveBeenCalledWith("/associados/26?admin=1", {
       scroll: false,
     });
+  });
+
+  it("confirma a inativacao informando o tipo operacional escolhido", async () => {
+    const user = userEvent.setup();
+    mockedApiFetch.mockImplementation(async (path, options) => {
+      if (path === "associados/26") {
+        return associadoFixture;
+      }
+      if (path === "associados/26/inativar") {
+        expect(options).toEqual(
+          expect.objectContaining({
+            method: "POST",
+            body: { status_destino: "inativo_passivel_renovacao" },
+          }),
+        );
+        return {
+          ...associadoFixture,
+          status: "apto_a_renovar",
+          status_visual_slug: "apto_a_renovar",
+          status_visual_label: "Apto a renovar",
+        };
+      }
+      if (path === "admin-overrides/associados/26/editor/") {
+        return editorFixture;
+      }
+      if (path === "admin-overrides/associados/26/history/") {
+        return [];
+      }
+
+      throw new Error(`Unexpected path: ${String(path)}`);
+    });
+
+    await renderPage();
+
+    await user.click(
+      await screen.findByRole("button", { name: /Inativar associado/i }),
+    );
+    expect(screen.getByText("Inativo inadimplente")).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox"));
+    await user.click(screen.getByRole("option", { name: "Inativo passível de renovação" }));
+
+    await user.click(screen.getByRole("button", { name: /Confirmar inativação/i }));
+
+    await waitFor(() =>
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        "associados/26/inativar",
+        expect.objectContaining({
+          method: "POST",
+          body: { status_destino: "inativo_passivel_renovacao" },
+        }),
+      ),
+    );
   });
 
   it("mostra erro explícito quando o payload do editor falha ao carregar", async () => {
@@ -335,6 +460,73 @@ describe("AssociadoPage admin editor", () => {
     await waitFor(() =>
       expect(mockedApiFetch).toHaveBeenCalledWith(
         "admin-overrides/associados/26/editor/",
+      ),
+    );
+  });
+
+  it("reverte a inativacao pelo editor avancado sem iniciar reativacao", async () => {
+    const user = userEvent.setup();
+    mockedApiFetch.mockImplementation(async (path, options) => {
+      if (path === "associados/26") {
+        return associadoFixture;
+      }
+      if (path === "admin-overrides/associados/26/editor/") {
+        return {
+          ...editorFixture,
+          associado: {
+            ...editorFixture.associado,
+            status: "inadimplente",
+          },
+          inactivation_reversal: {
+            event_id: 77,
+            available: true,
+            previous_status: "ativo",
+            target_status: "inadimplente",
+            event_created_at: "2026-04-22T12:00:00Z",
+            realizado_por: { id: 9, full_name: "Coordenador Teste" },
+          },
+        };
+      }
+      if (path === "admin-overrides/associados/26/history/") {
+        return [];
+      }
+      if (path === "admin-overrides/events/77/reverter/") {
+        expect(options).toEqual(
+          expect.objectContaining({
+            method: "POST",
+            body: { motivo_reversao: "Inativação acidental" },
+          }),
+        );
+        return { id: 77 };
+      }
+
+      throw new Error(`Unexpected path: ${String(path)}`);
+    });
+
+    await renderPage();
+    expect(
+      await screen.findByText("MARIA DO AMPARO VASCONCELOS"),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("switch", { name: /modo editor avançado/i }),
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: /Reverter inativação/i }),
+    );
+    await user.type(screen.getByRole("textbox"), "Inativação acidental");
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(
+      screen.getAllByRole("button", { name: "Reverter inativação" })[1],
+    );
+
+    await waitFor(() =>
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        "admin-overrides/events/77/reverter/",
+        expect.objectContaining({
+          method: "POST",
+          body: { motivo_reversao: "Inativação acidental" },
+        }),
       ),
     );
   });

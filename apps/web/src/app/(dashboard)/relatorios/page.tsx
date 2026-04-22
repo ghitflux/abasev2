@@ -5,12 +5,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronDownIcon,
   DownloadIcon,
+  LoaderCircleIcon,
 } from "lucide-react";
 import { endOfMonth, format, startOfMonth, subMonths } from "date-fns";
 import { toast } from "sonner";
 
 import type { RelatorioGeradoItem, SimpleUser } from "@/lib/api/types";
 import { apiFetch } from "@/lib/api/client";
+import { MENSALIDADE_FAIXAS } from "@/lib/associado-filter-presets";
 import { formatDateTime } from "@/lib/formatters";
 import { usePermissions } from "@/hooks/use-permissions";
 import SearchableSelect from "@/components/custom/searchable-select";
@@ -72,14 +74,6 @@ const ASSOCIADO_PAGAMENTO_EXPORT_OPTIONS = [
   },
 ] as const;
 
-const MENSALIDADE_FAIXAS = [
-  { value: "ate_100", label: "Até R$ 100" },
-  { value: "100_200", label: "R$ 100 a R$ 199,99" },
-  { value: "200_300", label: "R$ 200 a R$ 299,99" },
-  { value: "300_500", label: "R$ 300 a R$ 499,99" },
-  { value: "acima_500", label: "Acima de R$ 500" },
-] as const;
-
 function inferReportTypeLabel(name: string) {
   const normalized = name.toLowerCase();
   return (
@@ -89,11 +83,19 @@ function inferReportTypeLabel(name: string) {
   );
 }
 
+function resolveRelatorioDownloadUrl(item: RelatorioGeradoItem) {
+  const downloadUrl = String(item.download_url || "").trim();
+  if (downloadUrl) {
+    return downloadUrl.replace(/^\/api\/v1\//, "/api/backend/");
+  }
+  return `/api/backend/relatorios/${item.id}/download/`;
+}
+
 function downloadRelatorio(item: RelatorioGeradoItem) {
   const link = document.createElement("a");
-  link.href = `/api/backend/relatorios/${item.id}/download`;
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
+  link.href = resolveRelatorioDownloadUrl(item);
+  link.download = item.nome;
+  link.style.display = "none";
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -107,6 +109,10 @@ type AgentFilterUser = SimpleUser & {
 export default function RelatoriosPage() {
   const queryClient = useQueryClient();
   const { hasRole, status } = usePermissions();
+  const [activeExport, setActiveExport] = React.useState<{
+    title: string;
+    formato: ReportFormat;
+  } | null>(null);
 
   const historicoQuery = useQuery({
     queryKey: ["relatorios-historico"],
@@ -131,13 +137,25 @@ export default function RelatoriosPage() {
         method: "POST",
         body: payload,
       }),
+    onMutate: (variables) => {
+      const reportTitle =
+        ASSOCIADO_PAGAMENTO_EXPORT_OPTIONS.find((option) => option.tipo === variables.tipo)?.title ??
+        "Relatorio";
+      setActiveExport({
+        title: reportTitle,
+        formato: variables.formato,
+      });
+    },
     onSuccess: (item) => {
-      toast.success("Relatorio gerado com sucesso.");
+      toast.success("Relatório gerado. Download iniciado.");
       void queryClient.invalidateQueries({ queryKey: ["relatorios-historico"] });
       downloadRelatorio(item);
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Falha ao gerar relatorio.");
+    },
+    onSettled: () => {
+      setActiveExport(null);
     },
   });
 
@@ -282,6 +300,37 @@ export default function RelatoriosPage() {
           skeletonRows={6}
         />
       </section>
+
+      <Dialog open={Boolean(activeExport) && exportMutation.isPending}>
+        <DialogContent
+          showCloseButton={false}
+          className="sm:max-w-md"
+          onEscapeKeyDown={(event) => event.preventDefault()}
+          onInteractOutside={(event) => event.preventDefault()}
+          onPointerDownOutside={(event) => event.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>Gerando relatório</DialogTitle>
+            <DialogDescription>
+              {activeExport
+                ? `${activeExport.title} em ${activeExport.formato.toUpperCase()}. O download será iniciado automaticamente ao concluir.`
+                : "O arquivo está sendo preparado no servidor."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-2xl border border-border/60 bg-card/60 p-5">
+            <div className="flex items-start gap-4">
+              <LoaderCircleIcon className="mt-0.5 size-8 animate-spin text-primary" />
+              <div className="space-y-2">
+                <p className="font-medium text-foreground">Processando exportação</p>
+                <p className="text-sm text-muted-foreground">
+                  Esse relatório pode levar alguns segundos para ser gerado. Assim que terminar, o
+                  arquivo começa a baixar sem precisar recarregar a página.
+                </p>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

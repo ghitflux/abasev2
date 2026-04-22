@@ -717,6 +717,8 @@ def _serialize_esteira(esteira: EsteiraItem | None) -> dict[str, Any]:
         "status": esteira.status,
         "prioridade": esteira.prioridade,
         "observacao": esteira.observacao,
+        "assumido_em": esteira.assumido_em.isoformat() if esteira.assumido_em else None,
+        "heartbeat_at": esteira.heartbeat_at.isoformat() if esteira.heartbeat_at else None,
         "analista_responsavel_id": esteira.analista_responsavel_id,
         "coordenador_responsavel_id": esteira.coordenador_responsavel_id,
         "tesoureiro_responsavel_id": esteira.tesoureiro_responsavel_id,
@@ -1251,36 +1253,30 @@ def _build_manual_contract_projection(
     movement_rows: list[dict[str, Any]] = []
 
     for parcela in parcelas:
+        unpaid_payload = {
+            "id": parcela.id,
+            "contrato_id": contrato.id,
+            "contrato_codigo": contrato.codigo,
+            "referencia_mes": parcela.referencia_mes,
+            "valor": parcela.valor,
+            "status": parcela.status,
+            "data_pagamento": parcela.data_pagamento,
+            "observacao": parcela.observacao,
+            "source": "admin_override",
+        }
         if parcela.layout_bucket == Parcela.LayoutBucket.UNPAID:
-            unpaid_rows.append(
-                {
-                    "id": parcela.id,
-                    "contrato_id": contrato.id,
-                    "contrato_codigo": contrato.codigo,
-                    "referencia_mes": parcela.referencia_mes,
-                    "valor": parcela.valor,
-                    "status": parcela.status,
-                    "data_pagamento": parcela.data_pagamento,
-                    "observacao": parcela.observacao,
-                    "source": "admin_override",
-                }
-            )
+            unpaid_rows.append(unpaid_payload)
             continue
         if parcela.layout_bucket == Parcela.LayoutBucket.MOVEMENT:
-            movement_rows.append(
+            movement_rows.append(unpaid_payload)
+            continue
+        if parcela.status == Parcela.Status.NAO_DESCONTADO:
+            unpaid_rows.append(
                 {
-                    "id": parcela.id,
-                    "contrato_id": contrato.id,
-                    "contrato_codigo": contrato.codigo,
-                    "referencia_mes": parcela.referencia_mes,
-                    "valor": parcela.valor,
-                    "status": parcela.status,
-                    "data_pagamento": parcela.data_pagamento,
-                    "observacao": parcela.observacao,
-                    "source": "admin_override",
+                    **unpaid_payload,
+                    "source": "admin_override_cycle",
                 }
             )
-            continue
         by_cycle[parcela.ciclo_id].append(parcela)
 
     unresolved_unpaid_rows = [
@@ -1410,6 +1406,32 @@ def _build_manual_contract_projection(
 
 
 class AdminOverrideService:
+    @staticmethod
+    def _is_inactivation_event(event: AdminOverrideEvent) -> bool:
+        after_meta = (event.after_snapshot or {}).get("meta") or {}
+        before_meta = (event.before_snapshot or {}).get("meta") or {}
+        return (
+            str(after_meta.get("action") or before_meta.get("action") or "").strip()
+            == "inativacao"
+        )
+
+    @staticmethod
+    def latest_revertible_inactivation_event(
+        associado: Associado,
+    ) -> AdminOverrideEvent | None:
+        events = (
+            associado.admin_override_events.filter(
+                escopo=AdminOverrideEvent.Scope.ASSOCIADO,
+                revertida_em__isnull=True,
+            )
+            .select_related("realizado_por")
+            .order_by("-created_at", "-id")
+        )
+        for event in events:
+            if AdminOverrideService._is_inactivation_event(event):
+                return event
+        return None
+
     @staticmethod
     def build_associado_history_payload(associado: Associado, *, request=None) -> list[dict[str, Any]]:
         events = (
@@ -1615,6 +1637,9 @@ class AdminOverrideService:
                     refinanciamento_ativo=refinanciamento_ativo,
                 )
             )
+        inactivation_event = AdminOverrideService.latest_revertible_inactivation_event(
+            associado
+        )
         return {
             "associado": _serialize_associado(associado),
             "contratos": payload_contracts,
@@ -1623,6 +1648,54 @@ class AdminOverrideService:
                 _serialize_documento(documento)
                 for documento in associado.documentos.filter(deleted_at__isnull=True).order_by("tipo", "id")
             ],
+            "inactivation_reversal": (
+                {
+                    "event_id": inactivation_event.id,
+                    "available": True,
+                    "previous_status": str(
+                        (
+                            (inactivation_event.before_snapshot or {}).get("meta") or {}
+                        ).get("previous_status")
+                        or (
+                            (inactivation_event.before_snapshot or {}).get("associado")
+                            or {}
+                        ).get("status")
+                        or ""
+                    ),
+                    "target_status": str(
+                        (
+                            (inactivation_event.after_snapshot or {}).get("meta") or {}
+                        ).get("target_status")
+                        or (
+                            (inactivation_event.after_snapshot or {}).get("associado")
+                            or {}
+                        ).get("status")
+                        or ""
+                    ),
+                    "event_created_at": (
+                        inactivation_event.created_at.isoformat()
+                        if inactivation_event and inactivation_event.created_at
+                        else None
+                    ),
+                    "realizado_por": (
+                        {
+                            "id": inactivation_event.realizado_por.id,
+                            "full_name": inactivation_event.realizado_por.full_name,
+                        }
+                        if inactivation_event and inactivation_event.realizado_por_id
+                        else None
+                    ),
+                }
+                if inactivation_event is not None
+                else {
+                    "event_id": None,
+                    "available": False,
+                    "previous_status": "",
+                    "target_status": "",
+                    "event_created_at": None,
+                    "realizado_por": None,
+                }
+            ),
             "warnings": _dedupe_warning_list(payload_warnings),
         }
 
@@ -2960,7 +3033,6 @@ class AdminOverrideService:
             status=payload.get("status") or documento.status,
             observacao=payload.get("observacao") or documento.observacao,
         )
-        documento.soft_delete()
         return new_documento
 
     @staticmethod
@@ -3040,7 +3112,6 @@ class AdminOverrideService:
                 enviado_por=user,
                 status_validacao=payload.get("status_validacao") or comprovante.status_validacao,
             )
-            comprovante.soft_delete()
             after = _serialize_comprovante(novo, request=request)
             AdminOverrideService._record_event(
                 context=_OverrideContext(
@@ -3254,28 +3325,38 @@ class AdminOverrideService:
             if referencia is None:
                 continue
             references_seen[referencia].append(raw_parcela)
-        last_index_by_reference = {
-            referencia: max(
-                index
+        keep_index_by_reference = {}
+        for referencia in references_seen:
+            indexed_rows = [
+                (index, row)
                 for index, row in enumerate(parcel_items)
                 if _parse_optional_date(row.get("referencia_mes")) == referencia
                 and str(row.get("status") or "") != Parcela.Status.CANCELADO
+            ]
+            cycle_rows = [
+                (index, row)
+                for index, row in indexed_rows
+                if str(row.get("layout_bucket") or Parcela.LayoutBucket.CYCLE)
+                == Parcela.LayoutBucket.CYCLE
+            ]
+            keep_index_by_reference[referencia] = (
+                cycle_rows[-1][0] if cycle_rows else indexed_rows[-1][0]
             )
-            for referencia in references_seen
-        }
         duplicate_conflicts = []
         for referencia, rows in sorted(references_seen.items()):
             if len(rows) < 2:
                 continue
+            preserved_index = keep_index_by_reference[referencia]
+            preserved_row = parcel_items[preserved_index]
             duplicate_conflicts.append(
                 {
                     "referencia_mes": referencia.isoformat(),
                     "preservada": {
-                        "id": rows[-1].get("id"),
-                        "numero": int(rows[-1].get("numero") or 0),
-                        "cycle_ref": rows[-1].get("cycle_ref") or rows[-1].get("cycle_id"),
+                        "id": preserved_row.get("id"),
+                        "numero": int(preserved_row.get("numero") or 0),
+                        "cycle_ref": preserved_row.get("cycle_ref") or preserved_row.get("cycle_id"),
                         "layout_bucket": str(
-                            rows[-1].get("layout_bucket") or Parcela.LayoutBucket.CYCLE
+                            preserved_row.get("layout_bucket") or Parcela.LayoutBucket.CYCLE
                         ),
                     },
                     "removidas": [
@@ -3287,7 +3368,10 @@ class AdminOverrideService:
                                 row.get("layout_bucket") or Parcela.LayoutBucket.CYCLE
                             ),
                         }
-                        for row in rows[:-1]
+                        for index, row in enumerate(parcel_items)
+                        if _parse_optional_date(row.get("referencia_mes")) == referencia
+                        and str(row.get("status") or "") != Parcela.Status.CANCELADO
+                        and index != preserved_index
                     ],
                 }
             )
@@ -3297,7 +3381,7 @@ class AdminOverrideService:
             if (
                 str(raw_parcela.get("status") or "") == Parcela.Status.CANCELADO
                 or (_parse_optional_date(raw_parcela.get("referencia_mes")) is None)
-                or last_index_by_reference.get(
+                or keep_index_by_reference.get(
                     _parse_optional_date(raw_parcela.get("referencia_mes"))
                 )
                 == index
@@ -3575,6 +3659,7 @@ class AdminOverrideService:
                 associado = event.associado
                 snapshot = event.before_snapshot.get("associado") or {}
                 contract_snapshot = event.before_snapshot.get("contrato") or {}
+                esteira_snapshot = event.before_snapshot.get("esteira") or {}
                 if snapshot:
                     associado.nome_completo = snapshot.get("nome_completo") or associado.nome_completo
                     associado.rg = snapshot.get("rg") or ""
@@ -3616,6 +3701,57 @@ class AdminOverrideService:
                     associado.situacao_servidor = str(contato.get("situacao_servidor") or "")
                     associado.matricula_orgao = str(contato.get("matricula_servidor") or associado.matricula_orgao)
                     associado.save()
+
+                if esteira_snapshot:
+                    esteira = getattr(associado, "esteira_item", None)
+                    if esteira is None:
+                        esteira = EsteiraItem.objects.create(
+                            associado=associado,
+                            etapa_atual=str(
+                                esteira_snapshot.get("etapa_atual")
+                                or EsteiraItem.Etapa.ANALISE
+                            ),
+                            status=str(
+                                esteira_snapshot.get("status")
+                                or EsteiraItem.Situacao.AGUARDANDO
+                            ),
+                            prioridade=int(esteira_snapshot.get("prioridade") or 3),
+                            observacao=str(esteira_snapshot.get("observacao") or ""),
+                        )
+                    else:
+                        esteira.etapa_atual = (
+                            esteira_snapshot.get("etapa_atual") or esteira.etapa_atual
+                        )
+                        esteira.status = esteira_snapshot.get("status") or esteira.status
+                        esteira.prioridade = int(
+                            esteira_snapshot.get("prioridade") or esteira.prioridade
+                        )
+                        esteira.observacao = str(esteira_snapshot.get("observacao") or "")
+                    esteira.assumido_em = (
+                        parse_datetime(str(esteira_snapshot.get("assumido_em")))
+                        if esteira_snapshot.get("assumido_em")
+                        else None
+                    )
+                    esteira.heartbeat_at = (
+                        parse_datetime(str(esteira_snapshot.get("heartbeat_at")))
+                        if esteira_snapshot.get("heartbeat_at")
+                        else None
+                    )
+                    esteira.concluido_em = (
+                        parse_datetime(str(esteira_snapshot.get("concluido_em")))
+                        if esteira_snapshot.get("concluido_em")
+                        else None
+                    )
+                    esteira.analista_responsavel_id = esteira_snapshot.get(
+                        "analista_responsavel_id"
+                    )
+                    esteira.coordenador_responsavel_id = esteira_snapshot.get(
+                        "coordenador_responsavel_id"
+                    )
+                    esteira.tesoureiro_responsavel_id = esteira_snapshot.get(
+                        "tesoureiro_responsavel_id"
+                    )
+                    esteira.save()
 
                 if event.contrato_id and contract_snapshot:
                     contrato = event.contrato

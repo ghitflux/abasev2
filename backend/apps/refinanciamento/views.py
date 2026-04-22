@@ -78,6 +78,12 @@ class BaseRefinanciamentoViewSet(
     def _should_apply_base_status_filter(self, status_filters: list[str]) -> bool:
         return True
 
+    def _apply_year_filter(self, queryset, year: int, status_filters: list[str]):
+        return queryset.filter(competencia_solicitada__year=year)
+
+    def _effective_resumo_count(self, queryset) -> int:
+        return queryset.filter(status=Refinanciamento.Status.EFETIVADO).count()
+
     def get_queryset(self):
         if getattr(self, "swagger_fake_view", False):
             return Refinanciamento.objects.none()
@@ -198,7 +204,7 @@ class BaseRefinanciamentoViewSet(
         if year:
             if not year.isdigit():
                 raise ValidationError({"year": ["Informe um ano válido."]})
-            queryset = queryset.filter(competencia_solicitada__year=int(year))
+            queryset = self._apply_year_filter(queryset, int(year), status_filters)
 
         agent_filter = self.request.query_params.get("agent")
         if agent_filter:
@@ -276,9 +282,6 @@ class BaseRefinanciamentoViewSet(
                 "id",
                 filter=Q(status=Refinanciamento.Status.APROVADO_ANALISE_RENOVACAO),
             ),
-            efetivados=Count(
-                "id", filter=Q(status=Refinanciamento.Status.EFETIVADO)
-            ),
             concluidos=Count(
                 "id",
                 filter=Q(
@@ -317,6 +320,7 @@ class BaseRefinanciamentoViewSet(
             ),
             repasse_total=Sum("repasse_agente"),
         )
+        resumo["efetivados"] = self._effective_resumo_count(queryset)
         resumo["desistentes"] = (
             int(resumo.get("solicitados_liquidacao") or 0)
             + int(resumo.get("bloqueados") or 0)
@@ -525,6 +529,22 @@ class RefinanciamentoViewSet(BaseRefinanciamentoViewSet):
 class CoordenadorRefinanciadosViewSet(BaseRefinanciamentoViewSet):
     permission_classes = [permissions.IsAuthenticated, IsCoordenadorOrAdmin]
 
+    def _apply_year_filter(self, queryset, year: int, status_filters: list[str]):
+        if set(status_filters) == {Refinanciamento.Status.EFETIVADO}:
+            queryset = queryset.annotate(
+                effective_reference=Coalesce(
+                    "executado_em",
+                    "data_ativacao_ciclo",
+                    "linked_payment_paid_at",
+                    "data_pagamento_associado",
+                    "data_pagamento_agente",
+                    "updated_at",
+                    output_field=DateTimeField(),
+                )
+            )
+            return queryset.filter(effective_reference__date__year=year)
+        return super()._apply_year_filter(queryset, year, status_filters)
+
     def get_queryset(self):
         queryset = super().get_queryset().filter(
             status__in=[
@@ -534,9 +554,6 @@ class CoordenadorRefinanciadosViewSet(BaseRefinanciamentoViewSet):
                 Refinanciamento.Status.SOLICITADO_PARA_LIQUIDACAO,
             ]
         )
-        year = self.request.query_params.get("year")
-        if year and year.isdigit():
-            queryset = queryset.filter(competencia_solicitada__year=int(year))
         return queryset
 
 
@@ -646,6 +663,31 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
     def _should_apply_base_status_filter(self, status_filters: list[str]) -> bool:
         return set(status_filters) != {Refinanciamento.Status.EFETIVADO}
 
+    def _apply_year_filter(self, queryset, year: int, status_filters: list[str]):
+        if set(status_filters) == {Refinanciamento.Status.EFETIVADO}:
+            queryset = queryset.annotate(
+                tesouraria_operational_date=Coalesce(
+                    "executado_em",
+                    "data_ativacao_ciclo",
+                    "linked_payment_paid_at",
+                    "data_pagamento_associado",
+                    "data_pagamento_agente",
+                    "updated_at",
+                    output_field=DateTimeField(),
+                )
+            )
+            return queryset.filter(tesouraria_operational_date__date__year=year)
+        return super()._apply_year_filter(queryset, year, status_filters)
+
+    def _effective_resumo_count(self, queryset) -> int:
+        return queryset.filter(renewal_materialized_q()).exclude(
+            status__in=[
+                Refinanciamento.Status.BLOQUEADO,
+                Refinanciamento.Status.REVERTIDO,
+                Refinanciamento.Status.DESATIVADO,
+            ]
+        ).count()
+
     def get_permissions(self):
         if self.action in {"efetivar", "substituir_comprovante"}:
             return [permissions.IsAuthenticated(), IsTesoureiroOrAdmin()]
@@ -694,7 +736,13 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
             return queryset.order_by("-updated_at", "-id")
 
         if status_filters == efetivado_statuses:
-            queryset = queryset.filter(renewal_materialized_q()).annotate(
+            queryset = queryset.filter(renewal_materialized_q()).exclude(
+                status__in=[
+                    Refinanciamento.Status.BLOQUEADO,
+                    Refinanciamento.Status.REVERTIDO,
+                    Refinanciamento.Status.DESATIVADO,
+                ]
+            ).annotate(
                 tesouraria_operational_date=Coalesce(
                     "executado_em",
                     "data_ativacao_ciclo",
@@ -763,18 +811,19 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
     @action(
         detail=True,
         methods=["post"],
-        permission_classes=[permissions.IsAuthenticated, IsCoordenadorOrAdmin],
+        permission_classes=[
+            permissions.IsAuthenticated,
+            IsCoordenadorOrTesoureiroOrAdmin,
+        ],
     )
     def excluir(self, request, pk=None):
         motivo = (request.data.get("motivo") or "").strip() or "Removido da fila pela coordenação."
-        try:
-            refinanciamento = RefinanciamentoService.bloquear(int(pk), motivo, request.user)
-        except Exception as exc:
-            return Response({"detail": str(exc)}, status=400)
-        serializer = RefinanciamentoDetailSerializer(
-            refinanciamento, context=self.get_serializer_context()
+        RefinanciamentoService.limpar_linha_operacional(
+            int(pk),
+            motivo=motivo,
+            user=request.user,
         )
-        return Response(serializer.data)
+        return Response({"detail": "Linha operacional removida."})
 
     @action(
         detail=True,
@@ -798,7 +847,10 @@ class TesourariaRefinanciamentoViewSet(BaseRefinanciamentoViewSet):
     @action(
         detail=True,
         methods=["post"],
-        permission_classes=[permissions.IsAuthenticated, IsCoordenadorOrAdmin],
+        permission_classes=[
+            permissions.IsAuthenticated,
+            IsCoordenadorOrTesoureiroOrAdmin,
+        ],
         url_path="limpar-linha",
     )
     def limpar_linha(self, request, pk=None):

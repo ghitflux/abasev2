@@ -254,6 +254,34 @@ it("renderiza secoes operacionais e consulta apenas aprovados para a fila penden
       ["bloqueado", "revertido", "desativado"],
     ]),
   );
+  expect(
+    mockedApiFetch.mock.calls
+      .filter(([path]) => path === "tesouraria/refinanciamentos")
+      .every(([, options]) => options?.query?.year === undefined),
+  ).toBe(true);
+});
+
+it("permite alternar entre total e ano atual sem usar filtro implícito de competência solicitada", async () => {
+  const user = userEvent.setup();
+  renderPage();
+
+  const currentYear = new Date().getFullYear();
+  const expectedStart = `${currentYear}-01-01`;
+  const expectedEnd = `${currentYear}-12-31`;
+
+  await user.click(await screen.findByRole("button", { name: "Ano atual" }));
+
+  await waitFor(() =>
+    expect(
+      mockedApiFetch.mock.calls.some(
+        ([path, options]) =>
+          path === "tesouraria/refinanciamentos" &&
+          options?.query?.data_inicio === expectedStart &&
+          options?.query?.data_fim === expectedEnd &&
+          options?.query?.year === undefined,
+      ),
+    ).toBe(true),
+  );
 });
 
 it("separa termo do agente dos comprovantes de pagamento e mostra o valor liberado do associado", async () => {

@@ -49,6 +49,16 @@ function formatStatusText(value: string | null | undefined) {
   return value.replaceAll("_", " ");
 }
 
+function describeItemAction(item: DryRunItem) {
+  if (item.desconto_em_associado_inativo) {
+    return "Retorno descontou associado inativo";
+  }
+  if (item.ficara_apto_renovar) {
+    return "Entrará em Aptos a renovar após confirmar";
+  }
+  return "Sem ação automática";
+}
+
 function buildSearchHaystack(item: DryRunItem) {
   return normalizeSearchValue(
     [
@@ -62,9 +72,7 @@ function buildSearchHaystack(item: DryRunItem) {
       item.associado_status_depois,
       item.ciclo_status_antes,
       item.ciclo_status_depois,
-      item.ficara_apto_renovar
-        ? "Entrará em Aptos a renovar após confirmar"
-        : "Sem ação automática",
+      describeItemAction(item),
     ].join(" "),
   );
 }
@@ -136,10 +144,7 @@ export default function DryRunDetailDialog({ open, onOpenChange, title, items }:
       },
       {
         header: "Acao",
-        value: (item) =>
-          item.ficara_apto_renovar
-            ? "Entrara em Aptos a renovar apos confirmar"
-            : "Sem acao automatica",
+        value: (item) => describeItemAction(item),
       },
     ],
     [],
@@ -320,7 +325,11 @@ export default function DryRunDetailDialog({ open, onOpenChange, title, items }:
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        {item.ficara_apto_renovar ? (
+                        {item.desconto_em_associado_inativo ? (
+                          <span className="inline-flex max-w-[14rem] rounded-full border border-amber-400/25 bg-amber-400/10 px-3 py-1 text-xs font-medium text-amber-200">
+                            Retorno descontou associado inativo
+                          </span>
+                        ) : item.ficara_apto_renovar ? (
                           <span className="inline-flex max-w-[14rem] rounded-full border border-emerald-400/25 bg-emerald-400/10 px-3 py-1 text-xs font-medium text-emerald-200">
                             Entrará em Aptos a renovar após confirmar
                           </span>

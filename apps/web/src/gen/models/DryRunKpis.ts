@@ -54,6 +54,10 @@ export type DryRunKpis = {
    */
   aptos_a_renovar: number;
   /**
+   * @type integer
+   */
+  associados_inativos_com_desconto: number;
+  /**
    * @type object
    */
   valores_30_50: DryRunValores3050;

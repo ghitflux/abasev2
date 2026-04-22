@@ -294,7 +294,10 @@ it("mantem a efetivacao explicita desabilitada sem os dois comprovantes", async 
       throw new Error(`Unexpected path: ${String(path)}`);
     }
 
-    if (options?.query?.pagamento === "pendente") {
+    if (
+      options?.query?.pagamento === "pendente" &&
+      options?.query?.origem_operacional === "cadastro"
+    ) {
       return {
         count: 1,
         next: null,
@@ -331,7 +334,7 @@ it("mantem a efetivacao explicita desabilitada sem os dois comprovantes", async 
   renderPage();
 
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: /^Efetivar$/i })).toBeDisabled(),
+    expect(screen.getAllByRole("button", { name: /^Efetivar$/i })[0]).toBeDisabled(),
   );
 });
 
@@ -343,7 +346,10 @@ it("efetiva o contrato apenas pela acao explicita quando os dois comprovantes ja
       return [];
     }
     if (path === "tesouraria/contratos") {
-      if (options?.query?.pagamento === "pendente") {
+      if (
+        options?.query?.pagamento === "pendente" &&
+        options?.query?.origem_operacional === "cadastro"
+      ) {
         return {
           count: 1,
           next: null,
@@ -376,7 +382,9 @@ it("efetiva o contrato apenas pela acao explicita quando os dois comprovantes ja
 
   renderPage();
 
-  const efetivarButton = await screen.findByRole("button", { name: /^Efetivar$/i });
+  const efetivarButton = (
+    await screen.findAllByRole("button", { name: /^Efetivar$/i })
+  )[0];
   expect(efetivarButton).toBeEnabled();
 
   await user.click(efetivarButton);
@@ -408,16 +416,29 @@ it("remove o limpar externo e atualiza os kpis conforme o periodo filtrado", asy
     const counts = isFilteredDay
       ? {
           pendente: 1,
+          reativacao: 0,
           concluido: 2,
           liquidado: 0,
           cancelado: 1,
         }
       : {
           pendente: 3,
+          reativacao: 0,
           concluido: 4,
           liquidado: 1,
           cancelado: 2,
         };
+    if (
+      options?.query?.pagamento === "pendente" &&
+      options?.query?.origem_operacional === "reativacao"
+    ) {
+      return {
+        count: counts.reativacao,
+        next: null,
+        previous: null,
+        results: [],
+      };
+    }
 
     return {
       count: counts[options?.query?.pagamento as keyof typeof counts] ?? 0,
@@ -637,7 +658,7 @@ it("exporta com as mesmas colunas da secao da tesouraria", async () => {
                 dados_bancarios: "Banco do Brasil | Ag 1234 | Conta 98765-0 | corrente",
                 chave_pix: "00096819308",
                 acao:
-                  "Ver detalhes | Efetivar | Congelar | Cancelar contrato | Excluir cadastro",
+              "Ver detalhes | Efetivar | Congelar | Pendenciar para análise | Cancelar contrato | Remover da fila",
                 nome: "Francisca Teste",
                 matricula_cpf: "3716961 | 000.968.193-08",
                 agente: "Daniel Freire Bezerra | Repasse: 10.00%",

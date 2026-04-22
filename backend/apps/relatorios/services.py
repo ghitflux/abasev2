@@ -14,11 +14,13 @@ from django.db.models import Sum
 from django.utils import timezone
 from openpyxl import Workbook
 
-from apps.associados.models import Associado
-from apps.contratos.canonicalization import (
-    is_shadow_duplicate_contract,
-    resolve_operational_contract_for_associado,
+from apps.associados.filter_helpers import (
+    faixa_mensalidade_bounds,
+    mensalidade_in_selected_ranges,
 )
+from apps.associados.models import Associado
+from apps.associados.services import AssociadoService
+from apps.contratos.canonicalization import is_shadow_duplicate_contract
 from apps.contratos.models import Contrato, Parcela
 from apps.contratos.cycle_projection import resolve_associado_mother_status
 from apps.esteira.models import EsteiraItem, Pendencia
@@ -80,6 +82,7 @@ class RelatorioService:
                 columns=(
                     ReportColumn("nome_completo", "Associado", 2.5),
                     ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("data_nascimento", "Data de nascimento", 1.3),
                     ReportColumn("status", "Status", 1.0),
                     ReportColumn("orgao_publico", "Orgao", 1.8),
                     ReportColumn("agente", "Agente responsavel", 2.0),
@@ -239,6 +242,7 @@ class RelatorioService:
                 columns=(
                     ReportColumn("nome_completo", "Associado", 2.4),
                     ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("data_nascimento", "Data de nascimento", 1.3),
                     ReportColumn("matricula", "Matricula", 1.2),
                     ReportColumn("agente", "Agente", 1.8),
                     ReportColumn("contrato_codigo", "Contrato", 1.3),
@@ -256,6 +260,7 @@ class RelatorioService:
                 columns=(
                     ReportColumn("nome_completo", "Associado", 2.4),
                     ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("data_nascimento", "Data de nascimento", 1.3),
                     ReportColumn("matricula", "Matricula", 1.2),
                     ReportColumn("agente", "Agente", 1.8),
                     ReportColumn("contrato_codigo", "Contrato", 1.3),
@@ -273,6 +278,7 @@ class RelatorioService:
                 columns=(
                     ReportColumn("nome_completo", "Associado", 2.4),
                     ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("data_nascimento", "Data de nascimento", 1.3),
                     ReportColumn("matricula", "Matricula", 1.2),
                     ReportColumn("agente", "Agente", 1.8),
                     ReportColumn("contrato_codigo", "Contrato", 1.3),
@@ -290,6 +296,7 @@ class RelatorioService:
                 columns=(
                     ReportColumn("nome_completo", "Associado", 2.4),
                     ReportColumn("cpf_cnpj", "CPF/CNPJ", 1.3),
+                    ReportColumn("data_nascimento", "Data de nascimento", 1.3),
                     ReportColumn("matricula", "Matricula", 1.2),
                     ReportColumn("agente", "Agente", 1.8),
                     ReportColumn("contrato_codigo", "Contrato", 1.3),
@@ -581,46 +588,14 @@ class RelatorioService:
 
     @staticmethod
     def _faixa_mensalidade_bounds(value: object) -> tuple[Decimal | None, Decimal | None]:
-        if not isinstance(value, str) or not value.strip():
-            return None, None
-        normalized = value.strip()
-        if normalized == "ate_100":
-            return None, Decimal("100.00")
-        if normalized == "100_200":
-            return Decimal("100.00"), Decimal("200.00")
-        if normalized == "200_300":
-            return Decimal("200.00"), Decimal("300.00")
-        if normalized == "300_500":
-            return Decimal("300.00"), Decimal("500.00")
-        if normalized == "acima_500":
-            return Decimal("500.00"), None
-        return None, None
+        return faixa_mensalidade_bounds(value)
 
     @staticmethod
     def _mensalidade_in_selected_ranges(
         valor_mensalidade: Decimal,
         faixa_mensalidade: object,
     ) -> bool:
-        if isinstance(faixa_mensalidade, list):
-            selected_ranges = [
-                item for item in faixa_mensalidade if isinstance(item, str) and item.strip()
-            ]
-        elif isinstance(faixa_mensalidade, str) and faixa_mensalidade.strip():
-            selected_ranges = [chunk.strip() for chunk in faixa_mensalidade.split(",") if chunk.strip()]
-        else:
-            selected_ranges = []
-
-        if not selected_ranges:
-            return True
-
-        for selected_range in selected_ranges:
-            min_value, max_value = RelatorioService._faixa_mensalidade_bounds(selected_range)
-            if min_value is not None and valor_mensalidade < min_value:
-                continue
-            if max_value is not None and valor_mensalidade >= max_value:
-                continue
-            return True
-        return False
+        return mensalidade_in_selected_ranges(valor_mensalidade, faixa_mensalidade)
 
     @staticmethod
     def _associados_pagadores_rows(
@@ -700,6 +675,11 @@ class RelatorioService:
                     "id": associado.id,
                     "nome_completo": associado.nome_completo,
                     "cpf_cnpj": associado.cpf_cnpj,
+                    "data_nascimento": (
+                        associado.data_nascimento.isoformat()
+                        if associado.data_nascimento
+                        else ""
+                    ),
                     "matricula": associado.matricula_display,
                     "agente": resolved_agente.full_name if resolved_agente else "",
                     "contrato_codigo": contrato.codigo,
@@ -723,24 +703,10 @@ class RelatorioService:
 
     @staticmethod
     def _resolve_report_contract_for_associado(associado: Associado) -> Contrato | None:
-        contrato = resolve_operational_contract_for_associado(associado)
-        if contrato is not None:
+        contrato = AssociadoService.resolve_report_like_contract_for_associado(associado)
+        if contrato is not None and not is_shadow_duplicate_contract(contrato):
             return contrato
-
-        cached_contracts = getattr(associado, "_prefetched_objects_cache", {}).get("contratos")
-        if cached_contracts is not None:
-            contratos = list(cached_contracts)
-        else:
-            contratos = list(
-                associado.contratos.select_related("agente").order_by("-created_at", "-id")
-            )
-
-        contratos_visiveis = [
-            item for item in contratos if not is_shadow_duplicate_contract(item)
-        ]
-        if not contratos_visiveis:
-            return None
-        return max(contratos_visiveis, key=lambda item: (item.created_at, item.id))
+        return None
 
     @staticmethod
     def _resolve_report_status_for_associado(
@@ -765,6 +731,9 @@ class RelatorioService:
                 "id": associado.id,
                 "nome_completo": associado.nome_completo,
                 "cpf_cnpj": associado.cpf_cnpj,
+                "data_nascimento": (
+                    associado.data_nascimento.isoformat() if associado.data_nascimento else ""
+                ),
                 "status": associado.status,
                 "orgao_publico": associado.orgao_publico,
                 "agente": associado.agente_responsavel.full_name if associado.agente_responsavel else "",

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from calendar import monthrange
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 from django.db import transaction
@@ -10,14 +10,18 @@ from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from apps.accounts.services import ComissaoService
-from apps.contratos.canonicalization import get_operational_contracts_for_associado
+from apps.contratos.canonicalization import (
+    get_operational_contracts_for_associado,
+    is_shadow_duplicate_contract,
+    resolve_operational_contract_for_associado,
+)
 from apps.contratos.competencia import create_cycle_with_parcelas
 from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.esteira.services import EsteiraService
 
 from .factories import AssociadoFactory
-from .models import Associado, Documento
+from .models import AdminOverrideChange, AdminOverrideEvent, Associado, Documento
 from .strategies import CadastroValidationStrategy, calculate_contract_financials
 
 
@@ -43,7 +47,147 @@ def calculate_contract_dates(data_aprovacao: date | None) -> tuple[date, date, d
 
 
 class AssociadoService:
+    INACTIVATION_STATUS_TARGETS = {
+        "inativo": Associado.Status.INATIVO,
+        "inativo_inadimplente": Associado.Status.INADIMPLENTE,
+        "inativo_passivel_renovacao": Associado.Status.APTO_A_RENOVAR,
+    }
+
     """Camada de serviço para lógica de negócio de associados."""
+
+    @staticmethod
+    def _json_safe_snapshot(value):
+        if isinstance(value, dict):
+            return {
+                str(key): AssociadoService._json_safe_snapshot(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, (list, tuple)):
+            return [AssociadoService._json_safe_snapshot(item) for item in value]
+        if isinstance(value, Decimal):
+            return str(value)
+        if isinstance(value, (date, datetime)):
+            return value.isoformat()
+        return value
+
+    @staticmethod
+    def _serialize_associado_inactivation_snapshot(
+        associado: Associado,
+    ) -> dict[str, object]:
+        return {
+            "id": associado.id,
+            "matricula": associado.matricula,
+            "tipo_documento": associado.tipo_documento,
+            "nome_completo": associado.nome_completo,
+            "cpf_cnpj": associado.cpf_cnpj,
+            "rg": associado.rg,
+            "orgao_expedidor": associado.orgao_expedidor,
+            "email": associado.email,
+            "telefone": associado.telefone,
+            "data_nascimento": (
+                associado.data_nascimento.isoformat()
+                if associado.data_nascimento
+                else None
+            ),
+            "profissao": associado.profissao,
+            "estado_civil": associado.estado_civil,
+            "orgao_publico": associado.orgao_publico,
+            "matricula_orgao": associado.matricula_orgao,
+            "cargo": associado.cargo,
+            "status": associado.status,
+            "observacao": associado.observacao,
+            "agente_responsavel_id": associado.agente_responsavel_id,
+            "percentual_repasse": str(associado.auxilio_taxa),
+            "endereco": associado.build_endereco_payload(),
+            "dados_bancarios": associado.build_dados_bancarios_payload(),
+            "contato": associado.build_contato_payload(),
+            "updated_at": associado.updated_at.isoformat() if associado.updated_at else None,
+        }
+
+    @staticmethod
+    def _serialize_esteira_inactivation_snapshot(
+        associado: Associado,
+    ) -> dict[str, object]:
+        esteira = getattr(associado, "esteira_item", None)
+        if esteira is None:
+            return {}
+        return {
+            "id": esteira.id,
+            "etapa_atual": esteira.etapa_atual,
+            "status": esteira.status,
+            "prioridade": esteira.prioridade,
+            "observacao": esteira.observacao,
+            "assumido_em": esteira.assumido_em.isoformat() if esteira.assumido_em else None,
+            "heartbeat_at": esteira.heartbeat_at.isoformat() if esteira.heartbeat_at else None,
+            "concluido_em": esteira.concluido_em.isoformat() if esteira.concluido_em else None,
+            "analista_responsavel_id": esteira.analista_responsavel_id,
+            "coordenador_responsavel_id": esteira.coordenador_responsavel_id,
+            "tesoureiro_responsavel_id": esteira.tesoureiro_responsavel_id,
+            "updated_at": esteira.updated_at.isoformat() if esteira.updated_at else None,
+        }
+
+    @staticmethod
+    def _record_inactivation_event(
+        *,
+        associado: Associado,
+        user,
+        previous_status: str,
+        target_status: str,
+        motivo: str,
+        before_associado: dict[str, object],
+        before_esteira: dict[str, object],
+        after_associado: dict[str, object],
+        after_esteira: dict[str, object],
+    ) -> None:
+        if not user or not getattr(user, "is_authenticated", False):
+            return
+        event = AdminOverrideEvent.objects.create(
+            associado=associado,
+            realizado_por=user,
+            escopo=AdminOverrideEvent.Scope.ASSOCIADO,
+            resumo="Inativação administrativa do associado",
+            motivo=motivo,
+            before_snapshot=AssociadoService._json_safe_snapshot(
+                {
+                    "meta": {
+                        "action": "inativacao",
+                        "previous_status": previous_status,
+                        "target_status": target_status,
+                    },
+                    "associado": before_associado,
+                    "esteira": before_esteira,
+                }
+            ),
+            after_snapshot=AssociadoService._json_safe_snapshot(
+                {
+                    "meta": {
+                        "action": "inativacao",
+                        "previous_status": previous_status,
+                        "target_status": target_status,
+                    },
+                    "associado": after_associado,
+                    "esteira": after_esteira,
+                }
+            ),
+            confirmacao_dupla=True,
+        )
+        AdminOverrideChange.objects.create(
+            evento=event,
+            entity_type=AdminOverrideChange.EntityType.ASSOCIADO,
+            entity_id=associado.id,
+            resumo="Associado inativado administrativamente",
+            before_snapshot=AssociadoService._json_safe_snapshot(before_associado),
+            after_snapshot=AssociadoService._json_safe_snapshot(after_associado),
+        )
+        if before_esteira or after_esteira:
+            AdminOverrideChange.objects.create(
+                evento=event,
+                entity_type=AdminOverrideChange.EntityType.ESTEIRA,
+                entity_id=int((after_esteira or before_esteira).get("id") or 0),
+                resumo="Esteira operacional finalizada pela inativação",
+                before_snapshot=AssociadoService._json_safe_snapshot(before_esteira),
+                after_snapshot=AssociadoService._json_safe_snapshot(after_esteira),
+            )
 
     @staticmethod
     def _variacao_percentual(atual: int, anterior: int) -> float:
@@ -142,6 +286,7 @@ class AssociadoService:
         contrato_data: dict,
         status: str,
         origem_operacional: str,
+        create_initial_cycle: bool = True,
     ) -> Contrato:
         data_aprovacao, data_primeira_mensalidade, mes_averbacao = (
             calculate_contract_dates(contrato_data.get("data_aprovacao"))
@@ -169,17 +314,18 @@ class AssociadoService:
             status=status,
             origem_operacional=origem_operacional,
         )
-        create_cycle_with_parcelas(
-            contrato=contrato,
-            numero=1,
-            competencia_inicial=data_primeira_mensalidade.replace(day=1),
-            parcelas_total=prazo_meses,
-            ciclo_status=Ciclo.Status.ABERTO,
-            parcela_status=Parcela.Status.EM_PREVISAO,
-            data_vencimento_fn=day_of_month,
-            valor_mensalidade=valor_mensalidade,
-            valor_total=contrato.valor_total_antecipacao,
-        )
+        if create_initial_cycle:
+            create_cycle_with_parcelas(
+                contrato=contrato,
+                numero=1,
+                competencia_inicial=data_primeira_mensalidade.replace(day=1),
+                parcelas_total=prazo_meses,
+                ciclo_status=Ciclo.Status.ABERTO,
+                parcela_status=Parcela.Status.EM_PREVISAO,
+                data_vencimento_fn=day_of_month,
+                valor_mensalidade=valor_mensalidade,
+                valor_total=contrato.valor_total_antecipacao,
+            )
         return contrato
 
     @staticmethod
@@ -306,10 +452,62 @@ class AssociadoService:
 
     @staticmethod
     @transaction.atomic
-    def inativar_associado(associado: Associado, user=None) -> Associado:
-        EsteiraService.normalizar_inativacao_associado(associado, user)
-        associado.status = Associado.Status.INATIVO
+    def inativar_associado(
+        associado: Associado,
+        user=None,
+        *,
+        status_destino: str | None = None,
+    ) -> Associado:
+        target_status = AssociadoService.INACTIVATION_STATUS_TARGETS.get(
+            str(status_destino or "inativo").strip()
+        )
+        if target_status is None:
+            raise ValidationError(
+                {
+                    "status_destino": [
+                        "Escolha inativo, inativo_inadimplente ou inativo_passivel_renovacao."
+                    ]
+                }
+            )
+        label = {
+            Associado.Status.INATIVO: "inativo",
+            Associado.Status.INADIMPLENTE: "inativo inadimplente",
+            Associado.Status.APTO_A_RENOVAR: "inativo passível de renovação",
+        }[target_status]
+        previous_status = associado.status
+        before_associado = AssociadoService._serialize_associado_inactivation_snapshot(
+            associado
+        )
+        before_esteira = AssociadoService._serialize_esteira_inactivation_snapshot(
+            associado
+        )
+        motivo = (
+            f"Associado inativado como {label}; fila operacional residual finalizada."
+        )
+        EsteiraService.normalizar_inativacao_associado(
+            associado,
+            user,
+            observacao=motivo,
+        )
+        associado.status = target_status
         associado.save(update_fields=["status", "updated_at"])
+        after_associado = AssociadoService._serialize_associado_inactivation_snapshot(
+            associado
+        )
+        after_esteira = AssociadoService._serialize_esteira_inactivation_snapshot(
+            associado
+        )
+        AssociadoService._record_inactivation_event(
+            associado=associado,
+            user=user,
+            previous_status=previous_status,
+            target_status=target_status,
+            motivo=motivo,
+            before_associado=before_associado,
+            before_esteira=before_esteira,
+            after_associado=after_associado,
+            after_esteira=after_esteira,
+        )
         return associado
 
     @staticmethod
@@ -349,6 +547,7 @@ class AssociadoService:
             contrato_data=contrato_data,
             status=Contrato.Status.EM_ANALISE,
             origem_operacional=Contrato.OrigemOperacional.REATIVACAO,
+            create_initial_cycle=False,
         )
         EsteiraService.enviar_reativacao_para_analise(
             associado,
@@ -413,8 +612,89 @@ class AssociadoService:
         return queryset
 
     @staticmethod
-    def contar_ciclos_logicos(associado: Associado) -> dict[str, int]:
+    def get_detail_visible_contracts_for_associado(associado: Associado) -> list[Contrato]:
         contratos = get_operational_contracts_for_associado(associado)
+        if contratos or associado.status != Associado.Status.INATIVO:
+            return contratos
+
+        cached = getattr(associado, "_prefetched_objects_cache", {}).get("contratos")
+        historicos: list[Contrato] = []
+        if cached is not None:
+            historicos = [
+                contrato
+                for contrato in cached
+                if contrato.deleted_at is None and contrato.contrato_canonico_id is None
+            ]
+        if cached is None or not historicos:
+            historicos = list(
+                Contrato.objects.filter(
+                    associado=associado,
+                    deleted_at__isnull=True,
+                    contrato_canonico__isnull=True,
+                )
+                .select_related("agente")
+                .prefetch_related("ciclos__parcelas")
+                .order_by("-created_at", "-id")
+            )
+        return sorted(
+            historicos,
+            key=lambda contrato: (contrato.created_at, contrato.id),
+            reverse=True,
+        )
+
+    @staticmethod
+    def resolve_report_like_contract_for_associado(associado: Associado) -> Contrato | None:
+        contrato = resolve_operational_contract_for_associado(associado)
+        if contrato is not None:
+            return contrato
+
+        cached_contracts = getattr(associado, "_prefetched_objects_cache", {}).get("contratos")
+        if cached_contracts is not None:
+            contratos = list(cached_contracts)
+        else:
+            contratos = []
+        if cached_contracts is None or not contratos:
+            contratos = list(
+                associado.contratos.select_related("agente")
+                .prefetch_related("ciclos__parcelas")
+                .order_by("-created_at", "-id")
+            )
+
+        contratos_visiveis = [
+            item
+            for item in contratos
+            if item.deleted_at is None and not is_shadow_duplicate_contract(item)
+        ]
+        if not contratos_visiveis:
+            return None
+        return max(contratos_visiveis, key=lambda item: (item.created_at, item.id))
+
+    @staticmethod
+    def count_paid_parcelas_for_contract(contrato: Contrato) -> int:
+        paid_statuses = {Parcela.Status.DESCONTADO, Parcela.Status.LIQUIDADA}
+        prefetched_cycles = getattr(contrato, "_prefetched_objects_cache", {}).get("ciclos")
+        if prefetched_cycles is not None:
+            total = 0
+            for ciclo in prefetched_cycles:
+                prefetched_parcelas = getattr(ciclo, "_prefetched_objects_cache", {}).get(
+                    "parcelas"
+                )
+                if prefetched_parcelas is None:
+                    break
+                total += sum(
+                    1 for parcela in prefetched_parcelas if parcela.status in paid_statuses
+                )
+            else:
+                return total
+
+        return Parcela.objects.filter(
+            ciclo__contrato=contrato,
+            status__in=paid_statuses,
+        ).count()
+
+    @staticmethod
+    def contar_ciclos_logicos(associado: Associado) -> dict[str, int]:
+        contratos = AssociadoService.get_detail_visible_contracts_for_associado(associado)
         logical_cycles = []
         for contrato in contratos:
             logical_cycles.extend(build_contract_cycle_projection(contrato)["cycles"])
@@ -444,7 +724,7 @@ class AssociadoService:
 
     @staticmethod
     def associado_eh_renovado(associado: Associado) -> bool:
-        contratos = get_operational_contracts_for_associado(associado)
+        contratos = AssociadoService.get_detail_visible_contracts_for_associado(associado)
         for contrato in contratos:
             projection = build_contract_cycle_projection(contrato)
             if projection.get("refinanciamento_id"):

@@ -284,7 +284,7 @@ function hasRenewalPaymentProofs(row: RefinanciamentoItem) {
 }
 
 export default function TesourariaRefinanciamentosPage() {
-  const currentYear = React.useMemo(() => String(new Date().getFullYear()), []);
+  const currentYearRange = React.useMemo(() => getCurrentYearRange(), []);
   const { hasAnyRole } = usePermissions();
   const canMutate = hasAnyRole(["ADMIN", "TESOUREIRO"]);
   const canManageTermo = hasAnyRole(["ADMIN", "COORDENADOR", "TESOUREIRO"]);
@@ -318,12 +318,14 @@ export default function TesourariaRefinanciamentosPage() {
     [agentesQuery.data],
   );
   const [filtersOpen, setFiltersOpen] = React.useState(false);
-  const [dataInicio, setDataInicio] = React.useState<Date | undefined>(() => getCurrentYearRange().start);
-  const [dataFim, setDataFim] = React.useState<Date | undefined>(() => getCurrentYearRange().end);
+  const [rangeScope, setRangeScope] = React.useState<"total" | "year" | "custom">("total");
+  const [dataInicio, setDataInicio] = React.useState<Date | undefined>(undefined);
+  const [dataFim, setDataFim] = React.useState<Date | undefined>(undefined);
   const [cycleMonths, setCycleMonths] = React.useState<string[]>([]);
   const [numeroCiclos, setNumeroCiclos] = React.useState("");
-  const [draftDataInicio, setDraftDataInicio] = React.useState<Date | undefined>(() => getCurrentYearRange().start);
-  const [draftDataFim, setDraftDataFim] = React.useState<Date | undefined>(() => getCurrentYearRange().end);
+  const [draftRangeScope, setDraftRangeScope] = React.useState<"total" | "year" | "custom">("total");
+  const [draftDataInicio, setDraftDataInicio] = React.useState<Date | undefined>(undefined);
+  const [draftDataFim, setDraftDataFim] = React.useState<Date | undefined>(undefined);
   const [draftCycleMonths, setDraftCycleMonths] = React.useState<string[]>([]);
   const [draftCycleMonthPicker, setDraftCycleMonthPicker] = React.useState<Date>();
   const [draftNumeroCiclos, setDraftNumeroCiclos] = React.useState("");
@@ -358,7 +360,6 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
-          year: currentYear,
           cycle_key: cycleKey || undefined,
           numero_ciclos: numeroCiclos || undefined,
           status: PENDING_STATUS,
@@ -385,7 +386,6 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
-          year: currentYear,
           cycle_key: cycleKey || undefined,
           numero_ciclos: numeroCiclos || undefined,
           status: EFETIVADO_STATUS,
@@ -412,7 +412,6 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
-          year: currentYear,
           cycle_key: cycleKey || undefined,
           numero_ciclos: numeroCiclos || undefined,
           status: CANCELADO_STATUS,
@@ -435,7 +434,6 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
-          year: currentYear,
           cycle_key: cycleKey || undefined,
           numero_ciclos: numeroCiclos || undefined,
         },
@@ -625,7 +623,6 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
-          year: currentYear,
           cycle_key: cycleKey || undefined,
           numero_ciclos: numeroCiclos || undefined,
           status: kpiModal?.statuses,
@@ -642,8 +639,10 @@ export default function TesourariaRefinanciamentosPage() {
   const canceladasTotal =
     (resumo?.bloqueados ?? 0) + (resumo?.revertidos ?? 0) + (resumo?.desativados ?? 0);
   const activeFiltersCount =
-    Number(Boolean(dataInicio)) +
-    Number(Boolean(dataFim)) +
+    Number(rangeScope !== "total") +
+    (rangeScope === "custom"
+      ? Number(Boolean(dataInicio)) + Number(Boolean(dataFim))
+      : 0) +
     Number(cycleMonths.length > 0) +
     Number(Boolean(numeroCiclos.trim()));
 
@@ -1126,7 +1125,6 @@ export default function TesourariaRefinanciamentosPage() {
           search: search || undefined,
           data_inicio: toIsoDate(dataInicio),
           data_fim: toIsoDate(dataFim),
-          year: currentYear,
           agente: exportAgente || undefined,
           cycle_key: cycleKey || undefined,
           numero_ciclos: numeroCiclos || undefined,
@@ -1202,7 +1200,7 @@ export default function TesourariaRefinanciamentosPage() {
         setIsExporting(false);
       }
     },
-    [currentYear, cycleKey, dataFim, dataInicio, numeroCiclos, search],
+    [cycleKey, dataFim, dataInicio, numeroCiclos, search],
   );
 
   return (
@@ -1254,7 +1252,7 @@ export default function TesourariaRefinanciamentosPage() {
         />
         <StatsCard
           title="Efetivadas"
-          value={String(resumo?.efetivados ?? efetivadasQuery.data?.count ?? 0)}
+          value={String(efetivadasQuery.data?.count ?? resumo?.efetivados ?? 0)}
           delta="Contratos concluídos pela tesouraria · clique para detalhar"
           icon={CheckCircle2Icon}
           tone="positive"
@@ -1293,17 +1291,44 @@ export default function TesourariaRefinanciamentosPage() {
       </section>
 
       <section className="grid gap-4 rounded-[1.75rem] border border-border/60 bg-card/70 p-5 lg:grid-cols-[minmax(0,1fr)_auto]">
-        <Input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Buscar por associado, CPF, matrícula ou contrato..."
-          className="h-11 rounded-2xl border-border/60 bg-background/60"
-        />
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={rangeScope === "total" ? "default" : "outline"}
+              className="h-10 rounded-2xl"
+              onClick={() => {
+                setRangeScope("total");
+                setDataInicio(undefined);
+                setDataFim(undefined);
+              }}
+            >
+              Total
+            </Button>
+            <Button
+              variant={rangeScope === "year" ? "default" : "outline"}
+              className="h-10 rounded-2xl"
+              onClick={() => {
+                setRangeScope("year");
+                setDataInicio(currentYearRange.start);
+                setDataFim(currentYearRange.end);
+              }}
+            >
+              Ano atual
+            </Button>
+          </div>
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar por associado, CPF, matrícula ou contrato..."
+            className="h-11 rounded-2xl border-border/60 bg-background/60"
+          />
+        </div>
         <div className="flex justify-end">
           <Sheet
             open={filtersOpen}
             onOpenChange={(open) => {
               if (open) {
+                setDraftRangeScope(rangeScope);
                 setDraftDataInicio(dataInicio);
                 setDraftDataFim(dataFim);
                 setDraftCycleMonths(cycleMonths);
@@ -1333,6 +1358,35 @@ export default function TesourariaRefinanciamentosPage() {
               </SheetHeader>
 
               <div className="space-y-5 overflow-y-auto px-4 pb-4">
+                <div className="space-y-2">
+                  <Label>Recorte rápido</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={draftRangeScope === "total" ? "default" : "outline"}
+                      className="flex-1 rounded-xl"
+                      onClick={() => {
+                        setDraftRangeScope("total");
+                        setDraftDataInicio(undefined);
+                        setDraftDataFim(undefined);
+                      }}
+                    >
+                      Total
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={draftRangeScope === "year" ? "default" : "outline"}
+                      className="flex-1 rounded-xl"
+                      onClick={() => {
+                        setDraftRangeScope("year");
+                        setDraftDataInicio(currentYearRange.start);
+                        setDraftDataFim(currentYearRange.end);
+                      }}
+                    >
+                      Ano atual
+                    </Button>
+                  </div>
+                </div>
                 <div className="space-y-2">
                   <Label>Ciclo</Label>
                   <div className="space-y-3 rounded-2xl border border-border/60 bg-background/40 p-3">
@@ -1401,11 +1455,23 @@ export default function TesourariaRefinanciamentosPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Data inicial</Label>
-                  <DatePicker value={draftDataInicio} onChange={setDraftDataInicio} />
+                  <DatePicker
+                    value={draftDataInicio}
+                    onChange={(value) => {
+                      setDraftRangeScope("custom");
+                      setDraftDataInicio(value);
+                    }}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label>Data final</Label>
-                  <DatePicker value={draftDataFim} onChange={setDraftDataFim} />
+                  <DatePicker
+                    value={draftDataFim}
+                    onChange={(value) => {
+                      setDraftRangeScope("custom");
+                      setDraftDataFim(value);
+                    }}
+                  />
                 </div>
               </div>
 
@@ -1413,11 +1479,13 @@ export default function TesourariaRefinanciamentosPage() {
                 <Button
                   variant="outline"
                   onClick={() => {
+                    setDraftRangeScope("total");
                     setDraftDataInicio(undefined);
                     setDraftDataFim(undefined);
                     setDraftCycleMonths([]);
                     setDraftCycleMonthPicker(undefined);
                     setDraftNumeroCiclos("");
+                    setRangeScope("total");
                     setDataInicio(undefined);
                     setDataFim(undefined);
                     setCycleMonths([]);
@@ -1429,6 +1497,7 @@ export default function TesourariaRefinanciamentosPage() {
                 </Button>
                 <Button
                   onClick={() => {
+                    setRangeScope(draftRangeScope);
                     setDataInicio(draftDataInicio);
                     setDataFim(draftDataFim);
                     setCycleMonths(normalizeCycleMonths(draftCycleMonths));

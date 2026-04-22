@@ -27,7 +27,8 @@ class EsteiraService:
         ],
         ("coordenacao", "aguardando"): ["assumir"],
         ("coordenacao", "em_andamento"): ["aprovar", "pendenciar", "rejeitar"],
-        ("tesouraria", "aguardando"): ["efetivar"],
+        ("tesouraria", "aguardando"): ["efetivar", "pendenciar"],
+        ("tesouraria", "pendenciado"): ["efetivar", "pendenciar"],
     }
 
     @staticmethod
@@ -169,6 +170,55 @@ class EsteiraService:
             target_status,
             observacao,
         )
+
+    @staticmethod
+    @transaction.atomic
+    def remover_fila_operacional(
+        esteira_item: EsteiraItem,
+        user=None,
+        *,
+        observacao: str = "Linha operacional removida manualmente com histórico preservado.",
+    ) -> None:
+        de_etapa = esteira_item.etapa_atual
+        de_situacao = esteira_item.status
+        now = timezone.now()
+        if user is not None:
+            EsteiraService._cancelar_pendencias_abertas(esteira_item, user)
+        esteira_item.etapa_atual = EsteiraItem.Etapa.CONCLUIDO
+        esteira_item.status = EsteiraItem.Situacao.REJEITADO
+        esteira_item.concluido_em = now
+        esteira_item.observacao = observacao
+        esteira_item.assumido_em = None
+        esteira_item.heartbeat_at = None
+        esteira_item.analista_responsavel = None
+        esteira_item.coordenador_responsavel = None
+        esteira_item.tesoureiro_responsavel = None
+        esteira_item.save(
+            update_fields=[
+                "etapa_atual",
+                "status",
+                "concluido_em",
+                "observacao",
+                "assumido_em",
+                "heartbeat_at",
+                "analista_responsavel",
+                "coordenador_responsavel",
+                "tesoureiro_responsavel",
+                "updated_at",
+            ]
+        )
+        if user is not None:
+            EsteiraService._registrar_transicao(
+                esteira_item,
+                user,
+                "remover_fila_operacional",
+                de_etapa,
+                EsteiraItem.Etapa.CONCLUIDO,
+                de_situacao,
+                EsteiraItem.Situacao.REJEITADO,
+                observacao,
+            )
+        esteira_item.soft_delete()
 
     @staticmethod
     def _pending_reactivation_contract(esteira_item: EsteiraItem) -> Contrato | None:
@@ -583,6 +633,7 @@ class EsteiraService:
 
         de_etapa = esteira_item.etapa_atual
         de_situacao = esteira_item.status
+        retornado_para_agente = esteira_item.etapa_atual == EsteiraItem.Etapa.ANALISE
 
         destino = (
             EsteiraItem.Etapa.CADASTRO
@@ -594,10 +645,16 @@ class EsteiraService:
             esteira_item=esteira_item,
             tipo=tipo_pendencia,
             descricao=descricao,
+            retornado_para_agente=retornado_para_agente,
         )
         esteira_item.etapa_atual = destino
         esteira_item.status = EsteiraItem.Situacao.PENDENCIADO
         esteira_item.observacao = descricao
+        if de_etapa == EsteiraItem.Etapa.TESOURARIA:
+            esteira_item.analista_responsavel = None
+            esteira_item.tesoureiro_responsavel = None
+            esteira_item.assumido_em = None
+            esteira_item.heartbeat_at = None
         esteira_item.save()
 
         associado = esteira_item.associado

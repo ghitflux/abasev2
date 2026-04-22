@@ -608,14 +608,16 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
 
         refinanciamento = Refinanciamento.objects.get(pk=refinanciamento_id)
-        termo = refinanciamento.comprovantes.get(
+        termos = refinanciamento.comprovantes.filter(
             tipo=Comprovante.Tipo.TERMO_ANTECIPACAO,
             deleted_at__isnull=True,
         )
+        termo = termos.order_by("-created_at", "-id").first()
         self.assertEqual(
             refinanciamento.status,
             Refinanciamento.Status.APROVADO_PARA_RENOVACAO,
         )
+        self.assertEqual(termos.count(), 2)
         self.assertEqual(termo.nome_original, "termo-ajustado.pdf")
         self.assertEqual(termo.origem, Comprovante.Origem.TESOURARIA_RENOVACAO)
         self.assertEqual(termo.enviado_por, self.coordenador)
@@ -755,8 +757,8 @@ class RefinanciamentoPagamentosTestCase(TestCase):
 
         self.assertEqual(response.status_code, 200, response.json())
         refinanciamento.refresh_from_db()
-        self.assertEqual(refinanciamento.status, Refinanciamento.Status.BLOQUEADO)
-        self.assertEqual(refinanciamento.motivo_bloqueio, "Linha operacional incorreta")
+        self.assertIsNotNone(refinanciamento.deleted_at)
+        self.assertEqual(refinanciamento.observacao, "Linha operacional incorreta")
 
     def test_tesouraria_lista_filtra_por_ciclo_e_numero_ciclos(self):
         contrato_primeiro = self._create_contrato("62345678945")
@@ -1556,6 +1558,34 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         response = self.tes_client.get(
             "/api/v1/tesouraria/refinanciamentos/",
             {"status": "efetivado"},
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+
+        ids = [item["id"] for item in response.json()["results"]]
+        self.assertIn(refinanciamento.id, ids)
+
+        resumo = self.tes_client.get("/api/v1/tesouraria/refinanciamentos/resumo/")
+        self.assertEqual(resumo.status_code, 200, resumo.json())
+        self.assertEqual(resumo.json()["efetivados"], 1)
+
+    def test_tesouraria_filtra_efetivados_pelo_ano_operacional(self):
+        contrato = self._create_contrato("72345678934")
+        refinanciamento = Refinanciamento.objects.create(
+            associado=contrato.associado,
+            contrato_origem=contrato,
+            solicitado_por=self.agente,
+            competencia_solicitada=date(2025, 12, 1),
+            status=Refinanciamento.Status.EFETIVADO,
+            valor_refinanciamento=Decimal("945.00"),
+            repasse_agente=Decimal("94.50"),
+            cycle_key="2025-10|2025-11|2025-12",
+            executado_em=timezone.make_aware(datetime(2026, 1, 5, 9, 0)),
+            data_ativacao_ciclo=timezone.make_aware(datetime(2026, 1, 5, 9, 0)),
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/tesouraria/refinanciamentos/",
+            {"status": "efetivado", "year": "2026"},
         )
         self.assertEqual(response.status_code, 200, response.json())
 

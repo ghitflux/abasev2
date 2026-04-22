@@ -130,6 +130,7 @@ class TesourariaContratoListSerializer(serializers.Serializer):
     cancelamento_tipo = serializers.CharField(read_only=True)
     cancelamento_motivo = serializers.CharField(read_only=True)
     cancelado_em = serializers.DateTimeField(read_only=True)
+    reactivation_cycle_preview = serializers.SerializerMethodField()
 
     def get_status(self, obj) -> str:
         esteira = getattr(obj.associado, "esteira_item", None)
@@ -144,6 +145,11 @@ class TesourariaContratoListSerializer(serializers.Serializer):
         if esteira and esteira.status == "pendenciado":
             return "congelado"
         return "pendente"
+
+    def get_reactivation_cycle_preview(self, obj) -> dict[str, object] | None:
+        from apps.tesouraria.services import TesourariaService
+
+        return TesourariaService.build_reactivation_cycle_preview(obj)
 
     def get_matricula(self, obj) -> str:
         associado = obj.associado
@@ -252,6 +258,11 @@ class TesourariaContratoListSerializer(serializers.Serializer):
 class EfetivarContratoSerializer(serializers.Serializer):
     comprovante_associado = serializers.FileField(required=False, allow_null=True)
     comprovante_agente = serializers.FileField(required=False, allow_null=True)
+    competencias_ciclo = serializers.ListField(
+        child=serializers.DateField(),
+        required=False,
+        allow_empty=True,
+    )
 
 
 class SubstituirComprovanteSerializer(serializers.Serializer):
@@ -276,6 +287,11 @@ class CancelarContratoSerializer(serializers.Serializer):
         ]
     )
     motivo = serializers.CharField()
+
+
+class PendenciarContratoSerializer(serializers.Serializer):
+    tipo = serializers.CharField(required=False, allow_blank=True, default="tesouraria")
+    descricao = serializers.CharField()
 
 
 class ConfirmacaoListSerializer(serializers.Serializer):

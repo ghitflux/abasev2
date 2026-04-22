@@ -151,6 +151,11 @@ class AssociadoViewSet(ModelViewSet):
                     permissions.IsAuthenticated(),
                     IsAgenteOrAnalistaOrCoordenadorOrAdmin(),
                 ]
+            if self.action == "documentos":
+                return [
+                    permissions.IsAuthenticated(),
+                    IsAgenteOrAnalistaOrCoordenadorOrAdmin(),
+                ]
             return [permissions.IsAuthenticated(), IsAgenteOrAdmin()]
         if self.action == "list":
             return [permissions.IsAuthenticated(), IsCoordenadorOrAdmin()]
@@ -172,7 +177,11 @@ class AssociadoViewSet(ModelViewSet):
 
     @action(detail=True, methods=["post"])
     def inativar(self, request, pk=None):
-        associado = AssociadoService.inativar_associado(self.get_object(), request.user)
+        associado = AssociadoService.inativar_associado(
+            self.get_object(),
+            request.user,
+            status_destino=request.data.get("status_destino"),
+        )
         serializer = AssociadoDetailSerializer(
             associado,
             context=self.get_serializer_context(),

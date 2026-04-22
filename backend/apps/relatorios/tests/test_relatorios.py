@@ -127,6 +127,7 @@ class RelatoriosViewSetTestCase(TestCase):
             nome_completo="Joao Exportacao",
             cpf_cnpj="22345678901",
             status=Associado.Status.ATIVO,
+            data_nascimento=date(1985, 5, 20),
             agente_responsavel=self.agente,
         )
 
@@ -145,6 +146,7 @@ class RelatoriosViewSetTestCase(TestCase):
         content = b"".join(download_response.streaming_content)
         exported = json.loads(content.decode("utf-8"))
         self.assertEqual(exported[0]["nome_completo"], "Joao Exportacao")
+        self.assertEqual(exported[0]["data_nascimento"], "1985-05-20")
 
     def test_exportar_gera_json_para_todos_os_tipos(self):
         self._seed_operational_data()
@@ -180,6 +182,7 @@ class RelatoriosViewSetTestCase(TestCase):
             nome_completo="Associado Um Pagamento",
             cpf_cnpj="22345678902",
             status=Associado.Status.ATIVO,
+            data_nascimento=date(1990, 8, 15),
             agente_responsavel=self.agente,
         )
         contrato = Contrato.objects.create(
@@ -223,6 +226,7 @@ class RelatoriosViewSetTestCase(TestCase):
         exported = json.loads(content.decode("utf-8"))
         self.assertGreaterEqual(len(exported), 1)
         self.assertEqual(exported[0]["parcelas_pagas"], 1)
+        self.assertEqual(exported[0]["data_nascimento"], "1990-08-15")
 
     def test_exportar_relatorio_de_associados_pagadores_respeita_periodo_agente_e_faixa(self):
         hoje = date.today()
@@ -611,6 +615,10 @@ class RelatoriosViewSetTestCase(TestCase):
                 "agente",
                 "auxilio_comissao",
                 "data_solicitacao",
+                "data_anexo_associado",
+                "data_anexo_agente",
+                "data_pagamento_associado",
+                "data_pagamento_agente",
                 "status",
             ],
         )
@@ -630,6 +638,16 @@ class RelatoriosViewSetTestCase(TestCase):
                 "agente",
                 "criado_em",
             ],
+        )
+
+    def test_definicao_relatorio_pagadores_inclui_data_nascimento(self):
+        definition = RelatorioService._definition_for_route(
+            "/relatorios/associados-ativos-com-1-parcela-paga"
+        )
+
+        self.assertIn(
+            "data_nascimento",
+            [column.key for column in definition.columns],
         )
 
     def test_summary_for_route_inclui_totais_customizados(self):

@@ -76,17 +76,25 @@ def renewal_materialization_annotations() -> dict[str, object]:
     associado_payment_proof = comprovantes.filter(
         papel=Comprovante.Papel.ASSOCIADO,
         tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_ASSOCIADO,
-    )
+    ).order_by("-data_pagamento", "-updated_at", "-created_at", "-id")
     agente_payment_proof = comprovantes.filter(
         papel=Comprovante.Papel.AGENTE,
         tipo=Comprovante.Tipo.COMPROVANTE_PAGAMENTO_AGENTE,
-    )
+    ).order_by("-data_pagamento", "-updated_at", "-created_at", "-id")
     return {
         "has_linked_renewal_payment": Exists(linked_payment),
         "has_associado_payment_proof": Exists(associado_payment_proof),
         "has_agente_payment_proof": Exists(agente_payment_proof),
         "linked_payment_paid_at": Subquery(
             linked_payment.values("paid_at")[:1],
+            output_field=DateTimeField(),
+        ),
+        "associado_payment_proof_paid_at": Subquery(
+            associado_payment_proof.values("data_pagamento")[:1],
+            output_field=DateTimeField(),
+        ),
+        "agente_payment_proof_paid_at": Subquery(
+            agente_payment_proof.values("data_pagamento")[:1],
             output_field=DateTimeField(),
         ),
     }
@@ -225,10 +233,6 @@ class RefinanciamentoService:
         user,
         data_pagamento: datetime,
     ) -> Comprovante:
-        comprovante = RefinanciamentoService._latest_payment_comprovante(
-            refinanciamento,
-            papel,
-        )
         contrato = refinanciamento.contrato_origem
         payload = {
             "refinanciamento": refinanciamento,
@@ -246,30 +250,7 @@ class RefinanciamentoService:
             "data_pagamento": data_pagamento,
             "agente_snapshot": contrato.agente.full_name if contrato and contrato.agente else "",
         }
-        if comprovante is None:
-            return Comprovante.objects.create(**payload)
-
-        for field, value in payload.items():
-            setattr(comprovante, field, value)
-        comprovante.save(
-            update_fields=[
-                "contrato",
-                "ciclo",
-                "tipo",
-                "papel",
-                "origem",
-                "arquivo",
-                "nome_original",
-                "mime",
-                "size_bytes",
-                "arquivo_referencia_path",
-                "enviado_por",
-                "data_pagamento",
-                "agente_snapshot",
-                "updated_at",
-            ]
-        )
-        return comprovante
+        return Comprovante.objects.create(**payload)
 
     @staticmethod
     def _upsert_termo_comprovante(
@@ -278,7 +259,6 @@ class RefinanciamentoService:
         arquivo,
         user,
     ) -> Comprovante:
-        comprovante = RefinanciamentoService._latest_termo_comprovante(refinanciamento)
         contrato = refinanciamento.contrato_origem
         payload = {
             "refinanciamento": refinanciamento,
@@ -296,30 +276,7 @@ class RefinanciamentoService:
             "data_pagamento": None,
             "agente_snapshot": contrato.agente.full_name if contrato and contrato.agente else "",
         }
-        if comprovante is None:
-            return Comprovante.objects.create(**payload)
-
-        for field, value in payload.items():
-            setattr(comprovante, field, value)
-        comprovante.save(
-            update_fields=[
-                "contrato",
-                "ciclo",
-                "tipo",
-                "papel",
-                "origem",
-                "arquivo",
-                "nome_original",
-                "mime",
-                "size_bytes",
-                "arquivo_referencia_path",
-                "enviado_por",
-                "data_pagamento",
-                "agente_snapshot",
-                "updated_at",
-            ]
-        )
-        return comprovante
+        return Comprovante.objects.create(**payload)
 
     @staticmethod
     def _get_renewal_payment(refinanciamento: Refinanciamento) -> Pagamento | None:

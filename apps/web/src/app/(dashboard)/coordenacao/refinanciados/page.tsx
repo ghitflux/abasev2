@@ -103,7 +103,7 @@ const ELIGIBILITY_OPTIONS: SelectOption[] = [
 ];
 
 const INITIAL_FILTERS: CoordAdvancedFilters = {
-  year: String(new Date().getFullYear()),
+  year: "",
   competenciaStart: "",
   competenciaEnd: "",
   agent: "",
@@ -114,7 +114,6 @@ const INITIAL_FILTERS: CoordAdvancedFilters = {
 
 function countActiveFilters(filters: CoordAdvancedFilters) {
   return [
-    filters.year && filters.year !== INITIAL_FILTERS.year ? filters.year : "",
     filters.competenciaStart,
     filters.competenciaEnd,
     filters.agent,
@@ -240,6 +239,7 @@ function SectionTable({
 
 export default function CoordenacaoRefinanciadosPage() {
   const queryClient = useQueryClient();
+  const currentYear = React.useMemo(() => String(new Date().getFullYear()), []);
   const [search, setSearch] = React.useState("");
   const [isExporting, setIsExporting] = React.useState(false);
   const [sheetOpen, setSheetOpen] = React.useState(false);
@@ -247,6 +247,7 @@ export default function CoordenacaoRefinanciadosPage() {
   const [draftFilters, setDraftFilters] = React.useState<CoordAdvancedFilters>(
     INITIAL_FILTERS,
   );
+  const [scope, setScope] = React.useState<"total" | "year">("total");
   const [renovadosPage, setRenovadosPage] = React.useState(1);
   const [processoPage, setProcessoPage] = React.useState(1);
   const [liquidacaoPage, setLiquidacaoPage] = React.useState(1);
@@ -255,7 +256,7 @@ export default function CoordenacaoRefinanciadosPage() {
     null,
   );
 
-  const activeAdvancedFiltersCount = countActiveFilters(filters);
+  const activeAdvancedFiltersCount = countActiveFilters(filters) + Number(scope === "year");
   const renovadosStatuses = React.useMemo(
     () => resolveSectionStatuses(filters.statuses, RENEWED_STATUS_SET),
     [filters.statuses],
@@ -275,7 +276,6 @@ export default function CoordenacaoRefinanciadosPage() {
     setLiquidacaoPage(1);
   }, [
     search,
-    filters.year,
     filters.competenciaStart,
     filters.competenciaEnd,
     filters.agent,
@@ -289,7 +289,7 @@ export default function CoordenacaoRefinanciadosPage() {
       page,
       page_size: 20,
       search: search || undefined,
-      year: filters.year || undefined,
+      year: scope === "year" ? currentYear : undefined,
       competencia_start: toCompetenciaDate(filters.competenciaStart),
       competencia_end: toCompetenciaDate(filters.competenciaEnd),
       agent: filters.agent || undefined,
@@ -299,12 +299,13 @@ export default function CoordenacaoRefinanciadosPage() {
     }),
     [
       search,
-      filters.year,
       filters.competenciaStart,
       filters.competenciaEnd,
       filters.agent,
       filters.origins,
       filters.eligibilityBand,
+      scope,
+      currentYear,
     ],
   );
 
@@ -314,13 +315,14 @@ export default function CoordenacaoRefinanciadosPage() {
       "renovados",
       renovadosPage,
       search,
-      filters.year,
       filters.competenciaStart,
       filters.competenciaEnd,
       filters.agent,
       filters.statuses.join(","),
       filters.origins.join(","),
       filters.eligibilityBand,
+      scope,
+      currentYear,
     ],
     queryFn: () =>
       apiFetch<PaginatedResponse<RefinanciamentoItem>>("coordenacao/refinanciados", {
@@ -334,13 +336,14 @@ export default function CoordenacaoRefinanciadosPage() {
       "processo",
       processoPage,
       search,
-      filters.year,
       filters.competenciaStart,
       filters.competenciaEnd,
       filters.agent,
       filters.statuses.join(","),
       filters.origins.join(","),
       filters.eligibilityBand,
+      scope,
+      currentYear,
     ],
     queryFn: () =>
       apiFetch<PaginatedResponse<RefinanciamentoItem>>("coordenacao/refinanciados", {
@@ -354,13 +357,14 @@ export default function CoordenacaoRefinanciadosPage() {
       "liquidacao",
       liquidacaoPage,
       search,
-      filters.year,
       filters.competenciaStart,
       filters.competenciaEnd,
       filters.agent,
       filters.statuses.join(","),
       filters.origins.join(","),
       filters.eligibilityBand,
+      scope,
+      currentYear,
     ],
     queryFn: () =>
       apiFetch<PaginatedResponse<RefinanciamentoItem>>("coordenacao/refinanciados", {
@@ -632,12 +636,30 @@ export default function CoordenacaoRefinanciadosPage() {
       </section>
 
       <section className="grid gap-3 rounded-[1.75rem] border border-border/60 bg-card/50 p-4 lg:grid-cols-[minmax(0,1fr)_auto]">
-        <Input
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Buscar por associado, CPF, matrícula, contrato ou agente"
-          className="rounded-2xl border-border/60 bg-card/60"
-        />
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={scope === "total" ? "default" : "outline"}
+              className="rounded-2xl"
+              onClick={() => setScope("total")}
+            >
+              Total
+            </Button>
+            <Button
+              variant={scope === "year" ? "default" : "outline"}
+              className="rounded-2xl"
+              onClick={() => setScope("year")}
+            >
+              Ano atual
+            </Button>
+          </div>
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar por associado, CPF, matrícula, contrato ou agente"
+            className="rounded-2xl border-border/60 bg-card/60"
+          />
+        </div>
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
           <SheetTrigger asChild>
             <Button variant="outline" className="rounded-2xl">
@@ -659,17 +681,25 @@ export default function CoordenacaoRefinanciadosPage() {
                 <div className="space-y-6">
                   <div className="grid gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <p className="text-sm font-medium">Ano</p>
-                      <Input
-                        value={draftFilters.year}
-                        onChange={(event) =>
-                          setDraftFilters((current) => ({
-                            ...current,
-                            year: event.target.value,
-                          }))
-                        }
-                        placeholder="2026"
-                      />
+                      <p className="text-sm font-medium">Recorte rápido</p>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant={scope === "total" ? "default" : "outline"}
+                          className="flex-1 rounded-xl"
+                          onClick={() => setScope("total")}
+                        >
+                          Total
+                        </Button>
+                        <Button
+                          type="button"
+                          variant={scope === "year" ? "default" : "outline"}
+                          className="flex-1 rounded-xl"
+                          onClick={() => setScope("year")}
+                        >
+                          {currentYear}
+                        </Button>
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <p className="text-sm font-medium">Agente</p>

@@ -11,6 +11,7 @@ import {
   CreditCardIcon,
   FileTextIcon,
   LoaderCircleIcon,
+  RotateCcwIcon,
   MapPinIcon,
   SaveIcon,
   ShieldCheckIcon,
@@ -94,6 +95,19 @@ const ADMIN_EDITOR_SECTIONS = [
   "esteira",
   "historico-admin",
 ];
+const INACTIVATION_OPTIONS = [
+  {
+    value: "inativo_inadimplente",
+    label: "Inativo inadimplente",
+    description: "Use quando a inativação deve manter o associado na régua de inadimplência.",
+  },
+  {
+    value: "inativo_passivel_renovacao",
+    label: "Inativo passível de renovação",
+    description: "Use quando a inativação deve preservar o caso para tratamento de renovação.",
+  },
+] as const;
+type InactivationTarget = (typeof INACTIVATION_OPTIONS)[number]["value"];
 const SAFE_RENEWAL_STAGE_OPTIONS = [
   { value: "apto_a_renovar", label: "Apto a renovar" },
   { value: "em_analise_renovacao", label: "Em análise" },
@@ -265,6 +279,13 @@ function collectLocalCycleWarnings(
   );
 }
 
+function formatAdminStatusLabel(status?: string | null) {
+  if (!status) {
+    return "status anterior";
+  }
+  return status.replaceAll("_", " ");
+}
+
 function AssociadoPageContent({ params }: AssociadoPageProps) {
   const { id } = React.use(params);
   const associadoId = Number(id);
@@ -278,14 +299,29 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
     DEFAULT_OPEN_SECTIONS,
   );
   const [inativarDialogOpen, setInativarDialogOpen] = React.useState(false);
+  const [inactivationTarget, setInactivationTarget] =
+    React.useState<InactivationTarget>("inativo_inadimplente");
   const [reativarDialogOpen, setReativarDialogOpen] = React.useState(false);
   const [saveAllOpen, setSaveAllOpen] = React.useState(false);
+  const [revertInactivationOpen, setRevertInactivationOpen] =
+    React.useState(false);
   const [renewalStageDialogOpen, setRenewalStageDialogOpen] =
     React.useState(false);
   const [renewalStageSelections, setRenewalStageSelections] = React.useState<
     Record<number, string>
   >({});
   const [renewalStageTarget, setRenewalStageTarget] = React.useState<{
+    contratoId: number;
+    contratoCodigo: string;
+    targetStage: string;
+  } | null>(null);
+  const [pendingRenewalStageAfterSave, setPendingRenewalStageAfterSave] =
+    React.useState<{
+      contratoId: number;
+      contratoCodigo: string;
+      targetStage: string;
+    } | null>(null);
+  const pendingRenewalStageAfterSaveRef = React.useRef<{
     contratoId: number;
     contratoCodigo: string;
     targetStage: string;
@@ -316,6 +352,11 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
         : isTreasurer
           ? "/tesouraria"
           : "/agentes/meus-contratos";
+  const adminEditHref = canUseAdminEditor
+    ? `/associados-editar/${associadoId}${
+        adminMode || isCoordinator ? "?admin=1" : ""
+      }`
+    : null;
 
   const associadoQuery = useQuery({
     queryKey: ["associado", associadoId],
@@ -360,9 +401,12 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   }, [associadoId, queryClient]);
 
   const inativarAssociadoMutation = useMutation({
-    mutationFn: async () =>
+    mutationFn: async (statusDestino: InactivationTarget) =>
       apiFetch<AssociadoDetail>(`associados/${associadoId}/inativar`, {
         method: "POST",
+        body: {
+          status_destino: statusDestino,
+        },
       }),
     onSuccess: async (payload) => {
       toast.success("Associado inativado com sucesso.");
@@ -374,6 +418,39 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
     onError: (error) => {
       toast.error(
         error instanceof Error ? error.message : "Falha ao inativar associado.",
+      );
+    },
+  });
+
+  const revertInactivationMutation = useMutation({
+    mutationFn: async (motivo: string) => {
+      const eventId = adminEditorQuery.data?.inactivation_reversal?.event_id;
+      if (!eventId) {
+        throw new Error("Nenhuma inativação reversível foi encontrada.");
+      }
+      return apiFetch(`admin-overrides/events/${eventId}/reverter/`, {
+        method: "POST",
+        body: { motivo_reversao: motivo },
+      });
+    },
+    onSuccess: async () => {
+      toast.success("Inativação revertida com sucesso.");
+      setRevertInactivationOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["associado", associadoId] });
+      await queryClient.invalidateQueries({
+        queryKey: ["admin-associado-editor", associadoId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["admin-associado-history", associadoId],
+      });
+      await queryClient.invalidateQueries({ queryKey: ["associados"] });
+      await queryClient.invalidateQueries({ queryKey: ["contratos"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao reverter a inativação.",
       );
     },
   });
@@ -478,6 +555,39 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
     (Object.values(contractDirtyState).some(hasDirtyContractState) ||
       esteiraDirty);
 
+  const queueRenewalStageAfterSave = React.useCallback(
+    (
+      target: {
+        contratoId: number;
+        contratoCodigo: string;
+        targetStage: string;
+      } | null,
+    ) => {
+      pendingRenewalStageAfterSaveRef.current = target;
+      setPendingRenewalStageAfterSave(target);
+    },
+    [],
+  );
+
+  const requestRenewalStageTransition = React.useCallback(
+    (target: {
+      contratoId: number;
+      contratoCodigo: string;
+      targetStage: string;
+    }) => {
+      if (hasUnsavedAdminChanges) {
+        queueRenewalStageAfterSave(target);
+        setSaveAllOpen(true);
+        return;
+      }
+
+      queueRenewalStageAfterSave(null);
+      setRenewalStageTarget(target);
+      setRenewalStageDialogOpen(true);
+    },
+    [hasUnsavedAdminChanges, queueRenewalStageAfterSave],
+  );
+
   const adminEditorErrorMessage =
     adminEditorQuery.error instanceof Error
       ? adminEditorQuery.error.message
@@ -555,6 +665,13 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
       setEsteiraDirty(false);
       void queryClient.invalidateQueries({ queryKey: ["tesouraria-baixa-manual"] });
       invalidateAdminRelatedQueries();
+
+      const queuedTransition = pendingRenewalStageAfterSaveRef.current;
+      if (queuedTransition) {
+        queueRenewalStageAfterSave(null);
+        setRenewalStageTarget(queuedTransition);
+        setRenewalStageDialogOpen(true);
+      }
     },
     onError: (error) => {
       toast.error(
@@ -586,7 +703,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           },
         },
       ),
-    onSuccess: (payload) => {
+    onSuccess: (payload, variables) => {
       const previousWarnings = getCachedAdminWarnings();
       toast.success("Etapa de renovação atualizada.");
       const unseenWarnings = getUnseenAdminWarnings(
@@ -600,6 +717,15 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
         ["admin-associado-editor", associadoId],
         payload,
       );
+      setRenewalStageSelections((current) => {
+        if (!(variables.contratoId in current)) {
+          return current;
+        }
+        const next = { ...current };
+        delete next[variables.contratoId];
+        return next;
+      });
+      setRenewalStageTarget(null);
       invalidateAdminRelatedQueries();
     },
     onError: (error) => {
@@ -746,7 +872,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
               className="border-emerald-500/40 text-emerald-200"
               onClick={() => setReativarDialogOpen(true)}
             >
-              Reativar associado
+              Iniciar reativação
             </Button>
           ) : null}
           {(isAdmin || isCoordinator) && associado.status !== "inativo" ? (
@@ -758,15 +884,9 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
               Inativar associado
             </Button>
           ) : null}
-          {isAdmin ? (
+          {adminEditHref ? (
             <Button variant="outline" asChild>
-              <Link
-                href={
-                  adminMode
-                    ? `/associados-editar/${associado.id}?admin=1`
-                    : `/associados-editar/${associado.id}`
-                }
-              >
+              <Link href={adminEditHref}>
                 Editar cadastro
               </Link>
             </Button>
@@ -823,9 +943,28 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             ) : (
               <>
                 <p>
-                  Use <strong>Editar cadastro</strong> para dados cadastrais e
-                  os blocos abaixo para contrato, arquivos e esteira.
+                  O editor avançado pode ser usado para ajustar cadastro,
+                  contrato, ciclos, arquivos e esteira, inclusive quando o
+                  associado estiver inativo.
                 </p>
+                <div className="flex flex-wrap gap-3">
+                  {adminEditorQuery.data?.inactivation_reversal?.available ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setRevertInactivationOpen(true)}
+                    >
+                      <RotateCcwIcon className="mr-2 size-4" />
+                      Reverter inativação
+                    </Button>
+                  ) : null}
+                  {adminEditHref ? (
+                    <Button type="button" variant="outline" size="sm" asChild>
+                      <Link href={adminEditHref}>Editar cadastro</Link>
+                    </Button>
+                  ) : null}
+                </div>
                 {adminEditorQuery.data?.warnings?.length ? (
                   <p>
                     {adminEditorQuery.data.warnings.length} warning(s)
@@ -1106,17 +1245,15 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
                             variant="outline"
                             disabled={
                               saveAllMutation.isPending ||
-                              renewalStageMutation.isPending ||
-                              hasUnsavedAdminChanges
+                              renewalStageMutation.isPending
                             }
-                            onClick={() => {
-                              setRenewalStageTarget({
+                            onClick={() =>
+                              requestRenewalStageTransition({
                                 contratoId: contract.id,
                                 contratoCodigo: contract.codigo,
                                 targetStage: selectedStage,
-                              });
-                              setRenewalStageDialogOpen(true);
-                            }}
+                              })
+                            }
                           >
                             Enviar para etapa
                           </Button>
@@ -1126,7 +1263,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
                   </div>
                   {hasUnsavedAdminChanges ? (
                     <p className="mt-3 text-xs text-amber-200">
-                      Salve ou descarte as edições pendentes antes de usar a transição segura.
+                      Se houver alterações pendentes, elas serão salvas antes da transição segura.
                     </p>
                   ) : null}
                 </div>
@@ -1142,6 +1279,36 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
                       handleContractDirtyChange(contract.id, state)
                     }
                     onPayloadRefresh={handleAdminPayloadRefresh}
+                    renewalStageOptions={SAFE_RENEWAL_STAGE_OPTIONS}
+                    selectedRenewalStage={
+                      renewalStageSelections[contract.id] ??
+                      contract.refinanciamento_ativo?.status ??
+                      "apto_a_renovar"
+                    }
+                    onSelectedRenewalStageChange={(value) =>
+                      setRenewalStageSelections((current) => ({
+                        ...current,
+                        [contract.id]: value,
+                      }))
+                    }
+                    onRequestRenewalStageTransition={() =>
+                      requestRenewalStageTransition({
+                        contratoId: contract.id,
+                        contratoCodigo: contract.codigo,
+                        targetStage:
+                          renewalStageSelections[contract.id] ??
+                          contract.refinanciamento_ativo?.status ??
+                          "apto_a_renovar",
+                      })
+                    }
+                    renewalTransitionDisabled={
+                      saveAllMutation.isPending ||
+                      renewalStageMutation.isPending
+                    }
+                    renewalTransitionPending={
+                      renewalStageMutation.isPending &&
+                      renewalStageMutation.variables?.contratoId === contract.id
+                    }
                   />
                 ))}
               </div>
@@ -1365,7 +1532,12 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
       ) : null}
       <AdminOverrideConfirmDialog
         open={saveAllOpen}
-        onOpenChange={setSaveAllOpen}
+        onOpenChange={(open) => {
+          setSaveAllOpen(open);
+          if (!open && !saveAllMutation.isPending) {
+            queueRenewalStageAfterSave(null);
+          }
+        }}
         title="Salvar alterações do editor"
         description="Todas as alterações pendentes do editor avançado serão gravadas agora."
         summary={
@@ -1386,6 +1558,18 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
                 {esteiraDirty ? "Sim" : "Não"}
               </span>
             </p>
+            {pendingRenewalStageAfterSave ? (
+              <p>
+                Próxima ação:{" "}
+                <span className="font-medium text-foreground">
+                  salvar e abrir a transição para{" "}
+                  {SAFE_RENEWAL_STAGE_OPTIONS.find(
+                    (item) =>
+                      item.value === pendingRenewalStageAfterSave.targetStage,
+                  )?.label ?? pendingRenewalStageAfterSave.targetStage}
+                </span>
+              </p>
+            ) : null}
           </div>
         }
         submitLabel="Salvar tudo"
@@ -1452,16 +1636,45 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
         open={inativarDialogOpen}
         onOpenChange={(open) => {
           setInativarDialogOpen(open);
+          if (open) {
+            setInactivationTarget("inativo_inadimplente");
+          }
         }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Inativar associado</AlertDialogTitle>
             <AlertDialogDescription>
-              Esta ação marca o associado como inativo e o status passa a
-              aparecer nos filtros e indicadores operacionais.
+              Confirme como o associado deve ficar classificado após a
+              inativação. O associado, documentos e histórico serão mantidos.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="space-y-3">
+            <Select
+              value={inactivationTarget}
+              onValueChange={(value) =>
+                setInactivationTarget(value as InactivationTarget)
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {INACTIVATION_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-muted-foreground">
+              {
+                INACTIVATION_OPTIONS.find(
+                  (option) => option.value === inactivationTarget,
+                )?.description
+              }
+            </p>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={inativarAssociadoMutation.isPending}>
               Voltar
@@ -1469,7 +1682,7 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
             <AlertDialogAction
               onClick={(event) => {
                 event.preventDefault();
-                inativarAssociadoMutation.mutate();
+                inativarAssociadoMutation.mutate(inactivationTarget);
               }}
               disabled={inativarAssociadoMutation.isPending}
             >
@@ -1478,6 +1691,40 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <AdminOverrideConfirmDialog
+        open={revertInactivationOpen}
+        onOpenChange={setRevertInactivationOpen}
+        title="Reverter inativação"
+        description="A reversão restaura o status anterior da inativação sem abrir um novo fluxo de reativação."
+        summary={
+          adminEditorQuery.data?.inactivation_reversal?.available ? (
+            <div className="space-y-2">
+              <p className="font-medium text-foreground">
+                O associado voltará para{" "}
+                {formatAdminStatusLabel(
+                  adminEditorQuery.data.inactivation_reversal.previous_status,
+                )}
+                .
+              </p>
+              <p>
+                Inativação registrada em{" "}
+                {formatDate(
+                  adminEditorQuery.data.inactivation_reversal.event_created_at,
+                )}
+                {adminEditorQuery.data.inactivation_reversal.realizado_por
+                  ? ` por ${adminEditorQuery.data.inactivation_reversal.realizado_por.full_name}`
+                  : ""}
+                .
+              </p>
+            </div>
+          ) : null
+        }
+        submitLabel="Reverter inativação"
+        isSubmitting={revertInactivationMutation.isPending}
+        onConfirm={async (motivo) => {
+          await revertInactivationMutation.mutateAsync(motivo);
+        }}
+      />
       <AssociadoReactivationDialog
         open={reativarDialogOpen}
         onOpenChange={setReativarDialogOpen}

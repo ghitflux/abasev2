@@ -219,4 +219,57 @@ describe("RelatoriosPage", () => {
       ),
     );
   });
+
+  it("mostra modal de carregamento enquanto gera o relatorio e inicia o download ao concluir", async () => {
+    const user = userEvent.setup();
+    let resolveExport: ((value: unknown) => void) | null = null;
+
+    mockedApiFetch.mockImplementation(async (path, options) => {
+      if (path === "relatorios") {
+        return [];
+      }
+
+      if (path === "tesouraria/contratos/agentes") {
+        return [];
+      }
+
+      if (path === "relatorios/exportar") {
+        return await new Promise((resolve) => {
+          resolveExport = resolve;
+        });
+      }
+
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    renderPage();
+
+    const card = await screen.findByTestId("relatorio-card-associados_ativos_com_1_parcela_paga");
+    await user.click(
+      within(card).getByRole("button", { name: /Exportar CSV \/ PDF \/ XLS/i }),
+    );
+
+    const configDialog = await screen.findByRole("dialog");
+    await user.click(within(configDialog).getByRole("button", { name: "CSV" }));
+
+    expect(await screen.findByText("Gerando relatório")).toBeInTheDocument();
+    expect(
+      screen.getByText(/O download será iniciado automaticamente ao concluir/i),
+    ).toBeInTheDocument();
+
+    resolveExport?.({
+      id: 11,
+      nome: "associados_ativos_com_1_parcela_paga_20260313101500.csv",
+      formato: "csv",
+      created_at: "2026-03-13T10:15:00Z",
+      download_url: "/api/v1/relatorios/11/download/",
+    });
+
+    await waitFor(() => expect(anchorClickSpy).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(mockedToast.success).toHaveBeenCalledWith(
+        "Relatório gerado. Download iniciado.",
+      ),
+    );
+  });
 });

@@ -341,6 +341,7 @@ type TreasuryFilters = {
   day?: Date;
   dateStart?: Date;
   dateEnd?: Date;
+  summaryMode: "year" | "all" | "custom";
   agentId?: string;
   status: string;
 };
@@ -481,6 +482,13 @@ function toMonthId(value: Date) {
 
 function toIsoDate(value?: Date) {
   return value ? format(value, "yyyy-MM-dd") : undefined;
+}
+
+function getYearRange(value: Date) {
+  return {
+    start: new Date(value.getFullYear(), 0, 1),
+    end: new Date(value.getFullYear(), 11, 31),
+  };
 }
 
 function formatMonthCell(value: string) {
@@ -907,6 +915,8 @@ function DashboardPageContent() {
   const [treasuryFilters, setTreasuryFilters] = React.useState<TreasuryFilters>(
     {
       competencia: currentMonth,
+      ...getYearRange(currentMonth),
+      summaryMode: "year",
       status: "todos",
     },
   );
@@ -999,8 +1009,16 @@ function DashboardPageContent() {
   >(
     () => ({
       competencia: toMonthId(treasuryFilters.competencia),
-      date_start: toIsoDate(treasuryFilters.dateStart),
-      date_end: toIsoDate(treasuryFilters.dateEnd),
+      date_start:
+        treasuryFilters.summaryMode === "all"
+          ? undefined
+          : toIsoDate(treasuryFilters.dateStart),
+      date_end:
+        treasuryFilters.summaryMode === "all"
+          ? undefined
+          : toIsoDate(treasuryFilters.dateEnd),
+      period_mode:
+        treasuryFilters.summaryMode === "all" ? "all" : undefined,
       day: toIsoDate(treasuryFilters.day),
       agent_id: treasuryFilters.agentId,
       status:
@@ -1084,6 +1102,7 @@ function DashboardPageContent() {
     queryKey: [
       "dashboard-admin-treasury-summary-table",
       toMonthId(treasuryFilters.competencia),
+      treasuryFilters.summaryMode,
       toIsoDate(treasuryFilters.dateStart),
       toIsoDate(treasuryFilters.dateEnd),
       toIsoDate(treasuryFilters.day),
@@ -1101,8 +1120,10 @@ function DashboardPageContent() {
   });
 
   const hasTreasurySummaryDateRange =
-    Boolean(treasuryFilters.dateStart) || Boolean(treasuryFilters.dateEnd);
+    treasuryFilters.summaryMode !== "all" &&
+    (Boolean(treasuryFilters.dateStart) || Boolean(treasuryFilters.dateEnd));
   const shouldFocusTreasurySummaryMonth =
+    treasuryFilters.summaryMode !== "all" &&
     !hasTreasurySummaryDateRange &&
     (Boolean(treasuryFilters.day) ||
       Boolean(treasuryFilters.agentId) ||
@@ -1363,11 +1384,16 @@ function DashboardPageContent() {
   const treasuryActiveFilters =
     countActiveFilters({
       day: treasuryFilters.day,
-      dateStart: treasuryFilters.dateStart,
-      dateEnd: treasuryFilters.dateEnd,
       agentId: treasuryFilters.agentId,
       status: treasuryFilters.status,
-    }) + (hasSameMonth(treasuryFilters.competencia, currentMonth) ? 0 : 1);
+    }) +
+    (treasuryFilters.summaryMode === "all"
+      ? 1
+      : treasuryFilters.summaryMode === "custom"
+        ? Number(Boolean(treasuryFilters.dateStart)) +
+          Number(Boolean(treasuryFilters.dateEnd))
+        : 0) +
+    (hasSameMonth(treasuryFilters.competencia, currentMonth) ? 0 : 1);
 
   const summaryTitle = formatLongMonthYear(summaryFilters.competencia);
   const treasuryTitle = formatLongMonthYear(treasuryFilters.competencia);
@@ -1578,9 +1604,9 @@ function DashboardPageContent() {
                 onClear={() =>
                   setTreasuryDraft({
                     competencia: currentMonth,
+                    ...getYearRange(currentMonth),
+                    summaryMode: "year",
                     status: "todos",
-                    dateStart: undefined,
-                    dateEnd: undefined,
                   })
                 }
                 onApply={applyTreasuryFilters}
@@ -1592,6 +1618,9 @@ function DashboardPageContent() {
                       setTreasuryDraft((current) => ({
                         ...current,
                         competencia: value,
+                        ...(current.summaryMode === "year"
+                          ? getYearRange(value)
+                          : {}),
                       }))
                     }
                   />
@@ -1616,39 +1645,41 @@ function DashboardPageContent() {
                 <FilterField label="Período (resumo mensal)">
                   <div className="space-y-2">
                     <div className="flex gap-2">
-                      {[2024, 2025, 2026].map((year) => {
-                        const isActive =
-                          treasuryDraft.dateStart?.getFullYear() === year &&
-                          treasuryDraft.dateEnd?.getFullYear() === year;
-                        return (
-                          <button
-                            key={year}
-                            type="button"
-                            onClick={() =>
-                              setTreasuryDraft((current) =>
-                                isActive
-                                  ? {
-                                      ...current,
-                                      dateStart: undefined,
-                                      dateEnd: undefined,
-                                    }
-                                  : {
-                                      ...current,
-                                      dateStart: new Date(year, 0, 1),
-                                      dateEnd: new Date(year, 11, 31),
-                                    },
-                              )
-                            }
-                            className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition ${
-                              isActive
-                                ? "border-primary bg-primary/10 text-primary"
-                                : "border-border/60 bg-card/60 text-foreground hover:bg-accent"
-                            }`}
-                          >
-                            {year}
-                          </button>
-                        );
-                      })}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setTreasuryDraft((current) => ({
+                            ...current,
+                            summaryMode: "all",
+                            dateStart: undefined,
+                            dateEnd: undefined,
+                          }))
+                        }
+                        className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                          treasuryDraft.summaryMode === "all"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border/60 bg-card/60 text-foreground hover:bg-accent"
+                        }`}
+                      >
+                        Total
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setTreasuryDraft((current) => ({
+                            ...current,
+                            ...getYearRange(current.competencia),
+                            summaryMode: "year",
+                          }))
+                        }
+                        className={`flex-1 rounded-xl border px-3 py-2 text-sm font-medium transition ${
+                          treasuryDraft.summaryMode === "year"
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border/60 bg-card/60 text-foreground hover:bg-accent"
+                        }`}
+                      >
+                        Ano {treasuryDraft.competencia.getFullYear()}
+                      </button>
                     </div>
                     <div className="flex gap-2">
                       <DatePicker
@@ -1656,6 +1687,7 @@ function DashboardPageContent() {
                         onChange={(value) =>
                           setTreasuryDraft((current) => ({
                             ...current,
+                            summaryMode: "custom",
                             dateStart: value,
                           }))
                         }
@@ -1666,6 +1698,7 @@ function DashboardPageContent() {
                         onChange={(value) =>
                           setTreasuryDraft((current) => ({
                             ...current,
+                            summaryMode: "custom",
                             dateEnd: value,
                           }))
                         }
@@ -1675,9 +1708,7 @@ function DashboardPageContent() {
                   </div>
                 </FilterField>
                 <p className="rounded-2xl border border-border/60 bg-background/40 px-4 py-3 text-xs text-muted-foreground">
-                  O filtro de período substitui a janela padrão de 12 meses no
-                  Resumo mensal da associação. Use os botões de ano ou defina um
-                  intervalo personalizado.
+                  Use Total para carregar todo o histórico até a competência selecionada, Ano para focar no ano da competência e datas personalizadas quando precisar de um intervalo específico.
                 </p>
                 <FilterField label="Agente">
                   <SearchableSelect
@@ -1996,9 +2027,12 @@ function DashboardPageContent() {
                           value: (row) => row.renovacoes_associado,
                         },
                       ];
-                      const periodoLabel = hasTreasurySummaryDateRange
-                        ? `${toIsoDate(treasuryFilters.dateStart) ?? ""}-${toIsoDate(treasuryFilters.dateEnd) ?? ""}`
-                        : toMonthId(treasuryFilters.competencia);
+                      const periodoLabel =
+                        treasuryFilters.summaryMode === "all"
+                          ? `total-ate-${toMonthId(treasuryFilters.competencia)}`
+                          : hasTreasurySummaryDateRange
+                            ? `${toIsoDate(treasuryFilters.dateStart) ?? ""}-${toIsoDate(treasuryFilters.dateEnd) ?? ""}`
+                            : toMonthId(treasuryFilters.competencia);
                       exportRows(
                         fmt,
                         `Resumo mensal - ${periodoLabel}`,
@@ -2018,11 +2052,15 @@ function DashboardPageContent() {
                 ) : (
                   <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      {hasTreasurySummaryDateRange
-                        ? "Filtro de período personalizado ativo — exibindo os meses do intervalo selecionado."
-                        : shouldFocusTreasurySummaryMonth
-                          ? "Com filtros ativos na tesouraria, a tabela destaca apenas a competência selecionada."
-                          : "A tabela usa 12 meses até a competência selecionada em tesouraria."}{" "}
+                      {treasuryFilters.summaryMode === "all"
+                        ? "Filtro Total ativo — exibindo todo o histórico até a competência selecionada."
+                        : treasuryFilters.summaryMode === "year"
+                          ? "Filtro Ano ativo — exibindo os meses do ano da competência selecionada."
+                        : hasTreasurySummaryDateRange
+                          ? "Filtro de período personalizado ativo — exibindo os meses do intervalo selecionado."
+                          : shouldFocusTreasurySummaryMonth
+                            ? "Com filtros ativos na tesouraria, a tabela destaca apenas a competência selecionada."
+                            : "A tabela usa a competência selecionada como referência do resumo mensal."}{" "}
                       O saldo positivo considera apenas complemento de receita
                       menos despesas operacionais pagas do mês.
                     </p>

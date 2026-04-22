@@ -5,7 +5,6 @@ from rest_framework import serializers
 
 from apps.accounts.models import MobileAccessToken, User
 from apps.contratos.canonicalization import (
-    get_operational_contracts_for_associado,
     resolve_operational_contract_for_associado,
 )
 from apps.contratos.cycle_projection import (
@@ -14,7 +13,6 @@ from apps.contratos.cycle_projection import (
     resolve_associado_mother_status,
     resolve_associado_status_renovacao,
 )
-from apps.contratos.models import Contrato
 from apps.contratos.serializers import CicloDetailSerializer, ContratoResumoSerializer
 from core.file_references import build_storage_reference
 
@@ -83,32 +81,7 @@ def get_associado_cadastro_origin_payload(obj: Associado) -> dict[str, str]:
 
 
 def get_detail_visible_contracts_for_associado(obj: Associado):
-    contratos = get_operational_contracts_for_associado(obj)
-    if contratos or obj.status != Associado.Status.INATIVO:
-        return contratos
-
-    cached = getattr(obj, "_prefetched_objects_cache", {}).get("contratos")
-    if cached is not None:
-        historicos = [
-            contrato
-            for contrato in cached
-            if contrato.deleted_at is None and contrato.contrato_canonico_id is None
-        ]
-    if cached is None or not historicos:
-        historicos = list(
-            Contrato.objects.filter(
-                associado=obj,
-                deleted_at__isnull=True,
-                contrato_canonico__isnull=True,
-            )
-            .select_related("agente")
-            .prefetch_related("ciclos__parcelas")
-        )
-    return sorted(
-        historicos,
-        key=lambda contrato: (contrato.created_at, contrato.id),
-        reverse=True,
-    )
+    return AssociadoService.get_detail_visible_contracts_for_associado(obj)
 
 
 class SimpleUserSerializer(serializers.Serializer):
@@ -243,22 +216,6 @@ class DocumentoCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         associado = validated_data.pop("associado")
-        tipo = validated_data["tipo"]
-        arquivo = validated_data["arquivo"]
-        observacao = validated_data.get("observacao", "")
-
-        documento_existente = Documento.objects.filter(
-            associado=associado,
-            tipo=tipo,
-        ).first()
-        if documento_existente:
-            if documento_existente.arquivo:
-                documento_existente.arquivo.delete(save=False)
-            documento_existente.arquivo = arquivo
-            documento_existente.status = Documento.Status.PENDENTE
-            documento_existente.observacao = observacao
-            documento_existente.save()
-            return documento_existente
 
         return Documento.objects.create(
             associado=associado,
