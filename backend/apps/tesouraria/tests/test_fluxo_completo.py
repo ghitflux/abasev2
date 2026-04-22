@@ -902,6 +902,93 @@ class TestFluxoCompleto(TestCase):
         self.assertIsNotNone(esteira_item.concluido_em)
         self.assertIsNotNone(esteira_item.deleted_at)
 
+    def test_remover_reativacao_antiga_nao_remove_reativacao_atual_da_tesouraria(self):
+        associado = self._criar_associado("62345678922")
+        contrato_original = associado.contratos.get()
+        contrato_original.status = Contrato.Status.CANCELADO
+        contrato_original.cancelado_em = timezone.now()
+        contrato_original.save(
+            update_fields=["status", "cancelado_em", "updated_at"]
+        )
+        associado.status = Associado.Status.EM_ANALISE
+        associado.save(update_fields=["status", "updated_at"])
+        esteira_item = associado.esteira_item
+        esteira_item.etapa_atual = EsteiraItem.Etapa.TESOURARIA
+        esteira_item.status = EsteiraItem.Situacao.AGUARDANDO
+        esteira_item.save(update_fields=["etapa_atual", "status", "updated_at"])
+
+        contrato_antigo = Contrato.objects.create(
+            associado=associado,
+            agente=self.agente,
+            status=Contrato.Status.EM_ANALISE,
+            origem_operacional=Contrato.OrigemOperacional.REATIVACAO,
+            valor_bruto=Decimal("1500.00"),
+            valor_liquido=Decimal("1200.00"),
+            valor_mensalidade=Decimal("500.00"),
+            prazo_meses=3,
+            taxa_antecipacao=Decimal("30.00"),
+            margem_disponivel=Decimal("1050.00"),
+            valor_total_antecipacao=Decimal("1500.00"),
+            doacao_associado=Decimal("450.00"),
+            comissao_agente=Decimal("105.00"),
+            data_aprovacao=date(2026, 4, 10),
+            data_primeira_mensalidade=date(2026, 5, 5),
+            mes_averbacao=date(2026, 4, 1),
+        )
+        contrato_atual = Contrato.objects.create(
+            associado=associado,
+            agente=self.agente,
+            status=Contrato.Status.EM_ANALISE,
+            origem_operacional=Contrato.OrigemOperacional.REATIVACAO,
+            valor_bruto=Decimal("1800.00"),
+            valor_liquido=Decimal("1400.00"),
+            valor_mensalidade=Decimal("600.00"),
+            prazo_meses=3,
+            taxa_antecipacao=Decimal("30.00"),
+            margem_disponivel=Decimal("1200.00"),
+            valor_total_antecipacao=Decimal("1800.00"),
+            doacao_associado=Decimal("540.00"),
+            comissao_agente=Decimal("120.00"),
+            data_aprovacao=date(2026, 4, 22),
+            data_primeira_mensalidade=date(2026, 5, 5),
+            mes_averbacao=date(2026, 4, 1),
+        )
+
+        antes = self.coord_client.get(
+            "/api/v1/tesouraria/contratos/",
+            {"pagamento": "pendente", "origem_operacional": "reativacao"},
+        )
+        self.assertEqual(antes.status_code, 200, antes.json())
+        self.assertTrue(
+            {contrato_antigo.id, contrato_atual.id}.issubset(
+                {row["id"] for row in antes.json()["results"]}
+            )
+        )
+
+        excluir = self.coord_client.post(
+            f"/api/v1/tesouraria/contratos/{contrato_antigo.id}/excluir/"
+        )
+        self.assertEqual(excluir.status_code, 200, excluir.json())
+
+        contrato_antigo = Contrato.all_objects.get(pk=contrato_antigo.id)
+        contrato_atual.refresh_from_db()
+        esteira_item = EsteiraItem.all_objects.get(pk=esteira_item.id)
+        self.assertEqual(contrato_antigo.status, Contrato.Status.CANCELADO)
+        self.assertIsNotNone(contrato_antigo.deleted_at)
+        self.assertEqual(contrato_atual.status, Contrato.Status.EM_ANALISE)
+        self.assertIsNone(contrato_atual.deleted_at)
+        self.assertEqual(esteira_item.etapa_atual, EsteiraItem.Etapa.TESOURARIA)
+        self.assertIsNone(esteira_item.deleted_at)
+
+        depois = self.coord_client.get(
+            "/api/v1/tesouraria/contratos/",
+            {"pagamento": "pendente", "origem_operacional": "reativacao"},
+        )
+        self.assertEqual(depois.status_code, 200, depois.json())
+        ids_depois = {row["id"] for row in depois.json()["results"]}
+        self.assertNotIn(contrato_antigo.id, ids_depois)
+        self.assertIn(contrato_atual.id, ids_depois)
+
     def test_contrato_removido_da_fila_some_da_lista_cancelados_tesouraria(self):
         associado = self._criar_associado("62345678931")
         contrato = self._levar_para_tesouraria(associado)

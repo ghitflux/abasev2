@@ -182,6 +182,28 @@ class EsteiraService:
         de_etapa = esteira_item.etapa_atual
         de_situacao = esteira_item.status
         now = timezone.now()
+        reativacao_pendente = EsteiraService._pending_reactivation_contract(
+            esteira_item
+        )
+        if reativacao_pendente is not None:
+            reativacao_pendente.status = Contrato.Status.CANCELADO
+            reativacao_pendente.cancelamento_tipo = Contrato.CancelamentoTipo.CANCELADO
+            reativacao_pendente.cancelamento_motivo = observacao
+            reativacao_pendente.cancelado_em = now
+            reativacao_pendente.save(
+                update_fields=[
+                    "status",
+                    "cancelamento_tipo",
+                    "cancelamento_motivo",
+                    "cancelado_em",
+                    "updated_at",
+                ]
+            )
+            soft_delete_contract_tree(reativacao_pendente)
+            Associado.objects.filter(pk=esteira_item.associado_id).update(
+                status=Associado.Status.INATIVO,
+                updated_at=now,
+            )
         if user is not None:
             EsteiraService._cancelar_pendencias_abertas(esteira_item, user)
         esteira_item.etapa_atual = EsteiraItem.Etapa.CONCLUIDO

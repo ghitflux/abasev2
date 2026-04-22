@@ -656,6 +656,203 @@ class RenovacaoCicloViewSetTestCase(ImportacaoBaseTestCase):
         returned_associado_ids = {item["associado_id"] for item in payload["results"]}
         self.assertIn(associado.id, returned_associado_ids)
 
+    def test_listagem_apta_inclui_status_mae_apto_mesmo_sem_linha_operacional(self):
+        associado = Associado.objects.create(
+            nome_completo="Apto Manual Sem Linha",
+            cpf_cnpj="90244555555",
+            email="90244555555@teste.local",
+            telefone="86999999999",
+            orgao_publico="Órgão Teste",
+            matricula_orgao="MAT-MAE-APTO",
+            status=Associado.Status.APTO_A_RENOVAR,
+            agente_responsavel=self.tesoureiro,
+        )
+        contrato = Contrato.objects.create(
+            associado=associado,
+            agente=self.tesoureiro,
+            valor_bruto=Decimal("900.00"),
+            valor_liquido=Decimal("900.00"),
+            valor_mensalidade=Decimal("300.00"),
+            prazo_meses=3,
+            status=Contrato.Status.ATIVO,
+            data_primeira_mensalidade=date(2026, 1, 1),
+            data_aprovacao=date(2025, 12, 28),
+            data_contrato=date(2026, 1, 12),
+        )
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.ABERTO,
+            valor_total=Decimal("900.00"),
+        )
+        for numero, referencia in enumerate(
+            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)],
+            start=1,
+        ):
+            Parcela.objects.create(
+                ciclo=ciclo,
+                associado=associado,
+                numero=numero,
+                referencia_mes=referencia,
+                valor=Decimal("300.00"),
+                data_vencimento=referencia,
+                status=(
+                    Parcela.Status.DESCONTADO
+                    if numero == 1
+                    else Parcela.Status.EM_ABERTO
+                ),
+                data_pagamento=referencia if numero == 1 else None,
+            )
+
+        response = self.tes_client.get(
+            "/api/v1/renovacao-ciclos/",
+            {"competencia": "2026-04", "status": "apto_a_renovar", "page_size": 20},
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["count"], 1)
+        row = payload["results"][0]
+        self.assertEqual(row["associado_id"], associado.id)
+        self.assertEqual(row["status_visual"], "apto_a_renovar")
+
+    def test_listagem_apta_exclui_associado_com_reativacao_em_andamento(self):
+        associado = Associado.objects.create(
+            nome_completo="Apto Com Reativacao Em Andamento",
+            cpf_cnpj="90244666666",
+            email="90244666666@teste.local",
+            telefone="86999999999",
+            orgao_publico="Órgão Teste",
+            matricula_orgao="MAT-REATIVACAO",
+            status=Associado.Status.APTO_A_RENOVAR,
+            agente_responsavel=self.tesoureiro,
+        )
+        contrato = Contrato.objects.create(
+            associado=associado,
+            agente=self.tesoureiro,
+            valor_bruto=Decimal("900.00"),
+            valor_liquido=Decimal("900.00"),
+            valor_mensalidade=Decimal("300.00"),
+            prazo_meses=3,
+            status=Contrato.Status.ATIVO,
+            data_primeira_mensalidade=date(2026, 1, 1),
+            data_aprovacao=date(2025, 12, 28),
+            data_contrato=date(2026, 1, 12),
+        )
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.APTO_A_RENOVAR,
+            valor_total=Decimal("900.00"),
+        )
+        for numero, referencia in enumerate(
+            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)],
+            start=1,
+        ):
+            Parcela.objects.create(
+                ciclo=ciclo,
+                associado=associado,
+                numero=numero,
+                referencia_mes=referencia,
+                valor=Decimal("300.00"),
+                data_vencimento=referencia,
+                status=Parcela.Status.DESCONTADO,
+                data_pagamento=referencia,
+            )
+        Contrato.objects.create(
+            associado=associado,
+            agente=self.tesoureiro,
+            valor_bruto=Decimal("900.00"),
+            valor_liquido=Decimal("900.00"),
+            valor_mensalidade=Decimal("300.00"),
+            prazo_meses=3,
+            status=Contrato.Status.EM_ANALISE,
+            data_primeira_mensalidade=date(2026, 4, 1),
+            data_aprovacao=date(2026, 4, 1),
+            data_contrato=date(2026, 4, 1),
+            origem_operacional=Contrato.OrigemOperacional.REATIVACAO,
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/renovacao-ciclos/",
+            {"competencia": "2026-04", "status": "apto_a_renovar", "page_size": 20},
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertEqual(response.json()["count"], 0)
+
+    def test_listagem_apta_inclui_reativado_ativo_em_ciclo_futuro(self):
+        associado = Associado.objects.create(
+            nome_completo="Reativado Ativo Pode Renovar Depois",
+            cpf_cnpj="90244777777",
+            email="90244777777@teste.local",
+            telefone="86999999999",
+            orgao_publico="Órgão Teste",
+            matricula_orgao="MAT-REATIVADO",
+            status=Associado.Status.APTO_A_RENOVAR,
+            agente_responsavel=self.tesoureiro,
+        )
+        contrato = Contrato.objects.create(
+            associado=associado,
+            agente=self.tesoureiro,
+            valor_bruto=Decimal("900.00"),
+            valor_liquido=Decimal("900.00"),
+            valor_mensalidade=Decimal("300.00"),
+            prazo_meses=3,
+            status=Contrato.Status.ATIVO,
+            data_primeira_mensalidade=date(2026, 1, 1),
+            data_aprovacao=date(2025, 12, 28),
+            data_contrato=date(2026, 1, 12),
+            origem_operacional=Contrato.OrigemOperacional.REATIVACAO,
+        )
+        ciclo = Ciclo.objects.create(
+            contrato=contrato,
+            numero=1,
+            data_inicio=date(2026, 1, 1),
+            data_fim=date(2026, 3, 1),
+            status=Ciclo.Status.APTO_A_RENOVAR,
+            valor_total=Decimal("900.00"),
+        )
+        for numero, referencia in enumerate(
+            [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)],
+            start=1,
+        ):
+            Parcela.objects.create(
+                ciclo=ciclo,
+                associado=associado,
+                numero=numero,
+                referencia_mes=referencia,
+                valor=Decimal("300.00"),
+                data_vencimento=referencia,
+                status=Parcela.Status.DESCONTADO,
+                data_pagamento=referencia,
+            )
+        Refinanciamento.objects.create(
+            associado=associado,
+            contrato_origem=contrato,
+            ciclo_origem=ciclo,
+            solicitado_por=self.tesoureiro,
+            competencia_solicitada=date(2026, 4, 1),
+            status=Refinanciamento.Status.APTO_A_RENOVAR,
+            origem=Refinanciamento.Origem.OPERACIONAL,
+            valor_refinanciamento=Decimal("900.00"),
+            repasse_agente=Decimal("30.00"),
+        )
+
+        response = self.tes_client.get(
+            "/api/v1/renovacao-ciclos/",
+            {"competencia": "2026-04", "status": "apto_a_renovar", "page_size": 20},
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["results"][0]["associado_id"], associado.id)
+
     def test_listagem_apta_inclui_ciclo_concluido_quando_elegivel_sem_fluxo_novo(self):
         associado = Associado.objects.create(
             nome_completo="Apto Concluido Sem Fluxo",

@@ -17,6 +17,7 @@ from .canonicalization import (
 )
 from .cycle_projection import (
     ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES,
+    APT_LIKE_OPERATIONAL_REFINANCIAMENTO_STATUSES,
     build_contract_cycle_projection,
     is_contract_eligible_for_renewal_competencia,
     resolve_current_renewal_competencia,
@@ -40,6 +41,7 @@ def parse_competencia_query(value: str | None):
 
 class RenovacaoCicloService:
     SUPPLEMENTAL_RENEWAL_STATUSES = {"apto_a_renovar"}
+    APT_QUEUE_OPERATIONAL_STATUSES = APT_LIKE_OPERATIONAL_REFINANCIAMENTO_STATUSES
     STATUS_PRIORITY = {
         "aprovado_para_renovacao": 70,
         "apto_a_renovar": 60,
@@ -81,6 +83,62 @@ class RenovacaoCicloService:
     @staticmethod
     def _resolve_associado_contratos(contrato: Contrato) -> list[Contrato]:
         return get_operational_contracts_for_associado(contrato.associado)
+
+    @staticmethod
+    def _is_pending_reactivation_contract(contrato: Contrato) -> bool:
+        return bool(
+            contrato.origem_operacional == Contrato.OrigemOperacional.REATIVACAO
+            and contrato.auxilio_liberado_em is None
+            and contrato.status
+            not in {
+                Contrato.Status.ATIVO,
+                Contrato.Status.CANCELADO,
+                Contrato.Status.ENCERRADO,
+            }
+        )
+
+    @staticmethod
+    def _associado_has_pending_reactivation_flow(contrato: Contrato) -> bool:
+        cached = getattr(contrato.associado, "contratos_contexto_prefetched", None)
+        if cached is not None:
+            return any(
+                RenovacaoCicloService._is_pending_reactivation_contract(item)
+                for item in cached
+            )
+        if RenovacaoCicloService._is_pending_reactivation_contract(contrato):
+            return True
+        return (
+            contrato.associado.contratos.filter(
+                origem_operacional=Contrato.OrigemOperacional.REATIVACAO,
+                auxilio_liberado_em__isnull=True,
+            )
+            .exclude(
+                status__in=[
+                    Contrato.Status.ATIVO,
+                    Contrato.Status.CANCELADO,
+                    Contrato.Status.ENCERRADO,
+                ]
+            )
+            .exists()
+        )
+
+    @staticmethod
+    def _active_operational_apto_refinanciamento(
+        contrato: Contrato,
+    ) -> Refinanciamento | None:
+        return (
+            contrato.refinanciamentos.filter(
+                deleted_at__isnull=True,
+                legacy_refinanciamento_id__isnull=True,
+                origem=Refinanciamento.Origem.OPERACIONAL,
+                ciclo_destino__isnull=True,
+                executado_em__isnull=True,
+                data_ativacao_ciclo__isnull=True,
+                status__in=RenovacaoCicloService.APT_QUEUE_OPERATIONAL_STATUSES,
+            )
+            .order_by("-competencia_solicitada", "-updated_at", "-created_at", "-id")
+            .first()
+        )
 
     @staticmethod
     def _resolve_agente_responsavel(contrato: Contrato) -> str:
@@ -137,6 +195,9 @@ class RenovacaoCicloService:
         if (
             parcelas_total > 0
             and parcelas_pagas >= parcelas_minimas_para_renovar
+            and not RenovacaoCicloService._associado_has_pending_reactivation_flow(
+                ciclo.contrato
+            )
             and is_contract_eligible_for_renewal_competencia(
                 ciclo.contrato,
                 competencia=competencia,
@@ -166,18 +227,34 @@ class RenovacaoCicloService:
         competencia,
         projection: dict[str, object],
     ) -> dict[str, object] | None:
-        status_renovacao = str(projection.get("status_renovacao") or "")
-        if status_renovacao not in RenovacaoCicloService.SUPPLEMENTAL_RENEWAL_STATUSES:
+        if RenovacaoCicloService._associado_has_pending_reactivation_flow(contrato):
             return None
 
-        projected_cycles = list(sorted(projection.get("cycles") or [], key=lambda item: item["numero"]))
+        operational_apto = RenovacaoCicloService._active_operational_apto_refinanciamento(
+            contrato
+        )
+        has_pending_operational_apto = operational_apto is not None
+        associado_status_apto = str(contrato.associado.status or "") == "apto_a_renovar"
+        status_renovacao = str(projection.get("status_renovacao") or "")
+        if has_pending_operational_apto or associado_status_apto:
+            status_renovacao = Refinanciamento.Status.APTO_A_RENOVAR
+        elif status_renovacao not in RenovacaoCicloService.SUPPLEMENTAL_RENEWAL_STATUSES:
+            return None
+
+        projected_cycles = list(
+            sorted(projection.get("cycles") or [], key=lambda item: item["numero"])
+        )
         if not projected_cycles:
             return None
 
         latest_projected_cycle = projected_cycles[-1]
         ciclos = RenovacaoCicloService._resolve_ciclos(contrato)
         ciclo = next(
-            (candidate for candidate in ciclos if candidate.numero == latest_projected_cycle["numero"]),
+            (
+                candidate
+                for candidate in ciclos
+                if candidate.numero == latest_projected_cycle["numero"]
+            ),
             None,
         )
         if ciclo is None:
@@ -200,21 +277,9 @@ class RenovacaoCicloService:
             if RenovacaoCicloService._is_paid_status(parcela.get("status"))
         )
         parcelas_total = len(parcelas_projetadas)
-        has_pending_operational_apto = contrato.refinanciamentos.filter(
-            deleted_at__isnull=True,
-            legacy_refinanciamento_id__isnull=True,
-            origem=Refinanciamento.Origem.OPERACIONAL,
-            ciclo_destino__isnull=True,
-            executado_em__isnull=True,
-            data_ativacao_ciclo__isnull=True,
-            status__in=[
-                Refinanciamento.Status.APTO_A_RENOVAR,
-                Refinanciamento.Status.PENDENTE_APTO,
-                Refinanciamento.Status.SOLICITADO,
-            ],
-        ).exists()
         if (
             not has_pending_operational_apto
+            and not associado_status_apto
             and not is_contract_eligible_for_renewal_competencia(
                 contrato,
                 competencia=competencia,
@@ -228,13 +293,16 @@ class RenovacaoCicloService:
             and status_renovacao not in ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES
         ):
             return None
-        status_explicacao = RenovacaoCicloService._build_status_explicacao(
-            contrato=contrato,
-            status_visual=status_renovacao,
-            parcelas_pagas=parcelas_pagas,
-            parcelas_total=parcelas_total,
-            contratos_associado=contratos_associado,
-        )
+        if associado_status_apto and not has_pending_operational_apto:
+            status_explicacao = "Apto a renovar pelo status atual do associado."
+        else:
+            status_explicacao = RenovacaoCicloService._build_status_explicacao(
+                contrato=contrato,
+                status_visual=status_renovacao,
+                parcelas_pagas=parcelas_pagas,
+                parcelas_total=parcelas_total,
+                contratos_associado=contratos_associado,
+            )
         ciclo_activation = get_cycle_activation_payload(ciclo)
         contrato_activation = get_contract_activation_payload(contrato)
 
@@ -501,6 +569,8 @@ class RenovacaoCicloService:
                         "id",
                         "codigo",
                         "status",
+                        "origem_operacional",
+                        "auxilio_liberado_em",
                         "associado_id",
                     ),
                     to_attr="contratos_contexto_prefetched",
@@ -642,6 +712,8 @@ class RenovacaoCicloService:
                             "id",
                             "codigo",
                             "status",
+                            "origem_operacional",
+                            "auxilio_liberado_em",
                             "associado_id",
                         ),
                         to_attr="contratos_contexto_prefetched",

@@ -1,5 +1,18 @@
 # Deploy 2026-04-22
 
+## Atualizacao final deste pacote
+
+Este documento tambem cobre as correcoes finais feitas em `22/04/2026` para:
+
+- reativacao cair na secao correta da analise;
+- remocao segura de linhas duplicadas de reativacao, sem apagar a linha atual;
+- reativacao aprovada pela analise chegar na tesouraria sem reabrir duplicidades
+  antigas removidas da fila;
+- associados com status `apto_a_renovar` aparecerem em `Aptos a renovar`;
+- associados com reativacao em andamento ficarem fora de `Aptos a renovar`;
+- associados ja reativados e efetivados como `ativo` poderem voltar a renovar em
+  ciclos futuros.
+
 ## Escopo aplicado
 
 ### Reativacao
@@ -16,6 +29,31 @@
   - previsoes conflitantes sem evidencia financeira sao canceladas e ocultadas;
   - o novo ciclo e criado como `aberto`;
   - o associado fica `ativo`.
+- Na analise, a secao `Contratos para Reativacao` passa a ser alimentada pela
+  existencia de contrato operacional de origem `reativacao` ainda pendente,
+  e nao mais pela origem do contrato mais recente do associado.
+- A remocao de uma reativacao da fila cancela e aplica `soft_delete()` somente
+  no contrato operacional pendente daquela reativacao.
+- A exclusao de duplicidades de reativacao na tesouraria tambem atua somente
+  sobre a linha selecionada, preservando a reativacao mais recente/correta.
+- Reativacoes removidas da fila nao reaparecem quando o associado avanca para
+  tesouraria em outro fluxo.
+
+### Aptos a renovar apos reativacao
+
+- A fila `Aptos a renovar` passa a aceitar o status mae
+  `Associado.Status.APTO_A_RENOVAR` como fonte valida para exibir a linha,
+  mesmo quando a competencia automatica atual nao sustentaria a aptidao.
+- A etapa manual `Apto a renovar`, enviada pelo editor avancado em
+  `Enviar para etapa`, deixa de gerar o aviso amarelo `renewal_queue_divergence`
+  quando ja existe etapa operacional apta.
+- O bloqueio de reativacao em `Aptos a renovar` e temporario:
+  - bloqueia somente reativacao em andamento;
+  - considera em andamento o contrato `origem_operacional=reativacao`,
+    sem `auxilio_liberado_em`, e com status diferente de
+    `ativo`, `cancelado` e `encerrado`;
+  - depois que a reativacao e efetivada e o associado volta para `ativo`, o
+    contrato pode entrar normalmente em `Aptos a renovar` em ciclos futuros.
 
 ### Anexos e comprovantes
 
@@ -77,6 +115,7 @@
 - `backend/apps/associados/admin_override_service.py`
 - `backend/apps/associados/admin_override_serializers.py`
 - `backend/apps/associados/admin_override_views.py`
+- `backend/apps/contratos/renovacao.py`
 - `backend/apps/contratos/cycle_projection.py`
 - `backend/apps/tesouraria/services.py`
 - `backend/apps/tesouraria/serializers.py`
@@ -106,6 +145,7 @@
 - `backend/apps/associados/tests/test_reactivation.py`
 - `backend/apps/associados/tests/test_permissions.py`
 - `backend/apps/associados/tests/test_admin_overrides.py`
+- `backend/apps/contratos/tests/test_renovacao.py`
 - `backend/apps/esteira/tests/test_analise.py`
 - `backend/apps/tesouraria/tests/test_fluxo_completo.py`
 - `backend/apps/refinanciamento/tests/test_refinanciamento_pagamentos.py`
@@ -123,6 +163,130 @@ docker compose -p abase -f deploy/hostinger/docker-compose.prod.yml \
 docker compose -p abase -f deploy/hostinger/docker-compose.prod.yml \
   --env-file /opt/ABASE/env/.env.production \
   up -d --force-recreate --no-deps backend celery frontend
+```
+
+## Deploy via Paramiko
+
+Use este bloco a partir da maquina local de deploy. Ele nao contem credenciais:
+preencha as variaveis de ambiente antes de executar.
+
+Se `paramiko` nao estiver instalado na maquina local:
+
+```bash
+python -m pip install paramiko
+```
+
+```bash
+export ABASE_HOST="IP_OU_HOST_DO_SERVIDOR"
+export ABASE_USER="USUARIO_SSH"
+export ABASE_KEY="/caminho/para/chave_ssh"
+export ABASE_BRANCH="abaseprod"
+
+python - <<'PY'
+import os
+import sys
+import paramiko
+
+host = os.environ["ABASE_HOST"]
+user = os.environ["ABASE_USER"]
+key_path = os.environ["ABASE_KEY"]
+branch = os.environ.get("ABASE_BRANCH", "abaseprod")
+
+commands = [
+    "cd /opt/ABASE/repo && git status --short",
+    "cd /opt/ABASE/repo && git rev-parse HEAD",
+    "cd /opt/ABASE/repo && bash deploy/hostinger/scripts/backup_now.sh",
+    f"cd /opt/ABASE/repo && git fetch origin && git checkout {branch} && git pull --ff-only origin {branch}",
+    "cd /opt/ABASE/repo && git rev-parse HEAD",
+    "cd /opt/ABASE/repo && docker compose -p abase --env-file /opt/ABASE/env/.env.production -f deploy/hostinger/docker-compose.prod.yml build backend frontend celery",
+    "cd /opt/ABASE/repo && docker compose -p abase --env-file /opt/ABASE/env/.env.production -f deploy/hostinger/docker-compose.prod.yml up -d backend frontend celery",
+    "cd /opt/ABASE/repo && docker compose -p abase --env-file /opt/ABASE/env/.env.production -f deploy/hostinger/docker-compose.prod.yml exec -T backend python manage.py migrate",
+    "cd /opt/ABASE/repo && docker compose -p abase --env-file /opt/ABASE/env/.env.production -f deploy/hostinger/docker-compose.prod.yml exec -T backend python manage.py check",
+    "cd /opt/ABASE/repo && docker compose -p abase --env-file /opt/ABASE/env/.env.production -f deploy/hostinger/docker-compose.prod.yml ps",
+]
+
+client = paramiko.SSHClient()
+client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+client.connect(hostname=host, username=user, key_filename=key_path, timeout=30)
+
+try:
+    for command in commands:
+        print(f"\\n$ {command}", flush=True)
+        stdin, stdout, stderr = client.exec_command(command, get_pty=True)
+        out = stdout.read().decode("utf-8", errors="replace")
+        err = stderr.read().decode("utf-8", errors="replace")
+        status = stdout.channel.recv_exit_status()
+        if out:
+            print(out, end="")
+        if err:
+            print(err, end="", file=sys.stderr)
+        if status != 0:
+            raise SystemExit(f"Comando falhou com status {status}: {command}")
+finally:
+    client.close()
+PY
+```
+
+Regras:
+
+- nao fazer deploy se `git status --short` no servidor mostrar alteracoes nao
+  esperadas;
+- registrar o SHA anterior exibido por `git rev-parse HEAD` antes do `pull`;
+- nao usar `git reset --hard` em producao sem decisao explicita;
+- nao editar arquivo manualmente no servidor para completar deploy;
+- este pacote nao possui migration nova, mas `migrate` permanece no roteiro por
+  ser idempotente e padrao do deploy.
+
+### Rollback via Paramiko
+
+Use somente se a validacao pos-deploy falhar. Substitua `SHA_ANTERIOR_VALIDADO`
+pelo SHA registrado antes do `git pull`.
+
+```bash
+export ABASE_HOST="IP_OU_HOST_DO_SERVIDOR"
+export ABASE_USER="USUARIO_SSH"
+export ABASE_KEY="/caminho/para/chave_ssh"
+export ABASE_ROLLBACK_SHA="SHA_ANTERIOR_VALIDADO"
+
+python - <<'PY'
+import os
+import sys
+import paramiko
+
+host = os.environ["ABASE_HOST"]
+user = os.environ["ABASE_USER"]
+key_path = os.environ["ABASE_KEY"]
+rollback_sha = os.environ["ABASE_ROLLBACK_SHA"]
+
+commands = [
+    "cd /opt/ABASE/repo && git rev-parse HEAD",
+    f"cd /opt/ABASE/repo && git fetch origin && git checkout {rollback_sha}",
+    "cd /opt/ABASE/repo && docker compose -p abase --env-file /opt/ABASE/env/.env.production -f deploy/hostinger/docker-compose.prod.yml build backend frontend celery",
+    "cd /opt/ABASE/repo && docker compose -p abase --env-file /opt/ABASE/env/.env.production -f deploy/hostinger/docker-compose.prod.yml up -d backend frontend celery",
+    "cd /opt/ABASE/repo && docker compose -p abase --env-file /opt/ABASE/env/.env.production -f deploy/hostinger/docker-compose.prod.yml exec -T backend python manage.py check",
+    "cd /opt/ABASE/repo && docker compose -p abase --env-file /opt/ABASE/env/.env.production -f deploy/hostinger/docker-compose.prod.yml ps",
+]
+
+client = paramiko.SSHClient()
+client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+client.connect(hostname=host, username=user, key_filename=key_path, timeout=30)
+
+try:
+    for command in commands:
+        print(f"\\n$ {command}", flush=True)
+        stdin, stdout, stderr = client.exec_command(command, get_pty=True)
+        out = stdout.read().decode("utf-8", errors="replace")
+        err = stderr.read().decode("utf-8", errors="replace")
+        status = stdout.channel.recv_exit_status()
+        if out:
+            print(out, end="")
+        if err:
+            print(err, end="", file=sys.stderr)
+        if status != 0:
+            raise SystemExit(f"Comando falhou com status {status}: {command}")
+finally:
+    client.close()
+PY
 ```
 
 ## Validacao obrigatoria apos deploy
@@ -157,6 +321,19 @@ Validar manualmente:
   informados manualmente.
 - Salvar editor avancado com parcela `nao_descontado` mantem a competencia no
   ciclo e no resumo de meses nao descontados.
+- Em `/analise`, a linha de uma reativacao pendente aparece na secao
+  `Contratos para Reativacao`, nao apenas em `Ver todos`.
+- Ao remover duplicidades de reativacao antigas na tesouraria, a linha correta
+  mais recente do mesmo associado permanece visivel.
+- Em `/renovacao-ciclos?status=apto_a_renovar`, associado com status mae
+  `apto_a_renovar` aparece em `Aptos a renovar` quando nao existe reativacao
+  em andamento.
+- Associado com reativacao em andamento nao aparece em `Aptos a renovar`.
+- Associado ja reativado e efetivado como `ativo` pode aparecer em
+  `Aptos a renovar` em ciclo futuro.
+- No editor avancado, apos usar `Enviar para etapa` com `Apto a renovar`, nao
+  deve aparecer o aviso amarelo `renewal_queue_divergence` para etapa apta
+  ja materializada.
 
 ### Frontend
 
@@ -213,6 +390,42 @@ docker compose exec -T backend python manage.py test \
 Resultado:
 
 - `Ran 6 tests ... OK`.
+
+### Testes focados adicionais de reativacao, aptos e duplicidades
+
+```bash
+docker compose exec -T backend python manage.py test \
+  apps.contratos.tests.test_renovacao.RenovacaoCicloViewSetTestCase.test_listagem_apta_inclui_status_mae_apto_mesmo_sem_linha_operacional \
+  apps.contratos.tests.test_renovacao.RenovacaoCicloViewSetTestCase.test_listagem_apta_exclui_associado_com_reativacao_em_andamento \
+  apps.contratos.tests.test_renovacao.RenovacaoCicloViewSetTestCase.test_listagem_apta_inclui_reativado_ativo_em_ciclo_futuro \
+  apps.associados.tests.test_admin_overrides.AdminOverrideApiTestCase.test_admin_can_force_contract_back_to_apto_even_without_current_competencia_match \
+  --settings=config.settings.testing --noinput
+```
+
+Resultado:
+
+- `Ran 4 tests ... OK`.
+
+```bash
+docker compose exec -T backend python manage.py test \
+  apps.associados.tests.test_reactivation \
+  --settings=config.settings.testing --noinput
+```
+
+Resultado:
+
+- `Ran 7 tests ... OK`.
+
+```bash
+docker compose exec -T backend python manage.py test \
+  apps.tesouraria.tests.test_fluxo_completo.TestFluxoCompleto.test_remover_reativacao_antiga_nao_remove_reativacao_atual_da_tesouraria \
+  apps.tesouraria.tests.test_fluxo_completo.TestFluxoCompleto.test_contrato_removido_da_fila_some_da_lista_cancelados_tesouraria \
+  --settings=config.settings.testing --noinput
+```
+
+Resultado:
+
+- `Ran 2 tests ... OK`.
 
 ### Frontend
 
@@ -279,6 +492,12 @@ Uma execucao ampla incluindo todo
 `apps.refinanciamento.tests.test_refinanciamento_pagamentos` acusou falhas
 preexistentes/adjacentes em regras de aptidao/materializacao de renovacao
 manual. Os testes focados deste deploy passaram e cobrem as regras alteradas.
+
+Em nova execucao feita durante este fechamento, a suite completa
+`apps.contratos.tests.test_renovacao` ainda apresentou 5 falhas adjacentes em
+resumo/importacao/competencia. Elas nao pertencem ao recorte de reativacao,
+remocao de duplicidades e aptos tratado neste deploy, mas devem permanecer
+visiveis para uma sessao futura.
 
 ## Sem migracao
 

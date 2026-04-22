@@ -15,6 +15,7 @@ from rest_framework.exceptions import ValidationError
 from apps.contratos.canonicalization import resolve_operational_contract_for_associado
 from apps.contratos.cycle_projection import (
     ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES,
+    APT_LIKE_OPERATIONAL_REFINANCIAMENTO_STATUSES,
     STATUS_VISUAL_FINANCIAL_LABELS,
     STATUS_VISUAL_PHASE_LABELS,
     build_contract_cycle_projection,
@@ -450,6 +451,18 @@ def _build_renewal_queue_warnings(
     projection: dict[str, Any],
     refinanciamento_ativo: Refinanciamento | None,
 ) -> list[dict[str, Any]]:
+    if (
+        contrato.origem_operacional == Contrato.OrigemOperacional.REATIVACAO
+        and contrato.auxilio_liberado_em is None
+        and contrato.status
+        not in {
+            Contrato.Status.ATIVO,
+            Contrato.Status.CANCELADO,
+            Contrato.Status.ENCERRADO,
+        }
+    ):
+        return []
+
     latest_cycle = _latest_projection_cycle(projection)
     latest_cycle_status = str((latest_cycle or {}).get("status") or "")
     latest_cycle_parcelas = list((latest_cycle or {}).get("parcelas") or [])
@@ -491,7 +504,10 @@ def _build_renewal_queue_warnings(
         return []
 
     operational_status = str(refinanciamento_ativo.status or "")
-    if projection_status == Refinanciamento.Status.APTO_A_RENOVAR:
+    if (
+        projection_status == Refinanciamento.Status.APTO_A_RENOVAR
+        or operational_status in APT_LIKE_OPERATIONAL_REFINANCIAMENTO_STATUSES
+    ):
         return []
 
     return [

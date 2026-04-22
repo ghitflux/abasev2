@@ -186,6 +186,59 @@ class AssociadoReactivationTestCase(TestCase):
         self.assertEqual(associado.esteira_item.etapa_atual, EsteiraItem.Etapa.ANALISE)
         self.assertEqual(associado.esteira_item.status, EsteiraItem.Situacao.AGUARDANDO)
 
+    def test_reativacao_aparece_na_secao_propria_mesmo_com_historico_mais_novo(self):
+        associado = self._create_inactive_associado(cpf="70000000007")
+
+        response = self.coord_client.post(
+            f"/api/v1/associados/{associado.id}/reativar/",
+            self._reativacao_payload(agente_id=self.agente_a.id),
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        reativacao = associado.contratos.order_by("-id").first()
+
+        Contrato.objects.create(
+            associado=associado,
+            agente=self.agente_a,
+            status=Contrato.Status.CANCELADO,
+            origem_operacional=Contrato.OrigemOperacional.CADASTRO,
+            valor_bruto=Decimal("1500.00"),
+            valor_liquido=Decimal("1200.00"),
+            valor_mensalidade=Decimal("500.00"),
+            prazo_meses=3,
+            taxa_antecipacao=Decimal("30.00"),
+            margem_disponivel=Decimal("1050.00"),
+            valor_total_antecipacao=Decimal("1500.00"),
+            doacao_associado=Decimal("450.00"),
+            comissao_agente=Decimal("105.00"),
+            data_aprovacao=date(2026, 4, 22),
+            data_primeira_mensalidade=date(2026, 5, 5),
+            mes_averbacao=date(2026, 4, 1),
+            cancelado_em=timezone.now(),
+        )
+        Associado.objects.filter(pk=associado.pk).update(
+            status=Associado.Status.INATIVO,
+            updated_at=timezone.now(),
+        )
+
+        response = self.analyst_client.get(
+            "/api/v1/analise/filas/?secao=contratos_reativacao"
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        rows = response.json()["results"]
+        self.assertIn(associado.esteira_item.id, {row["id"] for row in rows})
+        row = next(item for item in rows if item["id"] == associado.esteira_item.id)
+        self.assertEqual(row["contrato"]["codigo"], reativacao.codigo)
+
+        response = self.analyst_client.get(
+            "/api/v1/analise/filas/?secao=novos_contratos"
+        )
+        self.assertEqual(response.status_code, 200, response.json())
+        self.assertNotIn(
+            associado.esteira_item.id,
+            {row["id"] for row in response.json()["results"]},
+        )
+
     def test_efetivacao_reativacao_cria_ciclo_abril_maio_junho(self):
         associado = self._create_inactive_associado(
             cpf="70000000006",

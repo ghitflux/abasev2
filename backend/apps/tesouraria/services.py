@@ -38,6 +38,7 @@ from apps.contratos.competencia import (
 )
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.models import Ciclo, Contrato, Parcela
+from apps.contratos.soft_delete import soft_delete_contract_tree
 from apps.esteira.models import EsteiraItem, Transicao
 from apps.financeiro.models import Despesa
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, PagamentoMensalidade
@@ -389,6 +390,49 @@ class TesourariaService:
         Associado.objects.filter(pk=associado.pk).update(
             status=Associado.Status.INATIVO,
             updated_at=timezone.now(),
+        )
+
+    @staticmethod
+    def _is_pending_reactivation_contract(contrato: Contrato) -> bool:
+        return bool(
+            contrato.origem_operacional == Contrato.OrigemOperacional.REATIVACAO
+            and contrato.auxilio_liberado_em is None
+            and contrato.status
+            not in {
+                Contrato.Status.ATIVO,
+                Contrato.Status.CANCELADO,
+                Contrato.Status.ENCERRADO,
+            }
+        )
+
+    @staticmethod
+    def _has_remaining_open_operational_contract(contrato: Contrato) -> bool:
+        return (
+            contrato.associado.contratos.filter(
+                deleted_at__isnull=True,
+                contrato_canonico__isnull=True,
+            )
+            .exclude(pk=contrato.pk)
+            .exclude(status__in=[Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO])
+            .exists()
+        )
+
+    @staticmethod
+    def _registrar_remocao_contrato_sem_fechar_esteira(
+        esteira_item: EsteiraItem,
+        *,
+        user,
+        observacao: str,
+    ) -> None:
+        Transicao.objects.create(
+            esteira_item=esteira_item,
+            acao="remover_fila_operacional",
+            de_status=esteira_item.etapa_atual,
+            para_status=esteira_item.etapa_atual,
+            de_situacao=esteira_item.status,
+            para_situacao=esteira_item.status,
+            realizado_por=user,
+            observacao=observacao,
         )
 
     @staticmethod
@@ -956,10 +1000,47 @@ class TesourariaService:
             raise ValidationError("Contrato sem item operacional vinculado.")
         from apps.esteira.services import EsteiraService
 
+        observacao = "Linha operacional removida pela tesouraria com histórico preservado."
+        if TesourariaService._is_pending_reactivation_contract(contrato):
+            now = timezone.now()
+            contrato.status = Contrato.Status.CANCELADO
+            contrato.cancelamento_tipo = Contrato.CancelamentoTipo.CANCELADO
+            contrato.cancelamento_motivo = observacao
+            contrato.cancelado_em = now
+            contrato.save(
+                update_fields=[
+                    "status",
+                    "cancelamento_tipo",
+                    "cancelamento_motivo",
+                    "cancelado_em",
+                    "updated_at",
+                ]
+            )
+            soft_delete_contract_tree(contrato)
+
+            if TesourariaService._has_remaining_open_operational_contract(contrato):
+                TesourariaService._registrar_remocao_contrato_sem_fechar_esteira(
+                    esteira_item,
+                    user=user,
+                    observacao=observacao,
+                )
+                return contrato
+
+            EsteiraService.remover_fila_operacional(
+                esteira_item,
+                user,
+                observacao=observacao,
+            )
+            Associado.objects.filter(pk=contrato.associado_id).update(
+                status=Associado.Status.INATIVO,
+                updated_at=now,
+            )
+            return contrato
+
         EsteiraService.remover_fila_operacional(
             esteira_item,
             user,
-            observacao="Linha operacional removida pela tesouraria com histórico preservado.",
+            observacao=observacao,
         )
         contrato.refresh_from_db()
         return contrato

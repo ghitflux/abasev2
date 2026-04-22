@@ -89,6 +89,21 @@ class AnaliseService:
         latest_contract = Contrato.objects.filter(
             associado_id=OuterRef("associado_id")
         ).order_by("-created_at", "-id")
+        pending_reactivation_contract = (
+            Contrato.objects.filter(
+                associado_id=OuterRef("associado_id"),
+                contrato_canonico__isnull=True,
+                origem_operacional=Contrato.OrigemOperacional.REATIVACAO,
+            )
+            .exclude(
+                status__in=[
+                    Contrato.Status.ATIVO,
+                    Contrato.Status.CANCELADO,
+                    Contrato.Status.ENCERRADO,
+                ]
+            )
+            .order_by("-created_at", "-id")
+        )
         queryset = (
             EsteiraItem.objects.select_related(
                 "associado",
@@ -147,6 +162,9 @@ class AnaliseService:
                 latest_contract_status=Subquery(latest_contract.values("status")[:1]),
                 latest_contract_origin=Subquery(
                     latest_contract.values("origem_operacional")[:1]
+                ),
+                has_pending_reactivation_contract=Exists(
+                    pending_reactivation_contract
                 ),
                 resolved_pendencias_count=Count(
                     "pendencias",
@@ -286,7 +304,7 @@ class AnaliseService:
                 Q(has_open_pendencia=True)
                 | Q(has_received_reupload=True)
                 | Q(resolved_pendencias_count__gt=0)
-                | Q(latest_contract_origin=Contrato.OrigemOperacional.REATIVACAO)
+                | Q(has_pending_reactivation_contract=True)
                 | Q(associado__status__in=[
                     Associado.Status.ATIVO,
                     Associado.Status.INADIMPLENTE,
@@ -297,7 +315,7 @@ class AnaliseService:
         if secao == "contratos_reativacao":
             return queryset.filter(
                 etapa_atual=EsteiraItem.Etapa.ANALISE,
-                latest_contract_origin=Contrato.OrigemOperacional.REATIVACAO,
+                has_pending_reactivation_contract=True,
             ).exclude(
                 Q(has_open_pendencia=True)
                 | Q(has_received_reupload=True)
@@ -305,7 +323,6 @@ class AnaliseService:
                 | Q(associado__status__in=[
                     Associado.Status.ATIVO,
                     Associado.Status.INADIMPLENTE,
-                    Associado.Status.INATIVO,
                 ])
             ).order_by("-updated_at", "-created_at")
 

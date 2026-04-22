@@ -619,7 +619,7 @@ class AdminOverrideApiTestCase(TestCase):
         self.assertEqual(self.esteira.status, EsteiraItem.Situacao.AGUARDANDO)
 
         warning_codes = {warning["code"] for warning in response.json()["warnings"]}
-        self.assertIn("renewal_queue_divergence", warning_codes)
+        self.assertNotIn("renewal_queue_divergence", warning_codes)
 
     def test_save_all_allows_november_reference_inside_cycle(self):
         response = self.admin_client.post(
