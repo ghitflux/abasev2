@@ -319,7 +319,6 @@ class AnaliseService:
             ).exclude(
                 Q(has_open_pendencia=True)
                 | Q(has_received_reupload=True)
-                | Q(resolved_pendencias_count__gt=0)
                 | Q(associado__status__in=[
                     Associado.Status.ATIVO,
                     Associado.Status.INADIMPLENTE,
