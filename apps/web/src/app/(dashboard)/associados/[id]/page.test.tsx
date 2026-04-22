@@ -175,6 +175,98 @@ jest.mock("@/components/associados/admin-override-confirm-dialog", () => {
   };
 });
 
+jest.mock(
+  "@/components/associados/admin-legacy-inactivation-reversal-dialog",
+  () => {
+    const React = require("react");
+
+    function AdminLegacyInactivationReversalDialogMock({
+      open,
+      onConfirm,
+    }: {
+      open: boolean;
+      onConfirm: (payload: {
+        motivo: string;
+        status_retorno: string;
+        etapa_esteira: string;
+        status_esteira: string;
+        observacao_esteira: string;
+      }) => Promise<void> | void;
+    }) {
+      const [motivo, setMotivo] = React.useState("");
+      const [statusRetorno, setStatusRetorno] = React.useState("ativo");
+      const [etapaEsteira, setEtapaEsteira] = React.useState("analise");
+      const [statusEsteira, setStatusEsteira] = React.useState("aguardando");
+      const [observacaoEsteira, setObservacaoEsteira] = React.useState("");
+
+      if (!open) {
+        return null;
+      }
+
+      return (
+        <div>
+          <textarea
+            aria-label="Motivo legado"
+            value={motivo}
+            onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) =>
+              setMotivo(event.target.value)
+            }
+          />
+          <input
+            aria-label="Status retorno"
+            value={statusRetorno}
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+              setStatusRetorno(event.target.value)
+            }
+          />
+          <input
+            aria-label="Etapa esteira"
+            value={etapaEsteira}
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+              setEtapaEsteira(event.target.value)
+            }
+          />
+          <input
+            aria-label="Status esteira"
+            value={statusEsteira}
+            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
+              setStatusEsteira(event.target.value)
+            }
+          />
+          <textarea
+            aria-label="Observação esteira"
+            value={observacaoEsteira}
+            onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) =>
+              setObservacaoEsteira(event.target.value)
+            }
+          />
+          <button
+            type="button"
+            onClick={() =>
+              void onConfirm({
+                motivo,
+                status_retorno: statusRetorno,
+                etapa_esteira: etapaEsteira,
+                status_esteira: statusEsteira,
+                observacao_esteira: observacaoEsteira,
+              })
+            }
+          >
+            Reverter inativação legada
+          </button>
+        </div>
+      );
+    }
+
+    AdminLegacyInactivationReversalDialogMock.displayName =
+      "AdminLegacyInactivationReversalDialogMock";
+    return {
+      __esModule: true,
+      default: AdminLegacyInactivationReversalDialogMock,
+    };
+  },
+);
+
 jest.mock("@/components/contratos/parcela-detalhe-dialog", () => ({
   ParcelaDetalheDialog: () => null,
 }));
@@ -276,6 +368,13 @@ const editorFixture = {
     target_status: "",
     event_created_at: null,
     realizado_por: null,
+  },
+  legacy_inactivation_reversal: {
+    available: false,
+    current_status: "",
+    suggested_status: "ativo",
+    suggested_esteira_etapa: "analise",
+    suggested_esteira_status: "aguardando",
   },
   warnings: [],
 };
@@ -526,6 +625,102 @@ describe("AssociadoPage admin editor", () => {
         expect.objectContaining({
           method: "POST",
           body: { motivo_reversao: "Inativação acidental" },
+        }),
+      ),
+    );
+  });
+
+  it("reverte uma inativacao legada pelo editor avancado com parametros assistidos", async () => {
+    const user = userEvent.setup();
+    mockedApiFetch.mockImplementation(async (path, options) => {
+      if (path === "associados/26") {
+        return {
+          ...associadoFixture,
+          status: "inativo",
+          status_visual_slug: "inativo",
+          status_visual_label: "Inativo",
+        };
+      }
+      if (path === "admin-overrides/associados/26/editor/") {
+        return {
+          ...editorFixture,
+          associado: {
+            ...editorFixture.associado,
+            status: "inativo",
+          },
+          legacy_inactivation_reversal: {
+            available: true,
+            current_status: "inativo",
+            suggested_status: "ativo",
+            suggested_esteira_etapa: "analise",
+            suggested_esteira_status: "aguardando",
+          },
+        };
+      }
+      if (path === "admin-overrides/associados/26/history/") {
+        return [];
+      }
+      if (path === "admin-overrides/associados/26/reverter-inativacao-legada/") {
+        expect(options).toEqual(
+          expect.objectContaining({
+            method: "POST",
+            body: {
+              motivo: "Reabrir associado legado",
+              status_retorno: "ativo",
+              etapa_esteira: "analise",
+              status_esteira: "aguardando",
+              observacao_esteira: "Voltar para análise",
+            },
+          }),
+        );
+        return {
+          ...editorFixture,
+          associado: {
+            ...editorFixture.associado,
+            status: "ativo",
+          },
+        };
+      }
+
+      throw new Error(`Unexpected path: ${String(path)}`);
+    });
+
+    await renderPage();
+    expect(
+      await screen.findByText("MARIA DO AMPARO VASCONCELOS"),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("switch", { name: /modo editor avançado/i }),
+    );
+
+    await user.click(
+      await screen.findByRole("button", { name: /Reverter inativação legada/i }),
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "Motivo legado" }),
+      "Reabrir associado legado",
+    );
+    await user.clear(screen.getByRole("textbox", { name: "Observação esteira" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Observação esteira" }),
+      "Voltar para análise",
+    );
+    await user.click(
+      screen.getAllByRole("button", { name: "Reverter inativação legada" })[1],
+    );
+
+    await waitFor(() =>
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        "admin-overrides/associados/26/reverter-inativacao-legada/",
+        expect.objectContaining({
+          method: "POST",
+          body: {
+            motivo: "Reabrir associado legado",
+            status_retorno: "ativo",
+            etapa_esteira: "analise",
+            status_esteira: "aguardando",
+            observacao_esteira: "Voltar para análise",
+          },
         }),
       ),
     );

@@ -81,6 +81,25 @@ SAFE_RENEWAL_STAGE_LABELS = {
     Refinanciamento.Status.EFETIVADO: "Efetivar renovação",
     Refinanciamento.Status.REVERTIDO: "Cancelar renovação e manter ativo",
 }
+LEGACY_INACTIVATION_SOURCE_STATUSES = {
+    Associado.Status.INATIVO,
+    Associado.Status.INADIMPLENTE,
+    Associado.Status.APTO_A_RENOVAR,
+}
+LEGACY_INACTIVATION_RETURN_STATUSES = {
+    Associado.Status.CADASTRADO,
+    Associado.Status.IMPORTADO,
+    Associado.Status.EM_ANALISE,
+    Associado.Status.ATIVO,
+    Associado.Status.PENDENTE,
+    Associado.Status.APTO_A_RENOVAR,
+}
+LEGACY_INACTIVATION_RETURN_QUEUE_STATUSES = {
+    EsteiraItem.Situacao.AGUARDANDO,
+    EsteiraItem.Situacao.EM_ANDAMENTO,
+    EsteiraItem.Situacao.PENDENCIADO,
+    EsteiraItem.Situacao.APROVADO,
+}
 ADMIN_REFINANCIAMENTO_EDITOR_STATUS_ERROR = (
     'O status da renovação não pode ser salvo pelo editor avançado. '
     'Use "Enviar para etapa" para reposicionar a fila e a tesouraria para efetivar.'
@@ -1433,6 +1452,36 @@ class AdminOverrideService:
         return None
 
     @staticmethod
+    def build_legacy_inactivation_reversal_payload(
+        associado: Associado,
+    ) -> dict[str, Any]:
+        automatic_event = AdminOverrideService.latest_revertible_inactivation_event(
+            associado
+        )
+        current_status = str(associado.status or "")
+        esteira = getattr(associado, "esteira_item", None)
+        suggested_stage = (
+            esteira.etapa_atual
+            if esteira is not None and esteira.etapa_atual != EsteiraItem.Etapa.CONCLUIDO
+            else EsteiraItem.Etapa.ANALISE
+        )
+        suggested_queue_status = (
+            esteira.status
+            if esteira is not None
+            and esteira.etapa_atual != EsteiraItem.Etapa.CONCLUIDO
+            and esteira.status in LEGACY_INACTIVATION_RETURN_QUEUE_STATUSES
+            else EsteiraItem.Situacao.AGUARDANDO
+        )
+        return {
+            "available": automatic_event is None
+            and current_status in LEGACY_INACTIVATION_SOURCE_STATUSES,
+            "current_status": current_status,
+            "suggested_status": Associado.Status.ATIVO,
+            "suggested_esteira_etapa": suggested_stage,
+            "suggested_esteira_status": suggested_queue_status,
+        }
+
+    @staticmethod
     def build_associado_history_payload(associado: Associado, *, request=None) -> list[dict[str, Any]]:
         events = (
             AdminOverrideEvent.objects.filter(associado=associado)
@@ -1640,6 +1689,9 @@ class AdminOverrideService:
         inactivation_event = AdminOverrideService.latest_revertible_inactivation_event(
             associado
         )
+        legacy_inactivation_reversal = (
+            AdminOverrideService.build_legacy_inactivation_reversal_payload(associado)
+        )
         return {
             "associado": _serialize_associado(associado),
             "contratos": payload_contracts,
@@ -1696,6 +1748,7 @@ class AdminOverrideService:
                     "realizado_por": None,
                 }
             ),
+            "legacy_inactivation_reversal": legacy_inactivation_reversal,
             "warnings": _dedupe_warning_list(payload_warnings),
         }
 
@@ -1862,6 +1915,145 @@ class AdminOverrideService:
             associado,
             extra_warnings=operation_warnings,
         )
+
+    @staticmethod
+    def apply_legacy_inactivation_reversal(
+        *,
+        associado: Associado,
+        payload: dict[str, Any],
+        user,
+    ) -> dict[str, Any]:
+        motivo = str(payload.get("motivo") or "").strip()
+        if not motivo:
+            raise ValidationError("O motivo da reversão é obrigatório.")
+        if str(associado.status or "") not in LEGACY_INACTIVATION_SOURCE_STATUSES:
+            raise ValidationError(
+                "A reversão assistida legada só está disponível para associados inativados."
+            )
+        if AdminOverrideService.latest_revertible_inactivation_event(associado) is not None:
+            raise ValidationError(
+                "Este associado já possui uma reversão automática disponível. Use a reversão da inativação registrada."
+            )
+
+        restored_status = str(payload.get("status_retorno") or "").strip()
+        target_stage = str(payload.get("etapa_esteira") or "").strip()
+        target_queue_status = str(payload.get("status_esteira") or "").strip()
+        if restored_status not in LEGACY_INACTIVATION_RETURN_STATUSES:
+            raise ValidationError("Escolha um status de retorno válido.")
+        if target_stage == EsteiraItem.Etapa.CONCLUIDO:
+            raise ValidationError("A esteira precisa voltar para uma etapa operacional aberta.")
+        if target_queue_status not in LEGACY_INACTIVATION_RETURN_QUEUE_STATUSES:
+            raise ValidationError("Escolha um status operacional válido para a esteira.")
+        esteira_note = str(payload.get("observacao_esteira") or "").strip()
+
+        with transaction.atomic():
+            before_associado = _serialize_associado(associado)
+            before_esteira = _serialize_esteira(getattr(associado, "esteira_item", None))
+
+            associado.status = restored_status
+            associado.save(update_fields=["status", "updated_at"])
+
+            esteira = getattr(associado, "esteira_item", None)
+            previous_stage = (
+                esteira.etapa_atual
+                if esteira is not None
+                else EsteiraItem.Etapa.CONCLUIDO
+            )
+            previous_queue_status = (
+                esteira.status
+                if esteira is not None
+                else EsteiraItem.Situacao.REJEITADO
+            )
+            prioridade = (
+                int(esteira.prioridade)
+                if esteira is not None and esteira.prioridade
+                else 3
+            )
+
+            if esteira is None:
+                esteira = EsteiraItem.objects.create(
+                    associado=associado,
+                    etapa_atual=target_stage,
+                    status=target_queue_status,
+                    prioridade=prioridade,
+                    observacao=(
+                        esteira_note
+                        or "Reaberto por reversão assistida de inativação legada."
+                    ),
+                )
+            else:
+                esteira.etapa_atual = target_stage
+                esteira.status = target_queue_status
+                esteira.prioridade = prioridade
+                esteira.observacao = (
+                    esteira_note
+                    or "Reaberto por reversão assistida de inativação legada."
+                )
+                esteira.assumido_em = None
+                esteira.heartbeat_at = None
+                esteira.analista_responsavel_id = None
+                esteira.coordenador_responsavel_id = None
+                esteira.tesoureiro_responsavel_id = None
+                esteira.save()
+
+            _normalize_esteira_conclusion_state(esteira)
+            Transicao.objects.create(
+                esteira_item=esteira,
+                acao="reverter_inativacao_legada",
+                de_status=previous_stage,
+                para_status=esteira.etapa_atual,
+                de_situacao=previous_queue_status,
+                para_situacao=esteira.status,
+                realizado_por=user,
+                observacao=motivo,
+            )
+
+            after_associado = _serialize_associado(associado)
+            after_esteira = _serialize_esteira(esteira)
+            AdminOverrideService._record_event(
+                context=_OverrideContext(associado=associado),
+                user=user,
+                escopo=AdminOverrideEvent.Scope.ASSOCIADO,
+                resumo="Reversão assistida de inativação legada",
+                motivo=motivo,
+                before_snapshot={
+                    "meta": {
+                        "action": "reversao_inativacao_legada",
+                        "current_status": before_associado.get("status"),
+                        "restored_status": after_associado.get("status"),
+                    },
+                    "associado": before_associado,
+                    "esteira": before_esteira,
+                },
+                after_snapshot={
+                    "meta": {
+                        "action": "reversao_inativacao_legada",
+                        "current_status": before_associado.get("status"),
+                        "restored_status": after_associado.get("status"),
+                    },
+                    "associado": after_associado,
+                    "esteira": after_esteira,
+                },
+                changes=[
+                    {
+                        "entity_type": AdminOverrideChange.EntityType.ASSOCIADO,
+                        "entity_id": associado.id,
+                        "resumo": "Associado reaberto por reversão assistida legada",
+                        "before_snapshot": before_associado,
+                        "after_snapshot": after_associado,
+                    },
+                    {
+                        "entity_type": AdminOverrideChange.EntityType.ESTEIRA,
+                        "entity_id": esteira.id,
+                        "resumo": "Esteira operacional reaberta após reversão assistida legada",
+                        "before_snapshot": before_esteira,
+                        "after_snapshot": after_esteira,
+                    },
+                ],
+            )
+
+        associado.refresh_from_db()
+        return AdminOverrideService.build_associado_editor_payload(associado)
 
     @staticmethod
     def _resolve_contract_for_safe_transition(

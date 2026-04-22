@@ -119,6 +119,9 @@
 - [x] Modo editor avançado passou a expor `Reverter inativação` quando existe evento administrativo reversível.
 - [x] Reversão de inativação volta o associado para o status anterior sem abrir fluxo padrão de reativação.
 - [x] Reversão administrativa passou a restaurar a linha da esteira a partir do snapshot do evento.
+- [x] Casos antigos passaram a contar com `Reverter inativação legada` no editor avançado.
+- [x] Reversão assistida legada permite escolher status de retorno, etapa e situação da esteira.
+- [x] Reversão legada limpa responsáveis residuais da esteira e cria novo evento administrativo auditável.
 - [x] Editor avançado segue acessível para ajustes de cadastro e ciclos mesmo com o associado inativo.
 - [x] Editor avançado passou a preservar parcela `nao_descontado` dentro do ciclo manual.
 - [x] Competência inadimplente pode aparecer no resumo de meses não descontados sem sumir da lista de parcelas do ciclo.
@@ -151,8 +154,8 @@
 - [x] `git diff --check` executado nas rodadas de fechamento.
 - [x] Auditorias em banco e shell do container para CPFs e refinanciamentos citados.
 - [x] Testes focados de backend do patch de reativação/anexos/filas passaram com `Ran 13 tests ... OK`.
-- [x] Testes focados de inativação/editor avançado passaram com `Ran 5 tests ... OK`.
-- [x] Jest focado do detalhe do associado passou com `1 passed, 4 tests passed`.
+- [x] Testes focados de inativação/editor avançado passaram com `Ran 6 tests ... OK`.
+- [x] Jest focado do detalhe do associado passou com `1 passed, 5 tests passed`.
 
 ## Observações operacionais
 

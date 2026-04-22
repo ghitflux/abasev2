@@ -56,6 +56,10 @@
   avancado quando houver evento reversivel.
 - A reversao restaura o status anterior sem abrir um novo fluxo de reativacao.
 - O snapshot do evento passa a restaurar tambem a linha operacional da esteira.
+- Casos antigos passam a contar com `Reverter inativacao legada`, com escolha
+  manual de status de retorno, etapa e situacao da esteira.
+- A reversao legada usa
+  `POST /api/v1/admin-overrides/associados/{id}/reverter-inativacao-legada/`.
 - O editor avancado fica liberado para admin e coordenador mesmo com o
   associado inativo.
 - O editor avancado preserva parcela `nao_descontado` dentro do ciclo manual.
@@ -72,6 +76,7 @@
 - `backend/apps/associados/mobile_legacy_views.py`
 - `backend/apps/associados/admin_override_service.py`
 - `backend/apps/associados/admin_override_serializers.py`
+- `backend/apps/associados/admin_override_views.py`
 - `backend/apps/contratos/cycle_projection.py`
 - `backend/apps/tesouraria/services.py`
 - `backend/apps/tesouraria/serializers.py`
@@ -89,6 +94,7 @@
 - `apps/web/src/app/(dashboard)/associados/[id]/page.tsx`
 - `apps/web/src/app/(dashboard)/associados/[id]/page.test.tsx`
 - `apps/web/src/app/(dashboard)/associados-editar/[id]/page.tsx`
+- `apps/web/src/components/associados/admin-legacy-inactivation-reversal-dialog.tsx`
 - `apps/web/src/components/associados/associado-reactivation-dialog.tsx`
 - `apps/web/src/components/associados/associado-form.tsx`
 - `apps/web/src/lib/api/types.ts`
@@ -146,6 +152,9 @@ Validar manualmente:
 - `POST /api/v1/admin-overrides/events/{id}/reverter/` restaura o associado
   para o status anterior da inativacao e recompõe a esteira sem abrir
   reativacao.
+- `POST /api/v1/admin-overrides/associados/{id}/reverter-inativacao-legada/`
+  permite reabrir casos antigos sem snapshot, com parametros operacionais
+  informados manualmente.
 - Salvar editor avancado com parcela `nao_descontado` mantem a competencia no
   ciclo e no resumo de meses nao descontados.
 
@@ -162,6 +171,8 @@ Validar manualmente:
   inativo passivel de renovacao antes de confirmar a inativacao.
 - Modo editor avancado no detalhe do associado mostra `Reverter inativacao`
   quando houver evento elegivel e o botao volta o associado ao status anterior.
+- Quando nao houver evento elegivel, o modo editor avancado mostra
+  `Reverter inativacao legada` para casos antigos.
 - A rota `/associados-editar/:id?admin=1` continua acessivel para ajuste
   administrativo mesmo com o associado inativo.
 
@@ -195,12 +206,13 @@ docker compose exec -T backend python manage.py test \
   apps.associados.tests.test_permissions.AssociadoPermissionsTestCase.test_coordenador_pode_inativar_associado_como_passivel_de_renovacao \
   apps.associados.tests.test_admin_overrides.AdminOverrideApiTestCase.test_save_all_keeps_nao_descontado_inside_cycle_and_unpaid_summary \
   apps.associados.tests.test_admin_overrides.AdminOverrideApiTestCase.test_admin_editor_can_revert_inactivation_to_previous_status \
+  apps.associados.tests.test_admin_overrides.AdminOverrideApiTestCase.test_admin_editor_can_assist_legacy_inactivation_reversal \
   --settings=config.settings.testing --noinput
 ```
 
 Resultado:
 
-- `Ran 5 tests ... OK`.
+- `Ran 6 tests ... OK`.
 
 ### Frontend
 
@@ -216,7 +228,7 @@ Resultado:
 
 - Type-check concluido sem erro.
 - `2 passed, 10 tests passed`.
-- Teste adicional do detalhe do associado: `1 passed, 4 tests passed`.
+- Teste adicional do detalhe do associado: `1 passed, 5 tests passed`.
 
 ### Checks gerais
 

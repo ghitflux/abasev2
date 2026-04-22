@@ -132,6 +132,20 @@ editor avancado:
   `POST /api/v1/admin-overrides/events/{id}/reverter/`, agora com contexto
   suficiente para restaurar associado e esteira.
 
+Para inativacoes antigas, feitas antes da gravacao automatica desse snapshot, o
+editor avancado passa a oferecer uma reversao assistida legada:
+
+- o detalhe do associado mostra `Reverter inativacao legada` quando nao existe
+  evento automatico reversivel e o associado segue inativo;
+- o operador informa manualmente o status de retorno do associado, a etapa e a
+  situacao da esteira;
+- a acao reabre a esteira sem passar pelo fluxo padrao de reativacao;
+- responsaveis operacionais residuais da fila sao limpos no reingresso;
+- o endpoint usado e
+  `POST /api/v1/admin-overrides/associados/{id}/reverter-inativacao-legada/`;
+- a operacao cria novo evento administrativo com snapshot before/after, para
+  manter trilha de auditoria e eventual reversao posterior.
+
 ## Arquivos principais alterados
 
 - [backend/apps/associados/services.py](/mnt/d/apps/abasev2/abasev2/backend/apps/associados/services.py)
@@ -140,6 +154,7 @@ editor avancado:
 - [backend/apps/associados/mobile_legacy_views.py](/mnt/d/apps/abasev2/abasev2/backend/apps/associados/mobile_legacy_views.py)
 - [backend/apps/associados/admin_override_service.py](/mnt/d/apps/abasev2/abasev2/backend/apps/associados/admin_override_service.py)
 - [backend/apps/associados/admin_override_serializers.py](/mnt/d/apps/abasev2/abasev2/backend/apps/associados/admin_override_serializers.py)
+- [backend/apps/associados/admin_override_views.py](/mnt/d/apps/abasev2/abasev2/backend/apps/associados/admin_override_views.py)
 - [backend/apps/tesouraria/services.py](/mnt/d/apps/abasev2/abasev2/backend/apps/tesouraria/services.py)
 - [backend/apps/tesouraria/serializers.py](/mnt/d/apps/abasev2/abasev2/backend/apps/tesouraria/serializers.py)
 - [backend/apps/tesouraria/views.py](/mnt/d/apps/abasev2/abasev2/backend/apps/tesouraria/views.py)
@@ -152,6 +167,7 @@ editor avancado:
 - [apps/web/src/app/(dashboard)/analise/page.tsx](/mnt/d/apps/abasev2/abasev2/apps/web/src/app/(dashboard)/analise/page.tsx)
 - [apps/web/src/app/(dashboard)/associados/[id]/page.tsx](/mnt/d/apps/abasev2/abasev2/apps/web/src/app/(dashboard)/associados/[id]/page.tsx)
 - [apps/web/src/app/(dashboard)/associados-editar/[id]/page.tsx](/mnt/d/apps/abasev2/abasev2/apps/web/src/app/(dashboard)/associados-editar/[id]/page.tsx)
+- [apps/web/src/components/associados/admin-legacy-inactivation-reversal-dialog.tsx](/mnt/d/apps/abasev2/abasev2/apps/web/src/components/associados/admin-legacy-inactivation-reversal-dialog.tsx)
 - [apps/web/src/components/associados/associado-reactivation-dialog.tsx](/mnt/d/apps/abasev2/abasev2/apps/web/src/components/associados/associado-reactivation-dialog.tsx)
 - [apps/web/src/components/associados/associado-form.tsx](/mnt/d/apps/abasev2/abasev2/apps/web/src/components/associados/associado-form.tsx)
 - [apps/web/src/lib/api/types.ts](/mnt/d/apps/abasev2/abasev2/apps/web/src/lib/api/types.ts)
@@ -188,12 +204,13 @@ docker compose exec -T backend python manage.py test \
   apps.associados.tests.test_permissions.AssociadoPermissionsTestCase.test_coordenador_pode_inativar_associado_como_passivel_de_renovacao \
   apps.associados.tests.test_admin_overrides.AdminOverrideApiTestCase.test_save_all_keeps_nao_descontado_inside_cycle_and_unpaid_summary \
   apps.associados.tests.test_admin_overrides.AdminOverrideApiTestCase.test_admin_editor_can_revert_inactivation_to_previous_status \
+  apps.associados.tests.test_admin_overrides.AdminOverrideApiTestCase.test_admin_editor_can_assist_legacy_inactivation_reversal \
   --settings=config.settings.testing --noinput
 ```
 
 Resultado:
 
-- `Ran 5 tests ... OK`.
+- `Ran 6 tests ... OK`.
 
 ### Frontend
 
@@ -207,7 +224,7 @@ pnpm --filter @abase/web type-check
 Resultado:
 
 - `tsc --noEmit -p tsconfig.typecheck.json` concluido sem erro.
-- `1 passed, 3 tests passed`.
+- `1 passed, 5 tests passed`.
 
 ## Observacao sobre suite ampla
 

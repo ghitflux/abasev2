@@ -211,6 +211,14 @@ class AdminOverrideInactivationReversalSerializer(serializers.Serializer):
     realizado_por = SimpleUserSerializer(read_only=True, allow_null=True)
 
 
+class AdminOverrideLegacyInactivationReversalSerializer(serializers.Serializer):
+    available = serializers.BooleanField(read_only=True)
+    current_status = serializers.CharField(read_only=True, allow_blank=True)
+    suggested_status = serializers.CharField(read_only=True, allow_blank=True)
+    suggested_esteira_etapa = serializers.CharField(read_only=True, allow_blank=True)
+    suggested_esteira_status = serializers.CharField(read_only=True, allow_blank=True)
+
+
 class AdminOverrideEditorPayloadSerializer(serializers.Serializer):
     associado = AssociadoAdminSnapshotSerializer(read_only=True)
     contratos = AdminOverrideContratoEditorSerializer(many=True, read_only=True)
@@ -219,6 +227,12 @@ class AdminOverrideEditorPayloadSerializer(serializers.Serializer):
     inactivation_reversal = AdminOverrideInactivationReversalSerializer(
         read_only=True,
         allow_null=True,
+    )
+    legacy_inactivation_reversal = (
+        AdminOverrideLegacyInactivationReversalSerializer(
+            read_only=True,
+            allow_null=True,
+        )
     )
     warnings = AdminOverrideWarningSerializer(many=True, read_only=True)
 
@@ -357,6 +371,37 @@ class RefinanciamentoOverrideWriteSerializer(serializers.Serializer):
     analista_note = serializers.CharField(required=False, allow_blank=True)
     coordenador_note = serializers.CharField(required=False, allow_blank=True)
     reviewed_by_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class LegacyInactivationReversalWriteSerializer(serializers.Serializer):
+    motivo = serializers.CharField()
+    status_retorno = serializers.ChoiceField(
+        choices=[
+            "cadastrado",
+            "importado",
+            "em_analise",
+            "ativo",
+            "pendente",
+            "apto_a_renovar",
+        ]
+    )
+    etapa_esteira = serializers.ChoiceField(
+        choices=[
+            "cadastro",
+            "analise",
+            "coordenacao",
+            "tesouraria",
+        ]
+    )
+    status_esteira = serializers.ChoiceField(
+        choices=[
+            "aguardando",
+            "em_andamento",
+            "pendenciado",
+            "aprovado",
+        ]
+    )
+    observacao_esteira = serializers.CharField(required=False, allow_blank=True)
 
 
 class EsteiraOverrideWriteSerializer(serializers.Serializer):

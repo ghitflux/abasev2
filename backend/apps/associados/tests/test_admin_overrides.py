@@ -1081,6 +1081,57 @@ class AdminOverrideApiTestCase(TestCase):
         event = AdminOverrideEvent.objects.get(pk=event_id)
         self.assertIsNotNone(event.revertida_em)
 
+    def test_admin_editor_can_assist_legacy_inactivation_reversal(self):
+        self.associado.status = Associado.Status.INATIVO
+        self.associado.save(update_fields=["status", "updated_at"])
+        self.esteira.etapa_atual = EsteiraItem.Etapa.CONCLUIDO
+        self.esteira.status = EsteiraItem.Situacao.REJEITADO
+        self.esteira.observacao = "Inativação antiga sem evento administrativo."
+        self.esteira.save()
+
+        editor = self.admin_client.get(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/editor/"
+        )
+        self.assertEqual(editor.status_code, 200, editor.json())
+        self.assertFalse(editor.json()["inactivation_reversal"]["available"])
+        self.assertTrue(editor.json()["legacy_inactivation_reversal"]["available"])
+        self.assertEqual(
+            editor.json()["legacy_inactivation_reversal"]["current_status"],
+            Associado.Status.INATIVO,
+        )
+
+        revert = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/reverter-inativacao-legada/",
+            {
+                "motivo": "Corrigir inativação histórica sem snapshot",
+                "status_retorno": Associado.Status.ATIVO,
+                "etapa_esteira": EsteiraItem.Etapa.ANALISE,
+                "status_esteira": EsteiraItem.Situacao.AGUARDANDO,
+                "observacao_esteira": "Retorno manual para análise.",
+            },
+            format="json",
+        )
+        self.assertEqual(revert.status_code, 200, revert.json())
+
+        self.associado.refresh_from_db()
+        self.esteira.refresh_from_db()
+        self.assertEqual(self.associado.status, Associado.Status.ATIVO)
+        self.assertEqual(self.esteira.etapa_atual, EsteiraItem.Etapa.ANALISE)
+        self.assertEqual(self.esteira.status, EsteiraItem.Situacao.AGUARDANDO)
+        self.assertEqual(self.esteira.observacao, "Retorno manual para análise.")
+        self.assertFalse(
+            revert.json()["legacy_inactivation_reversal"]["available"]
+        )
+
+        event = AdminOverrideEvent.objects.filter(
+            associado=self.associado,
+            resumo="Reversão assistida de inativação legada",
+        ).latest("id")
+        self.assertEqual(
+            (event.after_snapshot.get("meta") or {}).get("restored_status"),
+            Associado.Status.ATIVO,
+        )
+
     def test_save_all_returns_validation_message_for_invalid_cycle_reference(self):
         response = self.admin_client.post(
             f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",

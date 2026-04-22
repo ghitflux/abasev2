@@ -40,6 +40,7 @@ import type {
   AdminContractEditorPendingChanges,
   ContractEditorDirtyState,
 } from "@/components/associados/admin-contract-editor";
+import AdminLegacyInactivationReversalDialog from "@/components/associados/admin-legacy-inactivation-reversal-dialog";
 import AdminOverrideConfirmDialog from "@/components/associados/admin-override-confirm-dialog";
 import AdminEsteiraEditor from "@/components/associados/admin-esteira-editor";
 import type { AdminEsteiraEditorHandle } from "@/components/associados/admin-esteira-editor";
@@ -108,6 +109,13 @@ const INACTIVATION_OPTIONS = [
   },
 ] as const;
 type InactivationTarget = (typeof INACTIVATION_OPTIONS)[number]["value"];
+type LegacyInactivationReversalPayload = {
+  motivo: string;
+  status_retorno: string;
+  etapa_esteira: string;
+  status_esteira: string;
+  observacao_esteira: string;
+};
 const SAFE_RENEWAL_STAGE_OPTIONS = [
   { value: "apto_a_renovar", label: "Apto a renovar" },
   { value: "em_analise_renovacao", label: "Em análise" },
@@ -305,6 +313,8 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
   const [saveAllOpen, setSaveAllOpen] = React.useState(false);
   const [revertInactivationOpen, setRevertInactivationOpen] =
     React.useState(false);
+  const [revertLegacyInactivationOpen, setRevertLegacyInactivationOpen] =
+    React.useState(false);
   const [renewalStageDialogOpen, setRenewalStageDialogOpen] =
     React.useState(false);
   const [renewalStageSelections, setRenewalStageSelections] = React.useState<
@@ -451,6 +461,37 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
         error instanceof Error
           ? error.message
           : "Falha ao reverter a inativação.",
+      );
+    },
+  });
+
+  const revertLegacyInactivationMutation = useMutation({
+    mutationFn: async (payload: LegacyInactivationReversalPayload) =>
+      apiFetch(
+        `admin-overrides/associados/${associadoId}/reverter-inativacao-legada/`,
+        {
+          method: "POST",
+          body: payload,
+        },
+      ),
+    onSuccess: async () => {
+      toast.success("Inativação legada revertida com sucesso.");
+      setRevertLegacyInactivationOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ["associado", associadoId] });
+      await queryClient.invalidateQueries({
+        queryKey: ["admin-associado-editor", associadoId],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["admin-associado-history", associadoId],
+      });
+      await queryClient.invalidateQueries({ queryKey: ["associados"] });
+      await queryClient.invalidateQueries({ queryKey: ["contratos"] });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao reverter a inativação legada.",
       );
     },
   });
@@ -957,6 +998,17 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
                     >
                       <RotateCcwIcon className="mr-2 size-4" />
                       Reverter inativação
+                    </Button>
+                  ) : null}
+                  {adminEditorQuery.data?.legacy_inactivation_reversal?.available ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setRevertLegacyInactivationOpen(true)}
+                    >
+                      <RotateCcwIcon className="mr-2 size-4" />
+                      Reverter inativação legada
                     </Button>
                   ) : null}
                   {adminEditHref ? (
@@ -1723,6 +1775,28 @@ function AssociadoPageContent({ params }: AssociadoPageProps) {
         isSubmitting={revertInactivationMutation.isPending}
         onConfirm={async (motivo) => {
           await revertInactivationMutation.mutateAsync(motivo);
+        }}
+      />
+      <AdminLegacyInactivationReversalDialog
+        open={revertLegacyInactivationOpen}
+        onOpenChange={setRevertLegacyInactivationOpen}
+        currentStatus={
+          adminEditorQuery.data?.legacy_inactivation_reversal?.current_status
+        }
+        defaultStatus={
+          adminEditorQuery.data?.legacy_inactivation_reversal?.suggested_status
+        }
+        defaultStage={
+          adminEditorQuery.data?.legacy_inactivation_reversal
+            ?.suggested_esteira_etapa
+        }
+        defaultQueueStatus={
+          adminEditorQuery.data?.legacy_inactivation_reversal
+            ?.suggested_esteira_status
+        }
+        isSubmitting={revertLegacyInactivationMutation.isPending}
+        onConfirm={async (payload) => {
+          await revertLegacyInactivationMutation.mutateAsync(payload);
         }}
       />
       <AssociadoReactivationDialog

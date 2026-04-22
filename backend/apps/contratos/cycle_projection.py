@@ -69,6 +69,7 @@ STATUS_VISUAL_PHASE_LABELS = {
     "em_analise": "Em Análise",
     "ciclo_aberto": "Ativo",
     "ciclo_com_pendencia": "Com Pendência",
+    "inadimplente": "Inadimplente",
     "apto_a_renovar": "Apto para Renovação",
     "solicitado_para_liquidacao": "Solicitado para Liquidação",
     "renovacao_em_analise": "Renovação em Análise",
@@ -89,6 +90,7 @@ STATUS_VISUAL_PHASE_PRIORITY = {
     "solicitado_para_liquidacao": 4,
     "aguardando_coordenacao": 4,
     "renovacao_em_analise": 3,
+    "inadimplente": 3,
     "ciclo_com_pendencia": 2,
     "apto_a_renovar": 2,
     "ciclo_aberto": 2,
@@ -356,10 +358,12 @@ def _compose_visual_status(
 
 def normalize_associado_mother_status(raw_status: str | None) -> str:
     status = str(raw_status or "").strip()
-    if status == Associado.Status.INATIVO:
-        return Associado.Status.INATIVO
-    if status == "apto_a_renovar":
-        return "apto_a_renovar"
+    if status in {
+        Associado.Status.INATIVO,
+        Associado.Status.INADIMPLENTE,
+        Associado.Status.APTO_A_RENOVAR,
+    }:
+        return status
     return Associado.Status.ATIVO
 
 
@@ -368,8 +372,13 @@ def resolve_associado_mother_status(
     *,
     projections_by_contract: dict[int, dict[str, object]] | None = None,
 ) -> str:
-    if normalize_associado_mother_status(associado.status) == Associado.Status.INATIVO:
-        return Associado.Status.INATIVO
+    normalized_manual_status = normalize_associado_mother_status(associado.status)
+    if normalized_manual_status in {
+        Associado.Status.INATIVO,
+        Associado.Status.INADIMPLENTE,
+        Associado.Status.APTO_A_RENOVAR,
+    }:
+        return normalized_manual_status
 
     contratos = get_operational_contracts_for_associado(associado)
     if not contratos:
@@ -2490,6 +2499,8 @@ def get_associado_visual_status_payload(associado: Associado) -> dict[str, objec
     mother_status = resolve_associado_mother_status(associado)
     if mother_status == Associado.Status.INATIVO:
         return _compose_visual_status(phase_slug="contrato_desativado")
+    if mother_status == Associado.Status.INADIMPLENTE:
+        return _compose_visual_status(phase_slug="inadimplente")
     if mother_status == "apto_a_renovar":
         return _compose_visual_status(phase_slug="apto_a_renovar")
 

@@ -25,6 +25,7 @@ from .admin_override_serializers import (
     CycleLayoutOverrideWriteSerializer,
     DocumentoVersionWriteSerializer,
     EsteiraOverrideWriteSerializer,
+    LegacyInactivationReversalWriteSerializer,
     RenewalStageTransitionWriteSerializer,
     RefinanciamentoOverrideWriteSerializer,
 )
@@ -150,6 +151,28 @@ class AdminOverrideAssociadoViewSet(GenericViewSet):
         serializer.is_valid(raise_exception=True)
         try:
             payload = AdminOverrideService.apply_save_all(
+                associado=associado,
+                payload=serializer.validated_data,
+                user=request.user,
+            )
+        except AdminOverrideConflict as exc:
+            return _conflict_response(exc)
+        except DjangoValidationError as exc:
+            return _validation_error_response(exc)
+        return Response(AdminOverrideEditorPayloadSerializer(payload).data)
+
+    @extend_schema(
+        request=LegacyInactivationReversalWriteSerializer,
+        responses=AdminOverrideEditorPayloadSerializer,
+        operation_id="admin_override_associado_legacy_inactivation_reversal",
+    )
+    @action(detail=True, methods=["post"], url_path="reverter-inativacao-legada")
+    def reverter_inativacao_legada(self, request, pk=None):
+        associado = self.get_object()
+        serializer = LegacyInactivationReversalWriteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            payload = AdminOverrideService.apply_legacy_inactivation_reversal(
                 associado=associado,
                 payload=serializer.validated_data,
                 user=request.user,

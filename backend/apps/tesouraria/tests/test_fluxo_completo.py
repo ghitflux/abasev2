@@ -902,6 +902,47 @@ class TestFluxoCompleto(TestCase):
         self.assertIsNotNone(esteira_item.concluido_em)
         self.assertIsNotNone(esteira_item.deleted_at)
 
+    def test_contrato_removido_da_fila_some_da_lista_cancelados_tesouraria(self):
+        associado = self._criar_associado("62345678931")
+        contrato = self._levar_para_tesouraria(associado)
+        contrato.status = Contrato.Status.CANCELADO
+        contrato.cancelamento_tipo = Contrato.CancelamentoTipo.DESISTENTE
+        contrato.cancelado_em = timezone.now()
+        contrato.save(
+            update_fields=[
+                "status",
+                "cancelamento_tipo",
+                "cancelado_em",
+                "updated_at",
+            ]
+        )
+
+        competencia = timezone.localdate().strftime("%Y-%m")
+        antes = self.coord_client.get(
+            "/api/v1/tesouraria/contratos/",
+            {"competencia": competencia, "pagamento": "cancelado"},
+        )
+        self.assertEqual(antes.status_code, 200, antes.json())
+        self.assertIn(
+            contrato.id,
+            {row["id"] for row in antes.json()["results"]},
+        )
+
+        excluir = self.coord_client.post(
+            f"/api/v1/tesouraria/contratos/{contrato.id}/excluir/"
+        )
+        self.assertEqual(excluir.status_code, 200, excluir.json())
+
+        depois = self.coord_client.get(
+            "/api/v1/tesouraria/contratos/",
+            {"competencia": competencia, "pagamento": "cancelado"},
+        )
+        self.assertEqual(depois.status_code, 200, depois.json())
+        self.assertNotIn(
+            contrato.id,
+            {row["id"] for row in depois.json()["results"]},
+        )
+
     def test_coordenacao_tem_acesso_de_leitura_as_rotas_da_tesouraria(self):
         associado = self._criar_associado("62345678903")
         contrato = self._levar_para_tesouraria(associado)

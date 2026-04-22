@@ -632,12 +632,21 @@ export type AdminInactivationReversal = {
   realizado_por: SimpleUser | null;
 };
 
+export type AdminLegacyInactivationReversal = {
+  available: boolean;
+  current_status: string;
+  suggested_status: string;
+  suggested_esteira_etapa: string;
+  suggested_esteira_status: string;
+};
+
 export type AdminAssociadoEditorPayload = {
   associado: AdminAssociadoSnapshot;
   contratos: AdminEditorContrato[];
   esteira?: EsteiraResumo | null;
   documentos: Documento[];
   inactivation_reversal?: AdminInactivationReversal | null;
+  legacy_inactivation_reversal?: AdminLegacyInactivationReversal | null;
   warnings?: AdminEditorWarning[];
 };
 

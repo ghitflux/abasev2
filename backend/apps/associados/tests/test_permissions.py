@@ -522,6 +522,8 @@ class AssociadoPermissionsTestCase(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
         self.associado.refresh_from_db()
         self.assertEqual(self.associado.status, Associado.Status.INADIMPLENTE)
+        self.assertEqual(response.json()["status"], Associado.Status.INADIMPLENTE)
+        self.assertEqual(response.json()["status_visual_slug"], "inadimplente")
 
     def test_coordenador_pode_inativar_associado_como_passivel_de_renovacao(self):
         response = self.coord_client.post(
@@ -532,6 +534,8 @@ class AssociadoPermissionsTestCase(TestCase):
         self.assertEqual(response.status_code, 200, response.json())
         self.associado.refresh_from_db()
         self.assertEqual(self.associado.status, Associado.Status.APTO_A_RENOVAR)
+        self.assertEqual(response.json()["status"], Associado.Status.APTO_A_RENOVAR)
+        self.assertEqual(response.json()["status_visual_slug"], "apto_a_renovar")
 
     def test_admin_nao_pode_excluir_associado(self):
         response = self.admin_client.delete(f"/api/v1/associados/{self.associado.id}/")

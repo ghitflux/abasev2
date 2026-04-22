@@ -174,7 +174,10 @@ class TesourariaService:
                         associado__esteira_item__status=EsteiraItem.Situacao.REJEITADO,
                     )
                 )
-                | Q(status__in=[Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO])
+                | (
+                    Q(status__in=[Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO])
+                    & Q(associado__esteira_item__deleted_at__isnull=True)
+                )
             )
             .distinct()
             .order_by(ordering_map.get(ordering or "", "-created_at"))
