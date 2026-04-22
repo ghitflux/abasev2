@@ -1013,6 +1013,8 @@ class TesourariaService:
         if contrato.status in [Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO]:
             pending = EsteiraService._pending_reactivation_contract(esteira_item)
             if pending is not None:
+                # Oculta o contrato antigo da fila sem tocar na esteira nem no pendente.
+                soft_delete_contract_tree(contrato)
                 TesourariaService._registrar_remocao_contrato_sem_fechar_esteira(
                     esteira_item,
                     user=user,
@@ -1020,6 +1022,7 @@ class TesourariaService:
                 )
                 return contrato
             # Sem reativacao pendente: fecha a esteira normalmente
+            soft_delete_contract_tree(contrato)
             EsteiraService.remover_fila_operacional(
                 esteira_item,
                 user,
