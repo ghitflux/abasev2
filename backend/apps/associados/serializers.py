@@ -721,6 +721,7 @@ class AssociadoReativarSerializer(serializers.Serializer):
 
 
 class AssociadoUpdateSerializer(serializers.ModelSerializer):
+    cpf_cnpj = serializers.CharField(required=False, validators=[])
     endereco = EnderecoWriteSerializer(required=False)
     dados_bancarios = DadosBancariosWriteSerializer(required=False)
     contato = ContatoHistoricoWriteSerializer(required=False)
@@ -796,10 +797,22 @@ class AssociadoUpdateSerializer(serializers.ModelSerializer):
             "agente_responsavel_id",
             "percentual_repasse",
         ]
-        read_only_fields = ["id", "matricula", "cpf_cnpj"]
+        read_only_fields = ["id", "matricula"]
 
     def validate_mensalidade(self, value):
         return validate_positive_mensalidade(value, field_name="mensalidade")
+
+    def validate_cpf_cnpj(self, value: str) -> str:
+        normalized = "".join(ch for ch in value if ch.isdigit())
+        if not normalized:
+            raise serializers.ValidationError("CPF/CNPJ inválido.")
+        instance = getattr(self, "instance", None)
+        qs = Associado.objects.filter(cpf_cnpj=normalized)
+        if instance:
+            qs = qs.exclude(pk=instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("CPF/CNPJ já cadastrado para outro associado.")
+        return normalized
 
     def validate(self, attrs):
         if "percentual_repasse" in self.initial_data:

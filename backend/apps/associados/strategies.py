@@ -145,8 +145,6 @@ class EdicaoValidationStrategy(ValidationStrategy):
     """Validação no momento da edição."""
 
     def validate(self, data):
-        if "cpf_cnpj" in data:
-            raise ValidationError({"cpf_cnpj": "CPF/CNPJ não pode ser alterado."})
         if "matricula" in data:
             raise ValidationError({"matricula": "Matrícula não pode ser alterada."})
         contrato = data.get("contrato")
