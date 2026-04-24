@@ -15,6 +15,7 @@ import {
   SearchIcon,
   SlidersHorizontalIcon,
   ShieldCheckIcon,
+  Trash2Icon,
   WalletIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -589,12 +590,14 @@ export default function AnalisePage() {
                 Reprovar
               </Button>
             ) : null}
-            {row.etapa_atual === "analise" && isAnalistaEnabled ? (
+            {row.acoes_disponiveis.includes("remover_fila") ? (
               <Button
                 size="sm"
                 variant="outline"
+                className="gap-2"
                 onClick={() => setDialogState({ mode: "excluir", item: row })}
               >
+                <Trash2Icon className="size-4" />
                 Remover da fila
               </Button>
             ) : null}
@@ -688,7 +691,7 @@ export default function AnalisePage() {
         cell: (row) => row.analista_responsavel?.full_name ?? "Sem responsável",
       },
     ],
-    [actionMutation, isAnalistaEnabled],
+    [actionMutation],
   );
 
   const activeFiltersCount =

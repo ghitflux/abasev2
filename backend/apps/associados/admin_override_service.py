@@ -1644,7 +1644,9 @@ class AdminOverrideService:
                 current_parcelas_by_ref[parcela.referencia_mes].append(parcela)
 
             cycles_payload = []
+            projected_cycle_numbers: set[int] = set()
             for cycle in sorted(projection["cycles"], key=lambda item: item["numero"]):
+                projected_cycle_numbers.add(int(cycle["numero"]))
                 actual_cycle = current_cycles.get(int(cycle["numero"]))
                 cycles_payload.append(
                     {
@@ -1675,6 +1677,33 @@ class AdminOverrideService:
                         ],
                     }
                 )
+            for actual_cycle in sorted(
+                current_cycles.values(),
+                key=lambda item: (item.numero, item.id),
+            ):
+                if actual_cycle.numero in projected_cycle_numbers:
+                    continue
+                cycles_payload.append(
+                    {
+                        "id": actual_cycle.id,
+                        "numero": actual_cycle.numero,
+                        "data_inicio": actual_cycle.data_inicio.isoformat(),
+                        "data_fim": actual_cycle.data_fim.isoformat(),
+                        "status": actual_cycle.status,
+                        "valor_total": str(actual_cycle.valor_total),
+                        "updated_at": (
+                            actual_cycle.updated_at.isoformat()
+                            if actual_cycle.updated_at
+                            else None
+                        ),
+                        "comprovantes_ciclo": [],
+                        "termo_antecipacao": None,
+                        "parcelas": [],
+                    }
+                )
+            cycles_payload.sort(
+                key=lambda item: (int(item["numero"]), int(item["id"] or 0))
+            )
 
             unpaid_payload = [
                 _build_editor_item(
@@ -1859,6 +1888,7 @@ class AdminOverrideService:
             ).select_related("contrato_origem")
         }
         touched_contract_ids: set[int] = set()
+        manual_cycle_layout_touched_contract_ids: set[int] = set()
 
         with transaction.atomic():
             for contract_payload in contratos_payload:
@@ -1932,6 +1962,7 @@ class AdminOverrideService:
                     operation_warnings.extend(cycle_warnings)
                     contratos_by_id[contrato.id] = contrato
                     touched_contract_ids.add(contrato.id)
+                    manual_cycle_layout_touched_contract_ids.add(contrato.id)
 
                 refinanciamento_payload = contract_payload.get("refinanciamento")
                 refinanciamento = None
@@ -1976,6 +2007,12 @@ class AdminOverrideService:
             for contrato_id in sorted(touched_contract_ids):
                 contrato = contratos_by_id[contrato_id]
                 contrato.refresh_from_db()
+                if (
+                    contrato_id in manual_cycle_layout_touched_contract_ids
+                    and contrato.admin_manual_layout_enabled
+                ):
+                    contratos_by_id[contrato_id] = contrato
+                    continue
                 rebuild_contract_cycle_state(contrato, execute=True)
                 contratos_by_id[contrato_id] = contrato
 
@@ -2606,6 +2643,83 @@ class AdminOverrideService:
         return refinanciamento
 
     @staticmethod
+    def _projection_requires_renewal_queue_clear(
+        *,
+        contrato: Contrato,
+        projection: dict[str, Any],
+    ) -> bool:
+        status_renovacao = str(projection.get("status_renovacao") or "")
+        if status_renovacao in APT_LIKE_OPERATIONAL_REFINANCIAMENTO_STATUSES:
+            return True
+
+        cycles = list(sorted(projection.get("cycles") or [], key=lambda item: item["numero"]))
+        if not cycles:
+            return False
+        latest_cycle = cycles[-1]
+        if (
+            str(latest_cycle.get("status") or "") == Ciclo.Status.APTO_A_RENOVAR
+            or str(latest_cycle.get("fase_ciclo") or "") == "apto_a_renovar"
+        ):
+            return True
+        return is_contract_eligible_for_renewal_competencia(
+            contrato,
+            projection=projection,
+        )
+
+    @staticmethod
+    def _clear_renewal_queue_for_active_associado(
+        *,
+        associado: Associado,
+        motivo: str,
+        user,
+    ) -> list[dict[str, Any]]:
+        changes: list[dict[str, Any]] = []
+        for contrato in get_operational_contracts_for_associado(associado):
+            contrato.refresh_from_db()
+            if contrato.status not in {Contrato.Status.ATIVO, Contrato.Status.ENCERRADO}:
+                continue
+
+            projection = build_contract_cycle_projection(contrato)
+            refinanciamento = _active_operational_refinanciamento(contrato)
+            if refinanciamento is None:
+                if not AdminOverrideService._projection_requires_renewal_queue_clear(
+                    contrato=contrato,
+                    projection=projection,
+                ):
+                    continue
+                refinanciamento = AdminOverrideService._materialize_safe_transition_refinanciamento(
+                    contrato=contrato,
+                    projection=projection,
+                    user=user,
+                )
+
+            if (
+                refinanciamento.executado_em is not None
+                or refinanciamento.data_ativacao_ciclo is not None
+                or refinanciamento.ciclo_destino_id is not None
+            ):
+                continue
+
+            before = _serialize_refinanciamento(refinanciamento)
+            refinanciamento = AdminOverrideService._revert_refinanciamento_keep_associado_active(
+                refinanciamento=refinanciamento,
+                motivo=motivo,
+                user=user,
+            )
+            after = _serialize_refinanciamento(refinanciamento)
+            changes.append(
+                {
+                    "entity_type": AdminOverrideChange.EntityType.REFINANCIAMENTO,
+                    "entity_id": refinanciamento.id,
+                    "resumo": "Renovação operacional removida ao manter associado ativo",
+                    "before_snapshot": before,
+                    "after_snapshot": after,
+                }
+            )
+
+        return changes
+
+    @staticmethod
     def _materializable_refinanciamento_for_effectivation(
         contrato: Contrato,
     ) -> Refinanciamento | None:
@@ -2940,6 +3054,7 @@ class AdminOverrideService:
             before_contrato = (
                 _serialize_contrato(contrato, include_ciclos=False) if contrato else {}
             )
+            requested_status = str(payload.get("status") or "").strip()
 
             simple_fields = [
                 "nome_completo",
@@ -3011,6 +3126,19 @@ class AdminOverrideService:
                 )
 
             associado.save()
+            renewal_queue_changes: list[dict[str, Any]] = []
+            if requested_status == Associado.Status.ATIVO:
+                renewal_queue_changes = (
+                    AdminOverrideService._clear_renewal_queue_for_active_associado(
+                        associado=associado,
+                        motivo=motivo,
+                        user=user,
+                    )
+                )
+                if associado.status != Associado.Status.ATIVO:
+                    associado.status = Associado.Status.ATIVO
+                    associado.save(update_fields=["status", "updated_at"])
+                associado.refresh_from_db()
 
             if contrato is not None:
                 contract_fields = {
@@ -3081,6 +3209,7 @@ class AdminOverrideService:
                         if contrato is not None
                         else []
                     ),
+                    *renewal_queue_changes,
                 ],
             )
             return associado
@@ -3695,6 +3824,14 @@ class AdminOverrideService:
                     details=conflict,
                 )
             )
+
+        operation_warnings.extend(
+            _build_contract_layout_warnings(
+                contrato,
+                cycles_payload=cycles_payload,
+                parcel_items=parcel_items,
+            )
+        )
 
         cycle_ref_map: dict[str, Ciclo] = {}
         touched_cycle_ids: set[int] = set()

@@ -79,15 +79,16 @@ class EsteiraViewSet(
         queryset = self._detail_queryset() if self.action == "retrieve" else self._list_queryset()
 
         user = self.request.user
+        unrestricted_detail_actions = {"retrieve", "destroy", "remover_fila"}
         if user.has_role("ANALISTA") and not user.has_role("ADMIN"):
-            if self.action in {"retrieve", "destroy"}:
+            if self.action in unrestricted_detail_actions:
                 queryset = queryset.filter(
                     Q(analista_responsavel=user) | Q(analista_responsavel__isnull=True)
                 )
             else:
                 queryset = queryset.filter(etapa_atual=EsteiraItem.Etapa.ANALISE)
         elif user.has_role("COORDENADOR") and not user.has_role("ADMIN"):
-            if self.action not in {"retrieve", "destroy"}:
+            if self.action not in unrestricted_detail_actions:
                 queryset = queryset.filter(etapa_atual=EsteiraItem.Etapa.COORDENACAO)
         elif user.has_role("TESOUREIRO") and not user.has_role("ADMIN"):
             queryset = queryset.filter(etapa_atual=EsteiraItem.Etapa.TESOURARIA)
@@ -163,6 +164,7 @@ class EsteiraViewSet(
             self.get_object(),
             request.user,
             observacao=observacao,
+            soft_delete_linha=False,
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
 

@@ -539,6 +539,8 @@ class AnaliseViewSetTestCase(TestCase):
             analista=self.analista,
         )
         associado_id = item.associado_id
+        contrato = item.associado.contratos.get()
+        contrato_id = contrato.id
         documento_id = item.associado.documentos.get().id
 
         response = self.analyst_client.post(
@@ -549,15 +551,56 @@ class AnaliseViewSetTestCase(TestCase):
         self.assertEqual(response.status_code, 204)
 
         item = EsteiraItem.all_objects.get(pk=item.id)
-        self.assertIsNotNone(item.deleted_at)
+        item.associado.refresh_from_db()
+        contrato.refresh_from_db()
+        self.assertIsNone(item.deleted_at)
         self.assertEqual(item.etapa_atual, EsteiraItem.Etapa.CONCLUIDO)
         self.assertEqual(item.status, EsteiraItem.Situacao.REJEITADO)
         self.assertEqual(item.observacao, "Linha duplicada na análise")
+        self.assertEqual(item.associado.status, Associado.Status.EM_ANALISE)
+        self.assertEqual(contrato.status, Contrato.Status.EM_ANALISE)
         self.assertTrue(Associado.objects.filter(pk=associado_id).exists())
+        self.assertTrue(Contrato.objects.filter(pk=contrato_id).exists())
+        self.assertIsNone(Contrato.all_objects.get(pk=contrato_id).deleted_at)
         self.assertTrue(Documento.objects.filter(pk=documento_id).exists())
         self.assertTrue(
             item.transicoes.filter(acao="remover_fila_operacional").exists()
         )
+
+        fila = self.analyst_client.get("/api/v1/analise/filas/?secao=ver_todos")
+        self.assertEqual(fila.status_code, 200, fila.json())
+        self.assertNotIn(item.id, {row["id"] for row in fila.json()["results"]})
+
+    def test_coordenador_remove_reativacao_sem_cancelar_associado_ou_contrato(self):
+        item = self._create_item(
+            suffix="402201",
+            etapa=EsteiraItem.Etapa.ANALISE,
+            status=EsteiraItem.Situacao.AGUARDANDO,
+            documentos=1,
+            associado_status=Associado.Status.INATIVO,
+            contrato_status=Contrato.Status.EM_ANALISE,
+            origem_operacional=Contrato.OrigemOperacional.REATIVACAO,
+        )
+        contrato = item.associado.contratos.get()
+        associado_id = item.associado_id
+
+        response = self.coord_client.post(
+            f"/api/v1/esteira/{item.id}/remover-fila/",
+            {"observacao": "Linha de reativação duplicada"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 204, response.content)
+
+        item.refresh_from_db()
+        item.associado.refresh_from_db()
+        contrato.refresh_from_db()
+        self.assertIsNone(item.deleted_at)
+        self.assertEqual(item.etapa_atual, EsteiraItem.Etapa.CONCLUIDO)
+        self.assertEqual(item.status, EsteiraItem.Situacao.REJEITADO)
+        self.assertEqual(item.associado.status, Associado.Status.INATIVO)
+        self.assertEqual(contrato.status, Contrato.Status.EM_ANALISE)
+        self.assertIsNone(contrato.deleted_at)
+        self.assertTrue(Associado.objects.filter(pk=associado_id).exists())
 
     def test_admin_exclui_item_consolidado_preservando_historico(self):
         item = self._create_item(
@@ -649,6 +692,7 @@ class AnaliseViewSetTestCase(TestCase):
             row for row in coord_response.json()["results"] if row["id"] == item.id
         )
         self.assertIn("excluir", coord_row["acoes_disponiveis"])
+        self.assertIn("remover_fila", coord_row["acoes_disponiveis"])
 
         analyst_response = self.analyst_client.get(
             "/api/v1/analise/filas/?secao=ver_todos"
@@ -658,6 +702,7 @@ class AnaliseViewSetTestCase(TestCase):
             row for row in analyst_response.json()["results"] if row["id"] == item.id
         )
         self.assertNotIn("excluir", analyst_row["acoes_disponiveis"])
+        self.assertIn("remover_fila", analyst_row["acoes_disponiveis"])
 
     def test_reprovar_item_em_analise_remove_cadastro_completo(self):
         item = self._create_item(

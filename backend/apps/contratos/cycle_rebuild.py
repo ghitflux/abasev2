@@ -175,6 +175,10 @@ def _ensure_parcela(
         "status": desired_parcela["status"],
         "data_pagamento": desired_parcela["data_pagamento"],
         "observacao": desired_parcela["observacao"],
+        "layout_bucket": desired_parcela.get(
+            "layout_bucket",
+            Parcela.LayoutBucket.CYCLE,
+        ),
         "deleted_at": None,
     }
     if existing_parcela is None:
@@ -566,9 +570,10 @@ def rebuild_contract_cycle_state(
 
             current_parcelas = {
                 parcela.numero: parcela
-                for parcela in Parcela.all_objects.filter(ciclo=cycle).order_by(
-                    "numero", "deleted_at", "id"
-                )
+                for parcela in Parcela.all_objects.filter(
+                    ciclo=cycle,
+                    layout_bucket=Parcela.LayoutBucket.CYCLE,
+                ).order_by("numero", "deleted_at", "id")
             }
             for desired_parcela in desired_cycle["parcelas"]:
                 existing = current_parcelas.pop(desired_parcela["numero"], None)

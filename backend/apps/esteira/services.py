@@ -57,6 +57,16 @@ class EsteiraService:
         return EsteiraService._can_delete_restricted(esteira_item)
 
     @staticmethod
+    def can_remove_from_queue(esteira_item: EsteiraItem, user=None) -> bool:
+        return bool(
+            user
+            and getattr(user, "is_authenticated", False)
+            and hasattr(user, "has_role")
+            and user.has_role("ADMIN", "COORDENADOR", "ANALISTA")
+            and esteira_item.etapa_atual != EsteiraItem.Etapa.CONCLUIDO
+        )
+
+    @staticmethod
     def get_available_actions(esteira_item: EsteiraItem, user=None) -> list[str]:
         actions = list(
             EsteiraService.TRANSICOES_VALIDAS.get(
@@ -66,6 +76,8 @@ class EsteiraService:
         )
         if EsteiraService.can_delete(esteira_item, user=user):
             actions.append("excluir")
+        if EsteiraService.can_remove_from_queue(esteira_item, user=user):
+            actions.append("remover_fila")
         return actions
 
     @staticmethod
@@ -178,32 +190,14 @@ class EsteiraService:
         user=None,
         *,
         observacao: str = "Linha operacional removida manualmente com histórico preservado.",
+        soft_delete_linha: bool = True,
     ) -> None:
+        if esteira_item.etapa_atual == EsteiraItem.Etapa.CONCLUIDO:
+            raise ValidationError("Itens concluídos não fazem parte da fila operacional.")
+
         de_etapa = esteira_item.etapa_atual
         de_situacao = esteira_item.status
         now = timezone.now()
-        reativacao_pendente = EsteiraService._pending_reactivation_contract(
-            esteira_item
-        )
-        if reativacao_pendente is not None:
-            reativacao_pendente.status = Contrato.Status.CANCELADO
-            reativacao_pendente.cancelamento_tipo = Contrato.CancelamentoTipo.CANCELADO
-            reativacao_pendente.cancelamento_motivo = observacao
-            reativacao_pendente.cancelado_em = now
-            reativacao_pendente.save(
-                update_fields=[
-                    "status",
-                    "cancelamento_tipo",
-                    "cancelamento_motivo",
-                    "cancelado_em",
-                    "updated_at",
-                ]
-            )
-            soft_delete_contract_tree(reativacao_pendente)
-            Associado.objects.filter(pk=esteira_item.associado_id).update(
-                status=Associado.Status.INATIVO,
-                updated_at=now,
-            )
         if user is not None:
             EsteiraService._cancelar_pendencias_abertas(esteira_item, user)
         esteira_item.etapa_atual = EsteiraItem.Etapa.CONCLUIDO
@@ -240,7 +234,8 @@ class EsteiraService:
                 EsteiraItem.Situacao.REJEITADO,
                 observacao,
             )
-        esteira_item.soft_delete()
+        if soft_delete_linha:
+            esteira_item.soft_delete()
 
     @staticmethod
     def _pending_reactivation_contract(esteira_item: EsteiraItem) -> Contrato | None:

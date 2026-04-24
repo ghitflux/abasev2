@@ -1969,6 +1969,7 @@ def _build_manual_contract_projection(
     ) -> dict[str, object]:
         return {
             "id": parcela.id,
+            "ciclo_id": parcela.ciclo_id,
             "numero": parcela.numero,
             "referencia_mes": parcela.referencia_mes,
             "valor": parcela.valor,
@@ -1976,6 +1977,7 @@ def _build_manual_contract_projection(
             "status": parcela.status,
             "data_pagamento": parcela.data_pagamento,
             "observacao": parcela.observacao,
+            "layout_bucket": parcela.layout_bucket,
             "source": "admin_override",
         }
 
