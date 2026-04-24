@@ -145,8 +145,6 @@ class EdicaoValidationStrategy(ValidationStrategy):
     """Validação no momento da edição."""
 
     def validate(self, data):
-        if "matricula" in data:
-            raise ValidationError({"matricula": "Matrícula não pode ser alterada."})
         contrato = data.get("contrato")
         if isinstance(contrato, dict) and "valor_mensalidade" in contrato:
             validate_positive_mensalidade(
