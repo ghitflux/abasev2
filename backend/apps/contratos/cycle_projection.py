@@ -2538,6 +2538,13 @@ def get_associado_visual_status_payload(associado: Associado) -> dict[str, objec
                 item["created_at"],
             ),
         )
+        # Associado genuinamente ativo com todos os ciclos concluídos: exibe "Ativo"
+        # em vez de "Concluído" para não confundir com encerramento.
+        if (
+            mother_status == Associado.Status.ATIVO
+            and selected["status_visual_slug"] == "ciclo_renovado"
+        ):
+            return _compose_visual_status(phase_slug="ciclo_aberto")
         return {
             "status_visual_slug": selected["status_visual_slug"],
             "status_visual_label": selected["status_visual_label"],
