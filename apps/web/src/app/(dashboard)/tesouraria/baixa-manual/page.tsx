@@ -11,6 +11,7 @@ import {
   ClipboardListIcon,
   ExternalLinkIcon,
   HandCoinsIcon,
+  PlusIcon,
   SlidersHorizontalIcon,
   TrendingDownIcon,
   UploadIcon,
@@ -80,6 +81,15 @@ type ListingTab = "pendentes" | "quitados";
 type SimpleUser = {
   id: number;
   full_name: string;
+};
+
+type AssociadoLookup = {
+  id: number;
+  nome: string;
+  cpf_cnpj: string;
+  matricula: string;
+  status: string;
+  agente_nome: string;
 };
 
 type BaixaManualItem = {
@@ -153,6 +163,19 @@ type InativarAssociadoState = {
   group: AssociadoGroup;
   comprovante: File | null;
   observacao: string;
+};
+
+type RegistrarInadimplenciaState = {
+  search: string;
+  associado: AssociadoLookup | null;
+  referenciaMes?: Date;
+  dataVencimento?: Date;
+  valor: string;
+  status: "nao_descontado" | "em_aberto";
+  observacao: string;
+  quitarDireto: boolean;
+  comprovante: File | null;
+  valorPago: string;
 };
 
 type AdvancedFilters = {
@@ -239,9 +262,31 @@ function countActiveAdvancedFilters(filters: AdvancedFilters) {
     .length;
 }
 
+function buildRegistrarInadimplenciaState(): RegistrarInadimplenciaState {
+  const today = new Date();
+  const referenciaMes = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const dataVencimento = new Date(
+    referenciaMes.getFullYear(),
+    referenciaMes.getMonth(),
+    5,
+  );
+  return {
+    search: "",
+    associado: null,
+    referenciaMes,
+    dataVencimento,
+    valor: "",
+    status: "nao_descontado",
+    observacao: "",
+    quitarDireto: false,
+    comprovante: null,
+    valorPago: "",
+  };
+}
+
 export default function BaixaManualPage() {
   const { hasAnyRole } = usePermissions();
-  const canDescartar = hasAnyRole(["ADMIN", "COORDENADOR"]);
+  const canDescartar = hasAnyRole(["ADMIN", "COORDENADOR", "TESOUREIRO"]);
   const queryClient = useQueryClient();
   const router = useRouter();
   const [listing, setListing] = React.useState<ListingTab>("pendentes");
@@ -263,6 +308,8 @@ export default function BaixaManualPage() {
     React.useState<DarBaixaState | null>(null);
   const [inativarAssociadoState, setInativarAssociadoState] =
     React.useState<InativarAssociadoState | null>(null);
+  const [registrarInadimplenciaState, setRegistrarInadimplenciaState] =
+    React.useState<RegistrarInadimplenciaState | null>(null);
   const [descartarTarget, setDescartarTarget] =
     React.useState<BaixaManualItem | null>(null);
   const [navigatingId, setNavigatingId] = React.useState<number | null>(null);
@@ -279,6 +326,23 @@ export default function BaixaManualPage() {
   const agentesQuery = useQuery({
     queryKey: ["baixa-manual-agentes"],
     queryFn: () => apiFetch<SimpleUser[]>("associados/agentes"),
+  });
+
+  const associadosLookupQuery = useQuery({
+    queryKey: [
+      "baixa-manual-associados",
+      registrarInadimplenciaState?.search?.trim() ?? "",
+    ],
+    enabled: Boolean(
+      registrarInadimplenciaState &&
+        registrarInadimplenciaState.search.trim().length >= 3,
+    ),
+    queryFn: () =>
+      apiFetch<AssociadoLookup[]>("tesouraria/baixa-manual/associados", {
+        query: {
+          search: registrarInadimplenciaState?.search.trim() || undefined,
+        },
+      }),
   });
 
   const agentOptions = React.useMemo(
@@ -497,6 +561,78 @@ export default function BaixaManualPage() {
     onError: (error) => {
       toast.error(
         error instanceof Error ? error.message : "Falha ao inativar associado.",
+      );
+    },
+  });
+
+  const registrarInadimplenciaMutation = useMutation({
+    mutationFn: async (state: RegistrarInadimplenciaState) => {
+      if (!state.associado || !state.referenciaMes || !state.dataVencimento) {
+        throw new Error("Selecione o associado e informe competência e vencimento.");
+      }
+
+      if (state.quitarDireto) {
+        const fd = new FormData();
+        fd.append("associado_id", String(state.associado.id));
+        fd.append("referencia_mes", format(state.referenciaMes, "yyyy-MM-dd"));
+        fd.append("data_vencimento", format(state.dataVencimento, "yyyy-MM-dd"));
+        fd.append("valor", state.valor);
+        fd.append("status", state.status);
+        fd.append("observacao", state.observacao);
+        fd.append("quitar_direto", "true");
+        fd.append("valor_pago", state.valorPago || state.valor);
+        if (state.comprovante) {
+          fd.append("comprovante", state.comprovante);
+        }
+        return apiFetch<{
+          id: number;
+          parcela_id: number;
+          quitada: boolean;
+          message: string;
+        }>("tesouraria/baixa-manual/registrar-inadimplencia", {
+          method: "POST",
+          formData: fd,
+        });
+      }
+
+      return apiFetch<{
+        id: number;
+        parcela_id: number;
+        quitada: boolean;
+        message: string;
+      }>("tesouraria/baixa-manual/registrar-inadimplencia", {
+        method: "POST",
+        body: {
+          associado_id: state.associado.id,
+          referencia_mes: format(state.referenciaMes, "yyyy-MM-dd"),
+          data_vencimento: format(state.dataVencimento, "yyyy-MM-dd"),
+          valor: state.valor,
+          status: state.status,
+          observacao: state.observacao,
+          quitar_direto: false,
+        },
+      });
+    },
+    onSuccess: (payload, variables) => {
+      toast.success(payload.message || "Inadimplência registrada com sucesso.");
+      setRegistrarInadimplenciaState(null);
+      if (variables.quitarDireto) {
+        setListing("quitados");
+      } else {
+        setListing("pendentes");
+      }
+      if (variables.referenciaMes) {
+        setCompetencia(variables.referenciaMes);
+      }
+      void queryClient.invalidateQueries({
+        queryKey: ["tesouraria-baixa-manual"],
+      });
+    },
+    onError: (error) => {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao registrar inadimplência.",
       );
     },
   });
@@ -836,6 +972,8 @@ export default function BaixaManualPage() {
                       <Badge variant="outline">
                         {parcela.origem === "arquivo_retorno"
                           ? "Arquivo retorno"
+                          : parcela.origem === "manual"
+                            ? "Manual"
                           : "Parcela"}
                       </Badge>
                     </td>
@@ -906,11 +1044,26 @@ export default function BaixaManualPage() {
               </TabsList>
             </Tabs>
           </div>
-          <ReportExportDialog
-            disabled={isExporting}
-            label={isExporting ? "Exportando..." : "Exportar"}
-            onExport={handleExport}
-          />
+          <div className="flex flex-wrap gap-2">
+            {listing === "pendentes" ? (
+              <Button
+                variant="outline"
+                onClick={() =>
+                  setRegistrarInadimplenciaState(
+                    buildRegistrarInadimplenciaState(),
+                  )
+                }
+              >
+                <PlusIcon className="mr-1.5 size-4" />
+                Gerar inadimplência
+              </Button>
+            ) : null}
+            <ReportExportDialog
+              disabled={isExporting}
+              label={isExporting ? "Exportando..." : "Exportar"}
+              onExport={handleExport}
+            />
+          </div>
         </div>
       </section>
 
@@ -1178,6 +1331,338 @@ export default function BaixaManualPage() {
       )}
 
       <Dialog
+        open={!!registrarInadimplenciaState}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRegistrarInadimplenciaState(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Gerar inadimplência</DialogTitle>
+            <DialogDescription>
+              Registre uma inadimplência manual para qualquer associado e escolha
+              entre manter na fila de pendentes ou quitar na hora.
+            </DialogDescription>
+          </DialogHeader>
+
+          {registrarInadimplenciaState ? (
+            <div className="space-y-5">
+              <div className="space-y-2">
+                <Label>Buscar associado</Label>
+                <Input
+                  value={registrarInadimplenciaState.search}
+                  onChange={(event) =>
+                    setRegistrarInadimplenciaState((current) =>
+                      current
+                        ? {
+                            ...current,
+                            search: event.target.value,
+                          }
+                        : current,
+                    )
+                  }
+                  placeholder="Nome, CPF ou matrícula"
+                  className="rounded-2xl border-border/60 bg-card/60"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Digite pelo menos 3 caracteres para buscar.
+                </p>
+              </div>
+
+              {registrarInadimplenciaState.associado ? (
+                <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <p className="font-medium">
+                        {registrarInadimplenciaState.associado.nome}
+                      </p>
+                      <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+                        <span>{registrarInadimplenciaState.associado.cpf_cnpj}</span>
+                        <span>{registrarInadimplenciaState.associado.matricula || "Sem matrícula"}</span>
+                        <span>
+                          {registrarInadimplenciaState.associado.agente_nome || "Sem agente"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge
+                        status={registrarInadimplenciaState.associado.status}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() =>
+                          setRegistrarInadimplenciaState((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  associado: null,
+                                }
+                              : current,
+                          )
+                        }
+                      >
+                        Trocar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {registrarInadimplenciaState.search.trim().length >= 3 &&
+              !registrarInadimplenciaState.associado ? (
+                <div className="space-y-2">
+                  <Label>Resultados</Label>
+                  <div className="max-h-56 space-y-2 overflow-y-auto rounded-2xl border border-border/60 bg-card/40 p-2">
+                    {associadosLookupQuery.isLoading ? (
+                      <div className="px-3 py-6 text-sm text-muted-foreground">
+                        Buscando associados...
+                      </div>
+                    ) : associadosLookupQuery.data?.length ? (
+                      associadosLookupQuery.data.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="w-full rounded-xl border border-border/60 bg-background/60 px-3 py-3 text-left transition-colors hover:bg-background"
+                          onClick={() =>
+                            setRegistrarInadimplenciaState((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    associado: item,
+                                  }
+                                : current,
+                            )
+                          }
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="font-medium">{item.nome}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {item.cpf_cnpj} · {item.matricula || "Sem matrícula"} ·{" "}
+                                {item.agente_nome || "Sem agente"}
+                              </p>
+                            </div>
+                            <StatusBadge status={item.status} />
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="px-3 py-6 text-sm text-muted-foreground">
+                        Nenhum associado encontrado.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Competência</Label>
+                  <CalendarCompetencia
+                    value={registrarInadimplenciaState.referenciaMes}
+                    onChange={(value) =>
+                      setRegistrarInadimplenciaState((current) =>
+                        current
+                          ? {
+                              ...current,
+                              referenciaMes: value,
+                              dataVencimento: value
+                                ? new Date(
+                                    value.getFullYear(),
+                                    value.getMonth(),
+                                    5,
+                                  )
+                                : current.dataVencimento,
+                            }
+                          : current,
+                      )
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Vencimento</Label>
+                  <DatePicker
+                    value={registrarInadimplenciaState.dataVencimento}
+                    onChange={(value) =>
+                      setRegistrarInadimplenciaState((current) =>
+                        current
+                          ? { ...current, dataVencimento: value }
+                          : current,
+                      )
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Valor</Label>
+                  <Input
+                    value={registrarInadimplenciaState.valor}
+                    onChange={(event) =>
+                      setRegistrarInadimplenciaState((current) =>
+                        current
+                          ? { ...current, valor: event.target.value }
+                          : current,
+                      )
+                    }
+                    placeholder="0.00"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="rounded-2xl border-border/60 bg-card/60"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Status da inadimplência</Label>
+                  <Select
+                    value={registrarInadimplenciaState.status}
+                    onValueChange={(value: "nao_descontado" | "em_aberto") =>
+                      setRegistrarInadimplenciaState((current) =>
+                        current ? { ...current, status: value } : current,
+                      )
+                    }
+                  >
+                    <SelectTrigger className="rounded-2xl border-border/60 bg-card/60">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="nao_descontado">Não descontado</SelectItem>
+                      <SelectItem value="em_aberto">Em aberto</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Fluxo</Label>
+                <Tabs
+                  value={
+                    registrarInadimplenciaState.quitarDireto
+                      ? "quitar_direto"
+                      : "pendente"
+                  }
+                  onValueChange={(value) =>
+                    setRegistrarInadimplenciaState((current) =>
+                      current
+                        ? {
+                            ...current,
+                            quitarDireto: value === "quitar_direto",
+                          }
+                        : current,
+                    )
+                  }
+                >
+                  <TabsList variant="line" className="w-fit">
+                    <TabsTrigger value="pendente">Gerar pendente</TabsTrigger>
+                    <TabsTrigger value="quitar_direto">Gerar e quitar direto</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Observação</Label>
+                <Textarea
+                  value={registrarInadimplenciaState.observacao}
+                  onChange={(event) =>
+                    setRegistrarInadimplenciaState((current) =>
+                      current
+                        ? { ...current, observacao: event.target.value }
+                        : current,
+                    )
+                  }
+                  placeholder="Contexto da inadimplência..."
+                  className="min-h-24"
+                />
+              </div>
+
+              {registrarInadimplenciaState.quitarDireto ? (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Comprovante de pagamento *</Label>
+                    <FileUploadDropzone
+                      accept={comprovanteAccept}
+                      maxSize={10 * 1024 * 1024}
+                      onUpload={(file) =>
+                        setRegistrarInadimplenciaState((current) =>
+                          current
+                            ? { ...current, comprovante: file ?? null }
+                            : current,
+                        )
+                      }
+                      isProcessing={false}
+                    />
+                    {registrarInadimplenciaState.comprovante ? (
+                      <div className="flex items-center gap-2 rounded-xl bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+                        <CheckCircleIcon className="size-4 shrink-0" />
+                        {registrarInadimplenciaState.comprovante.name}
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Valor pago</Label>
+                    <Input
+                      value={registrarInadimplenciaState.valorPago}
+                      onChange={(event) =>
+                        setRegistrarInadimplenciaState((current) =>
+                          current
+                            ? { ...current, valorPago: event.target.value }
+                            : current,
+                        )
+                      }
+                      placeholder={registrarInadimplenciaState.valor || "0.00"}
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      className="rounded-2xl border-border/60 bg-card/60"
+                    />
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRegistrarInadimplenciaState(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={
+                registrarInadimplenciaMutation.isPending ||
+                !registrarInadimplenciaState?.associado ||
+                !registrarInadimplenciaState.referenciaMes ||
+                !registrarInadimplenciaState.dataVencimento ||
+                !registrarInadimplenciaState.valor ||
+                (registrarInadimplenciaState.quitarDireto &&
+                  !registrarInadimplenciaState.comprovante)
+              }
+              onClick={() => {
+                if (!registrarInadimplenciaState) {
+                  return;
+                }
+                registrarInadimplenciaMutation.mutate(registrarInadimplenciaState);
+              }}
+            >
+              {registrarInadimplenciaMutation.isPending ? (
+                <>
+                  <Spinner className="mr-2 size-4" />
+                  Salvando...
+                </>
+              ) : registrarInadimplenciaState?.quitarDireto ? (
+                "Gerar e quitar"
+              ) : (
+                "Gerar pendência"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
         open={!!darBaixaState}
         onOpenChange={(open) => {
           if (!open) {
@@ -1187,7 +1672,7 @@ export default function BaixaManualPage() {
       >
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Registrar inadimplência</DialogTitle>
+            <DialogTitle>Quitar inadimplência</DialogTitle>
             <DialogDescription>
               {darBaixaState ? (
                 <>
@@ -1416,7 +1901,8 @@ export default function BaixaManualPage() {
             <DialogDescription>
               A parcela de <strong>{formatMonthYear(descartarTarget?.referencia_mes ?? "")}</strong>{" "}
               do contrato <strong>{descartarTarget?.contrato_codigo}</strong> será removida da
-              fila de inadimplentes. O histórico financeiro não será alterado.
+              fila de inadimplentes. Quando a inadimplência for manual, ela também
+              será removida do detalhe do associado.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

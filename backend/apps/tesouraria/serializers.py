@@ -788,6 +788,43 @@ class InativarAssociadoBaixaSerializer(serializers.Serializer):
     observacao = serializers.CharField(required=False, allow_blank=True, default="")
 
 
+class AssociadoInadimplenciaLookupSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    nome = serializers.CharField(read_only=True)
+    cpf_cnpj = serializers.CharField(read_only=True)
+    matricula = serializers.CharField(read_only=True)
+    status = serializers.CharField(read_only=True)
+    agente_nome = serializers.CharField(read_only=True, allow_blank=True)
+
+
+class RegistrarInadimplenciaSerializer(serializers.Serializer):
+    associado_id = serializers.IntegerField(required=True)
+    referencia_mes = serializers.DateField(required=True)
+    data_vencimento = serializers.DateField(required=False, allow_null=True)
+    valor = serializers.DecimalField(max_digits=10, decimal_places=2, required=True)
+    status = serializers.ChoiceField(
+        choices=[Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO],
+        required=False,
+        default=Parcela.Status.NAO_DESCONTADO,
+    )
+    observacao = serializers.CharField(required=False, allow_blank=True, default="")
+    quitar_direto = serializers.BooleanField(required=False, default=False)
+    comprovante = serializers.FileField(required=False, allow_null=True, allow_empty_file=False)
+    valor_pago = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+    )
+
+    def validate(self, attrs):
+        if attrs.get("quitar_direto") and not attrs.get("comprovante"):
+            raise serializers.ValidationError(
+                {"comprovante": ["Envie um comprovante para quitar a inadimplência agora."]}
+            )
+        return attrs
+
+
 class LiquidacaoParcelaSerializer(serializers.Serializer):
     id = serializers.IntegerField(read_only=True)
     numero = serializers.IntegerField(read_only=True)

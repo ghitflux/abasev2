@@ -14,6 +14,7 @@ from django.db.models import (
     Count,
     DateTimeField,
     DecimalField,
+    Max,
     OuterRef,
     Prefetch,
     Q,
@@ -28,7 +29,10 @@ from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import User
 from apps.associados.models import Associado
-from apps.contratos.canonicalization import operational_contracts_queryset
+from apps.contratos.canonicalization import (
+    get_operational_contracts_for_associado,
+    operational_contracts_queryset,
+)
 from apps.contratos.competencia import (
     create_cycle_with_parcelas,
     list_month_references,
@@ -1245,6 +1249,126 @@ class ConfirmacaoService:
 
 class BaixaManualService:
     @staticmethod
+    def listar_associados_para_inadimplencia(search: str | None = None) -> list[dict[str, object]]:
+        normalized = str(search or "").strip()
+        queryset = (
+            Associado.objects.filter(
+                deleted_at__isnull=True,
+                contratos__deleted_at__isnull=True,
+                contratos__contrato_canonico__isnull=True,
+            )
+            .select_related("agente_responsavel")
+            .distinct()
+        )
+        if normalized:
+            queryset = queryset.filter(
+                Q(nome_completo__icontains=normalized)
+                | Q(cpf_cnpj__icontains=normalized)
+                | Q(matricula__icontains=normalized)
+                | Q(matricula_orgao__icontains=normalized)
+            )
+        queryset = queryset.order_by("nome_completo", "id")[:20]
+        return [
+            {
+                "id": associado.id,
+                "nome": associado.nome_completo,
+                "cpf_cnpj": associado.cpf_cnpj,
+                "matricula": associado.matricula_orgao or associado.matricula or "",
+                "status": associado.status,
+                "agente_nome": (
+                    associado.agente_responsavel.full_name
+                    if associado.agente_responsavel_id and associado.agente_responsavel
+                    else ""
+                ),
+            }
+            for associado in queryset
+        ]
+
+    @staticmethod
+    def _resolve_contract_for_manual_inadimplencia(associado: Associado) -> Contrato:
+        contratos = get_operational_contracts_for_associado(associado)
+        if contratos:
+            return max(contratos, key=lambda contrato: (contrato.created_at, contrato.id))
+
+        if associado.status == Associado.Status.INATIVO:
+            contrato = (
+                Contrato.objects.filter(
+                    associado=associado,
+                    deleted_at__isnull=True,
+                    contrato_canonico__isnull=True,
+                )
+                .select_related("agente")
+                .order_by("-created_at", "-id")
+                .first()
+            )
+            if contrato is not None:
+                return contrato
+
+        raise ValidationError(
+            "O associado não possui contrato operacional visível para registrar inadimplência."
+        )
+
+    @staticmethod
+    def _resolve_manual_inadimplencia_cycle(
+        contrato: Contrato,
+        *,
+        referencia_mes: date,
+        valor: Decimal,
+    ) -> Ciclo:
+        ciclo = (
+            Ciclo.all_objects.filter(contrato=contrato, deleted_at__isnull=True)
+            .order_by("-numero", "-id")
+            .first()
+        )
+        if ciclo is not None:
+            return ciclo
+
+        next_number = (
+            Ciclo.all_objects.filter(contrato=contrato).aggregate(max_numero=Max("numero"))[
+                "max_numero"
+            ]
+            or 0
+        ) + 1
+        return Ciclo.objects.create(
+            contrato=contrato,
+            numero=next_number,
+            data_inicio=referencia_mes,
+            data_fim=referencia_mes,
+            status=Ciclo.Status.PENDENCIA,
+            valor_total=valor,
+        )
+
+    @staticmethod
+    def _next_parcela_number(ciclo: Ciclo) -> int:
+        return (
+            Parcela.all_objects.filter(ciclo=ciclo).aggregate(max_numero=Max("numero"))[
+                "max_numero"
+            ]
+            or 0
+        ) + 1
+
+    @staticmethod
+    def _default_due_date(referencia_mes: date) -> date:
+        return referencia_mes.replace(
+            day=min(5, monthrange(referencia_mes.year, referencia_mes.month)[1])
+        )
+
+    @staticmethod
+    def _manual_pending_source(parcela: Parcela) -> str:
+        if parcela.layout_bucket == Parcela.LayoutBucket.UNPAID:
+            return "manual"
+        return "parcela"
+
+    @staticmethod
+    def _can_remove_manual_inadimplencia(parcela: Parcela) -> bool:
+        return (
+            parcela.layout_bucket == Parcela.LayoutBucket.UNPAID
+            and parcela.status in {Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO}
+            and not parcela_has_financial_evidence(parcela)
+            and not parcela.itens_retorno.exists()
+        )
+
+    @staticmethod
     def _apply_parcela_search(queryset, search: str | None):
         if not search:
             return queryset
@@ -1362,12 +1486,13 @@ class BaixaManualService:
     def _build_pending_row_from_parcela(
         parcela: Parcela,
         *,
-        source: str = "parcela",
+        source: str | None = None,
         arquivo_retorno_item_id: int | None = None,
     ) -> dict[str, object]:
         contrato = parcela.ciclo.contrato
         associado = contrato.associado
         agente = contrato.agente or associado.agente_responsavel
+        resolved_source = source or BaixaManualService._manual_pending_source(parcela)
         return {
             "id": parcela.id,
             "parcela_id": parcela.id,
@@ -1387,7 +1512,7 @@ class BaixaManualService:
             "valor_pago": None,
             "realizado_por_nome": "",
             "nome_comprovante": "",
-            "origem": source,
+            "origem": resolved_source,
             "arquivo_retorno_item_id": arquivo_retorno_item_id,
             "pode_dar_baixa": True,
             "_agente_id": agente.id if agente else None,
@@ -1413,9 +1538,6 @@ class BaixaManualService:
 
         associado = item.associado or getattr(parcela, "associado", None)
         if associado is None:
-            return None
-
-        if parcela is None and associado.status == Associado.Status.INATIVO:
             return None
 
         contrato = getattr(getattr(parcela, "ciclo", None), "contrato", None)
@@ -1782,6 +1904,94 @@ class BaixaManualService:
         return rows
 
     @staticmethod
+    @transaction.atomic
+    def registrar_inadimplencia(
+        *,
+        associado_id: int,
+        referencia_mes: date,
+        valor: Decimal,
+        status: str,
+        observacao: str,
+        user,
+        data_vencimento: date | None = None,
+        quitar_direto: bool = False,
+        comprovante=None,
+        valor_pago: Decimal | None = None,
+    ) -> dict[str, object]:
+        try:
+            associado = Associado.objects.select_related("agente_responsavel").get(pk=associado_id)
+        except Associado.DoesNotExist as exc:
+            raise ValidationError("Associado não encontrado.") from exc
+
+        referencia = referencia_mes.replace(day=1)
+        mes_atual = timezone.localdate().replace(day=1)
+        if referencia >= mes_atual:
+            raise ValidationError(
+                "A competência da inadimplência precisa ser anterior ao mês atual."
+            )
+
+        if status not in {Parcela.Status.EM_ABERTO, Parcela.Status.NAO_DESCONTADO}:
+            raise ValidationError("Escolha um status pendente válido para a inadimplência.")
+
+        existing = (
+            Parcela.objects.filter(
+                associado=associado,
+                referencia_mes=referencia,
+                descartado_em__isnull=True,
+            )
+            .exclude(status__in=[Parcela.Status.CANCELADO, Parcela.Status.DESCONTADO, Parcela.Status.LIQUIDADA])
+            .order_by("-id")
+            .first()
+        )
+        if existing is not None:
+            raise ValidationError(
+                "Já existe uma inadimplência pendente para esta competência do associado."
+            )
+
+        contrato = BaixaManualService._resolve_contract_for_manual_inadimplencia(associado)
+        ciclo = BaixaManualService._resolve_manual_inadimplencia_cycle(
+            contrato,
+            referencia_mes=referencia,
+            valor=valor,
+        )
+        parcela = Parcela.objects.create(
+            ciclo=ciclo,
+            associado=associado,
+            numero=BaixaManualService._next_parcela_number(ciclo),
+            referencia_mes=referencia,
+            valor=valor,
+            data_vencimento=data_vencimento or BaixaManualService._default_due_date(referencia),
+            status=status,
+            layout_bucket=Parcela.LayoutBucket.UNPAID,
+            observacao=(observacao or "").strip(),
+        )
+
+        if not quitar_direto:
+            return {
+                "id": parcela.id,
+                "parcela_id": parcela.id,
+                "quitada": False,
+                "message": "Inadimplência registrada na fila de pendentes.",
+            }
+
+        if comprovante is None:
+            raise ValidationError("Envie um comprovante para quitar a inadimplência agora.")
+
+        baixa = BaixaManualService._registrar_baixa_manual(
+            parcela,
+            comprovante=comprovante,
+            valor_pago=valor_pago or valor,
+            observacao=(observacao or "").strip(),
+            user=user,
+        )
+        return {
+            "id": baixa.id,
+            "parcela_id": parcela.id,
+            "quitada": True,
+            "message": "Inadimplência registrada e quitada com sucesso.",
+        }
+
+    @staticmethod
     def descartar_parcela(parcela_id: int, user) -> Parcela:
         from django.utils import timezone as tz
 
@@ -1794,6 +2004,20 @@ class BaixaManualService:
             raise ValueError(
                 f"Não é possível descartar parcela com status '{parcela.status}'."
             )
+        if BaixaManualService._can_remove_manual_inadimplencia(parcela):
+            parcela.descartado_em = tz.now()
+            parcela.descartado_por = user
+            parcela.status = Parcela.Status.CANCELADO
+            parcela.save(
+                update_fields=[
+                    "descartado_em",
+                    "descartado_por",
+                    "status",
+                    "updated_at",
+                ]
+            )
+            parcela.soft_delete()
+            return parcela
         parcela.descartado_em = tz.now()
         parcela.descartado_por = user
         parcela.save(update_fields=["descartado_em", "descartado_por"])

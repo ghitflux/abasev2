@@ -10,6 +10,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import Role, User
 from apps.associados.models import Associado
+from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.importacao.models import ArquivoRetorno, ArquivoRetornoItem, PagamentoMensalidade
 from apps.tesouraria.models import BaixaManual
@@ -24,6 +25,10 @@ class BaixaManualViewSetTestCase(TestCase):
             nome="Tesoureiro",
         )
         cls.role_agente = Role.objects.create(codigo="AGENTE", nome="Agente")
+        cls.role_coordenador = Role.objects.create(
+            codigo="COORDENADOR",
+            nome="Coordenador",
+        )
 
         cls.tesoureiro = User.objects.create_user(
             email="tesouraria.baixa@abase.local",
@@ -52,9 +57,20 @@ class BaixaManualViewSetTestCase(TestCase):
         )
         cls.agente_b.roles.add(cls.role_agente)
 
+        cls.coordenador = User.objects.create_user(
+            email="coordenador.baixa@abase.local",
+            password="Senha@123",
+            first_name="Coordenador",
+            last_name="ABASE",
+            is_active=True,
+        )
+        cls.coordenador.roles.add(cls.role_coordenador)
+
     def setUp(self):
         self.client = APIClient()
         self.client.force_authenticate(self.tesoureiro)
+        self.coord_client = APIClient()
+        self.coord_client.force_authenticate(self.coordenador)
 
     def _create_associado(
         self,
@@ -63,6 +79,7 @@ class BaixaManualViewSetTestCase(TestCase):
         nome: str,
         matricula: str,
         agente: User,
+        status: str = Associado.Status.ATIVO,
     ) -> Associado:
         return Associado.objects.create(
             nome_completo=nome,
@@ -72,7 +89,7 @@ class BaixaManualViewSetTestCase(TestCase):
             orgao_publico="SEFAZ",
             matricula=matricula,
             matricula_orgao=matricula,
-            status=Associado.Status.ATIVO,
+            status=status,
             agente_responsavel=agente,
         )
 
@@ -401,11 +418,80 @@ class BaixaManualViewSetTestCase(TestCase):
         self.assertEqual(rows_by_cpf["13131313131"]["parcela_id"], parcela_marco.id)
         self.assertTrue(rows_by_cpf["13131313131"]["pode_dar_baixa"])
         self.assertEqual(rows_by_cpf["14141414141"]["parcela_id"], None)
-        self.assertFalse(rows_by_cpf["14141414141"]["pode_dar_baixa"])
+        self.assertTrue(rows_by_cpf["14141414141"]["pode_dar_baixa"])
         self.assertEqual(
             rows_by_cpf["14141414141"]["arquivo_retorno_item_id"],
             item_sem_parcela.id,
         )
+
+    def test_lista_pendentes_inclui_retorno_sem_parcela_de_associado_inativo(self):
+        associado_inativo = self._create_associado(
+            cpf="17171717171",
+            nome="Associado Inativo Sem Parcela",
+            matricula="MAT-7171",
+            agente=self.agente_a,
+            status=Associado.Status.INATIVO,
+        )
+        arquivo = self._create_arquivo_retorno(
+            competencia=date(2026, 3, 1),
+            nome="Relatorio_D2102-03-2026.txt",
+        )
+        item = self._create_retorno_item(
+            arquivo=arquivo,
+            associado=associado_inativo,
+            linha_numero=1,
+            competencia="03/2026",
+            valor="150.00",
+            parcela=None,
+        )
+
+        response = self.client.get(
+            "/api/v1/tesouraria/baixa-manual/",
+            {"status": Parcela.Status.NAO_DESCONTADO, "competencia": "2026-03"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        rows_by_cpf = {row["cpf_cnpj"]: row for row in payload["results"]}
+        self.assertIn("17171717171", rows_by_cpf)
+        self.assertEqual(rows_by_cpf["17171717171"]["parcela_id"], None)
+        self.assertEqual(
+            rows_by_cpf["17171717171"]["arquivo_retorno_item_id"],
+            item.id,
+        )
+        self.assertTrue(rows_by_cpf["17171717171"]["pode_dar_baixa"])
+
+    def test_lista_pendentes_inclui_parcela_nao_descontada_de_associado_inativo(self):
+        associado_inativo = self._create_associado(
+            cpf="18181818181",
+            nome="Associado Inativo Materializado",
+            matricula="MAT-8181",
+            agente=self.agente_a,
+        )
+        parcela = self._create_parcela(
+            associado=associado_inativo,
+            agente=self.agente_a,
+            referencia=date(2026, 3, 1),
+            vencimento=date(2026, 3, 10),
+            status=Parcela.Status.NAO_DESCONTADO,
+            valor="220.00",
+            codigo="CTR-INATIVO-8181",
+        )
+        associado_inativo.status = Associado.Status.INATIVO
+        associado_inativo.save(update_fields=["status", "updated_at"])
+        parcela.refresh_from_db()
+
+        response = self.client.get(
+            "/api/v1/tesouraria/baixa-manual/",
+            {"status": Parcela.Status.NAO_DESCONTADO, "competencia": "2026-03"},
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        payload = response.json()
+        rows_by_cpf = {row["cpf_cnpj"]: row for row in payload["results"]}
+        self.assertIn("18181818181", rows_by_cpf)
+        self.assertEqual(rows_by_cpf["18181818181"]["parcela_id"], parcela.id)
+        self.assertTrue(rows_by_cpf["18181818181"]["pode_dar_baixa"])
 
     def test_lista_pendentes_preserva_parcela_materializada_sem_item_no_retorno(self):
         associado_retorno = self._create_associado(
@@ -532,6 +618,179 @@ class BaixaManualViewSetTestCase(TestCase):
         self.assertEqual(BaixaManual.objects.filter(parcela=parcela_novembro).count(), 1)
         self.assertEqual(response.json()["parcelas_baixadas"], 2)
         self.assertEqual(response.json()["total_baixado"], "500.00")
+
+    def test_registrar_inadimplencia_manual_para_associado_inativo_mantem_status_e_entrar_na_fila(self):
+        associado = self._create_associado(
+            cpf="19191919191",
+            nome="Associado Inativo Manual",
+            matricula="MAT-9191",
+            agente=self.agente_a,
+        )
+        parcela_base = self._create_parcela(
+            associado=associado,
+            agente=self.agente_a,
+            referencia=date(2025, 10, 1),
+            vencimento=date(2025, 10, 10),
+            status=Parcela.Status.DESCONTADO,
+            valor="210.00",
+            codigo="CTR-MANUAL-INATIVO",
+        )
+        associado.status = Associado.Status.INATIVO
+        associado.save(update_fields=["status", "updated_at"])
+        parcela_base.ciclo.contrato.refresh_from_db()
+
+        response = self.client.post(
+            "/api/v1/tesouraria/baixa-manual/registrar-inadimplencia/",
+            {
+                "associado_id": associado.id,
+                "referencia_mes": "2026-03-01",
+                "data_vencimento": "2026-03-10",
+                "valor": "180.00",
+                "status": Parcela.Status.NAO_DESCONTADO,
+                "observacao": "Gerada manualmente.",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        associado.refresh_from_db()
+        self.assertEqual(associado.status, Associado.Status.INATIVO)
+
+        parcela_manual = Parcela.objects.get(pk=response.json()["parcela_id"])
+        self.assertEqual(parcela_manual.status, Parcela.Status.NAO_DESCONTADO)
+        self.assertEqual(parcela_manual.layout_bucket, Parcela.LayoutBucket.UNPAID)
+        self.assertIsNone(parcela_manual.deleted_at)
+
+        pending = self.client.get(
+            "/api/v1/tesouraria/baixa-manual/",
+            {"status": Parcela.Status.NAO_DESCONTADO, "competencia": "2026-03"},
+        )
+        self.assertEqual(pending.status_code, 200, pending.json())
+        rows_by_cpf = {row["cpf_cnpj"]: row for row in pending.json()["results"]}
+        self.assertIn("19191919191", rows_by_cpf)
+        self.assertEqual(rows_by_cpf["19191919191"]["origem"], "manual")
+
+    def test_registrar_inadimplencia_manual_pode_quitar_direto(self):
+        associado = self._create_associado(
+            cpf="20202020202",
+            nome="Associado Quitacao Direta",
+            matricula="MAT-2020",
+            agente=self.agente_a,
+        )
+        self._create_parcela(
+            associado=associado,
+            agente=self.agente_a,
+            referencia=date(2025, 10, 1),
+            vencimento=date(2025, 10, 10),
+            status=Parcela.Status.DESCONTADO,
+            valor="200.00",
+            codigo="CTR-MANUAL-QUITADO",
+        )
+
+        response = self.client.post(
+            "/api/v1/tesouraria/baixa-manual/registrar-inadimplencia/",
+            {
+                "associado_id": str(associado.id),
+                "referencia_mes": "2026-03-01",
+                "data_vencimento": "2026-03-10",
+                "valor": "200.00",
+                "status": Parcela.Status.NAO_DESCONTADO,
+                "observacao": "Registrar e quitar direto.",
+                "quitar_direto": "true",
+                "valor_pago": "200.00",
+                "comprovante": SimpleUploadedFile(
+                    "quitacao-direta.pdf",
+                    b"arquivo",
+                    content_type="application/pdf",
+                ),
+            },
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, 201, response.json())
+        parcela_manual = Parcela.objects.get(pk=response.json()["parcela_id"])
+        self.assertEqual(parcela_manual.status, Parcela.Status.DESCONTADO)
+        self.assertEqual(BaixaManual.objects.filter(parcela=parcela_manual).count(), 1)
+
+        pending = self.client.get(
+            "/api/v1/tesouraria/baixa-manual/",
+            {"status": Parcela.Status.NAO_DESCONTADO, "competencia": "2026-03"},
+        )
+        self.assertEqual(pending.status_code, 200, pending.json())
+        self.assertNotIn(
+            "20202020202",
+            {row["cpf_cnpj"] for row in pending.json()["results"]},
+        )
+
+        quitados = self.client.get(
+            "/api/v1/tesouraria/baixa-manual/",
+            {"listing": "quitados", "competencia": "2026-03"},
+        )
+        self.assertEqual(quitados.status_code, 200, quitados.json())
+        self.assertIn(
+            "20202020202",
+            {row["cpf_cnpj"] for row in quitados.json()["results"]},
+        )
+
+    def test_descartar_inadimplencia_manual_remove_da_fila_e_do_detalhe_do_associado(self):
+        associado = self._create_associado(
+            cpf="21212121212",
+            nome="Associado Descarte Manual",
+            matricula="MAT-2121",
+            agente=self.agente_a,
+        )
+        parcela_base = self._create_parcela(
+            associado=associado,
+            agente=self.agente_a,
+            referencia=date(2025, 10, 1),
+            vencimento=date(2025, 10, 10),
+            status=Parcela.Status.DESCONTADO,
+            valor="205.00",
+            codigo="CTR-DESCARTE-MANUAL",
+        )
+        contrato = parcela_base.ciclo.contrato
+
+        registrar = self.client.post(
+            "/api/v1/tesouraria/baixa-manual/registrar-inadimplencia/",
+            {
+                "associado_id": associado.id,
+                "referencia_mes": "2026-03-01",
+                "data_vencimento": "2026-03-10",
+                "valor": "205.00",
+                "status": Parcela.Status.NAO_DESCONTADO,
+                "observacao": "Linha manual para descarte.",
+            },
+            format="json",
+        )
+        self.assertEqual(registrar.status_code, 201, registrar.json())
+        parcela_manual = Parcela.all_objects.get(pk=registrar.json()["parcela_id"])
+
+        response = self.client.post(
+            f"/api/v1/tesouraria/baixa-manual/{parcela_manual.id}/descartar/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        parcela_manual.refresh_from_db()
+        self.assertIsNotNone(parcela_manual.deleted_at)
+        self.assertEqual(parcela_manual.status, Parcela.Status.CANCELADO)
+
+        pending = self.client.get(
+            "/api/v1/tesouraria/baixa-manual/",
+            {"status": Parcela.Status.NAO_DESCONTADO, "competencia": "2026-03"},
+        )
+        self.assertEqual(pending.status_code, 200, pending.json())
+        self.assertNotIn(
+            parcela_manual.id,
+            {row["parcela_id"] for row in pending.json()["results"]},
+        )
+
+        projection = build_contract_cycle_projection(contrato)
+        self.assertNotIn(
+            date(2026, 3, 1),
+            [item["referencia_mes"] for item in projection["unpaid_months"]],
+        )
 
     def test_lista_quitados_filtra_por_agente_data_e_search(self):
         parcela_match = self._create_parcela(

@@ -60,11 +60,13 @@ from .serializers import (
     EfetivarContratoSerializer,
     ExcluirDevolucaoSerializer,
     ExcluirLiquidacaoSerializer,
+    AssociadoInadimplenciaLookupSerializer,
     InativarAssociadoBaixaSerializer,
     LiquidacaoContratoListSerializer,
     LiquidacaoKpisSerializer,
     LiquidarContratoSerializer,
     PendenciarContratoSerializer,
+    RegistrarInadimplenciaSerializer,
     RegistrarDevolucaoSerializer,
     ReverterLiquidacaoSerializer,
     ReverterDevolucaoSerializer,
@@ -687,6 +689,38 @@ class BaixaManualViewSet(mixins.ListModelMixin, GenericViewSet):
             return response
         return Response({"results": serializer.data, "kpis": kpis})
 
+    @action(detail=False, methods=["get"], url_path="associados")
+    def associados(self, request):
+        rows = BaixaManualService.listar_associados_para_inadimplencia(
+            request.query_params.get("search")
+        )
+        return Response(
+            AssociadoInadimplenciaLookupSerializer(rows, many=True).data
+        )
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="registrar-inadimplencia",
+        parser_classes=[MultiPartParser, FormParser, JSONParser],
+    )
+    def registrar_inadimplencia(self, request):
+        payload = RegistrarInadimplenciaSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        result = BaixaManualService.registrar_inadimplencia(
+            associado_id=payload.validated_data["associado_id"],
+            referencia_mes=payload.validated_data["referencia_mes"],
+            valor=payload.validated_data["valor"],
+            status=payload.validated_data["status"],
+            observacao=payload.validated_data.get("observacao", ""),
+            user=request.user,
+            data_vencimento=payload.validated_data.get("data_vencimento"),
+            quitar_direto=payload.validated_data.get("quitar_direto", False),
+            comprovante=payload.validated_data.get("comprovante"),
+            valor_pago=payload.validated_data.get("valor_pago"),
+        )
+        return Response(result, status=201)
+
     @action(detail=True, methods=["post"], url_path="dar-baixa", parser_classes=[MultiPartParser])
     def dar_baixa(self, request, pk=None):
         payload = DarBaixaManualSerializer(data=request.data)
@@ -707,7 +741,10 @@ class BaixaManualViewSet(mixins.ListModelMixin, GenericViewSet):
         detail=True,
         methods=["post"],
         url_path="descartar",
-        permission_classes=[permissions.IsAuthenticated, IsCoordenadorOrAdmin],
+        permission_classes=[
+            permissions.IsAuthenticated,
+            IsCoordenadorOrTesoureiroOrAdmin,
+        ],
     )
     def descartar(self, request, pk=None):
         try:

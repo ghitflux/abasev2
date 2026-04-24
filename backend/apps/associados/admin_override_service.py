@@ -12,7 +12,10 @@ from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from rest_framework.exceptions import ValidationError
 
-from apps.contratos.canonicalization import resolve_operational_contract_for_associado
+from apps.contratos.canonicalization import (
+    get_operational_contracts_for_associado,
+    resolve_operational_contract_for_associado,
+)
 from apps.contratos.cycle_projection import (
     ACTIVE_OPERATIONAL_REFINANCIAMENTO_STATUSES,
     APT_LIKE_OPERATIONAL_REFINANCIAMENTO_STATUSES,
@@ -1557,14 +1560,50 @@ class AdminOverrideService:
         return payload
 
     @staticmethod
+    def _visible_admin_editor_contracts(associado: Associado) -> list[Contrato]:
+        contratos = get_operational_contracts_for_associado(associado)
+        if contratos or associado.status != Associado.Status.INATIVO:
+            return list(
+                sorted(
+                    contratos,
+                    key=lambda contrato: (contrato.created_at, contrato.id),
+                    reverse=True,
+                )
+            )
+
+        cached = getattr(associado, "_prefetched_objects_cache", {}).get("contratos")
+        if cached is not None:
+            historicos = [
+                contrato
+                for contrato in cached
+                if contrato.deleted_at is None and contrato.contrato_canonico_id is None
+            ]
+            if historicos:
+                return list(
+                    sorted(
+                        historicos,
+                        key=lambda contrato: (contrato.created_at, contrato.id),
+                        reverse=True,
+                    )
+                )
+
+        return list(
+            Contrato.objects.filter(
+                associado=associado,
+                deleted_at__isnull=True,
+                contrato_canonico__isnull=True,
+            )
+            .select_related("agente")
+            .order_by("-created_at", "-id")
+        )
+
+    @staticmethod
     def build_associado_editor_payload(
         associado: Associado,
         *,
         extra_warnings: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        contratos = list(
-            associado.contratos.exclude(status=Contrato.Status.CANCELADO).order_by("-created_at")
-        )
+        contratos = AdminOverrideService._visible_admin_editor_contracts(associado)
         payload_contracts: list[dict[str, Any]] = []
         payload_warnings: list[dict[str, Any]] = list(extra_warnings or [])
         for contrato in contratos:
@@ -1790,9 +1829,13 @@ class AdminOverrideService:
         }
         operation_warnings: list[dict[str, Any]] = []
 
+        visible_contract_ids = [
+            contrato.id
+            for contrato in AdminOverrideService._visible_admin_editor_contracts(associado)
+        ]
         contratos_by_id = {
             contrato.id: contrato
-            for contrato in associado.contratos.exclude(status=Contrato.Status.CANCELADO)
+            for contrato in Contrato.objects.filter(id__in=visible_contract_ids)
             .select_related("agente")
             .prefetch_related("ciclos__parcelas")
         }

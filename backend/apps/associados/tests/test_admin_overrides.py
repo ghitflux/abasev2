@@ -1049,7 +1049,7 @@ class AdminOverrideApiTestCase(TestCase):
 
         self.associado.refresh_from_db()
         self.esteira.refresh_from_db()
-        self.assertEqual(self.associado.status, Associado.Status.INADIMPLENTE)
+        self.assertEqual(self.associado.status, Associado.Status.INATIVO)
         self.assertEqual(self.esteira.etapa_atual, EsteiraItem.Etapa.CONCLUIDO)
         self.assertEqual(self.esteira.status, EsteiraItem.Situacao.REJEITADO)
 
@@ -1130,6 +1130,116 @@ class AdminOverrideApiTestCase(TestCase):
         self.assertEqual(
             (event.after_snapshot.get("meta") or {}).get("restored_status"),
             Associado.Status.ATIVO,
+        )
+
+    def test_admin_editor_allows_cycle_layout_for_inactive_associado(self):
+        self.associado.status = Associado.Status.INATIVO
+        self.associado.save(update_fields=["status", "updated_at"])
+        self.contrato.refresh_from_db()
+        self.assertEqual(self.contrato.status, Contrato.Status.CANCELADO)
+
+        editor = self.admin_client.get(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/editor/"
+        )
+        self.assertEqual(editor.status_code, 200, editor.json())
+        self.assertEqual(len(editor.json()["contratos"]), 1)
+        self.assertEqual(editor.json()["contratos"][0]["id"], self.contrato.id)
+
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",
+            {
+                "motivo": "Materializar inadimplencia de associado inativo",
+                "contratos": [
+                    {
+                        "id": self.contrato.id,
+                        "cycles": {
+                            "updated_at": self.contrato.updated_at.isoformat(),
+                            "cycles": [
+                                {
+                                    "id": self.ciclo.id,
+                                    "numero": 1,
+                                    "data_inicio": "2026-01-01",
+                                    "data_fim": "2026-03-01",
+                                    "status": "aberto",
+                                    "valor_total": "900.00",
+                                },
+                                {
+                                    "client_key": "ciclo-inativo-2",
+                                    "numero": 2,
+                                    "data_inicio": "2026-04-01",
+                                    "data_fim": "2026-04-01",
+                                    "status": "pendencia",
+                                    "valor_total": "300.00",
+                                },
+                            ],
+                            "parcelas": [
+                                {
+                                    "id": self.parcela_jan.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 1,
+                                    "referencia_mes": "2026-01-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-01-05",
+                                    "status": "descontado",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_fev.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 2,
+                                    "referencia_mes": "2026-02-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-02-05",
+                                    "status": "em_previsao",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": self.parcela_mar.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 3,
+                                    "referencia_mes": "2026-03-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-03-05",
+                                    "status": "em_previsao",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "id": None,
+                                    "cycle_ref": "ciclo-inativo-2",
+                                    "numero": 1,
+                                    "referencia_mes": "2026-04-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-04-05",
+                                    "status": "nao_descontado",
+                                    "layout_bucket": "cycle",
+                                },
+                            ],
+                        },
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.associado.refresh_from_db()
+        self.contrato.refresh_from_db()
+        self.assertEqual(self.associado.status, Associado.Status.INATIVO)
+        self.assertEqual(self.contrato.status, Contrato.Status.CANCELADO)
+        self.assertTrue(
+            Ciclo.objects.filter(
+                contrato=self.contrato,
+                numero=2,
+                deleted_at__isnull=True,
+            ).exists()
+        )
+        self.assertTrue(
+            Parcela.objects.filter(
+                ciclo__contrato=self.contrato,
+                referencia_mes=date(2026, 4, 1),
+                status=Parcela.Status.NAO_DESCONTADO,
+                deleted_at__isnull=True,
+            ).exists()
         )
 
     def test_save_all_returns_validation_message_for_invalid_cycle_reference(self):
