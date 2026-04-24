@@ -1587,10 +1587,10 @@ class AdminOverrideService:
                     )
                 )
 
+        # Fallback final: inclui contratos soft-deletados (inativacoes legadas)
         return list(
-            Contrato.objects.filter(
+            Contrato.all_objects.filter(
                 associado=associado,
-                deleted_at__isnull=True,
                 contrato_canonico__isnull=True,
             )
             .select_related("agente")
@@ -1617,14 +1617,26 @@ class AdminOverrideService:
                 projection=projection,
                 refinanciamento_ativo=refinanciamento_ativo,
             )
+            # Para contratos soft-deletados (inativacao legada), inclui ciclos e parcelas excluidos
+            _legado_deletado = contrato.deleted_at is not None
+            _ciclos_qs = (
+                Ciclo.all_objects.filter(contrato=contrato)
+                if _legado_deletado
+                else contrato.ciclos.filter(deleted_at__isnull=True)
+            )
             current_cycles = {
                 ciclo.numero: ciclo
-                for ciclo in contrato.ciclos.filter(deleted_at__isnull=True).order_by("numero", "id")
+                for ciclo in _ciclos_qs.order_by("numero", "id")
             }
             current_parcelas_by_id: dict[int, Parcela] = {}
             current_parcelas_by_ref: dict[date, list[Parcela]] = defaultdict(list)
+            _parcelas_filter = (
+                Parcela.all_objects.filter(ciclo__contrato=contrato)
+                if _legado_deletado
+                else Parcela.all_objects.filter(ciclo__contrato=contrato, deleted_at__isnull=True)
+            )
             for parcela in (
-                Parcela.all_objects.filter(ciclo__contrato=contrato, deleted_at__isnull=True)
+                _parcelas_filter
                 .exclude(status=Parcela.Status.CANCELADO)
                 .order_by("updated_at", "id")
             ):
@@ -1835,7 +1847,7 @@ class AdminOverrideService:
         ]
         contratos_by_id = {
             contrato.id: contrato
-            for contrato in Contrato.objects.filter(id__in=visible_contract_ids)
+            for contrato in Contrato.all_objects.filter(id__in=visible_contract_ids)
             .select_related("agente")
             .prefetch_related("ciclos__parcelas")
         }
@@ -1885,6 +1897,20 @@ class AdminOverrideService:
                 ):
                     contract_dirty_sections.add("cycle_layout")
                 if cycles_payload and "cycle_layout" in contract_dirty_sections:
+                    # Restaurar arvore completa (inativacao legada com contrato soft-deletado)
+                    if contrato.deleted_at is not None:
+                        now = timezone.now()
+                        Parcela.all_objects.filter(
+                            ciclo__contrato=contrato, deleted_at__isnull=False
+                        ).update(deleted_at=None, updated_at=now)
+                        Ciclo.all_objects.filter(
+                            contrato=contrato, deleted_at__isnull=False
+                        ).update(deleted_at=None, updated_at=now)
+                        Contrato.all_objects.filter(pk=contrato.pk).update(
+                            deleted_at=None, updated_at=now
+                        )
+                        contrato.refresh_from_db()
+                        contratos_by_id[contrato.id] = contrato
                     cycle_rows = list(cycles_payload.get("cycles") or [])
                     parcela_rows = list(cycles_payload.get("parcelas") or [])
                     if not cycle_rows and not parcela_rows:

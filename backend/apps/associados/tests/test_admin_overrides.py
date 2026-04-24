@@ -1242,6 +1242,102 @@ class AdminOverrideApiTestCase(TestCase):
             ).exists()
         )
 
+    def test_admin_editor_shows_contract_for_inativo_with_soft_deleted_contract(self):
+        """Editor deve exibir contrato soft-deletado de associado inativo (inativacao legada)."""
+        from apps.contratos.soft_delete import soft_delete_contract_tree
+
+        self.associado.status = Associado.Status.INATIVO
+        self.associado.save(update_fields=["status", "updated_at"])
+        soft_delete_contract_tree(self.contrato)
+        self.contrato.refresh_from_db()
+        self.assertIsNotNone(self.contrato.deleted_at)
+
+        editor = self.admin_client.get(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/editor/"
+        )
+        self.assertEqual(editor.status_code, 200, editor.json())
+        self.assertEqual(len(editor.json()["contratos"]), 1)
+        self.assertEqual(editor.json()["contratos"][0]["id"], self.contrato.id)
+
+    def test_admin_editor_saves_cycle_for_inativo_with_only_contract_soft_deleted(self):
+        """Editor deve salvar novo ciclo quando apenas o contrato foi soft-deletado (legado simples)."""
+        self.associado.status = Associado.Status.INATIVO
+        self.associado.save(update_fields=["status", "updated_at"])
+        # Simula inativacao legada: apenas o contrato foi soft-deletado, ciclos permanecem vivos
+        Contrato.all_objects.filter(pk=self.contrato.id).update(deleted_at=timezone.now())
+        self.contrato.refresh_from_db()
+        self.assertIsNotNone(self.contrato.deleted_at)
+
+        editor = self.admin_client.get(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/editor/"
+        )
+        self.assertEqual(editor.status_code, 200, editor.json())
+        self.assertEqual(len(editor.json()["contratos"]), 1)
+
+        response = self.admin_client.post(
+            f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",
+            {
+                "motivo": "Criar ciclo em inativo com contrato deletado",
+                "contratos": [
+                    {
+                        "id": self.contrato.id,
+                        "cycles": {
+                            "updated_at": None,
+                            "cycles": [
+                                {
+                                    "id": self.ciclo.id,
+                                    "numero": 1,
+                                    "data_inicio": "2026-01-01",
+                                    "data_fim": "2026-03-01",
+                                    "status": "aberto",
+                                    "valor_total": "900.00",
+                                },
+                                {
+                                    "client_key": "ciclo-novo",
+                                    "numero": 2,
+                                    "data_inicio": "2026-05-01",
+                                    "data_fim": "2026-05-01",
+                                    "status": "pendencia",
+                                    "valor_total": "300.00",
+                                },
+                            ],
+                            "parcelas": [
+                                {
+                                    "id": self.parcela_jan.id,
+                                    "cycle_ref": str(self.ciclo.id),
+                                    "numero": 1,
+                                    "referencia_mes": "2026-01-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-01-05",
+                                    "status": "descontado",
+                                    "layout_bucket": "cycle",
+                                },
+                                {
+                                    "cycle_ref": "ciclo-novo",
+                                    "numero": 1,
+                                    "referencia_mes": "2026-05-01",
+                                    "valor": "300.00",
+                                    "data_vencimento": "2026-05-05",
+                                    "status": "nao_descontado",
+                                    "layout_bucket": "cycle",
+                                },
+                            ],
+                        },
+                    }
+                ],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        self.contrato.refresh_from_db()
+        self.assertIsNone(self.contrato.deleted_at)
+        self.assertTrue(
+            Ciclo.objects.filter(
+                contrato=self.contrato, numero=2, deleted_at__isnull=True
+            ).exists()
+        )
+
     def test_save_all_returns_validation_message_for_invalid_cycle_reference(self):
         response = self.admin_client.post(
             f"/api/v1/admin-overrides/associados/{self.associado.id}/save-all/",
