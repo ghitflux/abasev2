@@ -338,9 +338,16 @@ class Command(BaseCommand):
         for ciclo in active_cycles:
             ciclo.soft_delete()
 
+        # Unique constraint (contrato, numero) inclui soft-deleted, então usa
+        # o próximo numero disponível para não colidir com o ciclo recém-deletado.
+        from django.db.models import Max as _Max
+        max_num = (
+            Ciclo.all_objects.filter(contrato=contrato).aggregate(m=_Max("numero"))["m"]
+            or 0
+        )
         ciclo, _parcelas = create_cycle_with_parcelas(
             contrato=contrato,
-            numero=1,
+            numero=max_num + 1,
             competencia_inicial=referencias[0],
             parcelas_total=len(referencias),
             ciclo_status=Ciclo.Status.ABERTO,
