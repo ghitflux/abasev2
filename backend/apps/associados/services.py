@@ -345,6 +345,43 @@ class AssociadoService:
         ).exists()
 
     @staticmethod
+    def _contract_has_paid_history(contrato: Contrato) -> bool:
+        if contrato.auxilio_liberado_em is not None:
+            return True
+        return Parcela.all_objects.filter(
+            ciclo__contrato=contrato,
+            deleted_at__isnull=True,
+            status__in=[Parcela.Status.DESCONTADO, Parcela.Status.LIQUIDADA],
+        ).exists()
+
+    @staticmethod
+    def _promote_prior_paid_contracts_to_history(associado: Associado) -> None:
+        prior_contracts = (
+            associado.contratos.filter(
+                deleted_at__isnull=True,
+                contrato_canonico__isnull=True,
+            )
+            .exclude(status=Contrato.Status.ENCERRADO)
+            .order_by("created_at", "id")
+        )
+        for contrato in prior_contracts:
+            if not AssociadoService._contract_has_paid_history(contrato):
+                continue
+            contrato.status = Contrato.Status.ENCERRADO
+            contrato.cancelamento_tipo = ""
+            contrato.cancelamento_motivo = ""
+            contrato.cancelado_em = None
+            contrato.save(
+                update_fields=[
+                    "status",
+                    "cancelamento_tipo",
+                    "cancelamento_motivo",
+                    "cancelado_em",
+                    "updated_at",
+                ]
+            )
+
+    @staticmethod
     def _validate_reativacao_eligibility(associado: Associado) -> None:
         if associado.status != Associado.Status.INATIVO:
             raise ValidationError(
@@ -513,6 +550,7 @@ class AssociadoService:
     @transaction.atomic
     def reativar_associado(associado: Associado, validated_data, user) -> Associado:
         AssociadoService._validate_reativacao_eligibility(associado)
+        AssociadoService._promote_prior_paid_contracts_to_history(associado)
 
         contrato_data = dict(validated_data.get("contrato") or {})
         agente_responsavel = AssociadoService._resolve_agente_responsavel(

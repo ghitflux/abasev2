@@ -165,7 +165,10 @@ class AssociadoReactivationTestCase(TestCase):
         contrato_anterior.refresh_from_db()
         self.assertIsNotNone(novo_contrato)
         self.assertNotEqual(novo_contrato.id, contrato_anterior.id)
-        self.assertEqual(contrato_anterior.status, Contrato.Status.CANCELADO)
+        self.assertEqual(contrato_anterior.status, Contrato.Status.ENCERRADO)
+        self.assertEqual(contrato_anterior.cancelamento_tipo, "")
+        self.assertEqual(contrato_anterior.cancelamento_motivo, "")
+        self.assertIsNone(contrato_anterior.cancelado_em)
         self.assertEqual(associado.status, Associado.Status.EM_ANALISE)
         self.assertEqual(associado.agente_responsavel, self.agente_b)
         self.assertEqual(associado.auxilio_taxa, Decimal("14.00"))
@@ -288,15 +291,23 @@ class AssociadoReactivationTestCase(TestCase):
             )
             self.assertEqual(upload_response.status_code, 200, upload_response.json())
 
+        upload_response = self.tes_client.post(
+            f"/api/v1/tesouraria/contratos/{novo_contrato.id}/substituir-comprovante/",
+            {
+                "papel": "associado",
+                "arquivo": SimpleUploadedFile(
+                    "associado-v2.pdf",
+                    b"arquivo-v2",
+                    content_type="application/pdf",
+                ),
+            },
+            format="multipart",
+        )
+        self.assertEqual(upload_response.status_code, 200, upload_response.json())
+
         efetivar = self.tes_client.post(
             f"/api/v1/tesouraria/contratos/{novo_contrato.id}/efetivar/",
-            {
-                "competencias_ciclo": [
-                    "2026-04-01",
-                    "2026-05-01",
-                    "2026-06-01",
-                ]
-            },
+            {},
             format="json",
         )
         self.assertEqual(efetivar.status_code, 200, efetivar.json())
@@ -316,6 +327,19 @@ class AssociadoReactivationTestCase(TestCase):
         self.assertEqual(
             list(ciclo_novo.parcelas.order_by("referencia_mes").values_list("referencia_mes", flat=True)),
             [date(2026, 4, 1), date(2026, 5, 1), date(2026, 6, 1)],
+        )
+        self.assertEqual(novo_contrato.comprovantes.count(), 3)
+        detail_response = self.coord_client.get(f"/api/v1/associados/{associado.id}/")
+        self.assertEqual(detail_response.status_code, 200, detail_response.json())
+        detail_contract = next(
+            item
+            for item in detail_response.json()["contratos"]
+            if item["id"] == novo_contrato.id
+        )
+        self.assertEqual(len(detail_contract["pagamento_inicial_evidencias"]), 3)
+        self.assertEqual(
+            len(detail_contract["ciclos"][0]["comprovantes_ciclo"]),
+            3,
         )
         self.assertTrue(
             associado.esteira_item.transicoes.filter(

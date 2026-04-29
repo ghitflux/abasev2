@@ -498,16 +498,28 @@ class TesourariaService:
         if contrato.origem_operacional != Contrato.OrigemOperacional.REATIVACAO:
             return []
         if not competencias_ciclo:
+            preview = TesourariaService.build_reactivation_cycle_preview(contrato)
+            competencias_ciclo = (
+                preview.get("competencias_sugeridas", []) if preview else []
+            )
+        if not competencias_ciclo:
             raise ValidationError(
                 {
                     "competencias_ciclo": [
-                        "Confirme as parcelas que irão compor o ciclo da reativação."
+                        "Não foi possível calcular as parcelas do ciclo da reativação."
                     ]
                 }
             )
 
         competencias = sorted(
-            {item.replace(day=1) for item in competencias_ciclo}
+            {
+                (
+                    datetime.strptime(item, "%Y-%m-%d").date()
+                    if isinstance(item, str)
+                    else item
+                ).replace(day=1)
+                for item in competencias_ciclo
+            }
         )
         parcelas_total = int(contrato.prazo_meses or 3)
         if len(competencias) != parcelas_total:
