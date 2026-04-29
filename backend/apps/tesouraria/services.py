@@ -1082,6 +1082,13 @@ class TesourariaService:
             )
             return contrato
 
+        # Esteira já concluída (ex.: reativação já efetivada e aprovada):
+        # apenas oculta o item da fila via soft-delete sem alterar seu estado.
+        if esteira_item.etapa_atual == EsteiraItem.Etapa.CONCLUIDO:
+            esteira_item.soft_delete()
+            contrato.refresh_from_db()
+            return contrato
+
         EsteiraService.remover_fila_operacional(
             esteira_item,
             user,

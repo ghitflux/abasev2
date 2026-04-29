@@ -1062,7 +1062,18 @@ def _seed_reference(
     if contrato.data_aprovacao:
         candidates.append(_add_months(contrato.data_aprovacao.replace(day=1), 1))
     if candidates:
-        return min(candidates)
+        seed = min(candidates)
+        # Para contratos de reativação, pagamentos do contrato anterior (antes de
+        # auxilio_liberado_em) não devem ancorar o ciclo da reativação. Garantir
+        # que o seed não seja anterior ao mês em que o auxílio foi liberado.
+        if (
+            str(getattr(contrato, "origem_operacional", "") or "") == "reativacao"
+            and contrato.auxilio_liberado_em is not None
+        ):
+            reativacao_start = _month_start(contrato.auxilio_liberado_em)
+            if reativacao_start is not None and seed < reativacao_start:
+                seed = reativacao_start
+        return seed
     return timezone.localdate().replace(day=1)
 
 
