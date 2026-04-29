@@ -1039,6 +1039,10 @@ class TesourariaService:
                 return contrato
             # Sem reativacao pendente: fecha a esteira normalmente
             soft_delete_contract_tree(contrato)
+            # Esteira já concluída: apenas oculta o item sem alterar seu estado.
+            if esteira_item.etapa_atual == EsteiraItem.Etapa.CONCLUIDO:
+                esteira_item.soft_delete()
+                return contrato
             EsteiraService.remover_fila_operacional(
                 esteira_item,
                 user,
