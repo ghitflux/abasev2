@@ -681,19 +681,20 @@ class RefinanciamentoPagamentosTestCase(TestCase):
         )
         self.assertEqual(efetivacao.status_code, 200, efetivacao.json())
 
-    def test_tesouraria_efetiva_renovacao_manual_retorna_associado_para_ativo_e_gera_ciclo_destino(self):
-        contrato = self._create_contrato("62345678942", admin_manual_layout_enabled=True)
-        contrato.associado.status = Associado.Status.APTO_A_RENOVAR
-        contrato.associado.save(update_fields=["status", "updated_at"])
-        self._create_manual_cycle_quitado(contrato)
+    def test_tesouraria_efetiva_renovacao_com_associado_inadimplente_retorna_para_ativo_e_gera_ciclo_destino(self):
+        contrato = self._create_contrato("62345678942")
+        self._create_pagamento(contrato, date(2026, 1, 1))
+        self._create_pagamento(contrato, date(2026, 2, 1))
+        self._create_pagamento(contrato, date(2026, 3, 1))
 
         request = self._solicitar_refinanciamento(contrato, client=self.admin_client)
         self.assertEqual(request.status_code, 201, request.json())
-        refinanciamento_id = request.json()["id"]
-
-        refinanciamento = Refinanciamento.objects.get(pk=refinanciamento_id)
+        refinanciamento = Refinanciamento.objects.get(pk=request.json()["id"])
         refinanciamento.status = Refinanciamento.Status.APROVADO_PARA_RENOVACAO
         refinanciamento.save(update_fields=["status", "updated_at"])
+        refinanciamento_id = refinanciamento.id
+        contrato.associado.status = Associado.Status.INADIMPLENTE
+        contrato.associado.save(update_fields=["status", "updated_at"])
 
         efetivacao = self.tes_client.post(
             f"/api/v1/refinanciamentos/{refinanciamento_id}/efetivar/",

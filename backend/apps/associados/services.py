@@ -332,10 +332,6 @@ class AssociadoService:
         return contrato
 
     @staticmethod
-    def _has_prior_contract_history(associado: Associado) -> bool:
-        return associado.contratos.filter(deleted_at__isnull=True).exists()
-
-    @staticmethod
     def _has_open_operational_contract(associado: Associado) -> bool:
         return associado.contratos.filter(
             deleted_at__isnull=True,
@@ -386,14 +382,6 @@ class AssociadoService:
         if associado.status != Associado.Status.INATIVO:
             raise ValidationError(
                 {"detail": "A reativação só está disponível para associados inativos."}
-            )
-        if not AssociadoService._has_prior_contract_history(associado):
-            raise ValidationError(
-                {
-                    "detail": (
-                        "A reativação exige histórico anterior de contrato para este associado."
-                    )
-                }
             )
         if AssociadoService._has_open_operational_contract(associado):
             raise ValidationError(

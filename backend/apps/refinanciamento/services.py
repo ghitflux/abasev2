@@ -8,6 +8,7 @@ from django.db.models import DateTimeField, Exists, OuterRef, Q, QuerySet, Subqu
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
+from apps.associados.models import Associado
 from apps.contratos.cycle_projection import build_contract_cycle_projection
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state
 from apps.contratos.cycle_timeline import get_contract_cycle_size
@@ -1283,7 +1284,14 @@ class RefinanciamentoService:
             user=user,
             paid_at=executado_em,
         )
-        sync_associado_mother_status(contrato.associado)
+        associado = contrato.associado
+        if associado.status in {
+            Associado.Status.INADIMPLENTE,
+            Associado.Status.APTO_A_RENOVAR,
+        }:
+            associado.status = Associado.Status.ATIVO
+            associado.save(update_fields=["status", "updated_at"])
+        sync_associado_mother_status(associado)
 
         RefinanciamentoService._registrar_auditoria(
             contrato,

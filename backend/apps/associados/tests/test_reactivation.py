@@ -132,6 +132,18 @@ class AssociadoReactivationTestCase(TestCase):
         )
         return associado
 
+    def _create_inactive_associado_without_contract(self, *, cpf: str) -> Associado:
+        return Associado.objects.create(
+            nome_completo="Associado Inativo Sem Contrato",
+            cpf_cnpj=cpf,
+            telefone="86999999999",
+            email=f"sem-contrato-{cpf}@teste.local",
+            orgao_publico="SEFAZ",
+            status=Associado.Status.INATIVO,
+            agente_responsavel=self.agente_a,
+            auxilio_taxa=Decimal("10.00"),
+        )
+
     def _reativacao_payload(self, *, agente_id: int, percentual_repasse: str | None = None):
         payload = {
             "valor_bruto_total": "1500.00",
@@ -188,6 +200,79 @@ class AssociadoReactivationTestCase(TestCase):
         self.assertEqual(associado.esteira_item.id, esteira_id)
         self.assertEqual(associado.esteira_item.etapa_atual, EsteiraItem.Etapa.ANALISE)
         self.assertEqual(associado.esteira_item.status, EsteiraItem.Situacao.AGUARDANDO)
+
+    def test_reativacao_sem_contrato_anterior_cria_fluxo_e_efetiva_ciclo(self):
+        associado = self._create_inactive_associado_without_contract(cpf="70000000008")
+
+        response = self.coord_client.post(
+            f"/api/v1/associados/{associado.id}/reativar/",
+            self._reativacao_payload(agente_id=self.agente_a.id),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200, response.json())
+        associado.refresh_from_db()
+        novo_contrato = associado.contratos.get()
+        self.assertEqual(associado.status, Associado.Status.EM_ANALISE)
+        self.assertEqual(
+            novo_contrato.origem_operacional,
+            Contrato.OrigemOperacional.REATIVACAO,
+        )
+        self.assertEqual(novo_contrato.ciclos.count(), 0)
+        self.assertEqual(associado.esteira_item.etapa_atual, EsteiraItem.Etapa.ANALISE)
+        self.assertEqual(associado.esteira_item.status, EsteiraItem.Situacao.AGUARDANDO)
+
+        EsteiraService.assumir(associado.esteira_item, self.analista)
+        EsteiraService.aprovar(associado.esteira_item, self.analista)
+
+        list_response = self.tes_client.get(
+            "/api/v1/tesouraria/contratos/",
+            {"pagamento": "pendente", "origem_operacional": "reativacao"},
+        )
+        self.assertEqual(list_response.status_code, 200, list_response.json())
+        row = next(
+            item
+            for item in list_response.json()["results"]
+            if item["id"] == novo_contrato.id
+        )
+        self.assertIsNone(row["reactivation_cycle_preview"]["ultima_parcela_paga"])
+        self.assertEqual(
+            row["reactivation_cycle_preview"]["competencias_sugeridas"],
+            ["2026-06-01", "2026-07-01", "2026-08-01"],
+        )
+
+        for papel in ["associado", "agente"]:
+            upload_response = self.tes_client.post(
+                f"/api/v1/tesouraria/contratos/{novo_contrato.id}/substituir-comprovante/",
+                {
+                    "papel": papel,
+                    "arquivo": SimpleUploadedFile(
+                        f"{papel}.pdf",
+                        b"arquivo",
+                        content_type="application/pdf",
+                    ),
+                },
+                format="multipart",
+            )
+            self.assertEqual(upload_response.status_code, 200, upload_response.json())
+
+        efetivar = self.tes_client.post(
+            f"/api/v1/tesouraria/contratos/{novo_contrato.id}/efetivar/",
+            {},
+            format="json",
+        )
+        self.assertEqual(efetivar.status_code, 200, efetivar.json())
+
+        associado.refresh_from_db()
+        novo_contrato.refresh_from_db()
+        ciclo_novo = novo_contrato.ciclos.get()
+        self.assertEqual(associado.status, Associado.Status.ATIVO)
+        self.assertEqual(novo_contrato.status, Contrato.Status.ATIVO)
+        self.assertEqual(ciclo_novo.status, Ciclo.Status.ABERTO)
+        self.assertEqual(
+            list(ciclo_novo.parcelas.order_by("referencia_mes").values_list("referencia_mes", flat=True)),
+            [date(2026, 6, 1), date(2026, 7, 1), date(2026, 8, 1)],
+        )
 
     def test_reativacao_aparece_na_secao_propria_mesmo_com_historico_mais_novo(self):
         associado = self._create_inactive_associado(cpf="70000000007")
