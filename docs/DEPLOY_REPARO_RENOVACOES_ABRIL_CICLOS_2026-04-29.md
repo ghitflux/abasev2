@@ -12,6 +12,11 @@ previstas quando a renovacao antiga ja esta efetivada.
 
 Nao ha migration neste pacote.
 
+Este runbook segue o padrao operacional permanente documentado em
+`docs/PADRAO_OPERACIONAL_PARAMIKO_SERVIDOR.md`: atualizacoes, reparos,
+validacoes e rollbacks no servidor devem ser feitos via Paramiko, com backup
+antes de qualquer acao que altere dados ou containers.
+
 ## Arquivo do pacote
 
 - `backend/apps/refinanciamento/management/commands/repair_april_effectivated_cycle_materialization.py`
@@ -49,6 +54,14 @@ docker exec abase-v2-backend-1 python manage.py \
 Resultado: `45` renovacoes auditadas, `0` com problema.
 
 Validacao do fluxo novo de efetivacao:
+
+```bash
+docker exec abase-v2-backend-1 python manage.py test \
+  apps.refinanciamento.tests.test_refinanciamento_pagamentos.RefinanciamentoPagamentosTestCase.test_fluxo_coord_analise_tesouraria_materializa_proximo_ciclo_so_na_efetivacao \
+  --settings=config.settings.testing --noinput
+```
+
+Resultado: `1 test OK`.
 
 ```bash
 docker exec abase-v2-backend-1 python manage.py test \
