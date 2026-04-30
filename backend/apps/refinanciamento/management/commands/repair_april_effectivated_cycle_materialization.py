@@ -18,7 +18,7 @@ from apps.contratos.cycle_projection import (
 )
 from apps.contratos.cycle_rebuild import rebuild_contract_cycle_state, relink_contract_documents
 from apps.contratos.cycle_timeline import get_contract_cycle_size
-from apps.contratos.models import Ciclo, Parcela
+from apps.contratos.models import Ciclo, Contrato, Parcela
 from apps.refinanciamento.models import Refinanciamento
 from apps.refinanciamento.services import annotate_renewal_materialization
 
@@ -472,6 +472,9 @@ class Command(BaseCommand):
                 if str(row.get("status") or "") not in {"quitada", "descontado", "liquidada"}
             ]
 
+            is_inactive_contract = contrato.status in {
+                Contrato.Status.CANCELADO, Contrato.Status.ENCERRADO
+            }
             reasons: list[str] = []
             if projected_current is None or current_cycle is None:
                 reasons.append("current_cycle_missing")
@@ -482,7 +485,12 @@ class Command(BaseCommand):
                     reasons.append("current_cycle_rows_mismatch")
                 if str(current_cycle.status) != str(projected_current.get("status") or ""):
                     reasons.append("current_cycle_status_mismatch")
-            if projected_next is None or next_cycle is None:
+            if is_inactive_contract:
+                # Para contratos cancelados/encerrados a projeção não projeta ciclo futuro.
+                # Verifica apenas se ciclo_destino está linkado.
+                if refinanciamento.ciclo_destino_id is None:
+                    reasons.append("next_cycle_missing")
+            elif projected_next is None or next_cycle is None:
                 reasons.append("next_cycle_missing")
             else:
                 if len(next_rows) != cycle_size:
@@ -519,8 +527,12 @@ class Command(BaseCommand):
                 if apply_changes:
                     _ensure_effectivation_fields(refinanciamento, effective_at=effective_at)
                     refinanciamento.refresh_from_db()
-                    rebuild_contract_cycle_state(contrato, execute=True)
-                    refinanciamento.refresh_from_db()
+                    # Contratos cancelados/encerrados: pula rebuild (a projeção não projeta
+                    # ciclo futuro para esses contratos, o que causaria soft-delete do
+                    # ciclo_destino recém-criado).
+                    if not is_inactive_contract:
+                        rebuild_contract_cycle_state(contrato, execute=True)
+                        refinanciamento.refresh_from_db()
                     if (
                         refinanciamento.ciclo_destino_id is None
                         and refinanciamento.ciclo_origem_id is not None
@@ -555,16 +567,19 @@ class Command(BaseCommand):
                             effective_at=effective_at,
                         )
                         refinanciamento.refresh_from_db()
-                        rebuild_contract_cycle_state(contrato, execute=True)
-                        refinanciamento.refresh_from_db()
-                    relink_contract_documents({contrato.id})
-                    if contrato.associado.status in {
-                        Associado.Status.INADIMPLENTE,
-                        Associado.Status.APTO_A_RENOVAR,
-                    }:
-                        contrato.associado.status = Associado.Status.ATIVO
-                        contrato.associado.save(update_fields=["status", "updated_at"])
-                    sync_associado_mother_status(contrato.associado)
+                        # Segundo rebuild apenas para contratos ativos.
+                        if not is_inactive_contract:
+                            rebuild_contract_cycle_state(contrato, execute=True)
+                            refinanciamento.refresh_from_db()
+                    if not is_inactive_contract:
+                        relink_contract_documents({contrato.id})
+                        if contrato.associado.status in {
+                            Associado.Status.INADIMPLENTE,
+                            Associado.Status.APTO_A_RENOVAR,
+                        }:
+                            contrato.associado.status = Associado.Status.ATIVO
+                            contrato.associado.save(update_fields=["status", "updated_at"])
+                        sync_associado_mother_status(contrato.associado)
                     refinanciamento.refresh_from_db()
                     repaired += 1
                     row["after"] = asdict(_snapshot(refinanciamento))
