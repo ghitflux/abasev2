@@ -371,6 +371,20 @@ docker run --rm \
 
 Renovação automática:
 
+O usuário `deploy` está no grupo `docker` mas normalmente **não tem sudo sem senha**, então
+`/etc/cron.d/` (root) não é acessível sem intervenção manual. Preferir o crontab pessoal do
+próprio `deploy` (`crontab -e`), que não exige root e roda com o mesmo efeito:
+
+```bash
+(crontab -l 2>/dev/null; echo '10 2 * * * docker run --rm \
+  -v /opt/ABASE/data/certbot/conf:/etc/letsencrypt \
+  -v /opt/ABASE/data/certbot/www:/var/www/certbot \
+  certbot/certbot renew --webroot -w /var/www/certbot --quiet >> /opt/ABASE/logs/certbot-renew.log 2>&1 && \
+  docker exec abase-nginx-prod nginx -s reload >> /opt/ABASE/logs/certbot-renew.log 2>&1') | crontab -
+```
+
+Se houver acesso root disponível, a alternativa em `/etc/cron.d/abase-certbot` também funciona:
+
 ```bash
 cat >/etc/cron.d/abase-certbot <<'EOF'
 10 2 * * * root docker run --rm \
@@ -379,6 +393,15 @@ cat >/etc/cron.d/abase-certbot <<'EOF'
   certbot/certbot renew --webroot -w /var/www/certbot --quiet && \
   docker exec abase-nginx-prod nginx -s reload
 EOF
+```
+
+**Verificação**: confirmar com `crontab -l` (usuário `deploy`) ou `cat /etc/cron.d/abase-certbot`
+(root) que a renovação está de fato agendada — sem isso o certificado expira em 90 dias
+silenciosamente. Checar validade a qualquer momento com:
+
+```bash
+echo | openssl s_client -servername abasepiaui.com -connect abasepiaui.com:443 2>/dev/null \
+  | openssl x509 -noout -dates
 ```
 
 ## 9. Primeira subida da stack de produção
